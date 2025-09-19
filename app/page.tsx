@@ -16,7 +16,7 @@ const features = [
 ];
 
 const steps = [
-  { n: 1, title: "Fale com a IA Farma", text: "Clique no WhatsApp e diga o que precisa." },
+  { n: 1, title: "Fale com a IA Drogarias", text: "Clique no WhatsApp e diga o que precisa." },
   { n: 2, title: "Receba as opções", text: "Verifique disponibilidade, preços e prazos." },
   { n: 3, title: "Confirme e acompanhe", text: "Pagamento seguro e entrega rastreada." },
 ];
@@ -35,7 +35,7 @@ export default function Page() {
       <header className="sticky top-0 z-40 w-full border-b bg-white/80 backdrop-blur">
         <div className="mx-auto max-w-6xl px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <img src="/logo-iafarma.png" alt="Logo IA Farma" className="w-10 h-10 rounded-xl object-contain" />
+            <img src="/logo-iadrogarias.png" alt="Logo IA Farma" className="w-10 h-10 rounded-xl object-contain" />
             <div className="leading-tight">
               <span className="block text-xl font-bold tracking-tight">IA Farma</span>
               <span className="block text-xs text-gray-500">Farmácia Virtual • Saúde simples</span>
@@ -63,7 +63,7 @@ export default function Page() {
             Sua <span className="text-teal-600">Farmácia Virtual</span> com atendimento humano + IA
           </h1>
           <p className="mt-4 text-gray-600 max-w-prose">
-            Peça medicamentos, compare preços e fale com um farmacêutico em minutos. A IA Farma conecta você às farmácias parceiras mais próximas — rápido, seguro e sem complicação.
+            Peça medicamentos, compare preços e fale com um farmacêutico em minutos. A IA Drogarias conecta você às farmácias parceiras mais próximas — rápido, seguro e sem complicação.
           </p>
           <div className="mt-6 flex flex-wrap items-center gap-3">
             <a href="#servicos"><Button variant="secondary" className="rounded-2xl">Ver serviços</Button></a>
@@ -74,7 +74,7 @@ export default function Page() {
           </div>
         </motion.div>
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
-          <img src="/avatar-iafarma.png" alt="Avatar IA Farma" className="w-full h-auto object-contain" />
+          <img src="/avatar-iadrogarias.png" alt="Avatar IA Drogarias" className="w-full h-auto object-contain" />
         </motion.div>
       </section>
 
@@ -135,7 +135,7 @@ export default function Page() {
       <section className="mx-auto max-w-6xl px-4 py-12">
         <div className="grid lg:grid-cols-2 gap-10 items-start">
           <div>
-            <h2 className="text-3xl font-bold tracking-tight">Por que escolher a IA Farma?</h2>
+            <h2 className="text-3xl font-bold tracking-tight">Por que escolher a IA Drogarias?</h2>
             <ul className="mt-6 space-y-3">
               {benefits.map((b, i) => (
                 <li key={i} className="flex items-start gap-3 text-gray-700">
@@ -151,8 +151,8 @@ export default function Page() {
               <p className="text-sm text-gray-500">Seu avatar IA Farma</p>
             </div>
             <div className="rounded-xl bg-gradient-to-b from-gray-50 to-white border p-4 text-center">
-              <img src="/logo-iafarma.png" alt="Logo IA Farma" className="w-full h-auto object-contain mb-3" />
-              <p className="text-sm text-gray-500">Logo oficial IA Farma</p>
+              <img src="/logo-iadrogarias.png" alt="Logo IA Drogarias" className="w-full h-auto object-contain mb-3" />
+              <p className="text-sm text-gray-500">Logo oficial IA Drogarias</p>
             </div>
         </div>
         </div>
@@ -166,7 +166,7 @@ export default function Page() {
             <h2 className="text-3xl font-bold tracking-tight">Credencie sua farmácia</h2>
           </div>
           <p className="text-gray-600 max-w-2xl">
-            Faça parte da rede IA Farma e receba pedidos qualificados do seu bairro. Baixa taxa de adesão, mensalidade acessível e suporte para operação digital.
+            Faça parte da rede IA Drogarias e receba pedidos qualificados do seu bairro. Baixa taxa de adesão, mensalidade acessível e suporte para operação digital.
           </p>
           <div className="mt-8 grid md:grid-cols-2 gap-6">
             <Card className="rounded-2xl">
@@ -205,7 +205,7 @@ export default function Page() {
         <div className="mx-auto max-w-6xl px-4 py-12 grid md:grid-cols-2 gap-8 items-center">
           <div>
             <h2 className="text-3xl font-extrabold leading-tight">Pronto para começar?</h2>
-            <p className="mt-3 text-white/90">Fale agora com a IA Farma e receba atendimento imediato.</p>
+            <p className="mt-3 text-white/90">Fale agora com a IA Drogarias e receba atendimento imediato.</p>
           </div>
           <div className="md:text-right">
             <a href="https://wa.me/5511952068432?text=Ol%C3%A1%2C%20IA%20Farma!" className="inline-flex">
@@ -220,11 +220,11 @@ export default function Page() {
         <div className="grid md:grid-cols-3 gap-8">
           <div>
             <div className="flex items-center gap-3">
-              <img src="/logo-iafarma.png" alt="Logo IA Farma" className="w-9 h-9 rounded-xl object-contain" />
-              <span className="font-semibold">IA Farma</span>
+              <img src="/logo-iadrogarias.png" alt="Logo IA Farma" className="w-9 h-9 rounded-xl object-contain" />
+              <span className="font-semibold">IA Drogarias</span>
             </div>
             <p className="text-sm text-gray-600 mt-3">CNPJ 00.000.000/0000-00 • São Paulo/SP</p>
-            <p className="text-sm text-gray-500 mt-1">© {new Date().getFullYear()} IA Farma. Todos os direitos reservados.</p>
+            <p className="text-sm text-gray-500 mt-1">© {new Date().getFullYear()} IA Drogarias. Todos os direitos reservados.</p>
           </div>
           <div>
             <h3 className="font-semibold mb-3">Links</h3>
@@ -239,7 +239,7 @@ export default function Page() {
             <h3 className="font-semibold mb-3">Contato</h3>
             <ul className="space-y-2 text-sm text-gray-600">
               <li>WhatsApp: (11) 95206-8432</li>
-              <li>E-mail: contato@iafarma.com.br</li>
+              <li>E-mail: contato@iadrogarias.com.br</li>
               <li>Atendimento: seg–dom, 8h às 22h</li>
             </ul>
           </div>
