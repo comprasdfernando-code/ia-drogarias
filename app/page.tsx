@@ -35,9 +35,9 @@ export default function Page() {
       <header className="sticky top-0 z-40 w-full border-b bg-white/80 backdrop-blur">
         <div className="mx-auto max-w-6xl px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <img src="/logo-iadrogarias.png" alt="Logo IA Farma" className="w-10 h-10 rounded-xl object-contain" />
+            <img src="/logo-iadrogarias.png" alt="Logo IA Drogarias" className="w-10 h-10 rounded-xl object-contain" />
             <div className="leading-tight">
-              <span className="block text-xl font-bold tracking-tight">IA Farma</span>
+              <span className="block text-xl font-bold tracking-tight">IA Drogarias</span>
               <span className="block text-xs text-gray-500">Farmácia Virtual • Saúde simples</span>
             </div>
           </div>
@@ -89,7 +89,7 @@ export default function Page() {
 
       {/* Serviços */}
       <section id="servicos" className="mx-auto max-w-6xl px-4 py-12">
-        <h2 className="text-3xl font-bold tracking-tight">Serviços IA Farma</h2>
+        <h2 className="text-3xl font-bold tracking-tight">Serviços IA Drogarias</h2>
         <p className="text-gray-600 mt-2">Tudo o que você espera de uma farmácia moderna, direto do seu celular.</p>
         <div className="mt-8 grid sm:grid-cols-2 lg:grid-cols-4 gap-6">
           {features.map((f, i) => (
@@ -147,7 +147,7 @@ export default function Page() {
           </div>
           <div className="rounded-2xl border p-6 grid grid-cols-2 gap-6">
             <div className="rounded-xl bg-gradient-to-b from-gray-50 to-white border p-4 text-center">
-              <img src="/avatar-iafarma.png" alt="Avatar IA Farma" className="w-full h-auto object-contain mb-3" />
+              <img src="/avatar-iadrogarias.png" alt="Avatar IA Drogarias" className="w-full h-auto object-contain mb-3" />
               <p className="text-sm text-gray-500">Seu avatar IA Farma</p>
             </div>
             <div className="rounded-xl bg-gradient-to-b from-gray-50 to-white border p-4 text-center">
