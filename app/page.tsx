@@ -63,16 +63,14 @@ export default function Page() {
       </header>
 
       {/* Banner temporário */}
-      <div className="flex flex-col items-center justify-center min-h-[70vh] text-center">
-  <Image
-    src="/banner-construcao.png"
-    alt="Site em construção"
-    width={800}
-    height={400}
-    className="w-full max-w-3xl rounded-lg shadow-md mb-6"
-  />
-  <p className="text-lg text-gray-600">🚧 Site em construção 🚧</p>
-</div>
+      <div className="w-full">
+        <img
+  src="/banner-construcao.png"
+  alt="Site em construção"
+  className="w-full rounded-lg shadow-md mb-8"
+/>
+
+      </div>
 
       {/* Hero */}
       <section className="mx-auto max-w-6xl px-4 pt-14 pb-10 grid md:grid-cols-2 gap-10 items-center">
