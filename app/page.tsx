@@ -41,7 +41,7 @@ export default function Page() {
       <header className="sticky top-0 z-40 w-full border-b bg-white/80 backdrop-blur">
         <div className="mx-auto max-w-6xl px-4 py-3 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <img src="/logo-iadrogarias.png" alt="Logo IA Drogarias" className="w-10 h-10 rounded-xl object-contain" />
+            <img src="/banner-construcao.png" alt="Site em construção" className="w-10 h-10 rounded-xl object-contain" />
             <div className="leading-tight">
               <span className="block text-xl font-bold tracking-tight">💊 IA Drogarias</span>
               <span className="block text-xs text-gray-500">Farmácia Virtual • Saúde simples</span>
