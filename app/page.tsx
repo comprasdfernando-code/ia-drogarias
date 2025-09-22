@@ -64,13 +64,12 @@ export default function Page() {
 
       {/* Banner temporário */}
       <div className="w-full">
-        <Image
-          src="/banner-construcao.png"
-          alt="Site em construção"
-          width={1200}
-          height={400}
-          className="w-full rounded-lg shadow-md mb-8"
-        />
+        <img
+  src="/banner-construcao.png"
+  alt="Site em construção"
+  className="w-full rounded-lg shadow-md mb-8"
+/>
+
       </div>
 
       {/* Hero */}
