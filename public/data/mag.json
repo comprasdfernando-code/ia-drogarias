@@ -2,43 +2,38 @@
   {
     "id": 1,
     "nome": "Dipirona 500mg",
-    "descricao": "Alívio de dor e febre",
-    "preco": 9.99,
+    "preco": "R$ 9,99",
     "imagem": "/produtos/dipirona.png"
   },
   {
     "id": 2,
     "nome": "Paracetamol 750mg",
-    "descricao": "Analgésico e antitérmico",
-    "preco": 12.49,
+    "preco": "R$ 12,49",
     "imagem": "/produtos/paracetamol.png"
   },
   {
     "id": 3,
     "nome": "Benegrip",
-    "descricao": "Alívio dos sintomas da gripe",
-    "preco": 18.90,
-    "imagem": "/produtos/ benegrip.png"
+    "preco": "R$ 18,90",
+    "imagem": "/produtos/benegrip.png"
   },
   {
     "id": 4,
     "nome": "Cimegripe",
-    "descricao": "Ação rápida contra os sintomas da gripe",
-    "preco": 14.75,
+    "preco": "R$ 14,75",
     "imagem": "/produtos/cimegripe.png"
   },
   {
     "id": 5,
     "nome": "Expec Xarope",
-    "descricao": "Expectorante e antitussígeno",
-    "preco": 21.50,
+    "preco": "R$ 21,50",
     "imagem": "/produtos/expec.png"
   },
   {
     "id": 6,
     "nome": "Fexofenadina 180mg",
-    "descricao": "Antialérgico de ação rápida",
-    "preco": 29.99,
+    "preco": "R$ 29,99",
     "imagem": "/produtos/fexofenadina.png"
   }
 ]
+
