@@ -1,50 +1,38 @@
 [
   {
     "id": 1,
-    "nome": "Dipirona 500mg",
-    "descricao": "Analgésico e antitérmico - uso adulto e pediátrico acima de 15 anos",
-    "preco": 9.99,
-    "imagem": "/produtos/dipirona.png",
-    "categoria": "Linha MAG"
+    "nome": "Dipirona 500mg c/30",
+    "preco": 12.90,
+    "imagem": "/produtos/dipirona.png"
   },
   {
     "id": 2,
-    "nome": "Cloridrato de Fexofenadina 180mg",
-    "descricao": "Antialérgico - alívio rápido para espirros, coriza e rinite",
-    "preco": 19.90,
-    "imagem": "/produtos/fexofenadina.png",
-    "categoria": "Linha MAG"
+    "nome": "Paracetamol 750mg c/20",
+    "preco": 15.50,
+    "imagem": "/produtos/paracetamol.png"
   },
   {
     "id": 3,
-    "nome": "Cimegripe 20 cápsulas",
-    "descricao": "Ação rápida contra sintomas de gripe: congestão, febre e dor",
-    "preco": 14.50,
-    "imagem": "/produtos/cimegripe.png",
-    "categoria": "Linha MAG"
+    "nome": "Benegrip c/20 comprimidos",
+    "preco": 18.90,
+    "imagem": "/produtos/benegrip.png"
   },
   {
     "id": 4,
     "nome": "Expec Xarope 120ml",
-    "descricao": "Antitussígeno, expectorante e antialérgico - tripla ação",
-    "preco": 12.99,
-    "imagem": "/produtos/expec.png",
-    "categoria": "Linha MAG"
+    "preco": 22.90,
+    "imagem": "/produtos/expec.png"
   },
   {
     "id": 5,
-    "nome": "Paracetamol 750mg",
-    "descricao": "Analgésico e antitérmico - indicado para dor e febre",
-    "preco": 7.99,
-    "imagem": "/produtos/paracetamol.png",
-    "categoria": "Linha MAG"
+    "nome": "Cimegripe c/20 cápsulas",
+    "preco": 16.99,
+    "imagem": "/produtos/cimegripe.png"
   },
   {
     "id": 6,
-    "nome": "Benegrip 20 comprimidos",
-    "descricao": "Alívio contra sintomas da gripe - com dipirona e cafeína",
-    "preco": 15.90,
-    "imagem": "/produtos/benegrip.png",
-    "categoria": "Linha MAG"
+    "nome": "Fexofenadina 180mg c/10",
+    "preco": 25.90,
+    "imagem": "/produtos/fexofenadina.png"
   }
 ]
