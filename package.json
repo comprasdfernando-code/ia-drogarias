@@ -1,30 +1,23 @@
 {
-  "name": "iafarma-demo",
-  "private": true,
+  "name": "ia-drogarias",
   "version": "0.1.0",
+  "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint",
-  "start-local": "npm install && npm run dev"
-
+    "lint": "next lint"
   },
   "dependencies": {
-    "framer-motion": "^11.0.0",
-    "lucide-react": "^0.453.0",
-    "next": "14.2.5",
-    "react": "18.3.1",
-    "react-dom": "18.3.1"
-  },
-  "devDependencies": {
-    "@types/node": "^24.5.2",
-    "@types/react": "^19.1.13",
-    "autoprefixer": "^10.4.20",
-    "eslint": "^8.57.0",
+    "autoprefixer": "10.4.16",
+    "eslint": "8.56.0",
     "eslint-config-next": "14.2.5",
-    "postcss": "^8.4.41",
-    "tailwindcss": "^3.4.10",
-    "typescript": "^5.4.0"
+    "framer-motion": "^10.18.0",
+    "next": "14.2.5",
+    "postcss": "8.4.31",
+    "react": "18.3.1",
+    "react-dom": "18.3.1",
+    "tailwindcss": "3.4.1"
   }
 }
+

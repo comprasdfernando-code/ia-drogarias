@@ -1,100 +1,126 @@
 'use client';
 
-import React from "react";
-import Image from "next/image"; // 👈 Import do Next.js para imagens
-import { motion } from "framer-motion";
+import React, { useEffect, useState } from "react";
+import Image from "next/image";
 import { Button } from "../components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "../components/ui/card";
-import { Input } from "../components/ui/input";
-import { Textarea } from "../components/ui/textarea";
-import { Badge } from "../components/ui/badge";
-import { 
-  CheckCircle2, Phone, ShoppingCart, ShieldCheck, 
-  Stethoscope, Truck, Bot, Building2, MessageCircle, Sparkles 
-} from "lucide-react";
 
-const features = [
-  { icon: <Stethoscope className="w-6 h-6" aria-hidden />, title: "Atendimento farmacêutico", desc: "Suporte humano + IA para dúvidas, posologia e acompanhamento." },
-  { icon: <ShoppingCart className="w-6 h-6" aria-hidden />, title: "Catálogo inteligente", desc: "Busca rápida por medicamentos, genéricos e perfumaria." },
-  { icon: <Truck className="w-6 h-6" aria-hidden />, title: "Entrega ágil", desc: "Parceiros locais e motoboys com rastreio de pedido." },
-  { icon: <ShieldCheck className="w-6 h-6" aria-hidden />, title: "Segurança e conformidade", desc: "Fluxos alinhados à RDC, LGPD e boas práticas farmacêuticas." },
-];
-
-const steps = [
-  { n: 1, title: "Fale com a IA Drogarias", text: "Clique no WhatsApp e diga o que precisa." },
-  { n: 2, title: "Receba as opções", text: "Verifique disponibilidade, preços e prazos." },
-  { n: 3, title: "Confirme e acompanhe", text: "Pagamento seguro e entrega rastreada." },
-];
-
-const benefits = [
-  "Economia de tempo no balcão e no zap.",
-  "Curadoria de farmácias parceiras confiáveis.",
-  "Promoções e assinatura para uso contínuo.",
-  "Atendimento humanizado com apoio de IA.",
-];
+// Tipagem do produto
+interface Produto {
+  id: number;
+  nome: string;
+  preco: number;
+  imagem: string;
+}
 
 export default function Page() {
+  const [produtos, setProdutos] = useState<Produto[]>([]);
+
+  // Carrega JSON
+  useEffect(() => {
+    fetch("/data/mag.json")
+      .then((res) => res.json())
+      .then((data) => setProdutos(data));
+  }, []);
+
   return (
     <div className="min-h-screen bg-white text-gray-900">
-
-      {/* Navbar */}
+      
+      {/* Header */}
       <header className="sticky top-0 z-40 w-full border-b bg-white/80 backdrop-blur">
         <div className="mx-auto max-w-6xl px-4 py-3 flex items-center justify-between">
+          
+          {/* Logo + Nome */}
           <div className="flex items-center gap-3">
-            <img src="/banner-construcao.png" alt="Site em construção" className="w-10 h-10 rounded-xl object-contain" />
+            <img 
+              src="/logo-iadrogarias.png" 
+              alt="Logo IA Drogarias" 
+              className="w-10 h-10 rounded-xl object-contain" 
+            />
             <div className="leading-tight">
               <span className="block text-xl font-bold tracking-tight">💊 IA Drogarias</span>
               <span className="block text-xs text-gray-500">Farmácia Virtual • Saúde simples</span>
             </div>
           </div>
+
+          {/* Menu */}
           <nav className="hidden md:flex items-center gap-6 text-sm">
             <a href="#servicos" className="hover:text-teal-600">Serviços</a>
             <a href="#como-funciona" className="hover:text-teal-600">Como funciona</a>
-            <a href="#credenciamento" className="hover:text-teal-600">Credenciar Farmácia</a>
             <a href="#contato" className="hover:text-teal-600">Contato</a>
           </nav>
+
+          {/* Botão WhatsApp */}
           <div className="flex items-center gap-2">
-            <Badge className="hidden sm:inline-flex">São Paulo • SP</Badge>
-            <a href="https://wa.me/5511952068432?text=Ol%C3%A1%20IA%20Farma%2C%20preciso%20de%20ajuda%20com%20um%20pedido." className="inline-flex" aria-label="Falar no WhatsApp">
-              <Button className="rounded-2xl">Falar no WhatsApp</Button>
+            <a 
+              href="https://wa.me/5511952068432?text=Olá%20IA%20Drogarias%2C%20preciso%20de%20ajuda." 
+              className="inline-flex" 
+              aria-label="Falar no WhatsApp"
+            >
+              <Button className="rounded-2xl bg-teal-600 hover:bg-teal-700 text-white">
+                Falar no WhatsApp
+              </Button>
             </a>
           </div>
         </div>
       </header>
 
-      {/* Banner temporário */}
-      <div className="w-full">
-        <img
-  src="/banner-construcao.png"
-  alt="Site em construção"
-  className="w-full rounded-lg shadow-md mb-8"
-/>
+      {/* Banner Principal */}
+      <section className="w-full bg-gradient-to-r from-teal-600 to-sky-600 text-white rounded-xl shadow-lg mt-6">
+        <div className="max-w-6xl mx-auto px-6 py-12 grid md:grid-cols-2 gap-8 items-center">
+          
+          {/* Texto do banner */}
+          <div>
+            <h1 className="text-4xl md:text-5xl font-extrabold leading-tight">
+              Bem-vindo à <span className="text-yellow-300">IA Drogarias</span>
+            </h1>
+            <p className="mt-4 text-lg text-white/90">
+              Seu novo jeito de comprar medicamentos, perfumaria e saúde.
+              Rápido, seguro e no conforto do seu celular.
+            </p>
 
-      </div>
+            <div className="mt-6 flex gap-4">
+              <a href="#produtos">
+                <Button size="lg" className="rounded-2xl bg-white text-teal-700 hover:bg-white/90">
+                  Ver Ofertas
+                </Button>
+              </a>
+              <a href="https://wa.me/5511952068432?text=Olá%20IA%20Drogarias%20quero%20fazer%20um%20pedido">
+                <Button size="lg" variant="secondary" className="rounded-2xl">
+                  Falar no WhatsApp
+                </Button>
+              </a>
+            </div>
+          </div>
 
-      {/* Hero */}
-      <section className="mx-auto max-w-6xl px-4 pt-14 pb-10 grid md:grid-cols-2 gap-10 items-center">
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}>
-          <h1 className="text-4xl md:text-5xl font-extrabold leading-tight">
-            Sua <span className="text-teal-600">Farmácia Virtual</span> com atendimento humano + IA
-          </h1>
-          <p className="mt-4 text-gray-600 max-w-prose">
-            Peça medicamentos, compare preços e fale com um farmacêutico em minutos. A IA Drogarias conecta você às farmácias parceiras mais próximas — rápido, seguro e sem complicação.
-          </p>
-          <div className="mt-6 flex flex-wrap items-center gap-3">
-            <a href="#servicos"><Button variant="secondary" className="rounded-2xl">Ver serviços</Button></a>
-            <a href="#credenciamento"><Button className="rounded-2xl">Credenciar Farmácia</Button></a>
+          {/* Imagem destaque */}
+          <div className="hidden md:block">
+            <Image
+              src="/banner-farmacia.png"
+              alt="Promoção IA Drogarias"
+              width={500}
+              height={400}
+              className="w-full h-auto rounded-xl shadow-md"
+            />
           </div>
-          <div className="mt-6 flex items-center gap-3 text-sm text-gray-500">
-            <CheckCircle2 className="w-4 h-4" /> Entrega em bairros selecionados de São Paulo
-          </div>
-        </motion.div>
-        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
-          <img src="/avatar-iadrogarias.png" alt="Avatar IA Drogarias" className="w-full h-auto object-contain" />
-        </motion.div>
+        </div>
       </section>
 
-      {/* aqui segue o resto do seu código normalmente (features, steps, benefits, credenciamento, footer, etc) */}
+      {/* Produtos Linha MAG */}
+      <section id="produtos" className="max-w-6xl mx-auto px-6 py-12">
+        <h2 className="text-2xl font-bold mb-6">Linha MAG</h2>
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+          {produtos.map((p) => (
+            <div key={p.id} className="border rounded-lg p-4 shadow hover:shadow-lg transition">
+              <img src={p.imagem} alt={p.nome} className="w-full h-40 object-contain mb-2" />
+              <h3 className="font-semibold">{p.nome}</h3>
+              <p className="text-teal-600 font-bold">R$ {p.preco.toFixed(2)}</p>
+              <button className="mt-2 w-full bg-teal-600 text-white py-1 rounded">
+                Comprar
+              </button>
+            </div>
+          ))}
+        </div>
+      </section>
     </div>
   );
 }
