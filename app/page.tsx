@@ -109,28 +109,32 @@ export default function Page() {
       <section id="produtos" className="max-w-6xl mx-auto px-6 py-12">
   <h2 className="text-2xl font-bold mb-6">💊 Nossos Produtos</h2>
 
-  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-6">
+  {/* GRID RESPONSIVO */}
+  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
     {produtos.map((p) => (
       <div
         key={p.id}
-        className="border rounded-xl p-4 shadow-md hover:shadow-lg bg-white transition flex flex-col justify-between"
+        className="border rounded-xl p-4 shadow hover:shadow-lg transition bg-white"
       >
         <img
           src={p.imagem}
           alt={p.nome}
-          className="w-full h-32 object-contain mb-3"
+          className="w-full h-40 object-contain mb-4"
+          loading="lazy"
         />
 
-        <h3 className="font-semibold text-sm">{p.nome}</h3>
-        <p className="text-teal-600 font-bold mt-1">{p.preco}</p>
+        <h3 className="font-semibold leading-snug">{p.nome}</h3>
+        <p className="font-bold text-teal-700 mt-2">{p.preco}</p>
 
         <a
           href={`https://wa.me/5511952068432?text=Olá,%20quero%20comprar%20${encodeURIComponent(
             p.nome
           )}%20por%20${encodeURIComponent(p.preco)}`}
           target="_blank"
+          rel="noopener noreferrer"
+          className="block mt-3 w-full"
         >
-          <Button className="mt-3 w-full rounded-2xl bg-teal-600 hover:bg-teal-700 text-white">
+          <Button className="w-full rounded-2xl bg-teal-600 hover:bg-teal-700 text-white">
             Comprar via WhatsApp
           </Button>
         </a>
