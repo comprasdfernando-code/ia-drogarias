@@ -116,7 +116,7 @@ export default function Page() {
               <img
                 src={p.imagem}
                 alt={p.nome}
-                className="w-full h-24 object-contain mb-4"
+                className="h-24 w-auto mx-auto object-contain mb-4"
                 loading="lazy"
               />
               <h3 className="font-semibold leading-snug">{p.nome}</h3>
