@@ -32,7 +32,7 @@ export default function Page() {
             <img
               src="/logo-iadrogarias.png"
               alt="Logo IA Drogarias"
-              className="w-06 h-06 rounded-xl object-contain"
+              className="w-full h-auto rounded-xl shadow-md"
             />
             <div className="leading-tight">
               <span className="block text-xl font-bold tracking-tight">💊 IA Drogarias</span>
