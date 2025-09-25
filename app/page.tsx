@@ -24,17 +24,15 @@ export default function Page() {
 
   return (
     <div className="min-h-screen bg-white text-gray-900">
-      
       {/* Header */}
       <header className="sticky top-0 z-40 w-full border-b bg-white/80 backdrop-blur">
         <div className="mx-auto max-w-6xl px-4 py-3 flex items-center justify-between">
-          
           {/* Logo + Nome */}
           <div className="flex items-center gap-3">
-            <img 
-              src="/logo-iadrogarias.png" 
-              alt="Logo IA Drogarias" 
-              className="w-10 h-10 rounded-xl object-contain" 
+            <img
+              src="/logo-iadrogarias.png"
+              alt="Logo IA Drogarias"
+              className="w-06 h-06 rounded-xl object-contain"
             />
             <div className="leading-tight">
               <span className="block text-xl font-bold tracking-tight">💊 IA Drogarias</span>
@@ -51,9 +49,9 @@ export default function Page() {
 
           {/* Botão WhatsApp */}
           <div className="flex items-center gap-2">
-            <a 
-              href="https://wa.me/5511952068432?text=Olá%20IA%20Drogarias%2C%20preciso%20de%20ajuda." 
-              className="inline-flex" 
+            <a
+              href="https://wa.me/5511952068432?text=Olá%20IA%20Drogarias%2C%20preciso%20de%20ajuda."
+              className="inline-flex"
               aria-label="Falar no WhatsApp"
             >
               <Button className="rounded-2xl bg-teal-600 hover:bg-teal-700 text-white">
@@ -67,7 +65,6 @@ export default function Page() {
       {/* Banner Principal */}
       <section className="w-full bg-gradient-to-r from-teal-600 to-sky-600 text-white rounded-xl shadow-lg mt-6">
         <div className="max-w-6xl mx-auto px-6 py-12 grid md:grid-cols-2 gap-8 items-center">
-          
           {/* Texto do banner */}
           <div>
             <h1 className="text-4xl md:text-5xl font-extrabold leading-tight">
@@ -107,41 +104,39 @@ export default function Page() {
 
       {/* Produtos Linha MAG */}
       <section id="produtos" className="max-w-6xl mx-auto px-6 py-12">
-  <h2 className="text-2xl font-bold mb-6">💊 Nossos Produtos</h2>
+        <h2 className="text-2xl font-bold mb-6">💊 Nossos Produtos</h2>
 
-  {/* GRID RESPONSIVO */}
-  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-    {produtos.map((p) => (
-      <div
-        key={p.id}
-        className="border rounded-xl p-4 shadow hover:shadow-lg transition bg-white"
-      >
-        <img
-          src={p.imagem}
-          alt={p.nome}
-          className="w-full h-40 object-contain mb-4"
-          loading="lazy"
-        />
+        {/* GRID RESPONSIVO */}
+        <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+          {produtos.map((p) => (
+            <div
+              key={p.id}
+              className="border rounded-xl p-4 shadow hover:shadow-lg transition bg-white"
+            >
+              <img
+                src={p.imagem}
+                alt={p.nome}
+                className="w-full h-24 object-contain mb-4"
+                loading="lazy"
+              />
+              <h3 className="font-semibold leading-snug">{p.nome}</h3>
+              <p className="font-bold text-teal-700 mt-2">{p.preco}</p>
 
-        <h3 className="font-semibold leading-snug">{p.nome}</h3>
-        <p className="font-bold text-teal-700 mt-2">{p.preco}</p>
-
-        <a
-          href={`https://wa.me/5511952068432?text=Olá,%20quero%20comprar%20${encodeURIComponent(
-            p.nome
-          )}%20por%20${encodeURIComponent(p.preco)}`}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="block mt-3 w-full"
-        >
-          <Button className="w-full rounded-2xl bg-teal-600 hover:bg-teal-700 text-white">
-            Comprar via WhatsApp
-          </Button>
-        </a>
-      </div>
-    ))}
-  </div>
-</section>
+              {/* Botão WhatsApp com nome + preço */}
+              <a
+                href={`https://wa.me/5511952068432?text=Olá,%20quero%20comprar%20${encodeURIComponent(
+                  p.nome
+                )}%20por%20${encodeURIComponent(p.preco)}`}
+                target="_blank"
+              >
+                <Button className="mt-3 w-full rounded-2xl bg-teal-600 hover:bg-teal-700 text-white">
+                  Comprar via WhatsApp
+                </Button>
+              </a>
+            </div>
+          ))}
+        </div>
+      </section>
     </div>
   );
 }
