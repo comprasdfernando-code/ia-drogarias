@@ -103,40 +103,42 @@ export default function Page() {
       </section>
 
       {/* Produtos Linha MAG */}
-      <section id="produtos" className="max-w-6xl mx-auto px-6 py-12">
-        <h2 className="text-2xl font-bold mb-6">💊 Nossos Produtos</h2>
+<section id="produtos" className="max-w-6xl mx-auto px-4 py-8">
+  <h2 className="text-2xl font-bold mb-6">Nossos Produtos</h2>
 
-        {/* GRID RESPONSIVO */}
-        <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
-          {produtos.map((p) => (
-            <div
-              key={p.id}
-              className="border rounded-xl p-4 shadow hover:shadow-lg transition bg-white"
-            >
-              <img
-                src={p.imagem}
-                alt={p.nome}
-                className="h-24 w-auto mx-auto object-contain mb-4"
-                loading="lazy"
-              />
-              <h3 className="font-semibold leading-snug">{p.nome}</h3>
-              <p className="font-bold text-teal-700 mt-2">{p.preco}</p>
+  {/* GRID RESPONSIVO */}
+  <div className="flex flex-wrap gap-4 justify-center">
+  {produtos.map((p) => (
+    <div
+      key={p.id}
+      className="w-40 border rounded-xl p-4 shadow hover:shadow-lg transition text-center"
+    >
+      <img
+        src={p.imagem}
+        alt={p.nome}
+        width={80}
+        height={80}
+        className="object-contain mx-auto mb-2"
+        loading="lazy"
+      />
+      <h3 className="font-semibold text-sm">{p.nome}</h3>
+      <p className="font-bold text-teal-700 mt-1 text-sm">{p.preco}</p>
 
-              {/* Botão WhatsApp com nome + preço */}
-              <a
-                href={`https://wa.me/5511952068432?text=Olá,%20quero%20comprar%20${encodeURIComponent(
-                  p.nome
-                )}%20por%20${encodeURIComponent(p.preco)}`}
-                target="_blank"
-              >
-                <Button className="mt-3 w-full rounded-2xl bg-teal-600 hover:bg-teal-700 text-white">
-                  Comprar via WhatsApp
-                </Button>
-              </a>
-            </div>
-          ))}
-        </div>
-      </section>
+      <a
+        href={`https://wa.me/5511952068432?text=Olá,%20quero%20comprar%20${encodeURIComponent(
+          p.nome
+        )}%20por%20${encodeURIComponent(p.preco)}`}
+        target="_blank"
+      >
+        <Button className="mt-2 w-full rounded-2xl bg-teal-600 hover:bg-teal-700 text-white text-sm">
+          Comprar
+        </Button>
+      </a>
+    </div>
+  ))}
+</div>
+
+</section>
     </div>
   );
 }
