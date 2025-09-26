@@ -1,6 +1,7 @@
 export const metadata = {
-  title: "IA Drogarias – Farmácia Virtual",
+  title: "IA Drogarias | Farmácia Virtual",
   description: "Sua Farmácia Virtual com atendimento humano + IA",
+  viewport: "width=device-width, initial-scale=1", // 👈 ESSA LINHA
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
