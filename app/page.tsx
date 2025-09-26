@@ -1,10 +1,6 @@
-'use client';
-
+"use client";
 import React, { useEffect, useState } from "react";
-import Image from "next/image";
-import { Button } from "../components/ui/button";
 
-// Tipagem do produto
 interface Produto {
   id: number;
   nome: string;
@@ -15,9 +11,9 @@ interface Produto {
 export default function Page() {
   const [produtos, setProdutos] = useState<Produto[]>([]);
 
-  // Carrega JSON
+  // Carregar JSON
   useEffect(() => {
-    fetch("/data/mag.json")
+    fetch("/data/produtos.json")
       .then((res) => res.json())
       .then((data) => setProdutos(data));
   }, []);
@@ -26,119 +22,72 @@ export default function Page() {
     <div className="min-h-screen bg-white text-gray-900">
       {/* Header */}
       <header className="sticky top-0 z-40 w-full border-b bg-white/80 backdrop-blur">
-        <div className="mx-auto max-w-6xl px-4 py-3 flex items-center justify-between">
-          {/* Logo + Nome */}
-          <div className="flex items-center gap-3">
+        <div className="mx-auto max-w-6xl px-4 py-3">
+          {/* Logo */}
+          <div className="flex items-center justify-center gap-3">
             <img
               src="/logo-iadrogarias.png"
               alt="Logo IA Drogarias"
-              className="w-full h-auto rounded-xl shadow-md"
+              className="w-12 h-12 rounded-xl shadow-md"
             />
-            <div className="leading-tight">
-              <span className="block text-xl font-bold tracking-tight">💊 IA Drogarias</span>
-              <span className="block text-xs text-gray-500">Farmácia Virtual • Saúde simples</span>
+            <div>
+              <span className="block text-xl font-bold">IA Drogarias</span>
+              <span className="block text-xs text-gray-500">
+                Farmácia Virtual · Saúde simples
+              </span>
             </div>
           </div>
 
-          {/* Menu */}
-          <nav className="hidden md:flex items-center gap-6 text-sm">
-            <a href="#servicos" className="hover:text-teal-600">Serviços</a>
-            <a href="#como-funciona" className="hover:text-teal-600">Como funciona</a>
-            <a href="#contato" className="hover:text-teal-600">Contato</a>
-          </nav>
-
-          {/* Botão WhatsApp */}
-          <div className="flex items-center gap-2">
-            <a
-              href="https://wa.me/5511952068432?text=Olá%20IA%20Drogarias%2C%20preciso%20de%20ajuda."
-              className="inline-flex"
-              aria-label="Falar no WhatsApp"
-            >
-              <Button className="rounded-2xl bg-teal-600 hover:bg-teal-700 text-white">
-                Falar no WhatsApp
-              </Button>
-            </a>
+          {/* Barra de Pesquisa */}
+          <div className="w-full flex justify-center mt-3">
+            <input
+              type="text"
+              placeholder="Buscar medicamentos, produtos de saúde..."
+              className="w-3/4 md:w-1/2 px-4 py-2 rounded-l-2xl border border-gray-300 text-sm focus:outline-none"
+            />
+            <button className="px-4 py-2 bg-teal-600 text-white rounded-r-2xl hover:bg-teal-700">
+              Buscar
+            </button>
           </div>
         </div>
       </header>
 
-      {/* Banner Principal */}
-      <section className="w-full bg-gradient-to-r from-teal-600 to-sky-600 text-white rounded-xl shadow-lg mt-6">
-        <div className="max-w-6xl mx-auto px-6 py-12 grid md:grid-cols-2 gap-8 items-center">
-          {/* Texto do banner */}
-          <div>
-            <h1 className="text-4xl md:text-5xl font-extrabold leading-tight">
-              Bem-vindo à <span className="text-yellow-300">IA Drogarias</span>
-            </h1>
-            <p className="mt-4 text-lg text-white/90">
-              Seu novo jeito de comprar medicamentos, perfumaria e saúde.
-              Rápido, seguro e no conforto do seu celular.
-            </p>
-
-            <div className="mt-6 flex gap-4">
-              <a href="#produtos">
-                <Button size="lg" className="rounded-2xl bg-white text-teal-700 hover:bg-white/90">
-                  Ver Ofertas
-                </Button>
-              </a>
-              <a href="https://wa.me/5511952068432?text=Olá%20IA%20Drogarias%20quero%20fazer%20um%20pedido">
-                <Button size="lg" variant="secondary" className="rounded-2xl">
-                  Falar no WhatsApp
-                </Button>
-              </a>
-            </div>
-          </div>
-
-          {/* Imagem destaque */}
-          <div className="hidden md:block">
-            <Image
-              src="/banner-farmacia.png"
-              alt="Promoção IA Drogarias"
-              width={500}
-              height={400}
-              className="w-full h-auto rounded-xl shadow-md"
-            />
-          </div>
-        </div>
-      </section>
-
-      {/* Produtos Linha MAG */}
-<section id="produtos" className="max-w-6xl mx-auto px-4 py-8">
-  <h2 className="text-2xl font-bold mb-6">Nossos Produtos</h2>
-
-  {/* GRID RESPONSIVO */}
-  <div className="flex flex-wrap gap-4 justify-center">
-  {produtos.map((p) => (
-    <div
-      key={p.id}
-      className="w-40 border rounded-xl p-4 shadow hover:shadow-lg transition text-center"
-    >
-      <img
-        src={p.imagem}
-        alt={p.nome}
-        width={80}
-        height={80}
-        className="object-contain mx-auto mb-2"
-        loading="lazy"
-      />
-      <h3 className="font-semibold text-sm">{p.nome}</h3>
-      <p className="font-bold text-teal-700 mt-1 text-sm">{p.preco}</p>
-
-      <a
-        href={`https://wa.me/5511952068432?text=Olá,%20quero%20comprar%20${encodeURIComponent(
-          p.nome
-        )}%20por%20${encodeURIComponent(p.preco)}`}
-        target="_blank"
+      {/* Grid de Produtos */}
+<main className="mx-auto max-w-6xl px-4 py-6">
+  <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+    {produtos.map((produto) => (
+      <div
+        key={produto.id}
+        className="relative border rounded-lg p-3 shadow-md bg-white hover:shadow-lg transition"
       >
-        <Button className="mt-2 w-full rounded-2xl bg-teal-600 hover:bg-teal-700 text-white text-sm">
-          Comprar
-        </Button>
-      </a>
-    </div>
-  ))}
-</div>
+        {/* Imagem */}
+        <img
+          src={produto.imagem}
+          alt={produto.nome}
+          width={150}
+          height={150}
+          className="object-contain mx-auto"
+          loading="lazy"
+        />
 
-</section>
+        {/* Nome */}
+        <h2 className="text-sm font-bold mt-2 text-center">
+          {produto.nome}
+        </h2>
+
+        {/* Preço */}
+        <p className="text-lg font-bold text-green-600 text-center">
+          {produto.preco}
+        </p>
+
+        {/* Botão Comprar */}
+        <button className="mt-2 w-full bg-blue-600 text-white py-1 rounded hover:bg-blue-700 transition">
+          Comprar
+        </button>
+      </div>
+    ))}
+  </div>
+</main>
     </div>
   );
 }
