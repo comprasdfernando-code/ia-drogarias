@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
+import Link from "next/link";
 
 // Tipagem do produto
 interface Produto {
@@ -46,48 +47,52 @@ export default function Page() {
       </header>
 
       {/* Grid de Produtos */}
-      <main className="mx-auto max-w-6xl px-4">
-        <h2 className="text-2xl font-bold mb-6">Nossos Produtos</h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {produtos.map((produto) => (
-            <div
-              key={produto.id}
-              className="relative border rounded-lg p-3 shadow-md bg-white hover:shadow-lg transition"
-            >
-              {/* Imagem */}
-              <img
-                src={produto.imagem}
-                alt={produto.nome}
-                width={400}
-                height={400}
-                className="object-contain mx-auto mb-2"
-                loading="lazy"
-              />
+      <main className="mx-auto max-w-6xl px-4 py-6">
+  <h2 className="text-2xl font-bold mb-6">Nossos Produtos</h2>
 
-              {/* Nome */}
-              <h2 className="text-sm font-bold text-center">{produto.nome}</h2>
+  <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4 md:gap-6">
+    {produtos.map((produto) => (
+      <div
+        key={produto.id}
+        className="group border rounded-lg p-3 shadow bg-white hover:shadow-lg transition overflow-hidden"
+      >
+        {/* Imagem + Nome levam para a página de detalhes */}
+        <Link href={`/produto/${produto.id}`} className="block">
+          <div className="aspect-[4/5] w-full bg-white">
+            <img
+              src={produto.imagem}
+              alt={produto.nome}
+              loading="lazy"
+              decoding="async"
+              className="h-full w-full object-contain p-2 transition-transform duration-300 group-hover:scale-105"
+            />
+          </div>
 
-              {/* Preço */}
-              <p className="text-lg font-bold text-green-600 text-center">
-                {produto.preco}
-              </p>
+          <h3 className="mt-2 text-sm font-bold text-center line-clamp-2">
+            {produto.nome}
+          </h3>
+        </Link>
 
-              {/* Botão Comprar via WhatsApp */}
-              <a
-                href={`https://wa.me/5511952068432?text=Olá, quero comprar ${encodeURIComponent(
-                  produto.nome
-                )} por ${encodeURIComponent(produto.preco)}`}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                <button className="mt-2 w-full bg-teal-600 text-white py-1 rounded hover:bg-teal-700 transition">
-                  Comprar via WhatsApp
-                </button>
-              </a>
-            </div>
-          ))}
-        </div>
-      </main>
+        {/* Preço */}
+        <p className="mt-1 text-lg font-bold text-green-600 text-center">
+          {produto.preco}
+        </p>
+
+        {/* Botão WhatsApp */}
+        <a
+          href={wa(produto)}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="mt-2 block"
+        >
+          <button className="w-full bg-teal-600 text-white py-2 rounded-md hover:bg-teal-700 transition">
+            Comprar via WhatsApp
+          </button>
+        </a>
+      </div>
+    ))}
+  </div>
+</main>
     </div>
   );
 }
