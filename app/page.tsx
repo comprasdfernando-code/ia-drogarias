@@ -59,8 +59,9 @@ export default function Page() {
               <img
                 src={produto.imagem}
                 alt={produto.nome}
-                width={200}
-                height={200}
+                width={400
+                }
+                height={400}
                 className="object-contain mx-auto mb-2"
                 loading="lazy"
               />
