@@ -1,15 +1,17 @@
 [
   {
-    "id": 1,
+   "id": 1,
     "nome": "Aerodini spray",
-    "preco": "R$ 24.99",
-    "imagem": "/produtos/medicamento.png"
+    "preco": "R$ 24,99",
+    "imagem": "/produtos/medicamento.png",
+    "descricao": "Spray broncodilatador."
   },
   {
-    "id": 2,
+     "id": 2,
     "nome": "Aerolin Spray Original",
-    "preco": "R$ 29.99",
-    "imagem": "/produtos/medicamento.png"
+    "preco": "R$ 29,99",
+    "imagem": "/produtos/medicamento.png",
+    "descricao": "Spray broncodilatador original."
   },
   {
     "id": 3,

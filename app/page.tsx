@@ -1,94 +1,46 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
-
-// Tipagem do produto
-interface Produto {
-  id: number;
-  nome: string;
-  preco: string;
-  imagem: string;
-}
+import React, { useState } from "react";
 
 export default function Page() {
-  const [produtos, setProdutos] = useState<Produto[]>([]);
-
-  // Carregar JSON
-  useEffect(() => {
-    fetch("/data/produtos.json")
-      .then((res) => res.json())
-      .then((data) => setProdutos(data));
-  }, []);
+  const [q, setQ] = useState("");
 
   return (
-    <div className="w-full flex justify-center">
-      {/* Header com faixa em imagem */}
-      <header className="sticky top-0 z-40 w-full shadow-md">
-        {/* Faixa como imagem */}
-        <div className="w-full">
+    <div className="w-full flex flex-col items-center">
+      {/* Faixa do topo */}
+      <header className="sticky top-0 z-40 w-full shadow-md bg-white">
+        <div className="w-full flex justify-center">
           <img
-            src="/faixa-topo.png" 
-    alt="Faixa IA Drogarias" 
-    className="w-[95%] max-w-screen-lg"
+            src="/faixa-topo.png"
+            alt="Faixa IA Drogarias"
+            className="w-[95%] max-w-screen-lg mx-auto"
           />
         </div>
 
         {/* Barra de busca */}
-        <div className="w-full bg-white border-t border-gray-200 flex justify-center px-4 py-2">
+        <div className="w-full bg-white border-t border-gray-200 flex justify-center gap-0 px-4 py-2">
           <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
             type="text"
             placeholder="Buscar medicamentos, produtos de saúde..."
             className="w-3/4 md:w-1/2 px-4 py-2 rounded-l-2xl border border-gray-300 text-sm focus:outline-none"
           />
-          <button className="px-4 py-2 bg-teal-600 text-white rounded-r-2xl hover:bg-teal-700">
+          <button
+            onClick={() => setQ("")}
+            className="px-4 py-2 bg-teal-600 text-white rounded-r-2xl hover:bg-teal-700"
+          >
             Buscar
           </button>
         </div>
       </header>
 
-      {/* Grid de Produtos */}
-      <main className="mx-auto max-w-6xl px-4 py-6">
-        <h2 className="text-2xl font-bold mb-6">Nossos Produtos</h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          {produtos.map((produto) => (
-            <div
-              key={produto.id}
-              className="relative border rounded-lg p-3 shadow-md bg-white hover:shadow-lg transition"
-            >
-              {/* Imagem */}
-              <img
-                src={produto.imagem}
-                alt={produto.nome}
-                width={400
-                }
-                height={400}
-                className="object-contain mx-auto mb-2"
-                loading="lazy"
-              />
-
-              {/* Nome */}
-              <h2 className="text-sm font-bold text-center">{produto.nome}</h2>
-
-              {/* Preço */}
-              <p className="text-lg font-bold text-green-600 text-center">
-                {produto.preco}
-              </p>
-
-              {/* Botão Comprar via WhatsApp */}
-              <a
-                href={`https://wa.me/5511952068432?text=Olá, quero comprar ${encodeURIComponent(
-                  produto.nome
-                )} por ${encodeURIComponent(produto.preco)}`}
-                target="_blank"
-                rel="noopener noreferrer"
-              >
-                <button className="mt-2 w-full bg-teal-600 text-white py-1 rounded hover:bg-teal-700 transition">
-                  Comprar via WhatsApp
-                </button>
-              </a>
-            </div>
-          ))}
-        </div>
+      {/* Área de teste (sem produtos ainda) */}
+      <main className="mx-auto max-w-6xl px-4 py-10 w-full">
+        <h2 className="text-2xl font-bold mb-2">Página OK ✅</h2>
+        <p className="text-gray-600">
+          A faixa e a barra de busca estão funcionando. Próximo passo: grid de produtos.
+        </p>
       </main>
     </div>
   );
