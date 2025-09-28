@@ -1,22 +1,20 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import link from "next/link";
 
-
+// Tipagem do produto
 interface Produto {
   id: number;
   nome: string;
   preco: string;
   imagem: string;
-  descricao: string;
+  descricao?: string;
 }
 
 export default function Page() {
   const [produtos, setProdutos] = useState<Produto[]>([]);
-  const [q, setQ] =useState("");
 
-  // Carregar produtos do JSON público
+  // Carregar JSON
   useEffect(() => {
     fetch("/data/produtos.json")
       .then((res) => res.json())
@@ -24,10 +22,10 @@ export default function Page() {
   }, []);
 
   return (
-    <div className="w-full flex flex-col items-center">
-      {/* Header com faixa em imagem */}
+    <div className="w-full flex flex-col">
+      {/* Header com faixa */}
       <header className="sticky top-0 z-40 w-full shadow-md bg-white">
-        <div className="w-full flex justify-center">
+        <div className="w-full">
           <img
             src="/faixa-topo.png"
             alt="Faixa IA Drogarias"
@@ -48,23 +46,21 @@ export default function Page() {
         </div>
       </header>
 
-      {/* Grid de Produtos */}
-      <main className="mx-auto max-w-6xl px-4 py-6 w-full">
+      {/* Carrossel de Produtos */}
+      <main className="mx-auto max-w-6xl px-4 py-6">
         <h2 className="text-2xl font-bold mb-6">Nossos Produtos</h2>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+
+        <div className="flex overflow-x-auto space-x-4 pb-4 scrollbar-hide">
           {produtos.map((produto) => (
             <div
               key={produto.id}
-              className="relative border rounded-lg p-3 shadow-md bg-white hover:shadow-lg transition"
+              className="min-w-[200px] border rounded-lg p-3 shadow bg-white flex-shrink-0 hover:shadow-lg transition"
             >
               {/* Imagem */}
               <img
                 src={produto.imagem}
                 alt={produto.nome}
-                width={400}
-                height={400}
-                className="object-contain mx-auto mb-2"
-                loading="lazy"
+                className="w-full h-32 object-contain mb-2"
               />
 
               {/* Nome */}
@@ -75,7 +71,7 @@ export default function Page() {
                 {produto.preco}
               </p>
 
-              {/* Botão Comprar via WhatsApp */}
+              {/* Botão WhatsApp */}
               <a
                 href={`https://wa.me/5511952068432?text=Olá, quero comprar ${encodeURIComponent(
                   produto.nome
