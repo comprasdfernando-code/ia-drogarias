@@ -40,15 +40,15 @@ export default function Page() {
   };
 
   return (
-    <div className="w-full flex flex-col items-center">
+    <div className="min-h-screen bg-white text-gray-900">
       {/* Header fixo */}
-      <header className="fixed top-0 left-0 w-full bg-white shadow-md z-50">
-        {/* Logo */}
-        <div className="flex justify-center py-2 border-b border-gray-200">
+      <header className="sticky top-0 z-50 w-full shadow bg-white">
+        {/* Faixa */}
+        <div className="w-full flex justify-center bg-gradient-to-r from-teal-600 to-sky-600">
           <img
-            src="/logo.png"
-            alt="IA Drogarias"
-            className="h-12"
+            src="/faixa-topo.png"
+            alt="Faixa IA Drogarias"
+            className="w-[95%] max-w-screen-lg"
           />
         </div>
 
