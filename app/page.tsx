@@ -1,7 +1,6 @@
 "use client";
 
 import React, { useEffect, useState } from "react";
-import Link from "next/link";
 
 // Tipagem do produto
 interface Produto {
@@ -9,7 +8,6 @@ interface Produto {
   nome: string;
   preco: string;
   imagem: string;
-  descricao: string;
 }
 
 export default function Page() {
@@ -17,7 +15,7 @@ export default function Page() {
   const [busca, setBusca] = useState("");
   const [resultado, setResultado] = useState<Produto[]>([]);
 
-  // Carregar JSON
+  // Carregar produtos do JSON
   useEffect(() => {
     fetch("/data/produtos.json")
       .then((res) => res.json())
@@ -28,7 +26,7 @@ export default function Page() {
   }, []);
 
   // Função de busca
-  const handleBuscar = () => {
+  useEffect(() => {
     if (busca.trim() === "") {
       setResultado(produtos);
     } else {
@@ -37,44 +35,37 @@ export default function Page() {
       );
       setResultado(filtrados);
     }
-  };
+  }, [busca, produtos]);
 
   return (
-    <div className="min-h-screen bg-white text-gray-900">
-      {/* Header fixo */}
-      <header className="sticky top-0 z-50 w-full shadow bg-white">
+    <div className="w-full flex flex-col items-center">
+      {/* Header fixo com faixa + busca */}
+      <header className="sticky top-0 z-50 bg-white shadow-md w-full">
         {/* Faixa */}
-        <div className="w-full flex justify-center bg-gradient-to-r from-teal-600 to-sky-600">
+        <div className="w-full flex justify-center py-2">
           <img
             src="/faixa-topo.png"
             alt="Faixa IA Drogarias"
-            className="w-[95%] max-w-screen-lg"
+            className="w-[95%] max-w-screen-lg mx-auto"
           />
         </div>
 
-        {/* Barra de busca destacada */}
-        <div className="w-full bg-teal-50 px-4 py-2 border-b border-gray-200 shadow-sm">
-          <div className="flex w-full">
-            <input
-              type="text"
-              placeholder="Buscar medicamentos, produtos de saúde..."
-              value={busca}
-              onChange={(e) => setBusca(e.target.value)}
-              className="flex-1 px-4 py-2 rounded-l-md border border-gray-300 text-sm focus:outline-none"
-            />
-            <button
-              onClick={handleBuscar}
-              className="px-4 py-2 bg-teal-600 text-white rounded-r-md hover:bg-teal-700"
-            >
-              Buscar
-            </button>
-          </div>
+        {/* Barra de busca */}
+        <div className="px-4 pb-3">
+          <input
+            type="text"
+            placeholder="Buscar medicamentos, produtos..."
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            className="w-full border px-3 py-2 rounded shadow-sm"
+          />
         </div>
       </header>
 
-      {/* Conteúdo (com espaço para não ficar escondido atrás do header) */}
-      <main className="pt-40 px-4 w-full max-w-6xl">
+      {/* Grid de Produtos */}
+      <main className="mx-auto max-w-6xl px-4 py-6 w-full">
         <h2 className="text-2xl font-bold mb-6">Nossos Produtos</h2>
+
         <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
           {resultado.map((produto) => (
             <div
