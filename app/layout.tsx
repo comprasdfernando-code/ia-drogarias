@@ -1,6 +1,9 @@
-export const metadata = {
+import "./globals.css";
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
   title: "IA Drogarias",
-  description: "Farmácia Virtual • Saúde simples",
+  description: "Marketplace de farmácias",
 };
 
 export default function RootLayout({
@@ -11,10 +14,13 @@ export default function RootLayout({
   return (
     <html lang="pt-BR">
       <head>
-        {/* TAG RESPONSIVA */}
-        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        {/* Corrige zoom no celular */}
+        <meta
+          name="viewport"
+          content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
+        />
       </head>
-      <body>{children}</body>
+      <body className="bg-gray-50">{children}</body>
     </html>
   );
 }
