@@ -52,8 +52,8 @@ export default function Page() {
           />
         </div>
 
-        {/* Barra de busca sticky */}
-        <div className="sticky top-0 bg-teal-50 px-4 py-2 border-b border-gray-200 shadow-sm z-40">
+        {/* Barra de busca destacada */}
+        <div className="w-full bg-teal-50 px-4 py-2 border-b border-gray-200 shadow-sm">
           <div className="flex w-full">
             <input
               type="text"
