@@ -79,16 +79,18 @@ export default function Page() {
         </p>
 
         {/* Botão WhatsApp */}
-        <a
-          href={wa(produto)}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="mt-2 block"
-        >
-          <button className="w-full bg-teal-600 text-white py-2 rounded-md hover:bg-teal-700 transition">
-            Comprar via WhatsApp
-          </button>
-        </a>
+<a
+  href={`https://wa.me/5511952068432?text=Olá, quero comprar ${encodeURIComponent(
+    produto.nome
+  )} por ${encodeURIComponent(produto.preco)}`}
+  target="_blank"
+  rel="noopener noreferrer"
+  className="block mt-2"
+>
+  <button className="w-full bg-teal-600 text-white py-1 rounded hover:bg-teal-700 transition">
+    Comprar via WhatsApp
+  </button>
+</a>
       </div>
     ))}
   </div>
