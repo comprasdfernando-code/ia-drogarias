@@ -52,19 +52,19 @@ export default function Page() {
           />
         </div>
 
-        {/* Barra de busca full width */}
-        <div className="sticky top-0 bg-white border-b border-gray-300 shadow z-40">
+        {/* Barra de busca sticky */}
+        <div className="sticky top-0 bg-teal-50 px-4 py-2 border-b border-gray-200 shadow-sm z-40">
           <div className="flex w-full">
             <input
               type="text"
               placeholder="Buscar medicamentos, produtos de saúde..."
               value={busca}
               onChange={(e) => setBusca(e.target.value)}
-              className="flex-1 px-4 py-3 text-base border-0 focus:outline-none"
+              className="flex-1 px-4 py-2 rounded-l-md border border-gray-300 text-sm focus:outline-none"
             />
             <button
               onClick={handleBuscar}
-              className="px-6 py-3 bg-teal-600 text-white text-base font-semibold hover:bg-teal-700 transition"
+              className="px-4 py-2 bg-teal-600 text-white rounded-r-md hover:bg-teal-700"
             >
               Buscar
             </button>
@@ -104,7 +104,7 @@ export default function Page() {
                 target="_blank"
                 rel="noopener noreferrer"
               >
-                <button className="mt-2 w-full bg-teal-600 text-white py-2 rounded hover:bg-teal-700 transition">
+                <button className="mt-2 w-full bg-teal-600 text-white py-1 rounded hover:bg-teal-700 transition">
                   Comprar via WhatsApp
                 </button>
               </a>
