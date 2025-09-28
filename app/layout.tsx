@@ -13,14 +13,10 @@ export default function RootLayout({
 }) {
   return (
     <html lang="pt-BR">
-      <head>
         {/* Corrige zoom no celular */}
-        <meta
-          name="viewport"
-          content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
-        />
-      </head>
-      <body className="bg-gray-50">{children}</body>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <title>IA Drogarias</title>
+      <body>{children}</body>
     </html>
   );
 }
