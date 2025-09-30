@@ -20,3 +20,6 @@ html, body {
 .animate-slide {
   animation: slide 12s infinite;
 }
+body {
+  @apply bg-red-200;
+}
