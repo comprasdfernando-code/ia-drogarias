@@ -6,7 +6,7 @@ export default function HomePage() {
   return (
     <div className="flex flex-col items-center justify-center flex-grow text-center p-6">
       {/* Título */}
-      <h1 className="text-2xl font-bold text-gray-800 mb-6"center>
+      <h1 className="text-2xl font-bold text-gray-800 mb-6">
         Bem-vindo à IA Drogarias
       </h1>
 
