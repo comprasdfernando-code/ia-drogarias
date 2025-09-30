@@ -2,32 +2,17 @@
 
 export default function FarmaciaPage() {
   const produtos = [
-    {
-      nome: "Dipirona Sódica 500mg",
-      preco: "R$ 12,90",
-    },
-    {
-      nome: "Paracetamol 750mg",
-      preco: "R$ 9,50",
-    },
-    {
-      nome: "Amoxicilina 500mg",
-      preco: "R$ 24,90",
-    },
-    {
-      nome: "Vitamina C 1g",
-      preco: "R$ 18,00",
-    },
-    {
-      nome: "Omeprazol 20mg",
-      preco: "R$ 15,90",
-    },
+    { nome: "Dipirona Sodica 500mg", preco: "R$ 12,90" },
+    { nome: "Paracetamol 750mg", preco: "R$ 9,50" },
+    { nome: "Amoxicilina 500mg", preco: "R$ 24,90" },
+    { nome: "Vitamina C 1g", preco: "R$ 18,00" },
+    { nome: "Omeprazol 20mg", preco: "R$ 15,90" },
   ];
 
   return (
     <div className="flex flex-col items-center justify-center flex-grow p-6">
       <h1 className="text-2xl font-bold text-gray-800 mb-6">
-        Farmácia Virtual
+        Farmacia Virtual
       </h1>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-6 w-full max-w-3xl">
