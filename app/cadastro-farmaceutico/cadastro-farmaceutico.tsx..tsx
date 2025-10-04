@@ -29,7 +29,7 @@ Cadastro de Farmaceutico
     `;
 
     // Montando link para enviar no WhatsApp
-    const url = https://wa.me/${ADMIN_WHATS}?text=${encodeURIComponent(msg)};
+    const url =" https://wa.me/${ADMIN_WHATS}?text=${encodeURIComponent(msg)}";
     window.open(url, "_blank");
   }
 
