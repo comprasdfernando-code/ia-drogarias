@@ -1,9 +1,9 @@
 "use client";
-import { Suspense } from "react";
+
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 
-function AgendaContent() {
+export default function AgendaPage() {
   const searchParams = useSearchParams();
   const servico = searchParams.get("servico") || "Serviço não informado";
 
@@ -15,59 +15,60 @@ function AgendaContent() {
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     alert(
-      Agendamento feito com sucesso!
-      Nome: ${nome}
-      Telefone: ${telefone}
-      Serviço: ${servico}
-      Data: ${data} às ${hora}
+      `Agendamento feito com sucesso!\n
+      Nome: ${nome}\n
+      Telefone: ${telefone}\n
+      Serviço: ${servico}\n
+      Data: ${data} às ${hora}`
     );
   }
 
   return (
-    <main className="max-w-lg mx-auto p-4">
-      <h1 className="text-2xl font-bold mb-4">Agendamento</h1>
-      <p className="mb-4">Você está agendando: <strong>{servico}</strong></p>
+    <main className="max-w-lg mx-auto p-6 bg-white shadow-md rounded-xl mt-6">
+      <h1 className="text-2xl font-semibold mb-4 text-center">Agendamento</h1>
+      <p className="text-gray-600 mb-6 text-center">
+        Você está agendando: <span className="font-bold">{servico}</span>
+      </p>
 
-      <form onSubmit={handleSubmit} className="space-y-3">
+      <form onSubmit={handleSubmit} className="space-y-4">
         <input
+          type="text"
           placeholder="Nome"
           value={nome}
           onChange={(e) => setNome(e.target.value)}
-          className="w-full border px-3 py-2 rounded"
+          required
+          className="w-full border rounded-lg p-2"
         />
         <input
+          type="text"
           placeholder="Telefone (WhatsApp)"
           value={telefone}
           onChange={(e) => setTelefone(e.target.value)}
-          className="w-full border px-3 py-2 rounded"
+          required
+          className="w-full border rounded-lg p-2"
         />
         <input
           type="date"
           value={data}
           onChange={(e) => setData(e.target.value)}
-          className="w-full border px-3 py-2 rounded"
+          required
+          className="w-full border rounded-lg p-2"
         />
         <input
           type="time"
           value={hora}
           onChange={(e) => setHora(e.target.value)}
-          className="w-full border px-3 py-2 rounded"
+          required
+          className="w-full border rounded-lg p-2"
         />
+
         <button
           type="submit"
-          className="w-full bg-blue-600 text-white py-2 rounded hover:bg-blue-700"
+          className="w-full bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition"
         >
           Confirmar Agendamento
         </button>
       </form>
     </main>
-  );
-}
-
-export default function AgendaPage() {
-  return (
-    <Suspense fallback={<p>Carregando...</p>}>
-      <AgendaContent />
-    </Suspense>
   );
 }
