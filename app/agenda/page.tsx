@@ -1,9 +1,9 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { useState } from "react";
+import { useState, Suspense } from "react";
 
-export default function AgendaPage() {
+function AgendaForm() {
   const searchParams = useSearchParams();
   const servico = searchParams.get("servico") || "Serviço não informado";
 
@@ -70,5 +70,14 @@ export default function AgendaPage() {
         </button>
       </form>
     </main>
+  );
+}
+
+// Wrapping AgendaForm with Suspense
+export default function AgendaPage() {
+  return (
+    <Suspense fallback={<p>Carregando serviço...</p>}>
+      <AgendaForm />
+    </Suspense>
   );
 }
