@@ -5,7 +5,9 @@ import { useState, Suspense } from "react";
 
 function AgendaForm() {
   const searchParams = useSearchParams();
-  const servico = searchParams.get("servico") || "Serviço não informado";
+  // ✅ Corrigido: decodifica o nome do serviço
+  const servicoParam = searchParams.get("servico");
+  const servico = servicoParam ? decodeURIComponent(servicoParam) : "Serviço não informado";
 
   const [nome, setNome] = useState("");
   const [telefone, setTelefone] = useState("");
@@ -16,10 +18,10 @@ function AgendaForm() {
     e.preventDefault();
     alert(
       `Agendamento feito com sucesso!\n
-      Nome: ${nome}\n
-      Telefone: ${telefone}\n
-      Serviço: ${servico}\n
-      Data: ${data} às ${hora}`
+Nome: ${nome}\n
+Telefone: ${telefone}\n
+Serviço: ${servico}\n
+Data: ${data} às ${hora}`
     );
   }
 
@@ -27,7 +29,7 @@ function AgendaForm() {
     <main className="max-w-lg mx-auto p-6 bg-white shadow-md rounded-xl mt-6">
       <h1 className="text-2xl font-semibold mb-4 text-center">Agendamento</h1>
       <p className="text-gray-600 mb-6 text-center">
-        Você está agendando: <span className="font-bold">{servico}</span>
+        Você está agendando: <span className="font-bold text-blue-600">{servico}</span>
       </p>
 
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -73,10 +75,10 @@ function AgendaForm() {
   );
 }
 
-// Wrapping AgendaForm with Suspense
+// ✅ Corrigido com Suspense
 export default function AgendaPage() {
   return (
-    <Suspense fallback={<p>Carregando serviço...</p>}>
+    <Suspense fallback={<p className="text-center mt-10">Carregando serviço...</p>}>
       <AgendaForm />
     </Suspense>
   );
