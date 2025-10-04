@@ -13,11 +13,11 @@ export default function CadastroDrogariaPage() {
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     const msg =
-      *Cadastro de Drogaria*\n +
-      • Nome Fantasia: ${fantasia}\n +
-      • CNPJ: ${cnpj}\n +
-      • Responsável: ${resp}\n +
-      • WhatsApp: ${tel}\n +
+      *Cadastro de Drogaria*
+      • Nome Fantasia: ${fantasia}
+      • CNPJ: ${cnpj}
+      • Responsável: ${resp}
+      • WhatsApp: ${tel}
       • Bairro/Cidade: ${bairro};
 
     const url = https://wa.me/${ADMIN_WHATS}?text=${encodeURIComponent(msg)};
