@@ -1,10 +1,12 @@
 "use client";
 
 import Slider from "react-slick";
+import Image from "next/image";
 import "slick-carousel/slick/slick.css";
 import "slick-carousel/slick/slick-theme.css";
 
 export default function HomePage() {
+  // Configurações do carrossel
   const settings = {
     dots: true,
     infinite: true,
@@ -16,6 +18,7 @@ export default function HomePage() {
     arrows: false,
   };
 
+  // Banners do carrossel
   const banners = [
     {
       src: "/banners/ecommerce.png",
@@ -40,7 +43,20 @@ export default function HomePage() {
   ];
 
   return (
-    <main className="w-full max-w-4xl mx-auto p-4">
+    <main className="w-full max-w-5xl mx-auto p-4">
+      {/* Banner fixo entre o header e o carrossel */}
+      <div className="w-full mb-6 flex justify-center">
+        <Image
+          src="/banners/banner-principal.png" // coloque aqui o banner fixo
+          alt="Banner Principal IA Drogarias"
+          width={1200}
+          height={250}
+          className="rounded-xl shadow-md object-cover"
+          priority
+        />
+      </div>
+
+      {/* Carrossel de promoções */}
       <Slider {...settings}>
         {banners.map((banner, index) => (
           <div key={index} className="p-2">
