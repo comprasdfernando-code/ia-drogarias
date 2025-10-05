@@ -2,14 +2,43 @@
 @tailwind components;
 @tailwind utilities;
 
+/* 🌈 Variáveis principais */
 :root {
   --bg: #ffffff;
   --fg: #0f172a;
+  --primary: #1e3a8a;      /* azul institucional */
+  --primary-light: #2563eb; /* azul claro hover */
+  --accent: #0ea5e9;       /* azul destaque */
 }
+
+/* 🌎 Estilo base */
 html, body {
   background: var(--bg);
   color: var(--fg);
+  font-family: 'Inter', sans-serif;
+  scroll-behavior: smooth;
 }
+
+/* 🔹 Faixa azul superior padrão IA Drogarias */
+.top-bar {
+  @apply w-full bg-[var(--primary)] text-white py-2 text-center text-sm font-medium shadow-md;
+}
+
+/* ✨ Inputs padrão do projeto */
+.input {
+  @apply w-full p-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-[var(--accent)] transition;
+}
+
+/* 🔘 Botões principais */
+.btn-primary {
+  @apply bg-[var(--primary)] hover:bg-[var(--primary-light)] text-white font-semibold py-3 px-5 rounded-xl transition shadow-md;
+}
+
+.btn-outline {
+  @apply border border-[var(--primary)] text-[var(--primary)] hover:bg-[var(--primary)] hover:text-white font-semibold py-3 px-5 rounded-xl transition;
+}
+
+/* 💫 Animação de slides (banners, carrosséis, etc.) */
 @keyframes slide {
   0% { transform: translateX(0%); }
   33% { transform: translateX(-100%); }
