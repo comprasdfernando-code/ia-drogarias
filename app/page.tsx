@@ -43,33 +43,35 @@ export default function HomePage() {
   ];
 
   return (
-    <main className="w-full max-w-5xl mx-auto p-4">
-      {/* Banner fixo entre o header e o carrossel */}
-      <div className="w-full mb-6 flex justify-center">
+    <main className="w-full mx-auto">
+      {/* Banner principal — ocupa toda a largura da tela */}
+      <div className="relative w-full">
         <Image
-          src="/banners/banner-principal.png" // coloque aqui o banner fixo
+          src="/banners/banner-principal.png"
           alt="Banner Principal IA Drogarias"
-          width={1200}
-          height={250}
-          className="rounded-xl shadow-md object-cover"
+          width={1920}
+          height={400}
+          className="w-full h-auto object-cover shadow-md"
           priority
         />
       </div>
 
       {/* Carrossel de promoções */}
-      <Slider {...settings}>
-        {banners.map((banner, index) => (
-          <div key={index} className="p-2">
-            <a href={banner.link}>
-              <img
-                src={banner.src}
-                alt={banner.alt}
-                className="w-full rounded-2xl shadow-lg object-cover transition-transform duration-300 hover:scale-[1.02]"
-              />
-            </a>
-          </div>
-        ))}
-      </Slider>
+      <div className="max-w-5xl mx-auto p-4">
+        <Slider {...settings}>
+          {banners.map((banner, index) => (
+            <div key={index} className="p-2">
+              <a href={banner.link}>
+                <img
+                  src={banner.src}
+                  alt={banner.alt}
+                  className="w-full rounded-2xl shadow-lg object-cover transition-transform duration-300 hover:scale-[1.02]"
+                />
+              </a>
+            </div>
+          ))}
+        </Slider>
+      </div>
     </main>
   );
 }
