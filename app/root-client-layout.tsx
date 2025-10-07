@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
-import { useEffect} Link from "next/link";
-import { supabase } from "../../lib/supabaseClient";
+import { useState, useEffect } from "react";
+import Link from "next/link";
+import { supabase } from "../lib/supabaseClient";
 
-export default function RootClientLayout({
+export default function RootClientLayout({ children }: { children: React.ReactNode }) {
   children,
 }: {
   children: React.ReactNode;
