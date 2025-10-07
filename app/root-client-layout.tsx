@@ -5,10 +5,6 @@ import Link from "next/link";
 import { supabase } from "../lib/supabaseClient";
 
 export default function RootClientLayout({ children }: { children: React.ReactNode }) {
-  children,
-}: {
-  children: React.ReactNode;
-}) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [userName, setUserName] = useState<string | null>(null);
 
@@ -34,7 +30,9 @@ export default function RootClientLayout({ children }: { children: React.ReactNo
       }
     });
 
-    return () => listener.subscription.unsubscribe();
+    return () => {
+      listener?.subscription?.unsubscribe();
+    };
   }, []);
 
   const handleLogout = async () => {
@@ -49,10 +47,7 @@ export default function RootClientLayout({ children }: { children: React.ReactNo
         <div className="max-w-7xl mx-auto flex items-center justify-between px-4 py-3">
           
           {/* 🔹 Logo clicável para home */}
-          <Link
-            href="/"
-            className="flex items-center gap-2 hover:opacity-90 transition"
-          >
+          <Link href="/" className="flex items-center gap-2 hover:opacity-90 transition">
             <img src="/logo.png" alt="IA Drogarias" className="h-8 sm:h-10 cursor-pointer" />
             <span className="font-bold text-lg sm:text-xl">IA Drogarias</span>
           </Link>
@@ -105,8 +100,12 @@ export default function RootClientLayout({ children }: { children: React.ReactNo
         {/* Menu Mobile Aberto */}
         {menuOpen && (
           <div className="sm:hidden bg-white text-blue-700 flex flex-col items-center py-3 space-y-2 border-t border-blue-100">
-            <Link href="/produtos" onClick={() => setMenuOpen(false)} className="w-full text-center py-2 hover:bg-blue-50 transition">E-commerce</Link>
-            <Link href="/servicos" onClick={() => setMenuOpen(false)} className="w-full text-center py-2 hover:bg-blue-50 transition">Serviços</Link>
+            <Link href="/produtos" onClick={() => setMenuOpen(false)} className="w-full text-center py-2 hover:bg-blue-50 transition">
+              E-commerce
+            </Link>
+            <Link href="/servicos" onClick={() => setMenuOpen(false)} className="w-full text-center py-2 hover:bg-blue-50 transition">
+              Serviços
+            </Link>
             
             {userName ? (
               <button onClick={handleLogout} className="w-full text-center py-2 text-red-600 hover:bg-blue-50 transition">
@@ -126,7 +125,7 @@ export default function RootClientLayout({ children }: { children: React.ReactNo
 
       {/* RODAPÉ */}
       <footer className="bg-gray-800 text-white text-center p-4 mt-10">
-        <p>© 2025 IA Drogarias - Todos os direitos reservados</p>
+        <p>©️ 2025 IA Drogarias - Todos os direitos reservados</p>
       </footer>
     </div>
   );
