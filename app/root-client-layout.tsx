@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ShoppingCart } from "lucide-react"; // Ícone bonito do carrinho (já vem com shadcn/lucide)
+import { supabase } from "@/lib/supabaseClient";
 
 export default function RootClientLayout({
   children,
@@ -10,21 +10,55 @@ export default function RootClientLayout({
   children: React.ReactNode;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const [itensCarrinho] = useState(3); // 🔹 depois vamos ligar isso ao carrinho real
+  const [userName, setUserName] = useState<string | null>(null);
+
+  // 🔹 Busca o usuário logado ao carregar a página
+  useEffect(() => {
+    async function loadUser() {
+      const { data } = await supabase.auth.getUser();
+      if (data?.user) {
+        const nome = data.user.user_metadata?.nome || data.user.email?.split("@")[0];
+        setUserName(nome);
+      }
+    }
+
+    loadUser();
+
+    // 🔹 Atualiza automaticamente quando o usuário faz login/logout
+    const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
+      if (session?.user) {
+        const nome = session.user.user_metadata?.nome || session.user.email?.split("@")[0];
+        setUserName(nome);
+      } else {
+        setUserName(null);
+      }
+    });
+
+    return () => listener.subscription.unsubscribe();
+  }, []);
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setUserName(null);
+  };
 
   return (
     <div className="bg-gray-100 text-gray-900 min-h-screen flex flex-col">
       {/* HEADER */}
       <header className="sticky top-0 z-50 bg-blue-600 text-white shadow">
         <div className="max-w-7xl mx-auto flex items-center justify-between px-4 py-3">
-          {/* Logo + Nome */}
-          <div className="flex items-center gap-2">
-            <img src="/logo.png" alt="IA Drogarias" className="h-8 sm:h-10" />
+          
+          {/* 🔹 Logo clicável para home */}
+          <Link
+            href="/"
+            className="flex items-center gap-2 hover:opacity-90 transition"
+          >
+            <img src="/logo.png" alt="IA Drogarias" className="h-8 sm:h-10 cursor-pointer" />
             <span className="font-bold text-lg sm:text-xl">IA Drogarias</span>
-          </div>
+          </Link>
 
           {/* Menu Desktop */}
-          <nav className="hidden sm:flex gap-3 items-center">
+          <nav className="hidden sm:flex items-center gap-3">
             <Link
               href="/produtos"
               className="px-4 py-2 bg-white text-blue-700 rounded-lg shadow hover:bg-gray-100 transition text-sm font-medium"
@@ -38,25 +72,25 @@ export default function RootClientLayout({
               Serviços
             </Link>
 
-            {/* Carrinho */}
-            <Link
-              href="/carrinho"
-              className="relative flex items-center bg-white text-blue-700 px-3 py-2 rounded-lg shadow hover:bg-gray-100 transition"
-            >
-              <ShoppingCart size={18} />
-              {itensCarrinho > 0 && (
-                <span className="absolute -top-2 -right-2 bg-red-600 text-white text-xs font-bold px-1.5 rounded-full">
-                  {itensCarrinho}
-                </span>
-              )}
-            </Link>
-
-            <Link
-              href="/login"
-              className="px-4 py-2 bg-white text-blue-700 rounded-lg shadow hover:bg-gray-100 transition text-sm font-medium"
-            >
-              Entrar / Cadastrar
-            </Link>
+            {/* 🔹 Saudação ou botão de login */}
+            {userName ? (
+              <div className="flex items-center gap-2 bg-white text-blue-700 px-4 py-2 rounded-lg shadow text-sm font-medium">
+                <span>Olá, {userName.split(" ")[0]} 👋</span>
+                <button
+                  onClick={handleLogout}
+                  className="ml-2 text-red-600 hover:underline text-xs"
+                >
+                  Sair
+                </button>
+              </div>
+            ) : (
+              <Link
+                href="/login"
+                className="px-4 py-2 bg-white text-blue-700 rounded-lg shadow hover:bg-gray-100 transition text-sm font-medium"
+              >
+                Entrar / Cadastrar
+              </Link>
+            )}
           </nav>
 
           {/* Menu Mobile (Hamburguer) */}
@@ -71,34 +105,18 @@ export default function RootClientLayout({
         {/* Menu Mobile Aberto */}
         {menuOpen && (
           <div className="sm:hidden bg-white text-blue-700 flex flex-col items-center py-3 space-y-2 border-t border-blue-100">
-            <Link
-              href="/produtos"
-              onClick={() => setMenuOpen(false)}
-              className="w-full text-center py-2 hover:bg-blue-50 transition"
-            >
-              E-commerce
-            </Link>
-            <Link
-              href="/servicos"
-              onClick={() => setMenuOpen(false)}
-              className="w-full text-center py-2 hover:bg-blue-50 transition"
-            >
-              Serviços
-            </Link>
-            <Link
-              href="/carrinho"
-              onClick={() => setMenuOpen(false)}
-              className="w-full text-center py-2 hover:bg-blue-50 transition"
-            >
-              🛒 Carrinho ({itensCarrinho})
-            </Link>
-            <Link
-              href="/login"
-              onClick={() => setMenuOpen(false)}
-              className="w-full text-center py-2 hover:bg-blue-50 transition"
-            >
-              Entrar / Cadastrar
-            </Link>
+            <Link href="/produtos" onClick={() => setMenuOpen(false)} className="w-full text-center py-2 hover:bg-blue-50 transition">E-commerce</Link>
+            <Link href="/servicos" onClick={() => setMenuOpen(false)} className="w-full text-center py-2 hover:bg-blue-50 transition">Serviços</Link>
+            
+            {userName ? (
+              <button onClick={handleLogout} className="w-full text-center py-2 text-red-600 hover:bg-blue-50 transition">
+                Sair ({userName.split(" ")[0]})
+              </button>
+            ) : (
+              <Link href="/login" onClick={() => setMenuOpen(false)} className="w-full text-center py-2 hover:bg-blue-50 transition">
+                Entrar / Cadastrar
+              </Link>
+            )}
           </div>
         )}
       </header>
