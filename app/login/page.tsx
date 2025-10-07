@@ -1,76 +1,78 @@
 "use client";
 
-import Link from "next/link";
 import { useState } from "react";
+import { supabase } from "../../lib/supabaseClient";
+import { useRouter } from "next/navigation";
 
 export default function LoginPage() {
+  const router = useRouter();
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
+  const [erro, setErro] = useState("");
+  const [carregando, setCarregando] = useState(false);
 
-  const handleLogin = (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    alert(`Login de ${email} realizado (simulação).`);
+    setCarregando(true);
+    setErro("");
+
+    const { error } = await supabase.auth.signInWithPassword({
+      email,
+      password: senha,
+    });
+
+    if (error) {
+      setErro("❌ E-mail ou senha incorretos.");
+    } else {
+      router.push("/"); // redireciona pra página inicial
+    }
+
+    setCarregando(false);
   };
 
   return (
-    <main className="min-h-screen flex items-center justify-center bg-gray-50 p-6">
-      <div className="bg-white shadow-xl rounded-2xl p-8 w-full max-w-md text-center">
-        <h1 className="text-2xl font-bold text-blue-700 mb-4">
-          Acesse sua conta
+    <div className="flex justify-center items-center min-h-screen bg-gray-100 p-4">
+      <div className="bg-white p-6 rounded-xl shadow-lg w-full max-w-md">
+        <h1 className="text-2xl font-bold text-center text-blue-600 mb-6">
+          🔐 Login - IA Drogarias
         </h1>
-        <p className="text-gray-600 mb-6">
-          Faça login para acessar os serviços da plataforma IA Drogarias
-        </p>
 
-        <form onSubmit={handleLogin} className="space-y-4 text-left">
-          <div>
-            <label className="block text-sm text-gray-700">E-mail</label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              required
-              className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-blue-600 outline-none"
-            />
-          </div>
+        <form onSubmit={handleLogin} className="flex flex-col gap-4">
+          <input
+            type="email"
+            placeholder="E-mail"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            required
+            className="border rounded-lg p-2 w-full focus:ring-2 focus:ring-blue-400 outline-none"
+          />
+          <input
+            type="password"
+            placeholder="Senha"
+            value={senha}
+            onChange={(e) => setSenha(e.target.value)}
+            required
+            className="border rounded-lg p-2 w-full focus:ring-2 focus:ring-blue-400 outline-none"
+          />
 
-          <div>
-            <label className="block text-sm text-gray-700">Senha</label>
-            <input
-              type="password"
-              value={senha}
-              onChange={(e) => setSenha(e.target.value)}
-              required
-              className="w-full border rounded-lg p-2 focus:ring-2 focus:ring-blue-600 outline-none"
-            />
-          </div>
+          {erro && <p className="text-red-500 text-sm text-center">{erro}</p>}
 
           <button
             type="submit"
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 rounded-lg transition"
+            disabled={carregando}
+            className="bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg font-medium transition"
           >
-            Entrar
+            {carregando ? "Entrando..." : "Entrar"}
           </button>
         </form>
 
-        <div className="mt-6 border-t pt-4 text-sm text-gray-600">
-          <p>Ainda não tem conta?</p>
-          <div className="flex flex-col sm:flex-row justify-center gap-3 mt-3">
-            <Link
-              href="/cadastro-cliente"
-              className="text-blue-700 hover:underline"
-            >
-              Sou Cliente
-            </Link>
-            <Link
-              href="/cadastro-drogaria"
-              className="text-blue-700 hover:underline"
-            >
-              Sou Parceiro
-            </Link>
-          </div>
-        </div>
+        <p className="text-center text-sm mt-4 text-gray-600">
+          Ainda não tem conta?{" "}
+          <a href="/cadastro" className="text-blue-600 font-semibold hover:underline">
+            Cadastre-se aqui
+          </a>
+        </p>
       </div>
-    </main>
+    </div>
   );
 }
