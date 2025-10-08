@@ -37,7 +37,8 @@ export default function Login() {
         .from("usuarios")
         .select("tipo, nome")
         .eq("user_id", user.id)
-        .single();
+        .limit(1)
+        .maybeSingle();
 
       if (userError) throw userError;
 
