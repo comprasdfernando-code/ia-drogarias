@@ -4,75 +4,103 @@ import { useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
 import { useRouter } from "next/navigation";
 
-export default function LoginPage() {
+export default function Login() {
   const router = useRouter();
-  const [email, setEmail] = useState("");
-  const [senha, setSenha] = useState("");
-  const [erro, setErro] = useState("");
-  const [carregando, setCarregando] = useState(false);
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const [form, setForm] = useState({
+    email: "",
+    senha: "",
+  });
+
+  const [isLoading, setIsLoading] = useState(false);
+
+  const handleChange = (e: any) => {
+    setForm({ ...form, [e.target.name]: e.target.value });
+  };
+
+  const handleSubmit = async (e: any) => {
     e.preventDefault();
-    setCarregando(true);
-    setErro("");
+    setIsLoading(true);
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password: senha,
-    });
+    try {
+      // 1️⃣ Login no Supabase Auth
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email: form.email,
+        password: form.senha,
+      });
 
-    if (error) {
-      setErro("❌ E-mail ou senha incorretos.");
-    } else {
-      router.push("/"); // redireciona pra página inicial
+      if (error) throw error;
+      const user = data.user;
+
+      // 2️⃣ Busca o tipo de usuário na tabela "usuarios"
+      const { data: usuario, error: userError } = await supabase
+        .from("usuarios")
+        .select("tipo, nome")
+        .eq("user_id", user.id)
+        .single();
+
+      if (userError) throw userError;
+
+      alert('✅ Bem-vindo, ${usuario.nome}!')
+
+      // 3️⃣ Redireciona conforme o tipo
+      if (usuario.tipo === "farmaceutico") {
+        router.push("/painel-farmaceutico");
+      } else {
+        router.push("/produtos");
+      }
+    } catch (err: any) {
+      alert("❌ Erro: " + err.message);
+    } finally {
+      setIsLoading(false);
     }
-
-    setCarregando(false);
   };
 
   return (
-    <div className="flex justify-center items-center min-h-screen bg-gray-100 p-4">
-      <div className="bg-white p-6 rounded-xl shadow-lg w-full max-w-md">
-        <h1 className="text-2xl font-bold text-center text-blue-600 mb-6">
-          🔐 Login - IA Drogarias
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 p-6">
+      <form
+        onSubmit={handleSubmit}
+        className="bg-white p-6 rounded-2xl shadow-md w-full max-w-md space-y-4"
+      >
+        <h1 className="text-2xl font-bold text-blue-700 text-center">
+          Login IA Drogarias
         </h1>
 
-        <form onSubmit={handleLogin} className="flex flex-col gap-4">
-          <input
-            type="email"
-            placeholder="E-mail"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            className="border rounded-lg p-2 w-full focus:ring-2 focus:ring-blue-400 outline-none"
-          />
-          <input
-            type="password"
-            placeholder="Senha"
-            value={senha}
-            onChange={(e) => setSenha(e.target.value)}
-            required
-            className="border rounded-lg p-2 w-full focus:ring-2 focus:ring-blue-400 outline-none"
-          />
+        <input
+          name="email"
+          type="email"
+          placeholder="E-mail"
+          value={form.email}
+          onChange={handleChange}
+          required
+          className="input"
+        />
 
-          {erro && <p className="text-red-500 text-sm text-center">{erro}</p>}
+        <input
+          name="senha"
+          type="password"
+          placeholder="Senha"
+          value={form.senha}
+          onChange={handleChange}
+          required
+          className="input"
+        />
 
-          <button
-            type="submit"
-            disabled={carregando}
-            className="bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg font-medium transition"
-          >
-            {carregando ? "Entrando..." : "Entrar"}
-          </button>
-        </form>
+        <button
+          type="submit"
+          disabled={isLoading}
+          className="w-full bg-blue-600 text-white py-3 rounded-lg font-semibold hover:bg-blue-700 transition"
+        >
+          {isLoading ? "Entrando..." : "Entrar"}
+        </button>
 
-        <p className="text-center text-sm mt-4 text-gray-600">
+        <p className="text-center text-sm text-gray-600">
           Ainda não tem conta?{" "}
-          <a href="/cadastro" className="text-blue-600 font-semibold hover:underline">
-            Cadastre-se aqui
+          <a href="/cadastro-cliente" className="text-blue-600 hover:underline">
+            Cadastre-se
           </a>
         </p>
-      </div>
+      </form>
     </div>
   );
 }

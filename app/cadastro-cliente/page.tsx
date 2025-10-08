@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
 
-export default function CadastroFarmaceutico() {
+export default function CadastroCliente() {
   const [form, setForm] = useState({
     nome: "",
     email: "",
@@ -34,20 +34,20 @@ export default function CadastroFarmaceutico() {
       const userId = data?.user?.id;
       if (!userId) throw new Error("Erro ao criar usuário.");
 
-      // 2️⃣ Salva na tabela "usuarios" com tipo 'farmaceutico'
+      // 2️⃣ Salva na tabela "usuarios"
       const { error: insertError } = await supabase.from("usuarios").insert([
         {
           user_id: userId,
           nome: form.nome,
           email: form.email,
           telefone: form.telefone,
-          tipo: "farmaceutico",
+          tipo: "cliente", // muda pra 'farmaceutico' no outro cadastro
         },
       ]);
 
       if (insertError) throw insertError;
 
-      alert("✅ Farmacêutico cadastrado com sucesso!");
+      alert("✅ Cadastro realizado com sucesso!");
       setForm({ nome: "", email: "", senha: "", telefone: "" });
     } catch (err: any) {
       alert("❌ Erro: " + err.message);
@@ -63,7 +63,7 @@ export default function CadastroFarmaceutico() {
         className="bg-white p-6 rounded-2xl shadow-md w-full max-w-md space-y-4"
       >
         <h1 className="text-2xl font-bold text-blue-700 text-center">
-          Cadastro de Farmacêutico
+          Cadastro de Cliente
         </h1>
 
         <input

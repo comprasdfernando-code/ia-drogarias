@@ -1,59 +1,75 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
+import Link from "next/link";
+
+interface Produto {
+  id: string;
+  nome: string;
+  preco: number;
+}
 
 export default function CarrinhoPage() {
-  const [carrinho, setCarrinho] = useState<any[]>([]);
+  const [carrinho, setCarrinho] = useState<Produto[]>([]);
 
   useEffect(() => {
-    const salvo = localStorage.getItem("carrinho");
-    if (salvo) setCarrinho(JSON.parse(salvo));
+    if (typeof window !== "undefined") {
+      const itensSalvos = JSON.parse(localStorage.getItem("carrinho") || "[]");
+      setCarrinho(itensSalvos);
+    }
   }, []);
 
-  const removerItem = (index: number) => {
-    const novoCarrinho = carrinho.filter((_, i) => i !== index);
+  const removerItem = (id: string) => {
+    const novoCarrinho = carrinho.filter((item) => item.id !== id);
     setCarrinho(novoCarrinho);
     localStorage.setItem("carrinho", JSON.stringify(novoCarrinho));
   };
 
+  const total = carrinho.reduce((acc, item) => acc + item.preco, 0);
+
   return (
-    <div className="max-w-3xl mx-auto p-6">
-      <h1 className="text-2xl font-bold text-blue-700 mb-4">🛒 Meu Carrinho</h1>
+    <div className="max-w-3xl mx-auto p-4">
+      <h1 className="text-2xl font-bold text-blue-700 mb-6">🛒 Meu Carrinho</h1>
 
       {carrinho.length === 0 ? (
-        <p className="text-gray-600">Seu carrinho está vazio.</p>
+        <div className="text-center text-gray-600">
+          <p>Seu carrinho está vazio 😅</p>
+          <Link href="/produtos" className="text-blue-600 underline mt-4 inline-block">
+            Continuar comprando
+          </Link>
+        </div>
       ) : (
-        <div className="space-y-4">
-          {carrinho.map((item, i) => (
+        <div>
+          {carrinho.map((item) => (
             <div
-              key={i}
-              className="flex justify-between items-center bg-white shadow p-3 rounded-lg"
+              key={item.id}
+              className="flex justify-between items-center bg-white p-4 rounded-lg shadow mb-3"
             >
               <div>
-                <p className="font-semibold">{item.nome}</p>
-                <p className="text-green-600 font-bold">{item.preco}</p>
+                <p className="font-semibold text-gray-800">{item.nome}</p>
+                <p className="text-green-700 font-bold">
+                  R$ {item.preco.toFixed(2)}
+                </p>
               </div>
               <button
-                onClick={() => removerItem(i)}
-                className="text-red-600 hover:text-red-800 transition"
+                onClick={() => removerItem(item.id)}
+                className="text-red-600 hover:underline"
               >
                 Remover
               </button>
             </div>
           ))}
 
-          <div className="mt-6 text-right">
-            <button
-              onClick={() => {
-                alert("Pedido enviado com sucesso!");
-                localStorage.removeItem("carrinho");
-                setCarrinho([]);
-              }}
-              className="bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 transition"
-            >
-              Finalizar Pedido
-            </button>
+          <div className="mt-6 text-right font-bold text-xl text-blue-700">
+            Total: R$ {total.toFixed(2)}
           </div>
+
+          <button
+            onClick={() => alert("Pedido finalizado!")}
+            className="w-full mt-4 bg-blue-600 text-white py-2 rounded-lg hover:bg-blue-700 transition"
+          >
+            Finalizar Pedido
+          </button>
         </div>
       )}
     </div>

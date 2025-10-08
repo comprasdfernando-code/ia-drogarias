@@ -8,8 +8,24 @@ import { ShoppingCart } from "lucide-react"; // 🛒 Ícone do carrinho
 export default function RootClientLayout({ children }: { children: React.ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [userName, setUserName] = useState<string | null>(null);
+  const [cartCount, setCartCount] = useState(0);
 
-  // 🔹 Busca o usuário logado ao carregar
+  // 🧩 Atualiza contador do carrinho
+  useEffect(() => {
+    const storedCart = JSON.parse(localStorage.getItem("cart") || "[]");
+    setCartCount(storedCart.length);
+
+    // Atualiza quando o carrinho mudar
+    const handleCartUpdate = () => {
+      const updatedCart = JSON.parse(localStorage.getItem("cart") || "[]");
+      setCartCount(updatedCart.length);
+    };
+
+    window.addEventListener("cartUpdated", handleCartUpdate);
+    return () => window.removeEventListener("cartUpdated", handleCartUpdate);
+  }, []);
+
+  // 🔹 Busca usuário logado
   useEffect(() => {
     async function loadUser() {
       const { data } = await supabase.auth.getUser();
@@ -21,7 +37,7 @@ export default function RootClientLayout({ children }: { children: React.ReactNo
 
     loadUser();
 
-    // 🔹 Atualiza quando o usuário loga ou sai
+    // Atualiza ao logar ou sair
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
         const nome = session.user.user_metadata?.nome || session.user.email?.split("@")[0];
@@ -45,7 +61,7 @@ export default function RootClientLayout({ children }: { children: React.ReactNo
       <header className="sticky top-0 z-50 bg-blue-600 text-white shadow">
         <div className="max-w-7xl mx-auto flex items-center justify-between px-4 py-3">
 
-          {/* 🔹 Logo clicável (volta pra home) */}
+          {/* 🔹 Logo clicável */}
           <Link href="/" className="flex items-center gap-2 hover:opacity-90 transition">
             <img src="/logo.png" alt="IA Drogarias" className="h-8 sm:h-10 cursor-pointer" />
             <span className="font-bold text-lg sm:text-xl">IA Drogarias</span>
@@ -59,6 +75,7 @@ export default function RootClientLayout({ children }: { children: React.ReactNo
             >
               E-commerce
             </Link>
+
             <Link
               href="/servicos"
               className="px-4 py-2 bg-white text-blue-700 rounded-lg shadow hover:bg-gray-100 transition text-sm font-medium"
@@ -66,16 +83,18 @@ export default function RootClientLayout({ children }: { children: React.ReactNo
               Serviços
             </Link>
 
-            {/* 🛒 Ícone do Carrinho */}
+            {/* 🛒 Carrinho Dinâmico */}
             <Link
               href="/carrinho"
               className="relative bg-white text-blue-700 rounded-full p-2 shadow hover:bg-gray-100 transition"
               title="Ver carrinho"
             >
               <ShoppingCart size={22} />
-              <span className="absolute -top-1 -right-1 bg-red-600 text-white text-xs rounded-full px-1">
-                2
-              </span>
+              {cartCount > 0 && (
+                <span className="absolute -top-1 -right-1 bg-red-600 text-white text-xs rounded-full px-1">
+                  {cartCount}
+                </span>
+              )}
             </Link>
 
             {/* 🔹 Saudação ou botão de login */}
@@ -118,7 +137,7 @@ export default function RootClientLayout({ children }: { children: React.ReactNo
               Serviços
             </Link>
             <Link href="/carrinho" onClick={() => setMenuOpen(false)} className="w-full text-center py-2 hover:bg-blue-50 transition">
-              🛒 Ver carrinho
+              🛒 Ver carrinho ({cartCount})
             </Link>
             {userName ? (
               <button onClick={handleLogout} className="w-full text-center py-2 text-red-600 hover:bg-blue-50 transition">
