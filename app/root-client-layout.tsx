@@ -3,12 +3,13 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { supabase } from "../lib/supabaseClient";
+import { ShoppingCart } from "lucide-react"; // 🛒 Ícone do carrinho
 
 export default function RootClientLayout({ children }: { children: React.ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [userName, setUserName] = useState<string | null>(null);
 
-  // 🔹 Busca o usuário logado ao carregar a página
+  // 🔹 Busca o usuário logado ao carregar
   useEffect(() => {
     async function loadUser() {
       const { data } = await supabase.auth.getUser();
@@ -20,7 +21,7 @@ export default function RootClientLayout({ children }: { children: React.ReactNo
 
     loadUser();
 
-    // 🔹 Atualiza automaticamente quando o usuário faz login/logout
+    // 🔹 Atualiza quando o usuário loga ou sai
     const { data: listener } = supabase.auth.onAuthStateChange((_event, session) => {
       if (session?.user) {
         const nome = session.user.user_metadata?.nome || session.user.email?.split("@")[0];
@@ -30,9 +31,7 @@ export default function RootClientLayout({ children }: { children: React.ReactNo
       }
     });
 
-    return () => {
-      listener?.subscription?.unsubscribe();
-    };
+    return () => listener.subscription.unsubscribe();
   }, []);
 
   const handleLogout = async () => {
@@ -45,8 +44,8 @@ export default function RootClientLayout({ children }: { children: React.ReactNo
       {/* HEADER */}
       <header className="sticky top-0 z-50 bg-blue-600 text-white shadow">
         <div className="max-w-7xl mx-auto flex items-center justify-between px-4 py-3">
-          
-          {/* 🔹 Logo clicável para home */}
+
+          {/* 🔹 Logo clicável (volta pra home) */}
           <Link href="/" className="flex items-center gap-2 hover:opacity-90 transition">
             <img src="/logo.png" alt="IA Drogarias" className="h-8 sm:h-10 cursor-pointer" />
             <span className="font-bold text-lg sm:text-xl">IA Drogarias</span>
@@ -65,6 +64,18 @@ export default function RootClientLayout({ children }: { children: React.ReactNo
               className="px-4 py-2 bg-white text-blue-700 rounded-lg shadow hover:bg-gray-100 transition text-sm font-medium"
             >
               Serviços
+            </Link>
+
+            {/* 🛒 Ícone do Carrinho */}
+            <Link
+              href="/carrinho"
+              className="relative bg-white text-blue-700 rounded-full p-2 shadow hover:bg-gray-100 transition"
+              title="Ver carrinho"
+            >
+              <ShoppingCart size={22} />
+              <span className="absolute -top-1 -right-1 bg-red-600 text-white text-xs rounded-full px-1">
+                2
+              </span>
             </Link>
 
             {/* 🔹 Saudação ou botão de login */}
@@ -106,7 +117,9 @@ export default function RootClientLayout({ children }: { children: React.ReactNo
             <Link href="/servicos" onClick={() => setMenuOpen(false)} className="w-full text-center py-2 hover:bg-blue-50 transition">
               Serviços
             </Link>
-            
+            <Link href="/carrinho" onClick={() => setMenuOpen(false)} className="w-full text-center py-2 hover:bg-blue-50 transition">
+              🛒 Ver carrinho
+            </Link>
             {userName ? (
               <button onClick={handleLogout} className="w-full text-center py-2 text-red-600 hover:bg-blue-50 transition">
                 Sair ({userName.split(" ")[0]})
