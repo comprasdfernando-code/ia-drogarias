@@ -1,0 +1,256 @@
+[
+  {
+   "id": 1,
+    "nome": "Aerodini spray",
+    "preco": "R$ 24,99",
+    "imagem": "/produtos/medicamento.png",
+    "descricao": "Spray broncodilatador."
+  },
+  {
+     "id": 2,
+    "nome": "Aerolin Spray Original",
+    "preco": "R$ 29,99",
+    "imagem": "/produtos/medicamento.png",
+    "descricao": "Spray broncodilatador original."
+  },
+  {
+    "id": 3,
+    "nome": "Ambroxol adulto Teuto",
+    "preco": "R$ 24.99",
+    "imagem": "/produtos/generico.png"
+  },
+  {
+    "id": 4,
+    "nome": "Ambroxol inf Natulab",
+    "preco": "R$ 19.99",
+    "imagem": "/produtos/generico.png"
+  },
+  {
+    "id": 5,
+    "nome": "Amoxicilina 250mg 150ml Prati",
+    "preco": "R$ 39.99",
+    "imagem": "/produtos/generico.png"
+  },
+  {
+    "id": 6,
+    "nome": "Amoxicilina 500mg c/21",
+    "preco": "R$ 29.99",
+    "imagem": "/produtos/generico.png"
+  },
+  {
+    "id": 7,
+    "nome": "Anador c/4 ",
+    "preco": "R$ 4.99",
+    "imagem": "/produtos/medicamento.png"
+  },
+  {
+    "id": 8,
+    "nome": "Anlodipino 10mg",
+    "preco": "R$ 19.99",
+    "imagem": "/produtos/generico.png"
+  },
+  {
+    "id": 9,
+    "nome": "Azitromicina c3 Globo",
+    "preco": "R$ 29.99",
+    "imagem": "/produtos/generico.png"
+  },
+  {
+    "id": 10,
+    "nome": "Bisuran xp inf",
+    "preco": "R$ 19.99",
+    "imagem": "/produtos/medicamento.png"
+  },
+  {
+    "id": 11,
+    "nome": "Bromoprida gotas",
+    "preco": "R$ 14.99",
+    "imagem": "/produtos/generico.png"
+  },
+  {
+    "id": 12,
+    "nome": "Captopril 25mg c30 teuto",
+    "preco": "R$ 4.99",
+    "imagem": "/produtos/generico.png"
+  },
+  {
+    "id": 13,
+    "nome": "cetoprofeno gotas",
+    "preco": "R$ 19.99",
+    "imagem": "/produtos/generico.png"
+  },
+  {
+    "id": 14,
+    "nome": "Cimegripe c/20",
+    "preco": "R$ 19.99",
+    "imagem": "/produtos/medicamento.png"
+  },
+  {
+    "id": 15,
+    "nome": "Clotrimazol creme 20g EMS",
+    "preco": "R$ 24.99",
+    "imagem": "/produtos/generico.png"
+  },
+  {
+    "id": 16,
+    "nome": "colírio Teuto",
+    "preco": "R$ 15.99",
+    "imagem": "/produtos/medicamento.png"
+  },
+  {
+    "id": 17,
+    "nome": "Dexametasona Elixir",
+    "preco": "R$ 9.99",
+    "imagem": "/produtos/generico.png"
+  },
+  {
+    "id": 18,
+    "nome": "Dipirona 500mg c/10 EMS",
+    "preco": "R$ 4.99",
+    "imagem": "/produtos/generico.png"
+  },
+  {
+    "id": 19,
+    "nome": "Diprop Beta fosf Beta inj Eurofarma 1ampola",
+    "preco": "R$ 49.99",
+    "imagem": "/produtos/generico.png"
+  },
+  {
+    "id": 20,
+    "nome": "Enantato Norestiterona Eurofarma Inj",
+    "preco": "R$ 32.99",
+    "imagem": "/produtos/generico.png"
+  },
+  {
+    "id": 21,
+    "nome": "Fluconazol c/2",
+    "preco": "R$ 9.99",
+    "imagem": "/produtos/generico.png"
+  },
+  {
+    "id": 22,
+    "nome": "Gargotricin Pastilhas",
+    "preco": "R$ 19.99",
+    "imagem": "/produtos/medicamento.png"
+  },
+  {
+    "id": 23,
+    "nome": "Gargotricin Spray",
+    "preco": "R$ 29.99",
+    "imagem": "/produtos/medicamento.png"
+  },
+  {
+    "id": 24,
+    "nome": "ibupril 400mg 10 caps Gel",
+    "preco": "R$ 14.99",
+    "imagem": "/produtos/medicamento.png"
+  },
+  {
+    "id": 25,
+    "nome": "Loratadina xarope União",
+    "preco": "R$ 19.99",
+    "imagem": "/produtos/generico.png"
+  },
+  {
+    "id": 26,
+    "nome": "Mascara Tripla c/50 SPK",
+    "preco": "R$ 9.99",
+    "imagem": "/produtos/medicamento.png"
+  },
+  {
+    "id": 27,
+    "nome": "Maxalgina 10ml",
+    "preco": "R$ 2.99",
+    "imagem": "/produtos/medicamento.png"
+  },
+  {
+    "id": 28,
+    "nome": "Maxalgina 20ml",
+    "preco": "R$ 5.99",
+    "imagem": "/produtos/medicamento.png"
+  },
+  {
+    "id": 29,
+    "nome": "Naridrin 12h",
+    "preco": "R$ 24.99",
+    "imagem": "/produtos/medicamento.png"
+  },
+  {
+    "id": 30,
+    "nome": "Nausilon b6 gotas",
+    "preco": "R$ 15.99",
+    "imagem": "/produtos/medicamento.png"
+  },
+  {
+    "id": 31,
+    "nome": "neom+bacitracina pom 15g EMS",
+    "preco": "R$ 12.99",
+    "imagem": "/produtos/generico.png"
+  },
+  {
+    "id": 32,
+    "nome": "Neosoro Adulto 30ml",
+    "preco": "R$ 6.99",
+    "imagem": "/produtos/medicamento.png"
+  },
+  {
+    "id": 33,
+    "nome": "Nevralgex c/10 cp",
+    "preco": "R$ 3.99",
+    "imagem": "/produtos/medicamento.png"
+  },
+  {
+    "id": 34,
+    "nome": "Nimesulida 100mg cp",
+    "preco": "R$ 9.99",
+    "imagem": "/produtos/generico.png"
+  },
+  {
+    "id": 35,
+    "nome": "nimesulida gel 30g EMS",
+    "preco": "R$ 14.99",
+    "imagem": "/produtos/generico.png"
+  },
+  {
+    "id": 36,
+    "nome": "Nimesulida Gotas Teuto",
+    "preco": "R$ 9.99",
+    "imagem": "/produtos/generico.png"
+  },
+  {
+    "id": 37,
+    "nome": "Nociclin c 21",
+    "preco": "R$ 9.99",
+    "imagem": "/produtos/medicamento.png"
+  },
+  {
+    "id": 38,
+    "nome": "Perfenol c/20 cp",
+    "preco": "R$ 19.99",
+    "imagem": "/produtos/medicamento.png"
+  },
+  {
+    "id": 39,
+    "nome": "Sildenafila 50mg c/4",
+    "preco": "R$ 9.99",
+    "imagem": "/produtos/generico.png"
+  },
+  {
+    "id": 40,
+    "nome": "Simeticona 125mg 10caps",
+    "preco": "R$ 9.99",
+    "imagem": "/produtos/generico.png"
+  },
+  {
+    "id": 41,
+    "nome": "Simeticona Gotas Biosintetica",
+    "preco": "R$ 4.99",
+    "imagem": "/produtos/generico.png"
+  },
+  {
+    "id": 42,
+    "nome": "Soro fisiológico 500ml ADV",
+    "preco": "R$ 6.99",
+    "imagem": "/produtos/medicamento.png"
+  }
+]
