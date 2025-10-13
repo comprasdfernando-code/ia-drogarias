@@ -20,7 +20,7 @@ export default function AgendaPage() {
   });
 
   useEffect(() => {
-    // Quando o usuário vem da página de serviços, já preenche o nome do serviço automaticamente
+    if (typeof window === "undefined") return;
     if (servicoURL) {
       setForm((prev) => ({ ...prev, servico: servicoURL }));
     }
