@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 
+
 const SERVICOS = [
   {
     nome: "Aferição de Pressão Arterial",
@@ -33,6 +34,28 @@ const SERVICOS = [
     slug: "fitos",
     desc: "Orientação sobre o uso seguro de plantas medicinais.",
   },
+
+  // 💗 Serviços de Estética (novos adicionados)
+  {
+    nome: "Limpeza de Pele",
+    slug: "limpeza-pele",
+    desc: "Remoção de impurezas e renovação da pele com técnica profissional.",
+  },
+  {
+    nome: "Peeling Químico",
+    slug: "peeling",
+    desc: "Tratamento que melhora textura e brilho da pele, reduzindo manchas.",
+  },
+  {
+    nome: "Microagulhamento",
+    slug: "microagulhamento",
+    desc: "Estimula o colágeno e melhora cicatrizes, manchas e linhas de expressão.",
+  },
+  {
+    nome: "Aplicação de Enzimas",
+    slug: "enzimas",
+    desc: "Auxilia na redução de gordura localizada e modelagem corporal.",
+  },
 ];
 
 export default function ServicosPage() {
@@ -40,7 +63,7 @@ export default function ServicosPage() {
     <main className="max-w-6xl mx-auto px-6 py-10">
       {/* Título principal */}
       <h1 className="text-3xl font-bold mb-8 text-blue-700 text-center">
-        Serviços Farmacêuticos
+        Serviços Farmacêuticos e Estéticos
       </h1>
 
       {/* Lista de serviços */}
@@ -76,3 +99,4 @@ export default function ServicosPage() {
     </main>
   );
 }
+
