@@ -2,204 +2,277 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
-import Image from "next/image";
 
-// 🔌 Conexão com Supabase
+// 🔌 Conexão Supabase
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 export default function AdminPage() {
   const [produtos, setProdutos] = useState<any[]>([]);
-  const [carregando, setCarregando] = useState(true);
   const [busca, setBusca] = useState("");
+  const [novoProduto, setNovoProduto] = useState({
+    nome: "",
+    categoria: "",
+    preco_venda: 0,
+    estoque: 0,
+    imagem: "",
+  });
 
-  // 🔄 Carrega produtos
+  // 🌀 Carrega produtos ao abrir
   useEffect(() => {
-    async function carregarProdutos() {
-      const { data, error } = await supabase
-        .from("produtos")
-        .select("*")
-        .order("nome", { ascending: true });
-
-      if (error) console.error("Erro ao carregar produtos:", error);
-      else setProdutos(data || []);
-      setCarregando(false);
-    }
     carregarProdutos();
   }, []);
 
-  // 💾 Atualiza produto no banco
-  async function atualizarProduto(id: string, campo: string, valor: any) {
-    const { error } = await supabase.from("produtos").update({ [campo]: valor }).eq("id", id);
-    if (error) console.error("Erro ao atualizar produto:", error);
+  async function carregarProdutos() {
+    const { data, error } = await supabase
+      .from("produtos")
+      .select("*")
+      .order("nome", { ascending: true });
+
+    if (error) console.error("Erro ao carregar produtos:", error);
+    else setProdutos(data || []);
   }
 
-  // 🧠 Upload de imagem
-  async function uploadImagem(produto: any, arquivo: File) {
-    try {
-      const nomeArquivo = '${produto.id}-${arquivo.name}';
-      const caminho = '/drogariaredefabiano/${nomeArquivo}';
+  // 🧠 Atualizar campo diretamente
+  async function atualizarCampo(id: string, campo: string, valor: any) {
+    const { error } = await supabase
+      .from("produtos")
+      .update({ [campo]: valor })
+      .eq("id", id);
 
-      // Envia pro bucket "produtos"
-      const { error: uploadError } = await supabase.storage
-        .from("produtos")
-        .upload(caminho, arquivo, { upsert: true });
-
-      if (uploadError) {
-        console.error("Erro ao enviar imagem:", uploadError);
-        alert("Erro ao enviar imagem!");
-        return;
-      }
-
-      // 🔗 Gera URL pública
-      const { data } = supabase.storage.from("produtos").getPublicUrl(caminho);
-      const urlPublica = data?.publicUrl;
-
-      // Atualiza a URL no banco
-      await supabase.from("produtos").update({ imagem: urlPublica }).eq("id", produto.id);
-      alert("✅ Imagem enviada com sucesso!");
-    } catch (error) {
-      console.error("Erro inesperado no upload:", error);
-      alert("Erro inesperado ao enviar imagem!");
+    if (error) {
+      console.error("Erro ao atualizar:", error);
+      alert("❌ Erro ao salvar!");
+    } else {
+      setProdutos((prev) =>
+        prev.map((p) => (p.id === id ? { ...p, [campo]: valor } : p))
+      );
     }
   }
 
-  // 🔍 Filtro
-  const produtosFiltrados = produtos.filter((p) =>
-    p.nome?.toLowerCase().includes(busca.toLowerCase())
+  // ➕ Adicionar novo produto
+  async function adicionarProduto() {
+    if (!novoProduto.nome) return alert("Informe o nome do produto!");
+
+    const { error } = await supabase.from("produtos").insert([
+      {
+        nome: novoProduto.nome,
+        categoria: novoProduto.categoria || "Outros",
+        preco_venda: novoProduto.preco_venda || 0,
+        estoque: novoProduto.estoque || 0,
+        imagem: novoProduto.imagem || "",
+        loja: "drogariaredefabiano",
+        disponivel: true,
+      },
+    ]);
+
+    if (error) {
+      console.error("Erro ao adicionar produto:", error);
+      alert("❌ Falha ao adicionar produto!");
+    } else {
+      alert("✅ Produto adicionado com sucesso!");
+      setNovoProduto({
+        nome: "",
+        categoria: "",
+        preco_venda: 0,
+        estoque: 0,
+        imagem: "",
+      });
+      carregarProdutos();
+    }
+  }
+
+  // 🔍 Filtro de busca
+  const produtosFiltrados = produtos.filter(
+    (p) =>
+      p.nome?.toLowerCase().includes(busca.toLowerCase()) ||
+      p.categoria?.toLowerCase().includes(busca.toLowerCase())
   );
 
   return (
-    <main className="min-h-screen bg-gray-100 pb-16">
+    <main className="min-h-screen bg-gray-100 pb-10">
       {/* Cabeçalho */}
-      <section className="w-full bg-blue-700 text-white shadow-md">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex justify-between items-center">
-          <h1 className="font-bold text-xl">📋 Painel Administrativo — IA Drogarias</h1>
-          <button
-            onClick={() => (window.location.href = "/")}
-            className="bg-red-500 hover:bg-red-600 px-4 py-1 rounded text-white"
-          >
-            Sair
-          </button>
-        </div>
+      <section className="bg-blue-700 text-white shadow-md py-3 px-6 flex justify-between items-center">
+        <h1 className="text-xl sm:text-2xl font-bold">
+          🧠 Painel Administrativo — IA Drogarias
+        </h1>
+        <button
+          className="bg-red-600 hover:bg-red-700 text-white px-4 py-1 rounded"
+          onClick={() => alert("Logout em breve 😎")}
+        >
+          Sair
+        </button>
       </section>
 
-      <div className="max-w-6xl mx-auto px-4 py-8">
-        {/* Barra de busca */}
+      {/* Filtros */}
+      <div className="max-w-6xl mx-auto mt-6 px-4">
         <input
           type="text"
           placeholder="Buscar produto..."
           value={busca}
           onChange={(e) => setBusca(e.target.value)}
-          className="w-full mb-4 p-2 border border-gray-300 rounded"
+          className="border rounded w-full px-3 py-2 mb-6 shadow-sm"
         />
 
-        {/* Tabela */}
-        {carregando ? (
-          <p className="text-center text-gray-500">Carregando produtos...</p>
-        ) : (
-          <table className="w-full border-collapse bg-white shadow">
-            <thead>
-              <tr className="bg-blue-600 text-white text-sm">
-                <th className="p-2">Imagem</th>
-                <th className="p-2">Nome</th>
-                <th className="p-2">Categoria</th>
-                <th className="p-2">Preço</th>
-                <th className="p-2">Estoque</th>
-                <th className="p-2">Disponível</th>
-                <th className="p-2">Ações</th>
+        {/* Novo produto */}
+        <div className="bg-white p-4 rounded shadow mb-8 flex flex-wrap gap-2">
+          <input
+            type="text"
+            placeholder="Nome"
+            value={novoProduto.nome}
+            onChange={(e) =>
+              setNovoProduto({ ...novoProduto, nome: e.target.value })
+            }
+            className="border rounded px-2 py-1 flex-1 min-w-[150px]"
+          />
+          <input
+            type="text"
+            placeholder="Categoria"
+            value={novoProduto.categoria}
+            onChange={(e) =>
+              setNovoProduto({ ...novoProduto, categoria: e.target.value })
+            }
+            className="border rounded px-2 py-1 flex-1 min-w-[120px]"
+          />
+          <input
+            type="number"
+            placeholder="Preço"
+            value={novoProduto.preco_venda}
+            onChange={(e) =>
+              setNovoProduto({
+                ...novoProduto,
+                preco_venda: parseFloat(e.target.value),
+              })
+            }
+            className="border rounded px-2 py-1 w-24 text-center"
+          />
+          <input
+            type="number"
+            placeholder="Estoque"
+            value={novoProduto.estoque}
+            onChange={(e) =>
+              setNovoProduto({
+                ...novoProduto,
+                estoque: parseInt(e.target.value),
+              })
+            }
+            className="border rounded px-2 py-1 w-20 text-center"
+          />
+          <input
+            type="text"
+            placeholder="URL da imagem"
+            value={novoProduto.imagem}
+            onChange={(e) =>
+              setNovoProduto({ ...novoProduto, imagem: e.target.value })
+            }
+            className="border rounded px-2 py-1 flex-1 min-w-[250px]"
+          />
+          <button
+            onClick={adicionarProduto}
+            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
+          >
+            + Adicionar Produto
+          </button>
+        </div>
+
+        {/* Tabela de produtos */}
+        <table className="w-full border-collapse bg-white rounded shadow">
+          <thead className="bg-blue-700 text-white text-sm">
+            <tr>
+              <th className="p-2">Imagem</th>
+              <th className="p-2">Nome</th>
+              <th className="p-2">Categoria</th>
+              <th className="p-2">Preço</th>
+              <th className="p-2">Estoque</th>
+              <th className="p-2">Disponível</th>
+            </tr>
+          </thead>
+          <tbody>
+            {produtosFiltrados.map((p) => (
+              <tr key={p.id} className="border-b text-sm">
+                <td className="p-2">
+                  {p.imagem ? (
+                    <img
+                      src={p.imagem}
+                      alt={p.nome}
+                      className="w-12 h-12 object-cover mx-auto rounded"
+                    />
+                  ) : (
+                    "—"
+                  )}
+                  <input
+                    type="text"
+                    value={p.imagem || ""}
+                    onChange={(e) =>
+                      atualizarCampo(p.id, "imagem", e.target.value)
+                    }
+                    placeholder="Cole o link da imagem"
+                    className="border rounded w-full px-2 py-1 mt-1 text-xs"
+                  />
+                </td>
+
+                <td className="p-2">
+                  <input
+                    type="text"
+                    value={p.nome || ""}
+                    onChange={(e) =>
+                      atualizarCampo(p.id, "nome", e.target.value)
+                    }
+                    className="border rounded w-full px-2 py-1 text-sm"
+                  />
+                </td>
+
+                <td className="p-2">
+                  <input
+                    type="text"
+                    value={p.categoria || ""}
+                    onChange={(e) =>
+                      atualizarCampo(p.id, "categoria", e.target.value)
+                    }
+                    className="border rounded w-full px-2 py-1 text-sm"
+                  />
+                </td>
+
+                <td className="p-2 text-center">
+                  <input
+                    type="number"
+                    value={p.preco_venda || 0}
+                    onChange={(e) =>
+                      atualizarCampo(
+                        p.id,
+                        "preco_venda",
+                        parseFloat(e.target.value)
+                      )
+                    }
+                    className="border rounded w-20 px-2 py-1 text-center"
+                  />
+                </td>
+
+                <td className="p-2 text-center">
+                  <input
+                    type="number"
+                    value={p.estoque || 0}
+                    onChange={(e) =>
+                      atualizarCampo(p.id, "estoque", parseInt(e.target.value))
+                    }
+                    className="border rounded w-16 px-2 py-1 text-center"
+                  />
+                </td>
+
+                <td className="p-2 text-center">
+                  <input
+                    type="checkbox"
+                    checked={p.disponivel}
+                    onChange={(e) =>
+                      atualizarCampo(p.id, "disponivel", e.target.checked)
+                    }
+                  />
+                </td>
               </tr>
-            </thead>
-
-            <tbody>
-              {produtosFiltrados.map((p) => (
-                <tr key={p.id} className="text-center border-t hover:bg-gray-50">
-                  <td className="p-2">
-                    {p.imagem ? (
-                      <Image
-                        src={p.imagem}
-                        alt={p.nome || "Produto"}
-                        width={50}
-                        height={50}
-                        className="mx-auto rounded"
-                      />
-                    ) : (
-                      <span>❌</span>
-                    )}
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={(e) => {
-                        if (e.target.files && e.target.files[0]) {
-                          uploadImagem(p, e.target.files[0]);
-                        }
-                      }}
-                      className="mt-2 text-xs"
-                    />
-                  </td>
-
-                  <td className="p-2">
-                    <input
-                      type="text"
-                      defaultValue={p.nome}
-                      onBlur={(e) => atualizarProduto(p.id, "nome", e.target.value)}
-                      className="border rounded p-1 text-sm w-full"
-                    />
-                  </td>
-
-                  <td className="p-2">
-                    <input
-                      type="text"
-                      defaultValue={p.categoria}
-                      onBlur={(e) => atualizarProduto(p.id, "categoria", e.target.value)}
-                      className="border rounded p-1 text-sm w-full"
-                    />
-                  </td>
-
-                  <td className="p-2">
-                    <input
-                      type="number"
-                      defaultValue={p.preco_venda}
-                      onBlur={(e) =>
-                        atualizarProduto(p.id, "preco_venda", parseFloat(e.target.value))
-                      }
-                      className="border rounded p-1 text-sm w-full text-center"
-                    />
-                  </td>
-
-                  <td className="p-2">
-                    <input
-                      type="number"
-                      defaultValue={p.estoque}
-                      onBlur={(e) =>
-                        atualizarProduto(p.id, "estoque", parseInt(e.target.value))
-                      }
-                      className="border rounded p-1 text-sm w-full text-center"
-                    />
-                  </td>
-
-                  <td className="p-2">
-                    <input
-                      type="checkbox"
-                      defaultChecked={p.disponivel}
-                      onChange={(e) => atualizarProduto(p.id, "disponivel", e.target.checked)}
-                    />
-                  </td>
-
-                  <td className="p-2">
-                    <button
-                      onClick={() => alert('Produto ${p.nome} atualizado!')}
-                      className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm"
-                    >
-                      ✔️ Salvar
-                    </button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        )}
+            ))}
+          </tbody>
+        </table>
       </div>
     </main>
   );
