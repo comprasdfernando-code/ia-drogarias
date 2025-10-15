@@ -148,7 +148,7 @@ export default function DrogariaRedeFabianoPage() {
                   className="bg-white rounded-lg shadow p-2 sm:p-3 text-center hover:shadow-lg transition flex flex-col justify-between"
                 >
                   <Image
-                    src="/produtos/caixa-padrao.png"}
+                    src={p.imagem && p.imagem.trim() !== "" ? p.imagem : "/produtos/caixa-padrao.png"}
                     alt={p.nome || "Produto"}
                     width={150}
                     height={150}
