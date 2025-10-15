@@ -189,7 +189,7 @@ export default function AdminPage() {
 
                   <td className="p-2">
                     <button
-                      onClick={'() => alert(Produto ${p.nome} atualizado!)'}
+                      onClick={() => alert('Produto ${p.nome} atualizado!')}
                       className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded text-sm"
                     >
                       ✔️ Salvar
