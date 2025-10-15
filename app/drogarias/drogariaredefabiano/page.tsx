@@ -148,12 +148,12 @@ export default function DrogariaRedeFabianoPage() {
                   className="bg-white rounded-lg shadow p-2 sm:p-3 text-center hover:shadow-lg transition flex flex-col justify-between"
                 >
                   <Image
-                    src={p.imagem || "/no-image.png"}
-                    alt={p.nome}
-                    width={110}
-                    height={110}
-                    className="mx-auto rounded object-contain h-20 sm:h-28"
-                  />
+                    src={p.imagem && p.imagem.trim() !== "" ? p.imagem : "/produtos/caixa-padrao.png"}
+                    alt={p.nome || "Produto"}
+                    width={150}
+                    height={150}
+                    className="mx-auto rounded shadow-sm"
+/>
                   <h2 className="font-medium text-blue-800 mt-2 text-[12px] sm:text-sm line-clamp-2">
                     {p.nome}
                   </h2>
