@@ -352,20 +352,49 @@ useEffect(() => {
       <p className="text-gray-500">Seu carrinho está vazio.</p>
     ) : (
       carrinho.map((i) => (
-        <div key={i.id} className="flex justify-between items-center border-b py-2">
-          <div>
-            <div className="font-medium">{i.nome}</div>
-            <div className="text-sm text-gray-500">
-              {i.quantidade}x R$ {fmt(Number(i.preco_venda))}
-            </div>
-          </div>
-          <button
-            onClick={() => removerItem(i.id)}
-            className="text-red-600 hover:underline text-sm"
-          >
-            Remover
-          </button>
-        </div>
+        <div key={i.id} className="flex items-start gap-3 border-b pb-3">
+  <div className="flex-1">
+    <div className="font-medium text-sm">{i.nome}</div>
+    <div className="text-xs text-gray-500">
+      R$ {fmt(Number(i.preco_venda))}
+    </div>
+
+    <div className="flex items-center gap-2 mt-2">
+      {/* Botão de diminuir */}
+      <button
+        onClick={() => alterarQtd(i.id, i.quantidade - 1)}
+        className="bg-gray-200 hover:bg-gray-300 text-gray-700 px-2 py-1 rounded text-sm font-bold"
+      >
+        −
+      </button>
+
+      {/* Quantidade atual */}
+      <span className="min-w-[24px] text-center font-semibold text-sm">
+        {i.quantidade}
+      </span>
+
+      {/* Botão de aumentar */}
+      <button
+        onClick={() => alterarQtd(i.id, i.quantidade + 1)}
+        className="bg-gray-200 hover:bg-gray-300 text-gray-700 px-2 py-1 rounded text-sm font-bold"
+      >
+        +
+      </button>
+
+      {/* Botão remover */}
+      <button
+        onClick={() => removerItem(i.id)}
+        className="text-red-600 text-xs ml-2 hover:underline"
+      >
+        Remover
+      </button>
+    </div>
+  </div>
+
+  <div className="text-sm font-semibold">
+    R$ {fmt(Number(i.preco_venda) * i.quantidade)}
+  </div>
+</div>
       ))
     )}
   </div>
