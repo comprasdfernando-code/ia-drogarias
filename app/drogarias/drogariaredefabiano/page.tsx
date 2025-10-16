@@ -228,6 +228,14 @@ useEffect(() => {
     <main className="min-h-screen bg-gray-100 pb-16">
       {/*  Faixa superior */}
       <section className="w-full bg-blue-700 text-white">
+        {/* 🩵 Banner principal */}
+<section className="relative w-full">
+  <img
+    src="/banners/banner-rede-fabiano-faixa.jpg"
+    alt="Drogaria Rede Fabiano"
+    className="w-full h-36 sm:h-48 md:h-56 object-cover shadow-md"
+  />
+</section>
         <div className="max-w-6xl mx-auto px-4 py-3">
           <div className="flex items-center gap-3">
             {/*  Busca */}
