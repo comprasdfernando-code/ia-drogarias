@@ -184,7 +184,7 @@ useEffect(() => {
   }
 
   // 💾 Finalizar pedido
-  async function finalizarPedido() {
+  async function finalizarPedido(cliente: Cliente, pagamento: any) {
     if (carrinho.length === 0) {
       alert("Seu carrinho está vazio.");
       return;
@@ -333,7 +333,7 @@ useEffect(() => {
             </div>
 
             <button
-              onClick={finalizarPedido}
+              onClick={() =>finalizarPedido}
               className="px-5 py-3 bg-green-600 hover:bg-green-700 text-white rounded font-semibold"
             >
               Finalizar pedido
@@ -456,12 +456,13 @@ useEffect(() => {
     total={total}
     carrinho={carrinho}
     onConfirm={(cliente, pagamento) => {
-      finalizarPedido();
-    
+      finalizarPedido(cliente, pagamento);
+      setModalAberto(false);
     }}
     onClose={() => setModalAberto(false)}
   />
 )}
-    </main>
-  );
+
+</main>
+);
 }
