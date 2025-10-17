@@ -53,11 +53,14 @@ export default function ModalFinalizar({
   const fmt = (n: number) =>
     n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
-  const validar = () =>
-    cliente.nome.trim().length > 2 &&
-    cliente.telefone.trim().length >= 9 &&
-    cliente.endereco.trim().length > 5;
+  const validar = () => {
+  const nomeValido = cliente.nome.trim().length >= 3;
+  const telefoneLimpo = cliente.telefone.replace(/\D/g, ""); // remove traços, espaços, etc.
+  const telefoneValido = telefoneLimpo.length >= 9;
+  const enderecoValido = cliente.endereco.trim().length >= 5;
 
+  return nomeValido && telefoneValido && enderecoValido;
+};
   function enviarPedido() {
     if (!validar()) {
       alert("Por favor, preencha os dados de entrega.");
