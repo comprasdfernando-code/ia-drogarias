@@ -184,46 +184,40 @@ useEffect(() => {
   }
 
   // 💾 Finalizar pedido
-  async function finalizarPedido() {
-    if (carrinho.length === 0) {
-      alert("Seu carrinho está vazio.");
-      return;
-    }
+  async function finalizarPedido(cliente: any, pagamentoDetalhes: any) {
+  console.log("✅ Finalizando pedido direto...");
+  console.log("Cliente recebido:", cliente);
+  console.log("Pagamento recebido:", pagamentoDetalhes);
 
-    if (!cliente.nome || !cliente.telefone || !cliente.endereco) {
-      alert("Preencha os dados de entrega.");
-      return;
-    }
+  const payload = {
+    itens: carrinho,
+    total: total,
+    pagamento: pagamentoDetalhes,
+    status: "pendente",
+    loja: LOJA,
+    cliente,
+  };
 
-    const payload = {
-      itens: carrinho,
-      total: total,
-      pagamento,
-      status: "pendente",
-      loja: LOJA,
-      cliente,
-    };
+  const { data, error } = await supabase
+    .from("pedidos")
+    .insert(payload)
+    .select("id")
+    .single();
 
-    const { data, error } = await supabase
-      .from("pedidos")
-      .insert(payload)
-      .select("id")
-      .single();
+  if (error) {
+    console.error("Erro ao salvar pedido:", error);
+    alert("Erro ao salvar pedido.");
+    return;
+  }
 
-    if (error) {
-      console.error("Erro ao salvar pedido:", error);
-      alert("Erro ao salvar pedido.");
-      return;
-    }
+  const texto = montarTextoWhatsApp(data?.id);
+  const url = `https://wa.me/${WHATSAPP}?text=${encodeURIComponent(texto)}`;
+  window.open(url, "_blank");
 
-    const texto = montarTextoWhatsApp(data?.id);
-    const url = `https://wa.me/${WHATSAPP}?text=${encodeURIComponent(texto)}`;
-    window.open(url, "_blank");
-
-    setCarrinho([]);
-    setCarrinhoAberto(false);
-    alert("Pedido enviado com sucesso! 🙌");
-  } //
+  setCarrinho([]);
+  setCarrinhoAberto(false);
+  alert("Pedido enviado com sucesso! 🙌");
+} //
 
   //  Render
   return (
