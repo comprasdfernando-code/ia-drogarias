@@ -131,18 +131,6 @@ export default function DrogariaRedeFabianoPage() {
           onChange={(e) => setBusca(e.target.value)}
           className="w-full border rounded px-3 py-2"
         />
-        <button
-         onClick={() => setCarrinhoAberto(!carrinhoAberto)}
-         className="relative ml-2 p-2 bg-white rounded shadow hover:bg-gray-100 transition"
-         title="Ver carrinho"
-       >
-   🛒
-         {carrinho.length > 0 && (
-        <span className="absolute -top-1 -right-1 bg-red-600 text-white text-xs rounded-full px-1.5">
-      {carrinho.length}
-        </span>
-       )}
-       </button>
       </div>
 
       {/* Listagem de produtos */}
