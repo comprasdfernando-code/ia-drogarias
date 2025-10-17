@@ -72,7 +72,7 @@ export default function ModalFinalizar({
       if (trocoNecessario && trocoPara) pagamentoDetalhes.troco_para = trocoPara;
     }
 
-    onConfirm(cliente, pagamentoDetalhes);
+    onConfirm({ ...cliente}, { ...pagamentoDetalhes });
   }
 
   return (
