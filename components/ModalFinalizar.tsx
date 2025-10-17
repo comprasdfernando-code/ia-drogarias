@@ -62,21 +62,29 @@ export default function ModalFinalizar({
   return nomeValido && telefoneValido && enderecoValido;
 };
   function enviarPedido() {
-    if (!validar()) {
-      alert("Por favor, preencha os dados de entrega.");
-      return;
-    }
+  // ⚙️ Verifica o estado atualizado do cliente antes de validar
+  const nomeValido = (cliente.nome || "").trim().length >= 3;
+  const telefoneValido = (cliente.telefone || "").replace(/\D/g, "").length >= 9;
+  const enderecoValido = (cliente.endereco || "").trim().length >= 5;
 
-    const pagamentoDetalhes: any = { metodo: pagamento };
-    if (pagamento === "Pix") pagamentoDetalhes.chave = pixChave;
-    if (pagamento === "Cartão") pagamentoDetalhes.tipo = tipoCartao;
-    if (pagamento === "Dinheiro") {
-      pagamentoDetalhes.troco = trocoNecessario;
-      if (trocoNecessario && trocoPara) pagamentoDetalhes.troco_para = trocoPara;
-    }
-
-    onConfirm( cliente , pagamentoDetalhes );
+  if (!nomeValido || !telefoneValido || !enderecoValido) {
+    alert("Por favor, preencha todos os dados obrigatórios corretamente.");
+    console.log("Dados do cliente:", cliente); // 👈 pra debug
+    return;
   }
+
+  const pagamentoDetalhes: any = { metodo: pagamento };
+  if (pagamento === "Pix") pagamentoDetalhes.chave = pixChave;
+  if (pagamento === "Cartão") pagamentoDetalhes.tipo = tipoCartao;
+  if (pagamento === "Dinheiro") {
+    pagamentoDetalhes.troco = trocoNecessario;
+    if (trocoNecessario && trocoPara)
+      pagamentoDetalhes.troco_para = trocoPara;
+  }
+
+  // Envia pro componente pai
+  onConfirm(cliente, pagamentoDetalhes);
+}
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-60 flex items-center justify-center z-[100] p-4">
