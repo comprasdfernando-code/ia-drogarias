@@ -457,6 +457,7 @@ useEffect(() => {
     carrinho={carrinho}
     onConfirm={(cliente, pagamento) => {
   finalizarPedido(cliente, pagamento);
+  setModalAberto(false);
     
     }}
     onClose={() => setModalAberto(false)}
