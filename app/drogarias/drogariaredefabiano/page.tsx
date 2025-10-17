@@ -185,38 +185,35 @@ useEffect(() => {
 
   // 💾 Finalizar pedido
   async function finalizarPedido(cliente: any, pagamentoDetalhes: any) {
-  console.log("✅ Finalizando pedido direto...");
-  console.log("Cliente recebido:", cliente);
-  console.log("Pagamento recebido:", pagamentoDetalhes);
+  try {
+    const payload = {
+      itens: carrinho,
+      total: total,
+      pagamento: pagamentoDetalhes,
+      status: "pendente",
+      loja: LOJA,
+      cliente,
+    };
 
-  const payload = {
-    itens: carrinho,
-    total: total,
-    pagamento: pagamentoDetalhes,
-    status: "pendente",
-    loja: LOJA,
-    cliente,
-  };
+    const { data, error } = await supabase
+      .from("pedidos")
+      .insert(payload)
+      .select("id")
+      .single();
 
-  const { data, error } = await supabase
-    .from("pedidos")
-    .insert(payload)
-    .select("id")
-    .single();
+    if (error) throw error;
 
-  if (error) {
-    console.error("Erro ao salvar pedido:", error);
-    alert("Erro ao salvar pedido.");
-    return;
+    const texto = montarTextoWhatsApp(data?.id);
+    const url = `https://wa.me/${WHATSAPP}?text=${encodeURIComponent(texto)}`;
+    window.open(url, "_blank");
+
+    setCarrinho([]);
+    setCarrinhoAberto(false);
+    alert("Pedido enviado com sucesso! 🙌");
+  } catch (err) {
+    console.error("Erro ao finalizar pedido:", err);
+    alert("Ocorreu um erro ao enviar o pedido.");
   }
-
-  const texto = montarTextoWhatsApp(data?.id);
-  const url = `https://wa.me/${WHATSAPP}?text=${encodeURIComponent(texto)}`;
-  window.open(url, "_blank");
-
-  setCarrinho([]);
-  setCarrinhoAberto(false);
-  alert("Pedido enviado com sucesso! 🙌");
 } //
 
   //  Render
@@ -327,11 +324,11 @@ useEffect(() => {
             </div>
 
             <button
-              onClick={finalizarPedido}
-              className="px-5 py-3 bg-green-600 hover:bg-green-700 text-white rounded font-semibold"
-            >
-              Finalizar pedido
-            </button>
+  onClick={() => setModalAberto(true)}
+  className="px-5 py-3 bg-green-700 hover:bg-green-800 text-white rounded font-semibold"
+>
+  Finalizar pedido
+</button>
           </div>
         </div>
       )}
