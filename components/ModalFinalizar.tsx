@@ -62,16 +62,8 @@ export default function ModalFinalizar({
   return nomeValido && telefoneValido && enderecoValido;
 };
   function enviarPedido() {
-  // ⚙️ Verifica o estado atualizado do cliente antes de validar
-  const nomeValido = (cliente.nome || "").trim().length >= 3;
-  const telefoneValido = (cliente.telefone || "").replace(/\D/g, "").length >= 9;
-  const enderecoValido = (cliente.endereco || "").trim().length >= 5;
-
-  if (!nomeValido || !telefoneValido || !enderecoValido) {
-    alert("Por favor, preencha todos os dados obrigatórios corretamente.");
-    console.log("Dados do cliente:", cliente); // 👈 pra debug
-    return;
-  }
+  console.log("🚀 Enviando pedido sem validação...");
+  console.log("Cliente:", cliente);
 
   const pagamentoDetalhes: any = { metodo: pagamento };
   if (pagamento === "Pix") pagamentoDetalhes.chave = pixChave;
@@ -82,7 +74,7 @@ export default function ModalFinalizar({
       pagamentoDetalhes.troco_para = trocoPara;
   }
 
-  // Envia pro componente pai
+  // Envia pro componente pai (page.tsx)
   onConfirm(cliente, pagamentoDetalhes);
 }
 
