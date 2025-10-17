@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 import Image from "next/image";
+import ModalFinalizar from "../../../components/ModalFinalizar";
 
 // 🔌 Supabase
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -49,6 +50,7 @@ export default function DrogariaRedeFabianoPage() {
   const [carregando, setCarregando] = useState(true);
   const [busca, setBusca] = useState("");
   const [menuAberto, setMenuAberto] = useState(false);
+  const [modalAberto, setModalAberto] = useState(false);
 
   // 🛒 Carrinho
   const [carrinhoAberto, setCarrinhoAberto] = useState(false);
@@ -414,11 +416,16 @@ useEffect(() => {
         <span>R$ {fmt(total)}</span>
       </div>
       <button
-        onClick={finalizarPedido}
-        className="w-full py-3 bg-green-600 hover:bg-green-700 text-white font-semibold rounded"
-      >
-        Finalizar Pedido
-      </button>
+  onClick={() => setModalAberto(true)}
+  disabled={!carrinho.length}
+  className={`w-full py-3 rounded text-white font-semibold ${
+    !carrinho.length
+      ? "bg-gray-400 cursor-not-allowed"
+      : "bg-green-600 hover:bg-green-700"
+  }`}
+>
+  Finalizar Pedido
+</button>
     </div>
   )}
 </div>
@@ -441,6 +448,20 @@ useEffect(() => {
     <button className="text-left hover:text-blue-200">📞 Contato</button>
   </div>
 </div>
+{modalAberto && (
+  <ModalFinalizar
+    loja="Drogaria Rede Fabiano"
+    whatsapp="5511948343725"
+    pixChave="CNPJ 62157257000109"
+    total={total}
+    carrinho={carrinho}
+    onConfirm={(cliente, pagamento) => {
+      finalizarPedido();
+      setModalAberto(false);
+    }}
+    onClose={() => setModalAberto(false)}
+  />
+)}
     </main>
   );
 }
