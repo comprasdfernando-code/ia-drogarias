@@ -62,8 +62,9 @@ export default function ModalFinalizar({
   return nomeValido && telefoneValido && enderecoValido;
 };
   function enviarPedido() {
-  console.log("🚀 Enviando pedido sem validação...");
+  console.log("🚀 Enviando pedido SEM validação...");
   console.log("Cliente:", cliente);
+  console.log("Pagamento:", pagamento);
 
   const pagamentoDetalhes: any = { metodo: pagamento };
   if (pagamento === "Pix") pagamentoDetalhes.chave = pixChave;
@@ -74,7 +75,7 @@ export default function ModalFinalizar({
       pagamentoDetalhes.troco_para = trocoPara;
   }
 
-  // Envia pro componente pai (page.tsx)
+  // 👉 envia direto, sem checar nada
   onConfirm(cliente, pagamentoDetalhes);
 }
 
