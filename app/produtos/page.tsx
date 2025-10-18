@@ -50,7 +50,9 @@ export default function DrogariaRedeFabianoPage() {
   const [carregando, setCarregando] = useState(true);
   const [busca, setBusca] = useState("");
   const [menuAberto, setMenuAberto] = useState(false);
-  const [modalAberto, setModalAberto] = useState(false);
+  const [modalAberto, setModalAberto] = useState(false);({
+  imagem: "",
+  });
 
   // 🛒 Carrinho
   const [carrinhoAberto, setCarrinhoAberto] = useState(false);
