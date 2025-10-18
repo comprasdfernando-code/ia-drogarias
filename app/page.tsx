@@ -45,18 +45,6 @@ export default function HomePage() {
   return (
     <main className="w-full mx-auto">
       {/* Banner principal — ocupa toda a largura da tela */}
-      <div className="relative w-full">
-        <Image
-          src="/banners/banner-principal.png"
-          alt="Banner Principal IA Drogarias"
-          width={1920}
-          height={400}
-          className="w-full h-auto object-cover shadow-md"
-          priority
-        />
-      </div>
-
-      {/* Carrossel de promoções */}
       <div className="max-w-5xl mx-auto p-4">
         <Slider {...settings}>
           {banners.map((banner, index) => (
@@ -71,6 +59,20 @@ export default function HomePage() {
             </div>
           ))}
         </Slider>
+      </div>
+
+      
+     className="w-full mx-auto"
+      {/* Carrossel de promoções */}
+      <div className="relative w-full">
+        <Image
+          src="/banners/banner-principal.png"
+          alt="Banner Principal IA Drogarias"
+          width={1920}
+          height={400}
+          className="w-full h-auto object-cover shadow-md"
+          priority
+        />
       </div>
     </main>
   );
