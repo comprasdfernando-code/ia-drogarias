@@ -31,6 +31,11 @@ export default function HomePage() {
       link: "/cadastro-farmaceutico",
     },
     {
+      src: "/banners/herbamed.png",
+      alt: "E-commerce",
+      link: "/produtos",
+    },
+    {
       src: "/banners/cadastro-drogaria.png",
       alt: "Cadastro de Drogaria",
       link: "/cadastro-drogaria",
@@ -60,8 +65,6 @@ export default function HomePage() {
           ))}
         </Slider>
       </div>
-
-      
      className="w-full mx-auto"
       {/* Carrossel de promoções */}
       <div className="relative w-full">
