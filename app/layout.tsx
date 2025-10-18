@@ -40,7 +40,7 @@ export default function RootLayout({
             {/* Navegação */}
             <nav className="flex items-center gap-4">
               <a
-                href="/"
+                href="/produtos"
                 className="bg-white text-blue-700 px-3 py-1 rounded-md font-semibold hover:bg-gray-200 transition"
               >
                 E-commerce
