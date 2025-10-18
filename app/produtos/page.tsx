@@ -292,7 +292,7 @@ useEffect(() => {
                 className="bg-white rounded-lg shadow p-2 sm:p-3 text-center hover:shadow-lg transition flex flex-col justify-between"
               >
                 <Image
-                  src={imgUrl(p.imagem)}
+                  src={"URL da imagem"}
                   alt={p.nome || "Produto"}
                   width={150}
                   height={150}
