@@ -235,7 +235,7 @@ useEffect(() => {
         {/* 🩵 Banner principal */}
 <section className="relative w-full">
   <img
-    src="/banners/faixa-iadrogarias1.png"
+    src="/banners/faixa-iadrogarias2.png"
     alt="Drogaria Rede Fabiano"
     className="w-full h-36 sm:h-48 md:h-56 object-cover shadow-md"
   />
