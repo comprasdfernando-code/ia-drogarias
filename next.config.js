@@ -4,6 +4,9 @@ const nextConfig = {
   experimental: {
     esmExternals: true,
   },
+  images: {
+    domains: ['skzcvpkmcktjryvstcti.supabase.co'],
+  },
 };
 
 export default nextConfig;
