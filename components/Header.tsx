@@ -21,8 +21,8 @@ export default function Header() {
 
         {/* Botões desktop */}
         <nav className="hidden md:flex items-center gap-4">
-          <Link href="/produtos" className="bg-white text-blue-700 px-3 py-1 rounded font-medium hover:bg-blue-50">
-            E-commerce
+          <Link href="/drogarias/drogariaredefabiano" className="bg-white text-blue-700 px-3 py-1 rounded font-medium hover:bg-blue-50">
+            Drogaria Rede Fabiano
           </Link>
           <Link href="/servicos" className="bg-white text-blue-700 px-3 py-1 rounded font-medium hover:bg-blue-50">
             Serviços
