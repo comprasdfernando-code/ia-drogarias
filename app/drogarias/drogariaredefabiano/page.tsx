@@ -1,7 +1,4 @@
 "use client";
-if (typeof window === "undefined") {
-  console.log("🚫 Renderizando no servidor (build estático da Vercel)");
-}
 
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
@@ -55,15 +52,12 @@ export default function DrogariaRedeFabianoPage() {
   const [busca, setBusca] = useState("");
   const [menuAberto, setMenuAberto] = useState(false);
   const [modalAberto, setModalAberto] = useState(false);
-  const searchParams = useSearchParams();
-  const termoBusca = searchParams.get("busca")?.toLowerCase() || "";
 
   // 🛒 Carrinho
   const [carrinhoAberto, setCarrinhoAberto] = useState(false);
   const [carrinho, setCarrinho] = useState<ItemCarrinho[]>([]);
-  // 🌸 Carregar carrinho salvo (só no browser)
+  // 🧠 Carregar carrinho salvo
 useEffect(() => {
-  if (typeof window === "undefined") return;
   const salvo = localStorage.getItem("carrinho-rede-fabiano");
   if (salvo) setCarrinho(JSON.parse(salvo));
 }, []);
@@ -136,12 +130,12 @@ useEffect(() => {
 
   // 🧮 Filtros e total
   const produtosFiltrados = useMemo(
-    () =>
-      produtos.filter((p) =>
-        p.nome?.toLowerCase().includes((busca || termoBusca).toLowerCase())
-      ),
-    [produtos, busca, termoBusca]
-  );
+  () =>
+    produtos.filter((p) =>
+      p.nome?.toLowerCase().includes(busca.toLowerCase())
+    ),
+  [produtos, busca]
+);
 
   const total = useMemo(
     () =>
