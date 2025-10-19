@@ -1,4 +1,7 @@
 "use client";
+if (typeof window === "undefined") {
+  console.log("🚫 Renderizando no servidor (build estático da Vercel)");
+}
 
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
