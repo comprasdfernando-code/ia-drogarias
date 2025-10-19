@@ -5,6 +5,7 @@ import Slider from "react-slick";
 import Image from "next/image";
 import "slick-carousel/slick/slick.css";
 import "slick-carousel/slick/slick-theme.css";
+import { useRouter } from "next/navigation";
 
 // Tipo para produtos
 interface Produto {
@@ -17,6 +18,14 @@ interface Produto {
 
 export default function HomePage() {
   const [produtos, setProdutos] = useState<Produto[]>([]);
+  const [termo, setTermo] = useState(""); // <- controla o texto da busca
+  const router = useRouter(); // <- redireciona pra Rede Fabiano
+
+  const handleSearch = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!termo.trim()) return;
+    router.push(`/drogarias/drogariaredefabiano?busca=${encodeURIComponent(termo.trim())}`);
+  };
 
   // Simula produtos (pode conectar ao Supabase depois)
   useEffect(() => {
@@ -26,28 +35,7 @@ export default function HomePage() {
         nome: "ABC 10MG/G CREME DERM BG 20G",
         preco: 19.99,
         categoria: "Genéricos",
-        imagem: "https://skzcvpkmcktjryvstcti.supabase.co/storage/v1/object/public/produtos/abc%20creme.webp",
-      },
-      {
-        id: 2,
-        nome: "ABCALCIUM KIDS 240ML",
-        preco: 19.99,
-        categoria: "Outros",
-        imagem: "https://skzcvpkmcktjryvstcti.supabase.co/storage/v1/object/public/produtos/abcalcium-kids-240ml.png",
-      },
-      {
-        id: 3,
-        nome: "ABLOK 25MG CX 30 COMP",
-        preco: 15.85,
-        categoria: "Etico",
-        imagem: "https://skzcvpkmcktjryvstcti.supabase.co/storage/v1/object/public/produtos/ablok-25mg-cx-30-comp.png",
-      },
-      {
-        id: 4,
-        nome: "ABRIFIT 7MG/ML XPE FR 100ML+COPO DOS",
-        preco: 22.89,
-        categoria: "Genéricos",
-        imagem: "https://skzcvpkmcktjryvstcti.supabase.co/storage/v1/object/public/produtos/abrifit-7mgml-xpe-fr.png",
+        imagem: "https://skzcvpkmcktjryvstcti.supabase.co/storage/v1/object/public/produtos/abc.png",
       },
     ]);
   }, []);
@@ -76,19 +64,27 @@ export default function HomePage() {
   return (
     <main className="w-full mx-auto bg-gray-50 pb-10">
       
-      {/* ======= CAMPO DE BUSCA ======= */}
-      <div className="flex justify-center mt-4 mb-6 px-4">
-        <div className="flex w-full max-w-xl bg-white rounded-full shadow-md overflow-hidden border border-gray-200">
-          <input
-            type="text"
-            placeholder="Buscar produtos..."
-            className="flex-grow px-4 py-2 text-gray-700 focus:outline-none"
-          />
-          <button className="bg-blue-700 text-white px-5 py-2 hover:bg-blue-800 transition-all">
-            🔍
-          </button>
-        </div>
-      </div>
+      {/* ====== CAMPO DE BUSCA FUNCIONAL ====== */}
+<form
+  onSubmit={handleSearch}
+  className="flex justify-center mt-4 mb-6 px-4"
+>
+  <div className="flex w-full max-w-xl bg-white rounded-full shadow-md overflow-hidden border border-gray-200">
+    <input
+      type="text"
+      value={termo}
+      onChange={(e) => setTermo(e.target.value)}
+      placeholder="Buscar produtos..."
+      className="flex-grow px-4 py-2 text-gray-700 focus:outline-none"
+    />
+    <button
+      type="submit"
+      className="bg-blue-700 text-white px-5 py-2 hover:bg-blue-800 transition-all"
+    >
+      🔍
+    </button>
+  </div>
+</form>
 
       {/* ======= CARROSSEL ======= */}
       <div className="max-w-5xl mx-auto px-4">

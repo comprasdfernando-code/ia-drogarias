@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 import Image from "next/image";
 import ModalFinalizar from "../../../components/ModalFinalizar";
+import { useSearchParams } from "next/navigation";
 
 // 🔌 Supabase
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -51,6 +52,8 @@ export default function DrogariaRedeFabianoPage() {
   const [busca, setBusca] = useState("");
   const [menuAberto, setMenuAberto] = useState(false);
   const [modalAberto, setModalAberto] = useState(false);
+  const searchParams = useSearchParams();
+  const termoBusca = searchParams.get("busca")?.toLowerCase() || "";
 
   // 🛒 Carrinho
   const [carrinhoAberto, setCarrinhoAberto] = useState(false);
@@ -131,9 +134,9 @@ useEffect(() => {
   const produtosFiltrados = useMemo(
     () =>
       produtos.filter((p) =>
-        p.nome?.toLowerCase().includes(busca.toLowerCase())
+        p.nome?.toLowerCase().includes((busca || termoBusca).toLowerCase())
       ),
-    [produtos, busca]
+    [produtos, busca, termoBusca]
   );
 
   const total = useMemo(
