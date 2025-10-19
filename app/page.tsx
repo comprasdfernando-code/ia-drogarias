@@ -68,7 +68,9 @@ export default function HomePage() {
   const banners = [
     { src: "/banners/servicos-farmaceuticos.png", alt: "Serviços Farmacêuticos", link: "/servicos" },
     { src: "/banners/cadastro-drogaria.png", alt: "Cadastro Drogaria", link: "/cadastro-drogaria" },
-    { src: "/banners/ecommerce.png", alt: "E-commerce", link: "/produtos" },
+    { src: "/banners/ecommerce.png", alt: "E-commerce", link: "/drogarias/drogariaredefabiano" },
+    { src: "/banners/cadastro-farmaceutico.png", alt: "Cadastro Farmacêuticos", link: "/cadastro-farmaceutico" },
+    { src: "/banners/herbamed.png", alt: "Produtos Naturais", link: "/produtos" },
   ];
 
   return (
