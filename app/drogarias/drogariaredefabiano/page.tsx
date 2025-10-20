@@ -154,13 +154,20 @@ useEffect(() => {
   }
 
   // 🧾 WhatsApp
-  function montarTextoWhatsApp(pedidoId?: number): string {
-    const linhas: string[] = [
-      "🛒 Novo Pedido - Drogaria Rede Fabiano",
-      "",
-      ...carrinho.map(
+  function montarTextoWhatsApp(
+  pedidoId: number | null,
+  cliente: Cliente,
+  itens: ItemCarrinho[],
+  total: number,
+  pagamento: any,
+  loja: string
+): string {
+  const linhas: string[] = [];
+
+      
+      carrinho.map(
         (i) =>
-          `• ${i.nome} — ${i.quantidade}x R$ ${fmt(Number(i.preco_venda))} = R$ ${fmt(
+          ` ${i.nome} — ${i.quantidade}x R$ ${fmt(Number(i.preco_venda))} = R$ ${fmt(
             Number(i.preco_venda) * i.quantidade
           )}`
       ),
@@ -172,48 +179,39 @@ useEffect(() => {
           : "") +
         (pagamento === "Pix" ? ` — Chave: ${PIX_CHAVE}` : ""),
       "",
-      "👤 Cliente",
-     ` Nome: ${cliente.nome}`,
+      " Cliente",
+      ` Nome: ${cliente.nome}`,
       ` Telefone: ${cliente.telefone}`,
       ` Endereço: ${cliente.endereco}`,
       cliente.bairro ? ` Bairro: ${cliente.bairro}` : "",
       cliente.complemento ? ` Complemento: ${cliente.complemento}` : "",
       pedidoId ? `Pedido #${pedidoId}` : "",
-    ].filter(Boolean);
+    [].filter(Boolean);
 
     return linhas.join("\n");
   }
 
   // 💾 Finalizar pedido
   async function finalizarPedido(cliente: Cliente, pagamento: any) {
-  if (carrinho.length === 0) {
-    alert("Seu carrinho está vazio.");
-    return;
-  }
+    if (carrinho.length === 0) {
+      alert("Seu carrinho está vazio.");
+      return;
+    }
 
-  if (!cliente.nome || !cliente.telefone || !cliente.endereco) {
-    alert("Preencha os dados de entrega.");
-    return;
-  }
+    if (!cliente.nome || !cliente.telefone || !cliente.endereco) {
+      alert`("Preencha os dados de entrega.")`;
+      return;
+    }
 
-  // 🔹 Cria um objeto cliente limpo e garantido
-  const clienteFinal = {
-    nome: cliente.nome?.trim() || "",
-    telefone: cliente.telefone?.trim() || "",
-    endereco: cliente.endereco?.trim() || "",
-    bairro: cliente.bairro?.trim() || "",
-    complemento: cliente.complemento?.trim() || "",
-  };
+    const payload = {
+      itens: carrinho,
+      total: total,
+      pagamento,
+      status: "pendente",
+      loja: LOJA,
+      cliente,
+    };
 
-  const payload = {
-    itens: carrinho,
-    total: total,
-    pagamento,
-    status: "pendente",
-    loja: LOJA,
-    cliente: clienteFinal, // usa o cliente corrigido aqui
-  };
-    
     const { data, error } = await supabase
       .from("pedidos")
       .insert(payload)
@@ -226,7 +224,7 @@ useEffect(() => {
       return;
     }
 
-    const texto = montarTextoWhatsApp(data?.id);
+    const texto = `montarTextoWhatsApp(data?.id)`;
     const url = `https://wa.me/${WHATSAPP}?text=${encodeURIComponent(texto)}`;
     window.open(url, "_blank");
 
@@ -462,7 +460,7 @@ useEffect(() => {
   <ModalFinalizar
     loja="Drogaria Rede Fabiano"
     whatsapp="5511948343725"
-    pixChave="62157257000109"
+    pixChave=" 62157257000109"
     total={total}
     carrinho={carrinho}
     onConfirm={(cliente, pagamento) => {
