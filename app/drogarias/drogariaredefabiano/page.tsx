@@ -217,7 +217,7 @@ useEffect(() => {
       return;
     }
 
-    const texto = montarTextoWhatsApp(data?.id, cliente);
+    const texto = montarTextoWhatsApp(data?.id, cliente, pagamento);
     const url = `https://wa.me/${WHATSAPP}?text=${encodeURIComponent(texto)}`;
     window.open(url, "_blank");
 
