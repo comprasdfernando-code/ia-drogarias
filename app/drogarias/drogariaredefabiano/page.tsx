@@ -195,14 +195,20 @@ useEffect(() => {
       alert("Preencha os dados de entrega.");
       return;
     }
-
+    const clienteFinal = {
+      nome: cliente.nome?.trim() || "",
+      telefone: cliente.telefone?.trim() || "",
+      endereco: cliente.endereco?.trim() || "",
+      bairro: cliente.bairro?.trim() || "",
+      complemento: cliente.complemento?.trim() || "",
+    };
     const payload = {
       itens: carrinho,
       total: total,
       pagamento,
       status: "pendente",
       loja: LOJA,
-      cliente,
+      cliente: clienteFinal,
     };
 
     const { data, error } = await supabase
@@ -453,7 +459,7 @@ useEffect(() => {
   <ModalFinalizar
     loja="Drogaria Rede Fabiano"
     whatsapp="5511948343725"
-    pixChave="62157257000109"
+    pixChave="00000000000000"
     total={total}
     carrinho={carrinho}
     onConfirm={(cliente, pagamento) => {
