@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 import Image from "next/image";
 import ModalFinalizar from "../../components/ModalFinalizar";
+import { useSearchParams } from "next/navigation";
 
 // 🔌 Supabase
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -50,9 +51,7 @@ export default function DrogariaRedeFabianoPage() {
   const [carregando, setCarregando] = useState(true);
   const [busca, setBusca] = useState("");
   const [menuAberto, setMenuAberto] = useState(false);
-  const [modalAberto, setModalAberto] = useState(false);({
-  imagem: "",
-  });
+  const [modalAberto, setModalAberto] = useState(false);
 
   // 🛒 Carrinho
   const [carrinhoAberto, setCarrinhoAberto] = useState(false);
@@ -85,21 +84,38 @@ useEffect(() => {
 
   // 🔄 Carregar produtos
   useEffect(() => {
-    async function carregarProdutos() {
-      setCarregando(true);
+  async function carregarProdutos() {
+    setCarregando(true);
+    let pagina = 0;
+    const limite = 100;
+    let todos: Produto[] = [];
+
+    while (true) {
       const { data, error } = await supabase
         .from("produtos")
         .select("*")
         .eq("loja", LOJA)
         .eq("disponivel", true)
         .gt("estoque", 0)
-        .order("nome", { ascending: true });
+        .order("nome", { ascending: true })
+        .range(pagina * limite, (pagina + 1) * limite - 1);
 
-      if (error) console.error("❌ Erro ao carregar produtos:", error);
-      else setProdutos((data || []) as Produto[]);
+      if (error) {
+        console.error(" Erro ao carregar produtos:", error);
+        break;
+      }
 
-      setCarregando(false);
+      if (!data || data.length === 0) break;
+
+      todos = [...todos, ...data];
+      if (data.length < limite) break;
+      pagina++;
     }
+
+    console.log(" Total de produtos carregados:", todos.length);
+    setProdutos(todos);
+    setCarregando(false);
+  }
 
     carregarProdutos();
   }, []);
@@ -131,12 +147,12 @@ useEffect(() => {
 
   // 🧮 Filtros e total
   const produtosFiltrados = useMemo(
-    () =>
-      produtos.filter((p) =>
-        p.nome?.toLowerCase().includes(busca.toLowerCase())
-      ),
-    [produtos, busca]
-  );
+  () =>
+    produtos.filter((p) =>
+      p.nome?.toLowerCase().includes(busca.toLowerCase())
+    ),
+  [produtos, busca]
+);
 
   const total = useMemo(
     () =>
@@ -155,7 +171,7 @@ useEffect(() => {
   }
 
   // 🧾 WhatsApp
-  function montarTextoWhatsApp(pedidoId?: number): string {
+  function montarTextoWhatsApp(pedidoId?: number, cliente?:Cliente, pagamento?: any ): string {
     const linhas: string[] = [
       "🛒 Novo Pedido - Drogaria Rede Fabiano",
       "",
@@ -218,7 +234,7 @@ useEffect(() => {
       return;
     }
 
-    const texto = montarTextoWhatsApp(data?.id);
+    const texto = montarTextoWhatsApp(data?.id, cliente, pagamento);
     const url = `https://wa.me/${WHATSAPP}?text=${encodeURIComponent(texto)}`;
     window.open(url, "_blank");
 
@@ -235,7 +251,7 @@ useEffect(() => {
         {/* 🩵 Banner principal */}
 <section className="relative w-full">
   <img
-    src="/banners/faixa-iadrogarias2.png"
+    src="/banners/faixa-iadrogarias.png.jpg"
     alt="Drogaria Rede Fabiano"
     className="w-full h-36 sm:h-48 md:h-56 object-cover shadow-md"
   />
@@ -454,7 +470,7 @@ useEffect(() => {
   <ModalFinalizar
     loja="Drogaria Rede Fabiano"
     whatsapp="5511948343725"
-    pixChave="CNPJ 62157257000109"
+    pixChave=" 62157257000109"
     total={total}
     carrinho={carrinho}
     onConfirm={(cliente, pagamento) => {
