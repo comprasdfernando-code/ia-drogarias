@@ -186,24 +186,33 @@ useEffect(() => {
 
   // 💾 Finalizar pedido
   async function finalizarPedido(cliente: Cliente, pagamento: any) {
-    if (carrinho.length === 0) {
-      alert("Seu carrinho está vazio.");
-      return;
-    }
+  if (carrinho.length === 0) {
+    alert("Seu carrinho está vazio.");
+    return;
+  }
 
-    if (!cliente.nome || !cliente.telefone || !cliente.endereco) {
-      alert("Preencha os dados de entrega.");
-      return;
-    }
+  if (!cliente.nome || !cliente.telefone || !cliente.endereco) {
+    alert("Preencha os dados de entrega.");
+    return;
+  }
 
-    const payload = {
-      itens: carrinho,
-      total: total,
-      pagamento,
-      status: "pendente",
-      loja: LOJA,
-      cliente,
-    };
+  // 🔹 Cria um objeto cliente limpo e garantido
+  const clienteFinal = {
+    nome: cliente.nome?.trim() || "",
+    telefone: cliente.telefone?.trim() || "",
+    endereco: cliente.endereco?.trim() || "",
+    bairro: cliente.bairro?.trim() || "",
+    complemento: cliente.complemento?.trim() || "",
+  };
+
+  const payload = {
+    itens: carrinho,
+    total: total,
+    pagamento,
+    status: "pendente",
+    loja: LOJA,
+    cliente: clienteFinal, // usa o cliente corrigido aqui
+  };
     
     const { data, error } = await supabase
       .from("pedidos")
