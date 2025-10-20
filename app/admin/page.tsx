@@ -24,7 +24,7 @@ export default function AdminPage() {
     carregarProdutos();
   }, []);
 
-  aasync function carregarProdutos() {
+  async function carregarProdutos() {
   let pagina = 0;
   const limite = 100;
   let todos: any[] = [];
