@@ -16,6 +16,7 @@ const LOJA = "drogariaredefabiano";
 const WHATSAPP = "5511948343725"; // Drogaria Rede Fabiano
 const PIX_CHAVE = "CNPJ 62157257000109";
 
+
 // 🧩 Tipagens
 type Produto = {
   id: string;
@@ -186,12 +187,13 @@ useEffect(() => {
 
   // 💾 Finalizar pedido
   async function finalizarPedido(cliente: Cliente, pagamento: any) {
+    console.log("Cliente recebido:", cliente);
     if (carrinho.length === 0) {
       alert("Seu carrinho está vazio.");
       return;
     }
 
-    if (cliente.nome || !cliente.telefone || !cliente.endereco) {
+    if (!cliente.nome || !cliente.telefone || !cliente.endereco) {
       alert("Preencha os dados de entrega.");
       return;
     }
@@ -340,11 +342,12 @@ useEffect(() => {
             </div>
 
             <button
-              onClick={() =>finalizarPedido}
-              className="px-5 py-3 bg-green-600 hover:bg-green-700 text-white rounded font-semibold"
+             onClick={() => setModalAberto(true)}
+             className="px-5 py-3 bg-green-600 hover:bg-green-700 text-white rounded font-semibold"
             >
-              Finalizar pedido
-            </button>
+            Finalizar pedido
+            
+           </button>
           </div>
         </div>
       )}
@@ -459,7 +462,7 @@ useEffect(() => {
   <ModalFinalizar
     loja="Drogaria Rede Fabiano"
     whatsapp="5511948343725"
-    pixChave="00000000000000"
+    pixChave="62157257000109"
     total={total}
     carrinho={carrinho}
     onConfirm={(cliente, pagamento) => {
