@@ -204,7 +204,7 @@ useEffect(() => {
       loja: LOJA,
       cliente,
     };
-
+    
     const { data, error } = await supabase
       .from("pedidos")
       .insert(payload)
@@ -453,7 +453,7 @@ useEffect(() => {
   <ModalFinalizar
     loja="Drogaria Rede Fabiano"
     whatsapp="5511948343725"
-    pixChave="CNPJ 62157257000109"
+    pixChave="62157257000109"
     total={total}
     carrinho={carrinho}
     onConfirm={(cliente, pagamento) => {

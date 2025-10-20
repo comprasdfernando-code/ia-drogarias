@@ -62,21 +62,13 @@ export default function ModalFinalizar({
   return nomeValido && telefoneValido && enderecoValido;
 };
   function enviarPedido() {
-  console.log("🚀 Enviando pedido SEM validação...");
-  console.log("Cliente:", cliente);
-  console.log("Pagamento:", pagamento);
-
-  const pagamentoDetalhes: any = { metodo: pagamento };
-  if (pagamento === "Pix") pagamentoDetalhes.chave = pixChave;
-  if (pagamento === "Cartão") pagamentoDetalhes.tipo = tipoCartao;
-  if (pagamento === "Dinheiro") {
-    pagamentoDetalhes.troco = trocoNecessario;
-    if (trocoNecessario && trocoPara)
-      pagamentoDetalhes.troco_para = trocoPara;
+  if (!cliente.nome || !cliente.telefone || !cliente.endereco) {
+    alert("Por favor, preencha todos os dados antes de confirmar o pedido.");
+    return;
   }
 
-  // 👉 envia direto, sem checar nada
-  onConfirm(cliente, pagamentoDetalhes);
+  // Envia para a função principal com os dados corretos
+  onConfirm(cliente, pagamento);
 }
 
   return (
