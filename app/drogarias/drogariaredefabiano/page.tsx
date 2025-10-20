@@ -154,20 +154,13 @@ useEffect(() => {
   }
 
   // 🧾 WhatsApp
-  function montarTextoWhatsApp(
-  pedidoId: number | null,
-  cliente: Cliente,
-  itens: ItemCarrinho[],
-  total: number,
-  pagamento: any,
-  loja: string
-): string {
-  const linhas: string[] = [];
-
-      
-      carrinho.map(
+  function montarTextoWhatsApp(pedidoId?: number): string {
+    const linhas: string[] = [
+      "🛒 Novo Pedido - Drogaria Rede Fabiano",
+      "",
+      ...carrinho.map(
         (i) =>
-          ` ${i.nome} — ${i.quantidade}x R$ ${fmt(Number(i.preco_venda))} = R$ ${fmt(
+          `• ${i.nome} — ${i.quantidade}x R$ ${fmt(Number(i.preco_venda))} = R$ ${fmt(
             Number(i.preco_venda) * i.quantidade
           )}`
       ),
@@ -179,14 +172,14 @@ useEffect(() => {
           : "") +
         (pagamento === "Pix" ? ` — Chave: ${PIX_CHAVE}` : ""),
       "",
-      " Cliente",
-      ` Nome: ${cliente.nome}`,
-      ` Telefone: ${cliente.telefone}`,
-      ` Endereço: ${cliente.endereco}`,
-      cliente.bairro ? ` Bairro: ${cliente.bairro}` : "",
-      cliente.complemento ? ` Complemento: ${cliente.complemento}` : "",
+      "👤 Cliente",
+      ` *Nome:* ${cliente.nome}`,
+      ` *Telefone:* ${cliente.telefone}`,
+      ` *Endereço:* ${cliente.endereco}`,
+        (cliente.bairro ? ` Bairro: ${cliente.bairro}` : ""),
+        (cliente.complemento ? ` Complemento: ${cliente.complemento}` : ""),
       pedidoId ? `Pedido #${pedidoId}` : "",
-    [].filter(Boolean);
+    ].filter(Boolean);
 
     return linhas.join("\n");
   }
@@ -198,8 +191,8 @@ useEffect(() => {
       return;
     }
 
-    if (!cliente.nome || !cliente.telefone || !cliente.endereco) {
-      alert`("Preencha os dados de entrega.")`;
+    if (cliente.nome || !cliente.telefone || !cliente.endereco) {
+      alert("Preencha os dados de entrega.");
       return;
     }
 
@@ -224,7 +217,7 @@ useEffect(() => {
       return;
     }
 
-    const texto = `montarTextoWhatsApp(data?.id)`;
+    const texto = montarTextoWhatsApp(data?.id);
     const url = `https://wa.me/${WHATSAPP}?text=${encodeURIComponent(texto)}`;
     window.open(url, "_blank");
 
@@ -460,7 +453,7 @@ useEffect(() => {
   <ModalFinalizar
     loja="Drogaria Rede Fabiano"
     whatsapp="5511948343725"
-    pixChave=" 62157257000109"
+    pixChave="62157257000109"
     total={total}
     carrinho={carrinho}
     onConfirm={(cliente, pagamento) => {
