@@ -14,8 +14,7 @@ const supabase = createClient(supabaseUrl, supabaseAnonKey);
 // ⚙️ Constantes
 const LOJA = "drogariaredefabiano";
 const WHATSAPP = "5511948343725"; // Drogaria Rede Fabiano
-const PIX_CHAVE = "62157257000109";
-
+const PIX_CHAVE = "CNPJ 62157257000109";
 
 // 🧩 Tipagens
 type Produto = {
@@ -155,7 +154,7 @@ useEffect(() => {
   }
 
   // 🧾 WhatsApp
-  function montarTextoWhatsApp(pedidoId?: number, cliente?: Cliente, pagamento?: any): string {
+  function montarTextoWhatsApp(pedidoId?: number, cliente?:Cliente, pagamento?: any ): string {
     const linhas: string[] = [
       "🛒 Novo Pedido - Drogaria Rede Fabiano",
       "",
@@ -174,11 +173,11 @@ useEffect(() => {
         (pagamento === "Pix" ? ` — Chave: ${PIX_CHAVE}` : ""),
       "",
       "👤 Cliente",
-      ` Nome: ${cliente?.nome|| ""}`,
-      ` Telefone: ${cliente?.telefone|| ""}`,
-      ` Endereço: ${cliente?.endereco|| ""}`,
-        cliente.bairro ? ` Bairro: ${cliente.bairro}` : "",
-        cliente.complemento ? ` Complemento: ${cliente.complemento}` : "",
+     ` Nome: ${cliente.nome}`,
+      ` Telefone: ${cliente.telefone}`,
+      ` Endereço: ${cliente.endereco}`,
+      cliente.bairro ? ` Bairro: ${cliente.bairro}` : "",
+      cliente.complemento ? ` Complemento: ${cliente.complemento}` : "",
       pedidoId ? `Pedido #${pedidoId}` : "",
     ].filter(Boolean);
 
@@ -187,31 +186,23 @@ useEffect(() => {
 
   // 💾 Finalizar pedido
   async function finalizarPedido(cliente: Cliente, pagamento: any) {
-    console.log("Cliente recebido:", cliente);
-
     if (carrinho.length === 0) {
       alert("Seu carrinho está vazio.");
       return;
     }
 
-    if ( !cliente.nome || !cliente.telefone || !cliente.endereco) {
+    if (!cliente.nome || !cliente.telefone || !cliente.endereco) {
       alert("Preencha os dados de entrega.");
       return;
     }
-    const clienteFinal = {
-      nome: cliente.nome?.trim() || "",
-      telefone: cliente.telefone?.trim() || "",
-      endereco: cliente.endereco?.trim() || "",
-      bairro: cliente.bairro?.trim() || "",
-      complemento: cliente.complemento?.trim() || "",
-    };
+
     const payload = {
       itens: carrinho,
       total: total,
       pagamento,
       status: "pendente",
       loja: LOJA,
-      cliente: clienteFinal,
+      cliente,
     };
 
     const { data, error } = await supabase
@@ -226,7 +217,7 @@ useEffect(() => {
       return;
     }
 
-    const texto = montarTextoWhatsApp(data?.id);
+    const texto = montarTextoWhatsApp(data?.id, cliente);
     const url = `https://wa.me/${WHATSAPP}?text=${encodeURIComponent(texto)}`;
     window.open(url, "_blank");
 
@@ -343,12 +334,11 @@ useEffect(() => {
             </div>
 
             <button
-             onClick={() => setModalAberto(true)}
-             className="px-5 py-3 bg-green-600 hover:bg-green-700 text-white rounded font-semibold"
+              onClick={() =>finalizarPedido}
+              className="px-5 py-3 bg-green-600 hover:bg-green-700 text-white rounded font-semibold"
             >
-            Finalizar pedido
-            
-           </button>
+              Finalizar pedido
+            </button>
           </div>
         </div>
       )}
@@ -463,7 +453,7 @@ useEffect(() => {
   <ModalFinalizar
     loja="Drogaria Rede Fabiano"
     whatsapp="5511948343725"
-    pixChave="62157257000109"
+    pixChave=" 62157257000109"
     total={total}
     carrinho={carrinho}
     onConfirm={(cliente, pagamento) => {
