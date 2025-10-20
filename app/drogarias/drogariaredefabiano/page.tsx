@@ -92,7 +92,8 @@ useEffect(() => {
         .eq("loja", LOJA)
         .eq("disponivel", true)
         .gt("estoque", 0)
-        .order("nome", { ascending: true });
+        .order("nome", { ascending: true })
+        .range(0, 999);//
 
       if (error) console.error("❌ Erro ao carregar produtos:", error);
       else setProdutos((data || []) as Produto[]);
