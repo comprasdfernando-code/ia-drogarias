@@ -84,22 +84,38 @@ useEffect(() => {
 
   // 🔄 Carregar produtos
   useEffect(() => {
-    async function carregarProdutos() {
-      setCarregando(true);
+  async function carregarProdutos() {
+    setCarregando(true);
+    let pagina = 0;
+    const limite = 100;
+    let todos: Produto[] = [];
+
+    while (true) {
       const { data, error } = await supabase
         .from("produtos")
         .select("*")
         .eq("loja", LOJA)
         .eq("disponivel", true)
         .gt("estoque", 0)
-        .range(0, 999)
-        .order("nome", { ascending: true });
+        .order("nome", { ascending: true })
+        .range(pagina * limite, (pagina + 1) * limite - 1);
 
-      if (error) console.error("❌ Erro ao carregar produtos:", error);
-      else setProdutos((data || []) as Produto[]);
+      if (error) {
+        console.error(" Erro ao carregar produtos:", error);
+        break;
+      }
 
-      setCarregando(false);
+      if (!data || data.length === 0) break;
+
+      todos = [...todos, ...data];
+      if (data.length < limite) break;
+      pagina++;
     }
+
+    console.log(" Total de produtos carregados:", todos.length);
+    setProdutos(todos);
+    setCarregando(false);
+  }
 
     carregarProdutos();
   }, []);
