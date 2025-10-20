@@ -24,15 +24,34 @@ export default function AdminPage() {
     carregarProdutos();
   }, []);
 
-  async function carregarProdutos() {
+  aasync function carregarProdutos() {
+  let pagina = 0;
+  const limite = 100;
+  let todos: any[] = [];
+
+  while (true) {
     const { data, error } = await supabase
       .from("produtos")
       .select("*")
-      .order("nome", { ascending: true });
+      .order("nome", { ascending: true })
+      .range(pagina * limite, (pagina + 1) * limite - 1);
 
-    if (error) console.error("Erro ao carregar produtos:", error);
-    else setProdutos(data || []);
+    if (error) {
+      console.error("❌ Erro ao carregar produtos (Admin):", error);
+      break;
+    }
+
+    if (!data || data.length === 0) break;
+
+    todos = [...todos, ...data];
+    if (data.length < limite) break;
+    pagina++;
   }
+
+  console.log("✅ Total de produtos carregados (Admin):", todos.length);
+  setProdutos(todos);
+}
+
 
   // 🧠 Atualizar campo diretamente
   async function atualizarCampo(id: string, campo: string, valor: any) {
