@@ -292,30 +292,7 @@ export default function HomePage() {
           </button>
         </div>
       </form>
-
-      {/* 🎞️ Carrossel */}
-      <div className="max-w-5xl mx-auto px-4">
-        <Slider {...slider}>
-          {banners.map((banner, index) => (
-            <div key={index} className="p-2">
-              <a href={banner.link}>
-                <img
-                  src={banner.src}
-                  alt={banner.alt}
-                  className="w-full rounded-2xl shadow-lg object-cover transition-transform duration-300 hover:scale-[1.02]"
-                />
-              </a>
-            </div>
-          ))}
-        </Slider>
-      </div>
-
-      {/* 👋 Boas-vindas */}
-      <section className="text-center mt-8 mb-6 px-4">
-        <h2 className="text-2xl md:text-3xl font-bold text-blue-700">Bem-vindo à IA Drogarias</h2>
-        <p className="text-gray-600 text-sm md:text-base">Inteligência a serviço da sua saúde 💙</p>
-      </section>
-      {/* ======= COMPRE POR CATEGORIA ======= */}
+{/* ======= COMPRE POR CATEGORIA ======= */}
 <section className="mt-6 mb-10 px-4">
   <h2 className="text-xl md:text-2xl font-bold text-center text-blue-700 mb-4">
     🛒 Compre por categoria
@@ -339,6 +316,29 @@ export default function HomePage() {
     ))}
   </div>
 </section>
+      {/* 🎞️ Carrossel */}
+      <div className="max-w-5xl mx-auto px-4">
+        <Slider {...slider}>
+          {banners.map((banner, index) => (
+            <div key={index} className="p-2">
+              <a href={banner.link}>
+                <img
+                  src={banner.src}
+                  alt={banner.alt}
+                  className="w-full rounded-2xl shadow-lg object-cover transition-transform duration-300 hover:scale-[1.02]"
+                />
+              </a>
+            </div>
+          ))}
+        </Slider>
+      </div>
+
+      {/* 👋 Boas-vindas */}
+      <section className="text-center mt-8 mb-6 px-4">
+        <h2 className="text-2xl md:text-3xl font-bold text-blue-700">Bem-vindo à IA Drogarias</h2>
+        <p className="text-gray-600 text-sm md:text-base">Inteligência a serviço da sua saúde 💙</p>
+      </section>
+
 
       {/* 🛍️ Produtos em destaque (20 + Ver mais) */}
       <div className="max-w-6xl mx-auto px-4">
