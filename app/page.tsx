@@ -7,6 +7,7 @@ import Slider from "react-slick";
 import "slick-carousel/slick/slick.css";
 import "slick-carousel/slick/slick-theme.css";
 import ModalFinalizar from "../components/ModalFinalizar";
+import { useRouter } from "next/navigation";
 
 // 🔌 Supabase
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -53,6 +54,8 @@ export default function HomePage() {
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [busca, setBusca] = useState("");
+  const router = useRouter();
+
 
   // Paginação visual (Home): mostra 20 e carrega +20 por clique
   const [visiveis, setVisiveis] = useState(20);
@@ -292,27 +295,25 @@ export default function HomePage() {
           </button>
         </div>
       </form>
-{/* ======= COMPRE POR CATEGORIA ======= */}
-<section className="mt-6 mb-10 px-4">
-  <h2 className="text-xl md:text-2xl font-bold text-center text-blue-700 mb-4">
-  </h2>
-
-  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 sm:gap-4 max-w-6xl mx-auto">
+{/* ===== CATEGORIAS ===== */}
+<section className="bg-white shadow-sm py-3 border-t border-b border-gray-100">
+  <div className="max-w-6xl mx-auto px-4 flex flex-wrap justify-center gap-2 sm:gap-4">
     {[
-      { nome: "Genéricos", cor: "bg-yellow-100" },
-      { nome: "Vitaminas", cor: "bg-green-100" },
-      { nome: "Beleza", cor: "bg-pink-100" },
-      { nome: "Natural", cor: "bg-teal-100" },
-      { nome: "Infantil", cor: "bg-blue-100" },
-      { nome: "Promoções", cor: "bg-purple-100" },
+      { nome: "Genéricos", slug: "genericos", cor: "bg-yellow-100 hover:bg-yellow-200" },
+      { nome: "Vitaminas", slug: "vitaminas", cor: "bg-green-100 hover:bg-green-200" },
+      { nome: "Beleza", slug: "beleza", cor: "bg-pink-100 hover:bg-pink-200" },
+      { nome: "Natural", slug: "natural", cor: "bg-teal-100 hover:bg-teal-200" },
+      { nome: "Infantil", slug: "infantil", cor: "bg-blue-100 hover:bg-blue-200" },
+      { nome: "Promoções", slug: "promocoes", cor: "bg-purple-100 hover:bg-purple-200" },
     ].map((cat) => (
-      <div
-        key={cat.nome}
-        className= {`${cat.cor} rounded-lg py-5 text-center shadow hover:shadow-md cursor-pointer transition`}
-      >
-        <p className="font-semibold text-gray-700">{cat.nome}</p>
-      </div>
-    ))}
+  <button
+    key={cat.slug}
+    onClick={() => router.push(`/categoria/${cat.slug}`)}
+    className={`${cat.cor} rounded-lg px-4 py-2 text-sm sm:text-base font-semibold text-gray-700 transition-all`}
+  >
+    {cat.nome}
+  </button>
+))}
   </div>
 </section>
       {/* 🎞️ Carrossel */}
