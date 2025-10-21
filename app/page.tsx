@@ -309,7 +309,7 @@ export default function HomePage() {
   <button
     key={cat.slug}
     onClick={() => router.push(`/categoria/${cat.slug}`)}
-    className={`${cat.cor} rounded-lg px-4 py-2 text-sm sm:text-base font-semibold text-gray-700 transition-all`}
+    className={`${cat.cor} rounded-lg px-6 py-3 text-base sm:text-lg font-semibold text-gray-700 shadow hover:shadow-md cursor-pointer transition-all`}
   >
     {cat.nome}
   </button>
