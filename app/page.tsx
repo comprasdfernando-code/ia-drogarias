@@ -315,6 +315,30 @@ export default function HomePage() {
         <h2 className="text-2xl md:text-3xl font-bold text-blue-700">Bem-vindo à IA Drogarias</h2>
         <p className="text-gray-600 text-sm md:text-base">Inteligência a serviço da sua saúde 💙</p>
       </section>
+      {/* ======= COMPRE POR CATEGORIA ======= */}
+<section className="mt-6 mb-10 px-4">
+  <h2 className="text-xl md:text-2xl font-bold text-center text-blue-700 mb-4">
+    🛒 Compre por categoria
+  </h2>
+
+  <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 sm:gap-4 max-w-6xl mx-auto">
+    {[
+      { nome: "Genéricos", cor: "bg-yellow-100" },
+      { nome: "Vitaminas", cor: "bg-green-100" },
+      { nome: "Beleza", cor: "bg-pink-100" },
+      { nome: "Natural", cor: "bg-teal-100" },
+      { nome: "Infantil", cor: "bg-blue-100" },
+      { nome: "Promoções", cor: "bg-purple-100" },
+    ].map((cat) => (
+      <div
+        key={cat.nome}
+        className= {`${cat.cor} rounded-lg py-5 text-center shadow hover:shadow-md cursor-pointer transition`}
+      >
+        <p className="font-semibold text-gray-700">{cat.nome}</p>
+      </div>
+    ))}
+  </div>
+</section>
 
       {/* 🛍️ Produtos em destaque (20 + Ver mais) */}
       <div className="max-w-6xl mx-auto px-4">
