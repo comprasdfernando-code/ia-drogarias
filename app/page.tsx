@@ -295,7 +295,6 @@ export default function HomePage() {
 {/* ======= COMPRE POR CATEGORIA ======= */}
 <section className="mt-6 mb-10 px-4">
   <h2 className="text-xl md:text-2xl font-bold text-center text-blue-700 mb-4">
-    🛒 Compre por categoria
   </h2>
 
   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3 sm:gap-4 max-w-6xl mx-auto">
