@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
-import { supabase } from "@/lib/supabaseClient";
+import { supabase } from "../../../lib/supabaseClient";
 
 export default function CategoriaPage() {
   const { slug } = useParams();
@@ -32,7 +32,7 @@ export default function CategoriaPage() {
       const { data, error } = await supabase
         .from("produtos")
         .select("*")
-        .ilike("categoria", %${slug}%)
+        .ilike("categoria", `%${slug}%`)
         .order("nome", { ascending: true });
 
       if (error) console.error("Erro ao carregar produtos:", error);
@@ -46,13 +46,13 @@ export default function CategoriaPage() {
   // 🔹 Adicionar ao carrinho
   function adicionarAoCarrinho(produto: any) {
     setCarrinho((prev) => [...prev, produto]);
-    alert(${produto.nome} adicionado ao carrinho! 🛒);
+    alert(`${produto.nome} adicionado ao carrinho! 🛒`);
   }
 
   return (
     <main className="min-h-screen bg-gray-50">
       {/* 🔹 Banner da categoria */}
-      <div className={${cor} text-white text-center py-8 shadow-md relative}>
+      <div className={`${cor} text-white text-center py-8 shadow-md relative`}>
         {/* Botão Voltar */}
         <button
           onClick={() => router.push("/")}
@@ -62,7 +62,7 @@ export default function CategoriaPage() {
         </button>
 
         <h1 className="text-3xl font-bold">
-          Categoria: {slug.charAt(0).toUpperCase() + slug.slice(1)}
+          Categoria: {`slug.charAt(0).toUpperCase() + slug.slice(1)`}
         </h1>
         <p className="text-sm mt-2 opacity-90">
           Confira os melhores produtos desta categoria
