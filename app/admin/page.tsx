@@ -3,295 +3,229 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 
-// 🔌 Conexão Supabase
+// 🔌 Conexão com o Supabase
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 export default function AdminPage() {
   const [produtos, setProdutos] = useState<any[]>([]);
-  const [busca, setBusca] = useState("");
-  const [novoProduto, setNovoProduto] = useState({
+  const [carregando, setCarregando] = useState(false);
+  const [form, setForm] = useState({
     nome: "",
+    preco_venda: "",
     categoria: "",
-    preco_venda: 0,
-    estoque: 0,
+    codigo_barras: "",
     imagem: "",
+    estoque: "",
   });
 
-  // 🌀 Carrega produtos ao abrir
+  // 🔄 Carrega produtos existentes
+  async function carregarProdutos() {
+    setCarregando(true);
+    const { data, error } = await supabase
+      .from("produtos")
+      .select("*")
+      .order("nome", { ascending: true });
+    if (!error && data) setProdutos(data);
+    setCarregando(false);
+  }
+
   useEffect(() => {
     carregarProdutos();
   }, []);
 
-  async function carregarProdutos() {
-  let pagina = 0;
-  const limite = 100;
-  let todos: any[] = [];
-
-  while (true) {
-    const { data, error } = await supabase
-      .from("produtos")
-      .select("*")
-      .order("nome", { ascending: true })
-      .range(pagina * limite, (pagina + 1) * limite - 1);
-
-    if (error) {
-      console.error("❌ Erro ao carregar produtos (Admin):", error);
-      break;
+  // 💾 Cadastrar novo produto
+  async function salvarProduto(e: React.FormEvent) {
+    e.preventDefault();
+    if (!form.nome || !form.preco_venda) {
+      alert("Preencha pelo menos o nome e o preço do produto!");
+      return;
     }
-
-    if (!data || data.length === 0) break;
-
-    todos = [...todos, ...data];
-    if (data.length < limite) break;
-    pagina++;
-  }
-
-  console.log("✅ Total de produtos carregados (Admin):", todos.length);
-  setProdutos(todos);
-}
-
-
-  // 🧠 Atualizar campo diretamente
-  async function atualizarCampo(id: string, campo: string, valor: any) {
-    const { error } = await supabase
-      .from("produtos")
-      .update({ [campo]: valor })
-      .eq("id", id);
-
-    if (error) {
-      console.error("Erro ao atualizar:", error);
-      alert("❌ Erro ao salvar!");
-    } else {
-      setProdutos((prev) =>
-        prev.map((p) => (p.id === id ? { ...p, [campo]: valor } : p))
-      );
-    }
-  }
-
-  // ➕ Adicionar novo produto
-  async function adicionarProduto() {
-    if (!novoProduto.nome) return alert("Informe o nome do produto!");
 
     const { error } = await supabase.from("produtos").insert([
       {
-        nome: novoProduto.nome,
-        categoria: novoProduto.categoria || "Outros",
-        preco_venda: novoProduto.preco_venda || 0,
-        estoque: novoProduto.estoque || 0,
-        imagem: novoProduto.imagem || "",
+        nome: form.nome.trim(),
+        preco_venda: parseFloat(form.preco_venda),
+        categoria: form.categoria.trim(),
+        codigo_barras: form.codigo_barras.trim(),
+        imagem: form.imagem.trim(),
+        estoque: parseInt(form.estoque) || 0,
         loja: "drogariaredefabiano",
         disponivel: true,
       },
     ]);
 
     if (error) {
-      console.error("Erro ao adicionar produto:", error);
-      alert("❌ Falha ao adicionar produto!");
+      console.error("Erro ao salvar produto:", error);
+      alert("Erro ao salvar produto!");
     } else {
-      alert("✅ Produto adicionado com sucesso!");
-      setNovoProduto({
+      alert("Produto salvo com sucesso!");
+      setForm({
         nome: "",
+        preco_venda: "",
         categoria: "",
-        preco_venda: 0,
-        estoque: 0,
+        codigo_barras: "",
         imagem: "",
+        estoque: "",
       });
       carregarProdutos();
     }
   }
 
-  // 🔍 Filtro de busca
-  const produtosFiltrados = produtos.filter(
-    (p) =>
-      p.nome?.toLowerCase().includes(busca.toLowerCase()) ||
-      p.categoria?.toLowerCase().includes(busca.toLowerCase())
-  );
-
   return (
-    <main className="min-h-screen bg-gray-100 pb-10">
-      {/* Cabeçalho */}
-      <section className="bg-blue-700 text-white shadow-md py-3 px-6 flex justify-between items-center">
-        <h1 className="text-xl sm:text-2xl font-bold">
-          🧠 Painel Administrativo — IA Drogarias
+    <main className="min-h-screen bg-gray-100 py-10 px-4">
+      <div className="max-w-4xl mx-auto bg-white shadow-md rounded-lg p-6">
+        <h1 className="text-2xl font-bold text-blue-700 mb-6 text-center">
+          🧾 Administração de Produtos — Drogaria Rede Fabiano
         </h1>
-        <button
-          className="bg-red-600 hover:bg-red-700 text-white px-4 py-1 rounded"
-          onClick={() => alert("Logout em breve 😎")}
+
+        {/* 🧩 Formulário de Cadastro */}
+        <form
+          onSubmit={salvarProduto}
+          className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-b pb-6 mb-6"
         >
-          Sair
-        </button>
-      </section>
+          {/* Nome */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700">
+              Nome do Produto
+            </label>
+            <input
+              type="text"
+              value={form.nome}
+              onChange={(e) => setForm({ ...form, nome: e.target.value })}
+              className="w-full border rounded-md px-3 py-2 mt-1"
+              placeholder="Ex: Dipirona Sódica 500mg"
+            />
+          </div>
 
-      {/* Filtros */}
-      <div className="max-w-6xl mx-auto mt-6 px-4">
-        <input
-          type="text"
-          placeholder="Buscar produto..."
-          value={busca}
-          onChange={(e) => setBusca(e.target.value)}
-          className="border rounded w-full px-3 py-2 mb-6 shadow-sm"
-        />
+          {/* Preço */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700">
+              Preço de Venda
+            </label>
+            <input
+              type="number"
+              value={form.preco_venda}
+              onChange={(e) => setForm({ ...form, preco_venda: e.target.value })}
+              className="w-full border rounded-md px-3 py-2 mt-1"
+              placeholder="Ex: 12.90"
+              step="0.01"
+            />
+          </div>
 
-        {/* Novo produto */}
-        <div className="bg-white p-4 rounded shadow mb-8 flex flex-wrap gap-2">
-          <input
-            type="text"
-            placeholder="Nome"
-            value={novoProduto.nome}
-            onChange={(e) =>
-              setNovoProduto({ ...novoProduto, nome: e.target.value })
-            }
-            className="border rounded px-2 py-1 flex-1 min-w-[150px]"
-          />
-          <input
-            type="text"
-            placeholder="Categoria"
-            value={novoProduto.categoria}
-            onChange={(e) =>
-              setNovoProduto({ ...novoProduto, categoria: e.target.value })
-            }
-            className="border rounded px-2 py-1 flex-1 min-w-[120px]"
-          />
-          <input
-            type="number"
-            placeholder="Preço"
-            value={novoProduto.preco_venda}
-            onChange={(e) =>
-              setNovoProduto({
-                ...novoProduto,
-                preco_venda: parseFloat(e.target.value),
-              })
-            }
-            className="border rounded px-2 py-1 w-24 text-center"
-          />
-          <input
-            type="number"
-            placeholder="Estoque"
-            value={novoProduto.estoque}
-            onChange={(e) =>
-              setNovoProduto({
-                ...novoProduto,
-                estoque: parseInt(e.target.value),
-              })
-            }
-            className="border rounded px-2 py-1 w-20 text-center"
-          />
-          <input
-            type="text"
-            placeholder="URL da imagem"
-            value={novoProduto.imagem}
-            onChange={(e) =>
-              setNovoProduto({ ...novoProduto, imagem: e.target.value })
-            }
-            className="border rounded px-2 py-1 flex-1 min-w-[250px]"
-          />
-          <button
-            onClick={adicionarProduto}
-            className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
-          >
-            + Adicionar Produto
-          </button>
-        </div>
+          {/* Categoria */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700">
+              Categoria
+            </label>
+            <input
+              type="text"
+              value={form.categoria}
+              onChange={(e) => setForm({ ...form, categoria: e.target.value })}
+              className="w-full border rounded-md px-3 py-2 mt-1"
+              placeholder="Ex: Genéricos"
+            />
+          </div>
 
-        {/* Tabela de produtos */}
-        <table className="w-full border-collapse bg-white rounded shadow">
-          <thead className="bg-blue-700 text-white text-sm">
-            <tr>
-              <th className="p-2">Imagem</th>
-              <th className="p-2">Nome</th>
-              <th className="p-2">Categoria</th>
-              <th className="p-2">Preço</th>
-              <th className="p-2">Estoque</th>
-              <th className="p-2">Disponível</th>
-            </tr>
-          </thead>
-          <tbody>
-            {produtosFiltrados.map((p) => (
-              <tr key={p.id} className="border-b text-sm">
-                <td className="p-2">
-                  {p.imagem ? (
-                    <img
-                      src={p.imagem}
-                      alt={p.nome}
-                      className="w-12 h-12 object-cover mx-auto rounded"
-                    />
-                  ) : (
-                    "—"
-                  )}
-                  <input
-                    type="text"
-                    value={p.imagem || ""}
-                    onChange={(e) =>
-                      atualizarCampo(p.id, "imagem", e.target.value)
-                    }
-                    placeholder="Cole o link da imagem"
-                    className="border rounded w-full px-2 py-1 mt-1 text-xs"
-                  />
-                </td>
+          {/* Código de Barras */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700">
+              Código de Barras (EAN)
+            </label>
+            <input
+              type="text"
+              value={form.codigo_barras}
+              onChange={(e) =>
+                setForm({
+                  ...form,
+                  codigo_barras: e.target.value.replace(/\D/g, "").slice(0, 14),
+                })
+              }
+              className="w-full border rounded-md px-3 py-2 mt-1"
+              placeholder="Ex: 7891234567890"
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Digite ou use o leitor de código de barras.
+            </p>
+          </div>
 
-                <td className="p-2">
-                  <input
-                    type="text"
-                    value={p.nome || ""}
-                    onChange={(e) =>
-                      atualizarCampo(p.id, "nome", e.target.value)
-                    }
-                    className="border rounded w-full px-2 py-1 text-sm"
-                  />
-                </td>
+          {/* Estoque */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700">
+              Estoque
+            </label>
+            <input
+              type="number"
+              value={form.estoque}
+              onChange={(e) => setForm({ ...form, estoque: e.target.value })}
+              className="w-full border rounded-md px-3 py-2 mt-1"
+              placeholder="Ex: 50"
+            />
+          </div>
 
-                <td className="p-2">
-                  <input
-                    type="text"
-                    value={p.categoria || ""}
-                    onChange={(e) =>
-                      atualizarCampo(p.id, "categoria", e.target.value)
-                    }
-                    className="border rounded w-full px-2 py-1 text-sm"
-                  />
-                </td>
+          {/* Imagem */}
+          <div>
+            <label className="block text-sm font-medium text-gray-700">
+              URL da Imagem
+            </label>
+            <input
+              type="text"
+              value={form.imagem}
+              onChange={(e) => setForm({ ...form, imagem: e.target.value })}
+              className="w-full border rounded-md px-3 py-2 mt-1"
+              placeholder="https://exemplo.com/imagem.jpg"
+            />
+          </div>
 
-                <td className="p-2 text-center">
-                  <input
-                    type="number"
-                    value={p.preco_venda || 0}
-                    onChange={(e) =>
-                      atualizarCampo(
-                        p.id,
-                        "preco_venda",
-                        parseFloat(e.target.value)
-                      )
-                    }
-                    className="border rounded w-20 px-2 py-1 text-center"
-                  />
-                </td>
+          {/* Botão de salvar */}
+          <div className="col-span-full flex justify-end mt-3">
+            <button
+              type="submit"
+              className="bg-blue-700 hover:bg-blue-800 text-white px-5 py-2 rounded-md font-semibold shadow-sm"
+            >
+              Salvar Produto
+            </button>
+          </div>
+        </form>
 
-                <td className="p-2 text-center">
-                  <input
-                    type="number"
-                    value={p.estoque || 0}
-                    onChange={(e) =>
-                      atualizarCampo(p.id, "estoque", parseInt(e.target.value))
-                    }
-                    className="border rounded w-16 px-2 py-1 text-center"
-                  />
-                </td>
+        {/* 📦 Lista de Produtos */}
+        <h2 className="text-lg font-semibold mb-3 text-gray-700">
+          Produtos Cadastrados
+        </h2>
 
-                <td className="p-2 text-center">
-                  <input
-                    type="checkbox"
-                    checked={p.disponivel}
-                    onChange={(e) =>
-                      atualizarCampo(p.id, "disponivel", e.target.checked)
-                    }
-                  />
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        {carregando ? (
+          <p className="text-center text-gray-500">Carregando...</p>
+        ) : produtos.length === 0 ? (
+          <p className="text-center text-gray-400">Nenhum produto cadastrado.</p>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="min-w-full border border-gray-200 text-sm">
+              <thead className="bg-gray-100 text-gray-700">
+                <tr>
+                  <th className="border p-2">Nome</th>
+                  <th className="border p-2">Preço</th>
+                  <th className="border p-2">Categoria</th>
+                  <th className="border p-2">Código</th>
+                  <th className="border p-2">Estoque</th>
+                </tr>
+              </thead>
+              <tbody>
+                {produtos.map((p) => (
+                  <tr key={p.id} className="hover:bg-gray-50">
+                    <td className="border p-2">{p.nome}</td>
+                    <td className="border p-2">R$ {p.preco_venda?.toFixed(2)}</td>
+                    <td className="border p-2">{p.categoria}</td>
+                    <td className="border p-2 text-center text-gray-600">
+                      {p.codigo_barras || "—"}
+                    </td>
+                    <td className="border p-2 text-center">{p.estoque}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
     </main>
   );
