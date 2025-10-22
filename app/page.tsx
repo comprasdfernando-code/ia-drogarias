@@ -265,7 +265,7 @@ export default function HomePage() {
     { src: "/banners/ecommerce.png", alt: "E-commerce", link: "/drogarias/drogariaredefabiano" },
     { src: "/banners/cadastro-farmaceutico.png", alt: "Cadastro Farmacêuticos", link: "/cadastro-farmaceutico" },
     { src: "/banners/herbamed.png", alt: "Produtos Naturais", link: "/produtos" },
-    { src: "/banners/fraldas pom pom.png", alt: "Fraldas Pom Pom", link: "/promocoes" },
+    { src: "/banners/fraldas pom pom.png", alt: "Fraldas Pom Pom", link: "/categoria/promocoes" },
   ];
 
   // Produtos a exibir (20 + ver mais)
