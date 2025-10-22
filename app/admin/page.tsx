@@ -119,36 +119,28 @@ export default function AdminPage() {
     }
   }
 
-  async function uploadImagem(e: React.ChangeEvent<HTMLInputElement>) {
+async function uploadImagem(e) {
+  const file = e.target.files[0];
+  if (!file) return;
+
+  setUploading(true);
+
   try {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    setUploading(true);
-
-    // Nome único pra evitar conflito
     const fileName = `${Date.now()}-${file.name}`;
-
-    // Upload no bucket "produtos"
     const { data, error } = await supabase.storage
       .from("produtos")
       .upload(fileName, file);
 
     if (error) throw error;
 
-    // Buscar URL pública correta
     const { data: publicUrlData } = supabase.storage
       .from("produtos")
       .getPublicUrl(fileName);
 
-    if (!publicUrlData?.publicUrl) {
-      alert("Erro ao gerar URL da imagem.");
-      return;
+    if (publicUrlData?.publicUrl) {
+      setForm({ ...form, imagem: publicUrlData.publicUrl });
+      alert("✅ Imagem enviada com sucesso!");
     }
-
-    // Atualiza o form
-    setForm({ ...form, imagem: publicUrlData.publicUrl });
-    alert("✅ Imagem enviada com sucesso!");
   } catch (error) {
     console.error(error);
     alert("❌ Erro ao enviar imagem!");
