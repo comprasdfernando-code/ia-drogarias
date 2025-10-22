@@ -1,231 +1,395 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState, useEffect } from "react";
 import { createClient } from "@supabase/supabase-js";
 
-// 🔌 Conexão com o Supabase
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
+type Produto = {
+  id?: string;
+  nome: string;
+  descricao?: string;
+  preco_venda: number;
+  categoria: string;
+  codigo_barras?: string;
+  imagem?: string;
+  estoque: number;
+};
+
 export default function AdminPage() {
-  const [produtos, setProdutos] = useState<any[]>([]);
-  const [carregando, setCarregando] = useState(false);
-  const [form, setForm] = useState({
+  const [produtos, setProdutos] = useState<Produto[]>([]);
+  const [busca, setBusca] = useState("");
+  const [categoriaFiltro, setCategoriaFiltro] = useState("");
+  const [categorias, setCategorias] = useState<string[]>([]);
+  const [editando, setEditando] = useState<Produto | null>(null);
+  const [pagina, setPagina] = useState(1);
+  const [totalPaginas, setTotalPaginas] = useState(1);
+  const [uploading, setUploading] = useState(false);
+
+  const [form, setForm] = useState<Produto>({
     nome: "",
-    preco_venda: "",
+    descricao: "",
+    preco_venda: 0,
     categoria: "",
     codigo_barras: "",
     imagem: "",
-    estoque: "",
+    estoque: 0,
   });
 
-  // 🔄 Carrega produtos existentes
-  async function carregarProdutos() {
-    setCarregando(true);
-    const { data, error } = await supabase
-      .from("produtos")
-      .select("*")
-      .order("nome", { ascending: true });
-    if (!error && data) setProdutos(data);
-    setCarregando(false);
-  }
+  const ITENS_POR_PAGINA = 10;
 
   useEffect(() => {
-    carregarProdutos();
+    carregarCategorias();
   }, []);
 
-  // 💾 Cadastrar novo produto
-  async function salvarProduto(e: React.FormEvent) {
-    e.preventDefault();
+  useEffect(() => {
+    buscarProdutos();
+  }, [pagina, categoriaFiltro]);
+
+  async function carregarCategorias() {
+    const { data, error } = await supabase
+      .from("produtos")
+      .select("categoria")
+      .not("categoria", "is", null);
+
+    if (!error && data) {
+      const unicas = Array.from(new Set(data.map((p) => p.categoria))).sort();
+      setCategorias(unicas);
+    }
+  }
+
+  async function buscarProdutos() {
+    const inicio = (pagina - 1) * ITENS_POR_PAGINA;
+    const fim = inicio + ITENS_POR_PAGINA - 1;
+
+    let query = supabase
+      .from("produtos")
+      .select("*", { count: "exact" })
+      .order("nome", { ascending: true })
+      .range(inicio, fim);
+
+    if (busca)
+      query = query.or(`nome.ilike.%${busca}%,codigo_barras.ilike.%${busca}%`);
+    if (categoriaFiltro) query = query.eq("categoria", categoriaFiltro);
+
+    const { data, error, count } = await query;
+
+    if (!error) {
+      setProdutos(data || []);
+      setTotalPaginas(Math.ceil((count || 1) / ITENS_POR_PAGINA));
+    } else console.error(error);
+  }
+
+  async function salvarProduto() {
     if (!form.nome || !form.preco_venda) {
-      alert("Preencha pelo menos o nome e o preço do produto!");
+      alert("Preencha nome e preço!");
       return;
     }
 
-    const { error } = await supabase.from("produtos").insert([
-      {
-        nome: form.nome.trim(),
-        preco_venda: parseFloat(form.preco_venda),
-        categoria: form.categoria.trim(),
-        codigo_barras: form.codigo_barras.trim(),
-        imagem: form.imagem.trim(),
-        estoque: parseInt(form.estoque) || 0,
-        loja: "drogariaredefabiano",
-        disponivel: true,
-      },
-    ]);
+    const payload = { ...form };
 
-    if (error) {
-      console.error("Erro ao salvar produto:", error);
-      alert("Erro ao salvar produto!");
+    if (editando) {
+      const { error } = await supabase
+        .from("produtos")
+        .update(payload)
+        .eq("id", editando.id);
+      if (!error) {
+        alert("Produto atualizado!");
+        limparFormulario();
+        buscarProdutos();
+      }
     } else {
-      alert("Produto salvo com sucesso!");
-      setForm({
-        nome: "",
-        preco_venda: "",
-        categoria: "",
-        codigo_barras: "",
-        imagem: "",
-        estoque: "",
-      });
-      carregarProdutos();
+      const { error } = await supabase.from("produtos").insert([payload]);
+      if (!error) {
+        alert("Produto salvo!");
+        limparFormulario();
+        buscarProdutos();
+      }
     }
   }
 
+  async function excluirProduto(id: string) {
+    if (!confirm("Tem certeza que deseja excluir este produto?")) return;
+    const { error } = await supabase.from("produtos").delete().eq("id", id);
+    if (!error) {
+      alert("Produto excluído!");
+      buscarProdutos();
+    }
+  }
+
+  async function uploadImagem(e: React.ChangeEvent<HTMLInputElement>) {
+  try {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+
+    // Nome único pra evitar conflito
+    const fileName = `${Date.now()}-${file.name}`;
+
+    // Upload no bucket "produtos"
+    const { data, error } = await supabase.storage
+      .from("produtos")
+      .upload(fileName, file);
+
+    if (error) throw error;
+
+    // Buscar URL pública correta
+    const { data: publicUrlData } = supabase.storage
+      .from("produtos")
+      .getPublicUrl(fileName);
+
+    if (!publicUrlData?.publicUrl) {
+      alert("Erro ao gerar URL da imagem.");
+      return;
+    }
+
+    // Atualiza o form
+    setForm({ ...form, imagem: publicUrlData.publicUrl });
+    alert("✅ Imagem enviada com sucesso!");
+  } catch (error) {
+    console.error(error);
+    alert("❌ Erro ao enviar imagem!");
+  } finally {
+    setUploading(false);
+  }
+}
+
+  function editarProduto(produto: Produto) {
+    setEditando(produto);
+    setForm(produto);
+  }
+
+  function limparFormulario() {
+    setEditando(null);
+    setForm({
+      nome: "",
+      descricao: "",
+      preco_venda: 0,
+      categoria: "",
+      codigo_barras: "",
+      imagem: "",
+      estoque: 0,
+    });
+  }
+
+  function exportarCSV() {
+    const csvHeader = "Nome,Descrição,Preço,Categoria,EAN,Estoque\n";
+    const csvBody = produtos
+      .map(
+        (p) =>
+          `${p.nome},${p.descricao || ""},${p.preco_venda},${p.categoria},${
+            p.codigo_barras || ""
+          },${p.estoque}`
+      )
+      .join("\n");
+
+    const blob = new Blob([csvHeader + csvBody], {
+      type: "text/csv;charset=utf-8;",
+    });
+    const link = document.createElement("a");
+    link.href = URL.createObjectURL(blob);
+    link.download = "produtos_IA_Drogarias.csv";
+    link.click();
+  }
+
   return (
-    <main className="min-h-screen bg-gray-100 py-10 px-4">
-      <div className="max-w-4xl mx-auto bg-white shadow-md rounded-lg p-6">
-        <h1 className="text-2xl font-bold text-blue-700 mb-6 text-center">
-          🧾 Administração de Produtos — Drogaria Rede Fabiano
-        </h1>
+    <main className="max-w-6xl mx-auto px-6 py-10">
+      <h1 className="text-2xl font-bold text-blue-700 mb-6">
+        Painel Administrativo
+      </h1>
 
-        {/* 🧩 Formulário de Cadastro */}
-        <form
-          onSubmit={salvarProduto}
-          className="grid grid-cols-1 sm:grid-cols-2 gap-4 border-b pb-6 mb-6"
+      {/* FORMULÁRIO */}
+      <div className="grid grid-cols-2 gap-4 mb-6">
+        <input
+          type="text"
+          placeholder="Nome do Produto"
+          value={form.nome}
+          onChange={(e) => setForm({ ...form, nome: e.target.value })}
+          className="border p-2 rounded"
+        />
+
+        <input
+          type="number"
+          placeholder="Preço de Venda"
+          value={form.preco_venda}
+          onChange={(e) =>
+            setForm({ ...form, preco_venda: parseFloat(e.target.value) })
+          }
+          className="border p-2 rounded"
+        />
+
+        <input
+          type="text"
+          placeholder="Categoria"
+          value={form.categoria}
+          onChange={(e) => setForm({ ...form, categoria: e.target.value })}
+          className="border p-2 rounded"
+        />
+
+        <input
+          type="text"
+          placeholder="Código de Barras (EAN)"
+          value={form.codigo_barras}
+          onChange={(e) => setForm({ ...form, codigo_barras: e.target.value })}
+          className="border p-2 rounded"
+        />
+
+        <input
+          type="number"
+          placeholder="Estoque"
+          value={form.estoque}
+          onChange={(e) =>
+            setForm({ ...form, estoque: parseInt(e.target.value) })
+          }
+          className="border p-2 rounded"
+        />
+
+        {/* Upload de Imagem */}
+        <div className="flex flex-col gap-2">
+          <input
+            type="file"
+            accept="image/*"
+            onChange={uploadImagem}
+            disabled={uploading}
+            className="border p-2 rounded"
+          />
+          {uploading && <p className="text-sm text-gray-500">Enviando...</p>}
+          {form.imagem && (
+            <img
+              src={form.imagem}
+              alt="Pré-visualização"
+              className="w-24 h-24 object-cover rounded"
+            />
+          )}
+        </div>
+
+        {/* Descrição */}
+        <textarea
+          placeholder="Descrição do produto"
+          value={form.descricao}
+          onChange={(e) => setForm({ ...form, descricao: e.target.value })}
+          className="border p-2 rounded col-span-2 h-24"
+        />
+      </div>
+
+      {/* BOTÕES */}
+      <div className="flex gap-4 mb-8">
+        <button
+          onClick={salvarProduto}
+          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
         >
-          {/* Nome */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700">
-              Nome do Produto
-            </label>
-            <input
-              type="text"
-              value={form.nome}
-              onChange={(e) => setForm({ ...form, nome: e.target.value })}
-              className="w-full border rounded-md px-3 py-2 mt-1"
-              placeholder="Ex: Dipirona Sódica 500mg"
-            />
-          </div>
-
-          {/* Preço */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700">
-              Preço de Venda
-            </label>
-            <input
-              type="number"
-              value={form.preco_venda}
-              onChange={(e) => setForm({ ...form, preco_venda: e.target.value })}
-              className="w-full border rounded-md px-3 py-2 mt-1"
-              placeholder="Ex: 12.90"
-              step="0.01"
-            />
-          </div>
-
-          {/* Categoria */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700">
-              Categoria
-            </label>
-            <input
-              type="text"
-              value={form.categoria}
-              onChange={(e) => setForm({ ...form, categoria: e.target.value })}
-              className="w-full border rounded-md px-3 py-2 mt-1"
-              placeholder="Ex: Genéricos"
-            />
-          </div>
-
-          {/* Código de Barras */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700">
-              Código de Barras (EAN)
-            </label>
-            <input
-              type="text"
-              value={form.codigo_barras}
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  codigo_barras: e.target.value.replace(/\D/g, "").slice(0, 14),
-                })
-              }
-              className="w-full border rounded-md px-3 py-2 mt-1"
-              placeholder="Ex: 7891234567890"
-            />
-            <p className="text-xs text-gray-500 mt-1">
-              Digite ou use o leitor de código de barras.
-            </p>
-          </div>
-
-          {/* Estoque */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700">
-              Estoque
-            </label>
-            <input
-              type="number"
-              value={form.estoque}
-              onChange={(e) => setForm({ ...form, estoque: e.target.value })}
-              className="w-full border rounded-md px-3 py-2 mt-1"
-              placeholder="Ex: 50"
-            />
-          </div>
-
-          {/* Imagem */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700">
-              URL da Imagem
-            </label>
-            <input
-              type="text"
-              value={form.imagem}
-              onChange={(e) => setForm({ ...form, imagem: e.target.value })}
-              className="w-full border rounded-md px-3 py-2 mt-1"
-              placeholder="https://exemplo.com/imagem.jpg"
-            />
-          </div>
-
-          {/* Botão de salvar */}
-          <div className="col-span-full flex justify-end mt-3">
-            <button
-              type="submit"
-              className="bg-blue-700 hover:bg-blue-800 text-white px-5 py-2 rounded-md font-semibold shadow-sm"
-            >
-              Salvar Produto
-            </button>
-          </div>
-        </form>
-
-        {/* 📦 Lista de Produtos */}
-        <h2 className="text-lg font-semibold mb-3 text-gray-700">
-          Produtos Cadastrados
-        </h2>
-
-        {carregando ? (
-          <p className="text-center text-gray-500">Carregando...</p>
-        ) : produtos.length === 0 ? (
-          <p className="text-center text-gray-400">Nenhum produto cadastrado.</p>
-        ) : (
-          <div className="overflow-x-auto">
-            <table className="min-w-full border border-gray-200 text-sm">
-              <thead className="bg-gray-100 text-gray-700">
-                <tr>
-                  <th className="border p-2">Nome</th>
-                  <th className="border p-2">Preço</th>
-                  <th className="border p-2">Categoria</th>
-                  <th className="border p-2">Código</th>
-                  <th className="border p-2">Estoque</th>
-                </tr>
-              </thead>
-              <tbody>
-                {produtos.map((p) => (
-                  <tr key={p.id} className="hover:bg-gray-50">
-                    <td className="border p-2">{p.nome}</td>
-                    <td className="border p-2">R$ {p.preco_venda?.toFixed(2)}</td>
-                    <td className="border p-2">{p.categoria}</td>
-                    <td className="border p-2 text-center text-gray-600">
-                      {p.codigo_barras || "—"}
-                    </td>
-                    <td className="border p-2 text-center">{p.estoque}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          {editando ? "Atualizar Produto" : "Salvar Produto"}
+        </button>
+        {editando && (
+          <button
+            onClick={limparFormulario}
+            className="bg-gray-400 text-white px-4 py-2 rounded hover:bg-gray-500"
+          >
+            Cancelar
+          </button>
         )}
+        <button
+          onClick={exportarCSV}
+          className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
+        >
+          📊 Exportar CSV
+        </button>
+      </div>
+
+      {/* FILTROS */}
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+        <input
+          type="text"
+          placeholder="Buscar por nome ou código de barras"
+          value={busca}
+          onChange={(e) => setBusca(e.target.value)}
+          className="border p-2 rounded flex-grow"
+        />
+        <select
+          value={categoriaFiltro}
+          onChange={(e) => {
+            setCategoriaFiltro(e.target.value);
+            setPagina(1);
+          }}
+          className="border p-2 rounded"
+        >
+          <option value="">Todas as categorias</option>
+          {categorias.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </select>
+        <button
+          onClick={() => {
+            setPagina(1);
+            buscarProdutos();
+          }}
+          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
+        >
+          Buscar
+        </button>
+      </div>
+
+      {/* TABELA */}
+      <table className="w-full border-collapse border border-gray-300 text-sm">
+        <thead>
+          <tr className="bg-gray-100">
+            <th className="border p-2">Nome</th>
+            <th className="border p-2">Categoria</th>
+            <th className="border p-2">Preço</th>
+            <th className="border p-2">Estoque</th>
+            <th className="border p-2">Ações</th>
+          </tr>
+        </thead>
+        <tbody>
+          {produtos.map((p) => (
+            <tr key={p.id}>
+              <td className="border p-2">{p.nome}</td>
+              <td className="border p-2">{p.categoria}</td>
+              <td className="border p-2">R$ {p.preco_venda.toFixed(2)}</td>
+              <td className="border p-2">{p.estoque}</td>
+              <td className="border p-2 text-center">
+                <button
+                  onClick={() => editarProduto(p)}
+                  className="bg-yellow-500 text-white px-2 py-1 rounded mr-2 hover:bg-yellow-600"
+                >
+                  Editar
+                </button>
+                <button
+                  onClick={() => excluirProduto(p.id!)}
+                  className="bg-red-600 text-white px-2 py-1 rounded hover:bg-red-700"
+                >
+                  Excluir
+                </button>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
+      {/* PAGINAÇÃO */}
+      <div className="flex justify-between items-center mt-4">
+        <button
+          onClick={() => setPagina(Math.max(1, pagina - 1))}
+          disabled={pagina === 1}
+          className="bg-gray-300 px-3 py-1 rounded disabled:opacity-50"
+        >
+          ⬅ Anterior
+        </button>
+        <span>
+          Página {pagina} de {totalPaginas}
+        </span>
+        <button
+          onClick={() => setPagina(Math.min(totalPaginas, pagina + 1))}
+          disabled={pagina === totalPaginas}
+          className="bg-gray-300 px-3 py-1 rounded disabled:opacity-50"
+        >
+          Próximo ➡
+        </button>
       </div>
     </main>
   );
