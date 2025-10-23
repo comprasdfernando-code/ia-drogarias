@@ -12,8 +12,10 @@ export default function PDVPage() {
   const [venda, setVenda] = useState<any[]>([]);
   const [total, setTotal] = useState(0);
   const [showPagamento, setShowPagamento] = useState(false);
+  const [resultados, setResultados] = useState<any[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
 
+  // 🔍 Buscar produto ao pressionar Enter
   async function buscarProduto(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key !== "Enter" || !busca.trim()) return;
 
@@ -21,7 +23,7 @@ export default function PDVPage() {
       .from("produtos")
       .select("*")
       .or(`nome.ilike.%${busca}%,codigo_barras.ilike.%${busca}%`)
-      .limit(1);
+      .limit(10);
 
     if (error) {
       alert("Erro ao buscar produto!");
@@ -30,15 +32,13 @@ export default function PDVPage() {
     }
 
     if (data && data.length > 0) {
-      const produto = data[0];
-      adicionarProduto(produto);
-      setBusca("");
-      if (inputRef.current) inputRef.current.focus();
+      setResultados(data); // Mostra lista pra escolher
     } else {
       alert("Produto não encontrado!");
     }
   }
 
+  // ➕ Adicionar produto à venda
   function adicionarProduto(produto: any) {
     const existente = venda.find((p) => p.id === produto.id);
     let novaVenda;
@@ -56,8 +56,12 @@ export default function PDVPage() {
 
     setVenda(novaVenda);
     calcularTotal(novaVenda);
+    setResultados([]);
+    setBusca("");
+    if (inputRef.current) inputRef.current.focus();
   }
 
+  // 🧮 Calcular total da venda
   function calcularTotal(lista: any[]) {
     const soma = lista.reduce(
       (acc, p) => acc + p.qtd * (p.preco_venda - p.preco_venda * (p.desconto / 100)),
@@ -66,6 +70,7 @@ export default function PDVPage() {
     setTotal(soma);
   }
 
+  // 🧾 Alterar quantidade
   function alterarQtd(id: any, delta: number) {
     const novaVenda = venda
       .map((p) =>
@@ -76,6 +81,7 @@ export default function PDVPage() {
     calcularTotal(novaVenda);
   }
 
+  // 💸 Alterar desconto
   function alterarDesconto(id: any, valor: number) {
     const novaVenda = venda.map((p) =>
       p.id === id
@@ -91,7 +97,7 @@ export default function PDVPage() {
     setTotal(0);
   }
 
-  // --- Fechamento da venda ---
+  // 💰 Fechamento da venda
   const [pagamento, setPagamento] = useState({
     dinheiro: "",
     cartao: "",
@@ -101,7 +107,11 @@ export default function PDVPage() {
   function calcularTroco(valor: string) {
     const recebido = parseFloat(valor || "0");
     const troco = recebido - total;
-    setPagamento((prev) => ({ ...prev, dinheiro: valor, troco: troco > 0 ? troco.toFixed(2) : "0.00" }));
+    setPagamento((prev) => ({
+      ...prev,
+      dinheiro: valor,
+      troco: troco > 0 ? troco.toFixed(2) : "0.00",
+    }));
   }
 
   function finalizarVenda() {
@@ -110,6 +120,7 @@ export default function PDVPage() {
     setShowPagamento(false);
   }
 
+  // --- INTERFACE ---
   return (
     <main className="max-w-6xl mx-auto p-6">
       <h1 className="text-2xl font-bold text-blue-700 mb-4">
@@ -126,6 +137,29 @@ export default function PDVPage() {
         className="w-full border p-2 rounded-md mb-4 text-lg focus:outline-blue-600"
       />
 
+      {/* LISTA DE PRODUTOS ENCONTRADOS */}
+      {resultados.length > 0 && (
+        <div className="border rounded bg-white shadow p-2 mb-3">
+          {resultados.map((p, idx) => (
+            <div
+              key={p.id}
+              tabIndex={idx}
+              onClick={() => adicionarProduto(p)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") adicionarProduto(p);
+              }}
+              className="cursor-pointer hover:bg-blue-100 p-2"
+            >
+              {p.nome}{" "}
+              <span className="text-green-700 font-semibold">
+                R$ {p.preco_venda?.toFixed(2)}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* TABELA DE VENDA */}
       <div className="overflow-x-auto">
         <table className="w-full border-collapse border text-sm">
           <thead className="bg-blue-50 border-b text-gray-700 text-sm">
@@ -141,7 +175,12 @@ export default function PDVPage() {
           </thead>
           <tbody>
             {venda.map((p, idx) => (
-              <tr key={`p.id} id={produto-${idx}`} tabIndex={0} className="text-center border-b hover:bg-blue-50">
+              <tr
+                key={p.id}
+                id={`produto-${idx}`}
+                tabIndex={0}
+                className="text-center border-b hover:bg-blue-50"
+              >
                 <td className="border p-2 truncate">{p.id.slice(0, 6)}...</td>
                 <td className="border p-2 text-left">{p.nome}</td>
                 <td className="border p-2">
@@ -149,10 +188,14 @@ export default function PDVPage() {
                     type="number"
                     value={p.qtd}
                     min="1"
-                    onChange={(e) => alterarQtd(p.id, Number(e.target.value) - p.qtd)}
+                    onChange={(e) =>
+                      alterarQtd(p.id, Number(e.target.value) - p.qtd)
+                    }
                     onKeyDown={(e) => {
                       if (e.key === "Enter") {
-                        const next = document.querySelector(`#desconto-${idx}`) as HTMLElement;
+                        const next = document.querySelector(
+                          `#desconto-${idx}`
+                        ) as HTMLElement;
                         next?.focus();
                       }
                     }}
@@ -166,22 +209,35 @@ export default function PDVPage() {
                     min="0"
                     max="100"
                     value={p.desconto}
-                    onChange={(e) => alterarDesconto(p.id, Number(e.target.value))}
+                    onChange={(e) =>
+                      alterarDesconto(p.id, Number(e.target.value))
+                    }
                     onKeyDown={(e) => {
                       if (e.key === "Enter") {
-                        const next = document.querySelector(`#produto-${idx + 1}`) as HTMLElement;
+                        const next = document.querySelector(
+                          `#produto-${idx + 1}`
+                        ) as HTMLElement;
                         next?.focus();
                       }
                     }}
                     className="w-16 border rounded text-center focus:outline-blue-500"
                   />
                 </td>
-                <td className="border p-2">R$ {p.preco_venda?.toFixed(2) || "0.00"}</td>
                 <td className="border p-2">
-                  R$ {(p.preco_venda - p.preco_venda * (p.desconto / 100)).toFixed(2)}
+                  R$ {p.preco_venda?.toFixed(2) || "0.00"}
+                </td>
+                <td className="border p-2">
+                  R${" "}
+                  {(
+                    p.preco_venda - p.preco_venda * (p.desconto / 100)
+                  ).toFixed(2)}
                 </td>
                 <td className="border p-2 font-bold text-green-700">
-                  R$ {(p.qtd * (p.preco_venda - p.preco_venda * (p.desconto / 100))).toFixed(2)}
+                  R${" "}
+                  {(
+                    p.qtd *
+                    (p.preco_venda - p.preco_venda * (p.desconto / 100))
+                  ).toFixed(2)}
                 </td>
               </tr>
             ))}
@@ -189,6 +245,7 @@ export default function PDVPage() {
         </table>
       </div>
 
+      {/* TOTAL */}
       {venda.length > 0 && (
         <div className="flex justify-between items-center mt-4 border-t pt-4">
           <div className="text-gray-600 text-sm">
@@ -200,6 +257,7 @@ export default function PDVPage() {
         </div>
       )}
 
+      {/* BOTÕES */}
       {venda.length > 0 && (
         <div className="flex justify-end gap-3 mt-6">
           <button
