@@ -20,24 +20,6 @@ export default function PDVPage() {
   const inputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
-  // 🔐 Verifica login
-  useEffect(() => {
-    const nome = localStorage.getItem("atendente_nome");
-    const id = localStorage.getItem("atendente_id");
-    if (!nome) {
-      router.push("/drogarias/drogariaredefabiano/pdv/login");
-    } else {
-      setAtendente(nome);
-      setAtendenteId(id);
-    }
-  }, [router]);
-
-  // 🚪 Logout
-  function sair() {
-    localStorage.removeItem("atendente_nome");
-    localStorage.removeItem("atendente_id");
-    router.push("/drogarias/drogariaredefabiano/pdv/login");
-  }
 
   // 🔍 Buscar produto
   async function buscarProduto(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -181,7 +163,7 @@ export default function PDVPage() {
               👨‍⚕️ Atendente: <strong>{atendente}</strong>
             </span>
             <button
-              onClick={sair}
+              
               className="text-red-600 border border-red-600 px-3 py-1 rounded hover:bg-red-600 hover:text-white transition"
             >
               Trocar Usuário
