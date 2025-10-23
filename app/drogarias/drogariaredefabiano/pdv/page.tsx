@@ -203,26 +203,24 @@ export default function PDVPage() {
                   />
                 </td>
                 <td className="border p-2">
-                  <input
-                    id={`desconto-${idx}`}
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={p.desconto}
-                    onChange={(e) =>
-                      alterarDesconto(p.id, Number(e.target.value))
-                    }
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        const next = document.querySelector(
-                          `#produto-${idx + 1}`
-                        ) as HTMLElement;
-                        next?.focus();
-                      }
-                    }}
-                    className="w-16 border rounded text-center focus:outline-blue-500"
-                  />
-                </td>
+  <input
+    id={`desconto-${idx}`}
+    type="number"
+    min="0"
+    max="100"
+    value={p.desconto}
+    onChange={(e) => alterarDesconto(p.id, Number(e.target.value))}
+    onKeyDown={(e) => {
+      if (e.key === "Enter") {
+        const next = document.querySelector(
+          `#produto-${idx + 1}`
+        ) as HTMLElement;
+        next?.focus();
+      }
+    }}
+    className="w-16 border rounded text-center focus:outline-blue-500"
+  />
+</td>
                 <td className="border p-2">
                   R$ {p.preco_venda?.toFixed(2) || "0.00"}
                 </td>
