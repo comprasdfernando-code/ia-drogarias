@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
+import React from "react";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -25,6 +26,8 @@ export default function LoginPDV() {
       .ilike("usuario", usuario.trim()) // ignora maiúsculas/minúsculas
       .eq("senha", senha.trim()) // compara senha exata
       .maybeSingle(); // evita erro se não encontrar
+      console.log("Dados retornados:", data);
+      console.log("Erro Supabase:", error);
 
     if (error || !data) {
       setErro("Usuário ou senha incorretos!");
