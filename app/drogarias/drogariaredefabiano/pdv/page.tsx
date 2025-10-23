@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { createClient } from "@supabase/supabase-js";
+import { useRouter } from "next/navigation";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -13,9 +14,31 @@ export default function PDVPage() {
   const [total, setTotal] = useState(0);
   const [showPagamento, setShowPagamento] = useState(false);
   const [resultados, setResultados] = useState<any[]>([]);
+  const [atendente, setAtendente] = useState<string | null>(null);
+  const [atendenteId, setAtendenteId] = useState<string | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const router = useRouter();
 
-  // 🔍 Buscar produto ao pressionar Enter
+  // 🔐 Verifica login
+  useEffect(() => {
+    const nome = localStorage.getItem("atendente_nome");
+    const id = localStorage.getItem("atendente_id");
+    if (!nome) {
+      router.push("/drogarias/drogariaredefabiano/pdv/login");
+    } else {
+      setAtendente(nome);
+      setAtendenteId(id);
+    }
+  }, [router]);
+
+  // 🚪 Logout
+  function sair() {
+    localStorage.removeItem("atendente_nome");
+    localStorage.removeItem("atendente_id");
+    router.push("/drogarias/drogariaredefabiano/pdv/login");
+  }
+
+  // 🔍 Buscar produto
   async function buscarProduto(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key !== "Enter" || !busca.trim()) return;
 
@@ -32,13 +55,12 @@ export default function PDVPage() {
     }
 
     if (data && data.length > 0) {
-      setResultados(data); // Mostra lista pra escolher
+      setResultados(data);
     } else {
       alert("Produto não encontrado!");
     }
   }
 
-  // ➕ Adicionar produto à venda
   function adicionarProduto(produto: any) {
     const existente = venda.find((p) => p.id === produto.id);
     let novaVenda;
@@ -58,10 +80,9 @@ export default function PDVPage() {
     calcularTotal(novaVenda);
     setResultados([]);
     setBusca("");
-    if (inputRef.current) inputRef.current.focus();
+    inputRef.current?.focus();
   }
 
-  // 🧮 Calcular total da venda
   function calcularTotal(lista: any[]) {
     const soma = lista.reduce(
       (acc, p) => acc + p.qtd * (p.preco_venda - p.preco_venda * (p.desconto / 100)),
@@ -70,7 +91,6 @@ export default function PDVPage() {
     setTotal(soma);
   }
 
-  // 🧾 Alterar quantidade
   function alterarQtd(id: any, delta: number) {
     const novaVenda = venda
       .map((p) =>
@@ -81,7 +101,6 @@ export default function PDVPage() {
     calcularTotal(novaVenda);
   }
 
-  // 💸 Alterar desconto
   function alterarDesconto(id: any, valor: number) {
     const novaVenda = venda.map((p) =>
       p.id === id
@@ -97,7 +116,6 @@ export default function PDVPage() {
     setTotal(0);
   }
 
-  // 💰 Fechamento da venda
   const [pagamento, setPagamento] = useState({
     dinheiro: "",
     cartao: "",
@@ -114,8 +132,36 @@ export default function PDVPage() {
     }));
   }
 
+  // 💾 Registrar venda na Supabase
+  async function registrarVenda() {
+    try {
+      const { error } = await supabase.from("vendas").insert([
+        {
+          atendente_id: atendenteId,
+          atendente_nome: atendente,
+          origem: "Drogaria Rede Fabiano",
+          produtos: venda,
+          total: total,
+          dinheiro: parseFloat(pagamento.dinheiro || "0"),
+          cartao: parseFloat(pagamento.cartao || "0"),
+          troco: parseFloat(pagamento.troco || "0"),
+        },
+      ]);
+
+      if (error) {
+        console.error(error);
+        alert("Erro ao registrar venda!");
+      } else {
+        alert("✅ Venda registrada com sucesso!");
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Erro inesperado ao salvar venda!");
+    }
+  }
+
   function finalizarVenda() {
-    alert("💰 Venda finalizada com sucesso!");
+    registrarVenda();
     limparVenda();
     setShowPagamento(false);
   }
@@ -123,10 +169,27 @@ export default function PDVPage() {
   // --- INTERFACE ---
   return (
     <main className="max-w-6xl mx-auto p-6">
-      <h1 className="text-2xl font-bold text-blue-700 mb-4">
-        💻 PDV — Drogaria Rede Fabiano
-      </h1>
+      {/* Cabeçalho */}
+      <div className="flex justify-between items-center mb-4">
+        <h1 className="text-2xl font-bold text-blue-700">
+          💻 PDV — Drogaria Rede Fabiano
+        </h1>
+        {atendente && (
+          <div className="flex items-center gap-3">
+            <span className="text-sm text-gray-700">
+              👨‍⚕️ Atendente: <strong>{atendente}</strong>
+            </span>
+            <button
+              onClick={sair}
+              className="text-red-600 border border-red-600 px-3 py-1 rounded hover:bg-red-600 hover:text-white transition"
+            >
+              Trocar Usuário
+            </button>
+          </div>
+        )}
+      </div>
 
+      {/* Campo de busca */}
       <input
         ref={inputRef}
         type="text"
@@ -137,7 +200,7 @@ export default function PDVPage() {
         className="w-full border p-2 rounded-md mb-4 text-lg focus:outline-blue-600"
       />
 
-      {/* LISTA DE PRODUTOS ENCONTRADOS */}
+      {/* Lista de resultados */}
       {resultados.length > 0 && (
         <div className="border rounded bg-white shadow p-2 mb-3">
           {resultados.map((p, idx) => (
@@ -145,9 +208,7 @@ export default function PDVPage() {
               key={p.id}
               tabIndex={idx}
               onClick={() => adicionarProduto(p)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") adicionarProduto(p);
-              }}
+              onKeyDown={(e) => e.key === "Enter" && adicionarProduto(p)}
               className="cursor-pointer hover:bg-blue-100 p-2"
             >
               {p.nome}{" "}
@@ -159,7 +220,7 @@ export default function PDVPage() {
         </div>
       )}
 
-      {/* TABELA DE VENDA */}
+      {/* Tabela */}
       <div className="overflow-x-auto">
         <table className="w-full border-collapse border text-sm">
           <thead className="bg-blue-50 border-b text-gray-700 text-sm">
@@ -191,36 +252,20 @@ export default function PDVPage() {
                     onChange={(e) =>
                       alterarQtd(p.id, Number(e.target.value) - p.qtd)
                     }
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        const next = document.querySelector(
-                          `#desconto-${idx}`
-                        ) as HTMLElement;
-                        next?.focus();
-                      }
-                    }}
                     className="w-16 border rounded text-center focus:outline-blue-500"
                   />
                 </td>
                 <td className="border p-2">
-  <input
-    id={`desconto-${idx}`}
-    type="number"
-    min="0"
-    max="100"
-    value={p.desconto}
-    onChange={(e) => alterarDesconto(p.id, Number(e.target.value))}
-    onKeyDown={(e) => {
-      if (e.key === "Enter") {
-        const next = document.querySelector(
-          `#produto-${idx + 1}`
-        ) as HTMLElement;
-        next?.focus();
-      }
-    }}
-    className="w-16 border rounded text-center focus:outline-blue-500"
-  />
-</td>
+                  <input
+                    id={`desconto-${idx}`}
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={p.desconto}
+                    onChange={(e) => alterarDesconto(p.id, Number(e.target.value))}
+                    className="w-16 border rounded text-center focus:outline-blue-500"
+                  />
+                </td>
                 <td className="border p-2">
                   R$ {p.preco_venda?.toFixed(2) || "0.00"}
                 </td>
@@ -243,37 +288,36 @@ export default function PDVPage() {
         </table>
       </div>
 
-      {/* TOTAL */}
+      {/* Total e botões */}
       {venda.length > 0 && (
-        <div className="flex justify-between items-center mt-4 border-t pt-4">
-          <div className="text-gray-600 text-sm">
-            Total de itens: {venda.reduce((acc, p) => acc + p.qtd, 0)}
+        <>
+          <div className="flex justify-between items-center mt-4 border-t pt-4">
+            <div className="text-gray-600 text-sm">
+              Total de itens: {venda.reduce((acc, p) => acc + p.qtd, 0)}
+            </div>
+            <div className="text-2xl font-bold text-blue-700">
+              Total: R$ {total.toFixed(2)}
+            </div>
           </div>
-          <div className="text-2xl font-bold text-blue-700">
-            Total: R$ {total.toFixed(2)}
+
+          <div className="flex justify-end gap-3 mt-6">
+            <button
+              onClick={limparVenda}
+              className="bg-red-600 text-white px-5 py-2 rounded-md"
+            >
+              Cancelar
+            </button>
+            <button
+              onClick={() => setShowPagamento(true)}
+              className="bg-green-600 text-white px-5 py-2 rounded-md"
+            >
+              Finalizar Venda (F7)
+            </button>
           </div>
-        </div>
+        </>
       )}
 
-      {/* BOTÕES */}
-      {venda.length > 0 && (
-        <div className="flex justify-end gap-3 mt-6">
-          <button
-            onClick={limparVenda}
-            className="bg-red-600 text-white px-5 py-2 rounded-md"
-          >
-            Cancelar
-          </button>
-          <button
-            onClick={() => setShowPagamento(true)}
-            className="bg-green-600 text-white px-5 py-2 rounded-md"
-          >
-            Finalizar Venda (F7)
-          </button>
-        </div>
-      )}
-
-      {/* MODAL DE PAGAMENTO */}
+      {/* Modal Pagamento */}
       {showPagamento && (
         <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-50 z-50">
           <div className="bg-white rounded-md p-6 w-[400px] shadow-lg">
