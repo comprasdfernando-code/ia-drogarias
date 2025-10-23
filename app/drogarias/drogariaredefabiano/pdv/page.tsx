@@ -122,6 +122,64 @@ export default function PDVPage() {
     setShowPagamento(false);
   }
 
+  // 🖨️ Função para imprimir cupom
+  function imprimirCupom() {
+    const novaJanela = window.open("", "_blank");
+    if (!novaJanela) return;
+
+    const data = new Date();
+    const hora = data.toLocaleTimeString("pt-BR");
+    const dia = data.toLocaleDateString("pt-BR");
+
+    novaJanela.document.write(`
+      <html>
+        <head>
+          <title>Cupom de Venda</title>
+          <style>
+            body { font-family: Arial, sans-serif; font-size: 13px; padding: 10px; color: #222; }
+            h2 { text-align: center; margin-bottom: 5px; color: #0b5394; }
+            .linha { border-bottom: 1px dashed #000; margin: 5px 0; }
+            .total { font-size: 18px; font-weight: bold; text-align: right; margin-top: 10px; }
+            table { width: 100%; border-collapse: collapse; margin-top: 5px; }
+            th, td { text-align: left; padding: 3px 0; }
+            .center { text-align: center; }
+            small { font-size: 11px; color: #555; }
+            img.logo { display: block; margin: 0 auto 5px auto; width: 80px; }
+          </style>
+        </head>
+        <body>
+          <img src="https://iadrogarias.com.br/logo-ia.png" alt="IA Drogarias" class="logo"/>
+          <h2>Drogaria Rede Fabiano</h2>
+          <div class="linha"></div>
+          <small>Data: ${dia} — ${hora}</small><br/>
+          <div class="linha"></div>
+          <table>
+            <tr><th>Produto</th><th>Qtd</th><th>Preço</th></tr>
+            ${venda
+              .map(
+                (p) =>
+                  `<tr><td>${p.nome}</td><td>${p.qtd}</td><td>R$ ${(
+                    p.preco_venda || 0
+                  ).toFixed(2)}</td></tr>`
+              )
+              .join("")}
+          </table>
+          <div class="linha"></div>
+          <div class="total">Total: R$ ${total.toFixed(2)}</div>
+          <div class="linha"></div>
+          <p class="center">Pagamento: <b>${pagamento.forma || "Não informado"}</b></p>
+          <p class="center">Tipo de Venda: <b>${pagamento.tipo || "Balcão"}</b></p>
+          <p class="center"><small>CNPJ: 62.157.257/0001-09</small></p>
+          <p class="center">💙 Obrigado pela preferência! 💙</p>
+          <script>
+            window.print();
+            setTimeout(() => window.close(), 800);
+          </script>
+        </body>
+      </html>
+    `);
+  }
+
   // --- INTERFACE ---
   return (
     <main className="max-w-6xl mx-auto p-6">
@@ -283,7 +341,7 @@ export default function PDVPage() {
               🧾 Finalizar Venda
             </h2>
 
-            {/* Tipo da venda */}
+            {/* Tipo de Venda */}
             <div className="mb-4">
               <label className="block font-semibold mb-2 text-gray-700">
                 Tipo de Venda:
@@ -305,7 +363,7 @@ export default function PDVPage() {
               </div>
             </div>
 
-            {/* Dados cliente se entrega */}
+            {/* Dados do cliente se for entrega */}
             {pagamento.tipo === "Entrega" && (
               <div className="space-y-3 mb-4">
                 <input
@@ -344,7 +402,7 @@ export default function PDVPage() {
               </div>
             )}
 
-            {/* Formas de pagamento */}
+            {/* Forma de Pagamento */}
             <div className="mb-4">
               <label className="block font-semibold mb-2 text-gray-700">
                 Forma de Pagamento:
@@ -410,13 +468,12 @@ export default function PDVPage() {
             {/* Botões finais */}
             <div className="flex flex-col gap-2 mt-6">
               <button
-                onClick={() => alert("🖨️ Imprimindo Cupom...")}
+                onClick={imprimirCupom}
                 className="bg-blue-600 text-white py-2 rounded-md font-semibold hover:bg-blue-700 transition"
               >
                 🖨️ Imprimir Cupom
               </button>
 
-              {/* 📲 ENVIO AUTOMÁTICO PARA WHATSAPP */}
               <button
                 onClick={() => {
                   const mensagem = encodeURIComponent(`
