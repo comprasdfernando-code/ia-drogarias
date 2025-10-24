@@ -136,16 +136,64 @@ export default function PDVPage() {
         <head>
           <title>Cupom de Venda</title>
           <style>
-            body { font-family: Arial, sans-serif; font-size: 13px; padding: 10px; color: #222; }
-            h2 { text-align: center; margin-bottom: 5px; color: #0b5394; }
-            .linha { border-bottom: 1px dashed #000; margin: 5px 0; }
-            .total { font-size: 18px; font-weight: bold; text-align: right; margin-top: 10px; }
-            table { width: 100%; border-collapse: collapse; margin-top: 5px; }
-            th, td { text-align: left; padding: 3px 0; }
-            .center { text-align: center; }
-            small { font-size: 11px; color: #555; }
-            img.logo { display: block; margin: 0 auto 5px auto; width: 80px; }
-          </style>
+  @page {
+    size: 80mm auto;
+    margin: 5mm;
+  }
+
+  body {
+    width: 80mm;
+    font-family: "Courier New", monospace;
+    font-size: 12px;
+    margin: 0;
+    padding: 5px;
+  }
+
+  h2 {
+    text-align: center;
+    font-size: 14px;
+    margin: 2px 0;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 5px;
+  }
+
+  th, td {
+    font-size: 11px;
+    text-align: left;
+    padding: 2px 0;
+  }
+
+  .linha {
+    border-bottom: 1px dashed #000;
+    margin: 4px 0;
+  }
+
+  .total {
+    font-size: 14px;
+    font-weight: bold;
+    text-align: right;
+    margin-top: 5px;
+  }
+
+  .center {
+    text-align: center;
+  }
+
+  small {
+    font-size: 10px;
+    color: #555;
+  }
+
+  img.logo {
+    display: block;
+    margin: 0 auto 5px auto;
+    width: 60px;
+  }
+</style>
         </head>
         <body>
           <img src="https://iadrogarias.com.br/logo-ia.png" alt="IA Drogarias" class="logo"/>
