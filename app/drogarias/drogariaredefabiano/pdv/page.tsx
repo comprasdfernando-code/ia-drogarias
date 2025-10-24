@@ -124,109 +124,130 @@ export default function PDVPage() {
 
   // 🖨️ Função para imprimir cupom
   function imprimirCupom() {
-    const novaJanela = window.open("", "_blank");
-    if (!novaJanela) return;
+  const novaJanela = window.open("", "_blank");
+  if (!novaJanela) return;
 
-    const data = new Date();
-    const hora = data.toLocaleTimeString("pt-BR");
-    const dia = data.toLocaleDateString("pt-BR");
+  const data = new Date();
+  const hora = data.toLocaleTimeString("pt-BR");
+  const dia = data.toLocaleDateString("pt-BR");
 
-    novaJanela.document.write(`
-      <html>
-        <head>
-          <title>Cupom de Venda</title>
-          <style>
-  @page {
-    size: 80mm auto;
-    margin: 5mm;
-  }
+  novaJanela.document.write(`
+    <html>
+      <head>
+        <title>Cupom de Venda</title>
+        <style>
+          body {
+            font-family: "Arial", sans-serif;
+            font-size: 13px;
+            padding: 8px;
+            color: #111;
+            width: 240px;
+          }
+          h2 {
+            text-align: center;
+            margin: 4px 0;
+            color: #0b5394;
+            font-weight: bold;
+          }
+          h3 {
+            text-align: center;
+            font-size: 11px;
+            color: #555;
+            margin-top: 2px;
+          }
+          .linha {
+            border-bottom: 1px dashed #000;
+            margin: 6px 0;
+          }
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 5px;
+          }
+          th, td {
+            padding: 3px 0;
+            text-align: left;
+          }
+          th {
+            font-weight: bold;
+            border-bottom: 1px solid #555;
+          }
+          .right { text-align: right; }
+          .center { text-align: center; }
+          .total {
+            font-size: 16px;
+            font-weight: bold;
+            text-align: right;
+            color: #0b5394;
+            margin-top: 10px;
+          }
+          small {
+            display: block;
+            text-align: center;
+            color: #555;
+            margin-top: 5px;
+          }
+          img.logo {
+            display: block;
+            margin: 0 auto 5px auto;
+            width: 70px;
+          }
+          @media print {
+            body {
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+              transform: scale(1.15);
+              transform-origin: top left;
+            }
+          }
+        </style>
+      </head>
+      <body>
+        <img src="https://iadrogarias.com.br/logo-ia.png" alt="IA Drogarias" class="logo"/>
+        <h2>Drogaria Rede Fabiano</h2>
+        <h3>💙 IA Drogarias – Saúde com Inteligência</h3>
 
-  body {
-    width: 80mm;
-    font-family: "Courier New", monospace;
-    font-size: 12px;
-    margin: 0;
-    padding: 5px;
-  }
+        <div class="linha"></div>
+        <small>Data: ${dia} - ${hora}</small>
+        <div class="linha"></div>
 
-  h2 {
-    text-align: center;
-    font-size: 14px;
-    margin: 2px 0;
-  }
+        <table>
+          <tr><th>Produto</th><th class="center">Qtd</th><th class="right">Preço</th></tr>
+          ${venda
+            .map(
+              (p) => `
+              <tr>
+                <td>${p.nome}</td>
+                <td class="center">${p.qtd}</td>
+                <td class="right">R$ ${(p.preco_venda || 0).toFixed(2)}</td>
+              </tr>`
+            )
+            .join("")}
+        </table>
 
-  table {
-    width: 100%;
-    border-collapse: collapse;
-    margin-top: 5px;
-  }
+        <div class="linha"></div>
+        <p class="total">Total: R$ ${total.toFixed(2)}</p>
+        <div class="linha"></div>
 
-  th, td {
-    font-size: 11px;
-    text-align: left;
-    padding: 2px 0;
-  }
+        <p>Pagamento: <strong>${pagamento.forma || "Não informado"}</strong></p>
+        <p>Tipo de Venda: <strong>${pagamento.tipo}</strong></p>
+        ${
+          pagamento.tipo === "Entrega"
+            ? `<p>Cliente: <strong>${pagamento.nome || "Não informado"}</strong><br>
+               Endereço: <strong>${pagamento.endereco || "Sem endereço"}</strong></p>`
+            : ""
+        }
+        <p>CNPJ: 62.157.257/0001-09</p>
 
-  .linha {
-    border-bottom: 1px dashed #000;
-    margin: 4px 0;
-  }
+        <div class="linha"></div>
+        <small>💙 Obrigado pela preferência! 💙</small>
+      </body>
+    </html>
+  `);
 
-  .total {
-    font-size: 14px;
-    font-weight: bold;
-    text-align: right;
-    margin-top: 5px;
-  }
-
-  .center {
-    text-align: center;
-  }
-
-  small {
-    font-size: 10px;
-    color: #555;
-  }
-
-  img.logo {
-    display: block;
-    margin: 0 auto 5px auto;
-    width: 60px;
-  }
-</style>
-        </head>
-        <body>
-          <img src="https://iadrogarias.com.br/logo-ia.png" alt="IA Drogarias" class="logo"/>
-          <h2>Drogaria Rede Fabiano</h2>
-          <div class="linha"></div>
-          <small>Data: ${dia} — ${hora}</small><br/>
-          <div class="linha"></div>
-          <table>
-            <tr><th>Produto</th><th>Qtd</th><th>Preço</th></tr>
-            ${venda
-              .map(
-                (p) =>
-                  `<tr><td>${p.nome}</td><td>${p.qtd}</td><td>R$ ${(
-                    p.preco_venda || 0
-                  ).toFixed(2)}</td></tr>`
-              )
-              .join("")}
-          </table>
-          <div class="linha"></div>
-          <div class="total">Total: R$ ${total.toFixed(2)}</div>
-          <div class="linha"></div>
-          <p class="center">Pagamento: <b>${pagamento.forma || "Não informado"}</b></p>
-          <p class="center">Tipo de Venda: <b>${pagamento.tipo || "Balcão"}</b></p>
-          <p class="center"><small>CNPJ: 62.157.257/0001-09</small></p>
-          <p class="center">💙 Obrigado pela preferência! 💙</p>
-          <script>
-            window.print();
-            setTimeout(() => window.close(), 800);
-          </script>
-        </body>
-      </html>
-    `);
-  }
+  novaJanela.document.close();
+  novaJanela.print();
+}
 
   // --- INTERFACE ---
   return (
