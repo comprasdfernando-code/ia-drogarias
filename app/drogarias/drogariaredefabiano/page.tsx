@@ -5,6 +5,7 @@ import { createClient } from "@supabase/supabase-js";
 import Image from "next/image";
 import ModalFinalizar from "../../../components/ModalFinalizar";
 import { useSearchParams } from "next/navigation";
+import Link from "next/link"
 
 // 🔌 Supabase
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -255,6 +256,12 @@ useEffect(() => {
     alt="Drogaria Rede Fabiano"
     className="w-full h-36 sm:h-48 md:h-56 object-cover shadow-md"
   />
+  <Link
+  href="/drogarias/drogariaredefabiano/pdv"
+  className="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2 rounded-md shadow-md"
+>
+  💻 Acessar PDV
+</Link>
 </section>
         <div className="max-w-6xl mx-auto px-4 py-3">
           <div className="flex items-center gap-3">
