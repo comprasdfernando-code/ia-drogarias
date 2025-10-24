@@ -251,10 +251,12 @@ export default function PDVPage() {
 
   // --- INTERFACE ---
   return (
-    <main className="max-w-6xl mx-auto p-6">
-      <h1 className="text-2xl font-bold text-blue-700 mb-4">
-        💻 PDV — Drogaria Rede Fabiano
-      </h1>
+    <main className="max-w-6xl mx-auto p-4 sm:p-6">
+  <div className="flex flex-col sm:flex-row justify-between items-center gap-3">
+    <h1 className="text-2xl sm:text-3xl font-bold text-blue-700">
+      💻 PDV — Drogaria Rede Fabiano
+    </h1>
+  </div>
 
       <input
         ref={inputRef}
@@ -291,6 +293,26 @@ export default function PDVPage() {
       {/* Tabela da venda */}
       <div className="overflow-x-auto">
         <table className="w-full border-collapse border text-sm">
+        {/* Versão simplificada para celular */}
+<div className="sm:hidden space-y-3 mt-4">
+  {venda.map((p) => (
+    <div
+      key={p.id}
+      className="border rounded-md p-3 bg-white shadow-sm"
+    >
+      <div className="font-semibold text-gray-800">{p.nome}</div>
+      <div className="text-sm text-gray-600 flex justify-between">
+        <span>Qtd: {p.qtd}</span>
+        <span>R$ {(p.qtd * (p.preco_venda - p.preco_venda * (p.desconto / 100))).toFixed(2)}</span>
+      </div>
+      {p.desconto > 0 && (
+        <div className="text-xs text-green-700 mt-1">
+          Desconto: {p.desconto}%
+        </div>
+      )}
+    </div>
+  ))}
+</div>
           <thead className="bg-blue-50 border-b text-gray-700 text-sm">
             <tr>
               <th className="border p-2 w-32">Código</th>
@@ -405,7 +427,7 @@ export default function PDVPage() {
       {/* === MODAL NOVO === */}
       {showPagamento && (
         <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-60 z-50">
-          <div className="bg-white rounded-xl shadow-2xl w-[420px] max-w-full p-6 animate-fadeIn">
+          <div className="bg-white rounded-xl shadow-2xl w-[95%] sm:w-[420px] max-w-full p-5 max-h-[90vh] overflow-y-auto animate-fadeIn">
             <h2 className="text-2xl font-bold text-blue-700 text-center mb-5">
               🧾 Finalizar Venda
             </h2>
