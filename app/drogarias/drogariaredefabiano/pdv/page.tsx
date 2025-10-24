@@ -122,91 +122,163 @@ export default function PDVPage() {
     setShowPagamento(false);
   }
 
-  // 🖨️ Impressão
+  // 🖨️ Função para imprimir cupom
   function imprimirCupom() {
-    const novaJanela = window.open("", "_blank");
-    if (!novaJanela) return;
+  const novaJanela = window.open("", "_blank");
+  if (!novaJanela) return;
 
-    const data = new Date();
-    const hora = data.toLocaleTimeString("pt-BR");
-    const dia = data.toLocaleDateString("pt-BR");
+  const data = new Date();
+  const hora = data.toLocaleTimeString("pt-BR");
+  const dia = data.toLocaleDateString("pt-BR");
 
-    novaJanela.document.write(`
-      <html>
+  novaJanela.document.write(`
+    <html>
       <head>
         <title>Cupom de Venda</title>
         <style>
-          body { font-family: Arial, sans-serif; font-size: 14px; padding: 8px; color: #111; }
-          h2 { text-align: center; margin-bottom: 4px; }
-          .linha { border-bottom: 1px dashed #333; margin: 5px 0; }
-          table { width: 100%; border-collapse: collapse; margin-top: 5px; }
-          th, td { text-align: left; padding: 3px; }
-          .total { font-size: 16px; font-weight: bold; text-align: right; margin-top: 5px; }
-          small { font-size: 11px; color: #444; display: block; text-align: center; margin-top: 5px; }
+          body {
+            font-family: "Arial", sans-serif;
+            font-size: 13px;
+            padding: 8px;
+            color: #111;
+            width: 240px;
+          }
+          h2 {
+            text-align: center;
+            margin: 4px 0;
+            color: #0b5394;
+            font-weight: bold;
+          }
+          h3 {
+            text-align: center;
+            font-size: 11px;
+            color: #555;
+            margin-top: 2px;
+          }
+          .linha {
+            border-bottom: 1px dashed #000;
+            margin: 6px 0;
+          }
+          table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 5px;
+          }
+          th, td {
+            padding: 3px 0;
+            text-align: left;
+          }
+          th {
+            font-weight: bold;
+            border-bottom: 1px solid #555;
+          }
+          .right { text-align: right; }
+          .center { text-align: center; }
+          .total {
+            font-size: 16px;
+            font-weight: bold;
+            text-align: right;
+            color: #0b5394;
+            margin-top: 10px;
+          }
+          small {
+            display: block;
+            text-align: center;
+            color: #555;
+            margin-top: 5px;
+          }
+          img.logo {
+            display: block;
+            margin: 0 auto 5px auto;
+            width: 70px;
+          }
+          @media print {
+            body {
+              -webkit-print-color-adjust: exact;
+              print-color-adjust: exact;
+              transform: scale(1.15);
+              transform-origin: top left;
+            }
+          }
         </style>
       </head>
       <body>
+        <img src="https://iadrogarias.com.br/logo-ia.png" alt="IA Drogarias" class="logo"/>
         <h2>Drogaria Rede Fabiano</h2>
+        <h3>💙 IA Drogarias – Saúde com Inteligência</h3>
+
         <div class="linha"></div>
         <small>Data: ${dia} - ${hora}</small>
         <div class="linha"></div>
+
         <table>
-          <tr><th>Produto</th><th>Qtd</th><th>Preço</th></tr>
-          ${venda.map(p => `
-            <tr>
-              <td>${p.nome}</td>
-              <td>${p.qtd}</td>
-              <td>R$ ${(p.qtd * p.preco_venda).toFixed(2)}</td>
-            </tr>
-          `).join("")}
+          <tr><th>Produto</th><th class="center">Qtd</th><th class="right">Preço</th></tr>
+          ${venda
+            .map(
+              (p) => `
+              <tr>
+                <td>${p.nome}</td>
+                <td class="center">${p.qtd}</td>
+                <td class="right">R$ ${(p.preco_venda || 0).toFixed(2)}</td>
+              </tr>`
+            )
+            .join("")}
         </table>
+
         <div class="linha"></div>
         <p class="total">Total: R$ ${total.toFixed(2)}</p>
         <div class="linha"></div>
-        <small>Pagamento: ${pagamento.forma || "Não informado"}</small>
-        <small>Tipo de Venda: ${pagamento.tipo}</small>
-        ${pagamento.tipo === "Entrega" ? <small>Endereço: ${pagamento.endereco || "Não informado"}</small> : ""}
-        <small>CNPJ: 62.157.257/0001-09</small>
-        <small>💙 Obrigado pela preferência!</small>
-      </body>
-      </html>
-    `);
 
-    novaJanela.document.close();
-    novaJanela.print();
-  }
+        <p>Pagamento: <strong>${pagamento.forma || "Não informado"}</strong></p>
+        <p>Tipo de Venda: <strong>${pagamento.tipo}</strong></p>
+        ${
+          pagamento.tipo === "Entrega"
+            ? `<p>Cliente: <strong>${pagamento.nome || "Não informado"}</strong><br>
+               Endereço: <strong>${pagamento.endereco || "Sem endereço"}</strong></p>`
+            : ""
+        }
+        <p>CNPJ: 62.157.257/0001-09</p>
+
+        <div class="linha"></div>
+        <small>💙 Obrigado pela preferência! 💙</small>
+      </body>
+    </html>
+  `);
+
+  novaJanela.document.close();
+  novaJanela.print();
+}
 
   // --- INTERFACE ---
   return (
     <main className="max-w-6xl mx-auto p-4 sm:p-6">
-      <h1 className="text-2xl sm:text-3xl font-bold text-blue-700 text-center mb-4">
-        💻 PDV — Drogaria Rede Fabiano
-      </h1>
+  <div className="flex flex-col sm:flex-row justify-between items-center gap-3">
+    <h1 className="text-2xl sm:text-3xl font-bold text-blue-700">
+      💻 PDV — Drogaria Rede Fabiano
+    </h1>
+  </div>
 
-      <div className="flex flex-col sm:flex-row gap-2 items-center mb-4">
-        <input
-          ref={inputRef}
-          type="text"
-          placeholder="Digite o nome ou código de barras..."
-          value={busca}
-          onChange={(e) => setBusca(e.target.value)}
-          onKeyDown={buscarProduto}
-          className="w-full border p-2 rounded-md text-lg focus:outline-blue-600"
-        />
-        <button
-          onClick={() => alert('Em breve: busca por clique')}
-          className="bg-blue-600 text-white px-4 py-2 rounded-md font-semibold"
-        >
-          🔍 Buscar
-        </button>
-      </div>
+      <input
+        ref={inputRef}
+        type="text"
+        placeholder="Digite o nome ou código de barras..."
+        value={busca}
+        onChange={(e) => setBusca(e.target.value)}
+        onKeyDown={buscarProduto}
+        className="w-full border p-2 rounded-md mb-4 text-lg focus:outline-blue-600"
+      />
 
+      {/* Lista de produtos encontrados */}
       {resultados.length > 0 && (
         <div className="border rounded bg-white shadow p-2 mb-3">
           {resultados.map((p, idx) => (
             <div
               key={p.id}
+              tabIndex={idx}
               onClick={() => adicionarProduto(p)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") adicionarProduto(p);
+              }}
               className="cursor-pointer hover:bg-blue-100 p-2"
             >
               {p.nome}{" "}
@@ -218,20 +290,48 @@ export default function PDVPage() {
         </div>
       )}
 
+      {/* Tabela da venda */}
       <div className="overflow-x-auto">
-        <table className="w-full border-collapse border text-xs sm:text-sm">
-          <thead className="bg-blue-50 border-b text-gray-700">
+        <table className="w-full border-collapse border text-sm">
+        {/* Versão simplificada para celular */}
+<div className="sm:hidden space-y-3 mt-4">
+  {venda.map((p) => (
+    <div
+      key={p.id}
+      className="border rounded-md p-3 bg-white shadow-sm"
+    >
+      <div className="font-semibold text-gray-800">{p.nome}</div>
+      <div className="text-sm text-gray-600 flex justify-between">
+        <span>Qtd: {p.qtd}</span>
+        <span>R$ {(p.qtd * (p.preco_venda - p.preco_venda * (p.desconto / 100))).toFixed(2)}</span>
+      </div>
+      {p.desconto > 0 && (
+        <div className="text-xs text-green-700 mt-1">
+          Desconto: {p.desconto}%
+        </div>
+      )}
+    </div>
+  ))}
+</div>
+          <thead className="bg-blue-50 border-b text-gray-700 text-sm">
             <tr>
-              <th className="border p-2">Código</th>
-              <th className="border p-2 text-left">Descrição</th>
-              <th className="border p-2">Qtde</th>
-              <th className="border p-2">% Desc</th>
-              <th className="border p-2">Pr. Total</th>
+              <th className="border p-2 w-32">Código</th>
+              <th className="border p-2 text-left w-[40%]">Descrição</th>
+              <th className="border p-2 w-16">Qtde</th>
+              <th className="border p-2 w-20">% Desc</th>
+              <th className="border p-2 w-20">Pr. Venda</th>
+              <th className="border p-2 w-20">Pr. Desc</th>
+              <th className="border p-2 w-20">Pr. Total</th>
             </tr>
           </thead>
           <tbody>
             {venda.map((p, idx) => (
-              <tr key={p.id} className="text-center border-b hover:bg-blue-50">
+              <tr
+                key={p.id}
+                id={`produto-${idx}`}
+                tabIndex={0}
+                className="text-center border-b hover:bg-blue-50"
+              >
                 <td className="border p-2 truncate">{p.id.slice(0, 6)}...</td>
                 <td className="border p-2 text-left">{p.nome}</td>
                 <td className="border p-2">
@@ -242,21 +342,51 @@ export default function PDVPage() {
                     onChange={(e) =>
                       alterarQtd(p.id, Number(e.target.value) - p.qtd)
                     }
-                    className="w-14 border rounded text-center focus:outline-blue-500"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        const next = document.querySelector(
+                          `#desconto-${idx}`
+                        ) as HTMLElement;
+                        next?.focus();
+                      }
+                    }}
+                    className="w-16 border rounded text-center focus:outline-blue-500"
                   />
                 </td>
                 <td className="border p-2">
                   <input
+                    id={`desconto-${idx}`}
                     type="number"
                     min="0"
                     max="100"
                     value={p.desconto}
                     onChange={(e) => alterarDesconto(p.id, Number(e.target.value))}
-                    className="w-14 border rounded text-center focus:outline-blue-500"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        const next = document.querySelector(
+                          `#produto-${idx + 1}`
+                        ) as HTMLElement;
+                        next?.focus();
+                      }
+                    }}
+                    className="w-16 border rounded text-center focus:outline-blue-500"
                   />
                 </td>
+                <td className="border p-2">
+                  R$ {p.preco_venda?.toFixed(2) || "0.00"}
+                </td>
+                <td className="border p-2">
+                  R${" "}
+                  {(
+                    p.preco_venda - p.preco_venda * (p.desconto / 100)
+                  ).toFixed(2)}
+                </td>
                 <td className="border p-2 font-bold text-green-700">
-                  R$ {(p.qtd * (p.preco_venda - p.preco_venda * (p.desconto / 100))).toFixed(2)}
+                  R${" "}
+                  {(
+                    p.qtd *
+                    (p.preco_venda - p.preco_venda * (p.desconto / 100))
+                  ).toFixed(2)}
                 </td>
               </tr>
             ))}
@@ -264,35 +394,37 @@ export default function PDVPage() {
         </table>
       </div>
 
+      {/* Total */}
       {venda.length > 0 && (
-        <>
-          <div className="flex justify-between items-center mt-4 border-t pt-4">
-            <div className="text-gray-600 text-sm">
-              Total de itens: {venda.reduce((acc, p) => acc + p.qtd, 0)}
-            </div>
-            <div className="text-2xl font-bold text-blue-700">
-              Total: R$ {total.toFixed(2)}
-            </div>
+        <div className="flex justify-between items-center mt-4 border-t pt-4">
+          <div className="text-gray-600 text-sm">
+            Total de itens: {venda.reduce((acc, p) => acc + p.qtd, 0)}
           </div>
-
-          <div className="flex justify-end gap-3 mt-6">
-            <button
-              onClick={limparVenda}
-              className="bg-red-600 text-white px-5 py-2 rounded-md"
-            >
-              Cancelar
-            </button>
-            <button
-              onClick={() => setShowPagamento(true)}
-              className="bg-green-600 text-white px-5 py-2 rounded-md"
-            >
-              Finalizar Venda (F7)
-            </button>
+          <div className="text-2xl font-bold text-blue-700">
+            Total: R$ {total.toFixed(2)}
           </div>
-        </>
+        </div>
       )}
 
-      {/* === MODAL DE PAGAMENTO === */}
+      {/* Botões */}
+      {venda.length > 0 && (
+        <div className="flex justify-end gap-3 mt-6">
+          <button
+            onClick={limparVenda}
+            className="bg-red-600 text-white px-5 py-2 rounded-md"
+          >
+            Cancelar
+          </button>
+          <button
+            onClick={() => setShowPagamento(true)}
+            className="bg-green-600 text-white px-5 py-2 rounded-md"
+          >
+            Finalizar Venda (F7)
+          </button>
+        </div>
+      )}
+
+      {/* === MODAL NOVO === */}
       {showPagamento && (
         <div className="fixed inset-0 flex items-center justify-center bg-black bg-opacity-60 z-50">
           <div className="bg-white rounded-xl shadow-2xl w-[95%] sm:w-[420px] max-w-full p-5 max-h-[90vh] overflow-y-auto animate-fadeIn">
@@ -300,8 +432,132 @@ export default function PDVPage() {
               🧾 Finalizar Venda
             </h2>
 
-            {/* Tipo, pagamento, e botões */}
-            <div className="flex flex-col gap-3">
+            {/* Tipo de Venda */}
+            <div className="mb-4">
+              <label className="block font-semibold mb-2 text-gray-700">
+                Tipo de Venda:
+              </label>
+              <div className="flex justify-between gap-2">
+                {["Balcão", "Entrega", "Externo"].map((tipo) => (
+                  <button
+                    key={tipo}
+                    onClick={() => setPagamento((prev: any) => ({ ...prev, tipo }))}
+                    className={`flex-1 py-2 rounded-md border ${
+                      pagamento.tipo === tipo
+                        ? "bg-blue-600 text-white border-blue-600"
+                        : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                    }`}
+                  >
+                    {tipo}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Dados do cliente se for entrega */}
+            {pagamento.tipo === "Entrega" && (
+              <div className="space-y-3 mb-4">
+                <input
+                  type="text"
+                  placeholder="Nome do Cliente"
+                  value={pagamento.nome || ""}
+                  onChange={(e) =>
+                    setPagamento((prev: any) => ({ ...prev, nome: e.target.value }))
+                  }
+                  className="w-full border rounded p-2 focus:outline-blue-500"
+                />
+                <input
+                  type="text"
+                  placeholder="Telefone"
+                  value={pagamento.telefone || ""}
+                  onChange={(e) =>
+                    setPagamento((prev: any) => ({
+                      ...prev,
+                      telefone: e.target.value,
+                    }))
+                  }
+                  className="w-full border rounded p-2 focus:outline-blue-500"
+                />
+                <input
+                  type="text"
+                  placeholder="Endereço de Entrega"
+                  value={pagamento.endereco || ""}
+                  onChange={(e) =>
+                    setPagamento((prev: any) => ({
+                      ...prev,
+                      endereco: e.target.value,
+                    }))
+                  }
+                  className="w-full border rounded p-2 focus:outline-blue-500"
+                />
+              </div>
+            )}
+
+            {/* Forma de Pagamento */}
+            <div className="mb-4">
+              <label className="block font-semibold mb-2 text-gray-700">
+                Forma de Pagamento:
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                {["Pix", "Cartão", "Dinheiro", "Misto"].map((tipo) => (
+                  <button
+                    key={tipo}
+                    onClick={() =>
+                      setPagamento((prev: any) => ({ ...prev, forma: tipo }))
+                    }
+                    className={`py-2 rounded-md border ${
+                      pagamento.forma === tipo
+                        ? "bg-green-600 text-white border-green-600"
+                        : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+                    }`}
+                  >
+                    {tipo}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* PIX */}
+            {pagamento.forma === "Pix" && (
+              <div className="bg-blue-50 border border-blue-200 rounded-md p-3 mb-4 text-center">
+                <p className="text-blue-700 font-semibold mb-1">
+                  💳 Pagamento via Pix
+                </p>
+                <p className="text-gray-700 text-sm">CNPJ: 62.157.257/0001-09</p>
+              </div>
+            )}
+
+            {/* Dinheiro */}
+            {pagamento.forma === "Dinheiro" && (
+              <div className="mb-4">
+                <label className="block text-sm mb-1 text-gray-600">
+                  Valor Recebido (R$)
+                </label>
+                <input
+                  type="number"
+                  value={pagamento.dinheiro}
+                  onChange={(e) => calcularTroco(e.target.value)}
+                  className="w-full border rounded p-2 text-right focus:outline-blue-500"
+                />
+                <p className="text-sm mt-2 text-gray-700">
+                  Troco:{" "}
+                  <span className="font-bold text-green-600">
+                    R$ {pagamento.troco}
+                  </span>
+                </p>
+              </div>
+            )}
+
+            {/* Total */}
+            <div className="border-t mt-4 pt-3 text-center">
+              <p className="text-gray-600">Total da Venda</p>
+              <p className="text-3xl font-bold text-blue-700">
+                R$ {total.toFixed(2)}
+              </p>
+            </div>
+
+            {/* Botões finais */}
+            <div className="flex flex-col gap-2 mt-6">
               <button
                 onClick={imprimirCupom}
                 className="bg-blue-600 text-white py-2 rounded-md font-semibold hover:bg-blue-700 transition"
@@ -309,6 +565,48 @@ export default function PDVPage() {
                 🖨️ Imprimir Cupom
               </button>
 
+              <button
+                onClick={() => {
+                  const mensagem = encodeURIComponent(`
+💊 Novo Pedido — Drogaria Rede Fabiano
+
+🧾 Tipo: ${pagamento.tipo || "Balcão"}
+👤 Cliente: ${pagamento.nome || "Não informado"}
+📞 Telefone: ${pagamento.telefone || "Não informado"}
+🏠 Endereço: ${pagamento.endereco || "Não informado"}
+
+📦 Produtos:
+${venda
+  .map(
+    (p) =>
+      `• ${p.nome} — ${p.qtd}x R$ ${p.preco_venda?.toFixed(
+        2
+      )} (${p.desconto}% desc)`
+  )
+  .join("\n")}
+
+💰 Total: R$ ${total.toFixed(2)}
+💳 Pagamento: ${pagamento.forma || "Não informado"}
+${pagamento.forma === "Pix" ? "🔢 CNPJ: 62.157.257/0001-09" : ""}
+                  `);
+
+                  const numero = "5511948343725"; // WhatsApp Drogaria Rede Fabiano
+                  window.open(
+                    `https://wa.me/${numero}?text=${mensagem}`,
+                    "_blank"
+                  );
+                }}
+                className="bg-green-600 text-white py-2 rounded-md font-semibold hover:bg-green-700 transition"
+              >
+                📲 Enviar WhatsApp da Loja
+              </button>
+
+              <button
+                onClick={finalizarVenda}
+                className="bg-blue-800 text-white py-2 rounded-md font-semibold hover:bg-blue-900 transition"
+              >
+                ✅ Confirmar Venda
+              </button>
               <button
                 onClick={() => setShowPagamento(false)}
                 className="bg-gray-400 text-white py-2 rounded-md hover:bg-gray-500"
