@@ -38,7 +38,7 @@ export default function CarrinhoPage() {
   };
 
   return (
-    <main className="max-w-4xl mx-auto px-6 py-10">
+    <main className="max-w-4xl mx-auto px-4 sm:px-6 py-10">
       <h1 className="text-3xl font-bold text-blue-700 text-center mb-8">
         🛒 Carrinho - Drogaria Rede Fabiano
       </h1>
@@ -46,19 +46,29 @@ export default function CarrinhoPage() {
       {carrinho.length === 0 ? (
         <div className="text-center text-gray-500">
           <p>Seu carrinho está vazio.</p>
+
           <Link
             href="/drogarias/drogariaredefabiano"
             className="inline-block mt-4 text-blue-600 underline font-semibold"
           >
             Voltar à loja
           </Link>
+
+          <button
+            onClick={() =>
+              (window.location.href = "/drogarias/drogariaredefabiano")
+            }
+            className="mt-6 w-full sm:w-auto bg-blue-600 text-white font-semibold py-3 px-6 rounded-md shadow hover:bg-blue-700 transition"
+          >
+            🛍️ Continuar Comprando
+          </button>
         </div>
       ) : (
         <div className="space-y-6">
           {carrinho.map((p) => (
             <div
               key={p.id}
-              className="flex items-center gap-4 bg-white rounded-lg shadow p-4"
+              className="flex flex-col sm:flex-row items-center gap-4 bg-white rounded-lg shadow p-4"
             >
               <Image
                 src={p.imagem || "/no-image.png"}
@@ -67,13 +77,14 @@ export default function CarrinhoPage() {
                 height={80}
                 className="rounded"
               />
-              <div className="flex-1">
+              <div className="flex-1 text-center sm:text-left">
                 <h2 className="font-semibold text-blue-800">{p.nome}</h2>
                 <p className="text-gray-500 text-sm">{p.categoria}</p>
                 <p className="text-green-600 font-bold">
                   R$ {Number(p.preco_venda).toFixed(2)}
                 </p>
               </div>
+
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => alterarQuantidade(p.id, -1)}
@@ -89,6 +100,7 @@ export default function CarrinhoPage() {
                   +
                 </button>
               </div>
+
               <button
                 onClick={() => removerItem(p.id)}
                 className="text-red-500 hover:text-red-700 text-sm font-medium"
@@ -100,16 +112,27 @@ export default function CarrinhoPage() {
 
           {/* 💰 Total */}
           <div className="text-right mt-8">
-            <p className="text-lg font-bold text-blue-800">
+            <p className="text-xl font-bold text-blue-800">
               Total: R$ {total.toFixed(2)}
             </p>
 
-            <button
-              className="mt-4 bg-green-600 hover:bg-green-700 text-white py-2 px-6 rounded-md font-medium transition"
-              onClick={() => alert("🧾 Em breve: integração com pedidos!")}
-            >
-              Finalizar Pedido
-            </button>
+            <div className="flex flex-col sm:flex-row justify-end gap-3 mt-6">
+              <Link
+                href="/drogarias/drogariaredefabiano"
+                className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-md shadow text-center transition"
+              >
+                🛍️ Continuar Comprando
+              </Link>
+
+              <button
+                className="bg-green-600 hover:bg-green-700 text-white font-semibold py-3 px-6 rounded-md shadow transition"
+                onClick={() =>
+                  alert("🧾 Em breve: integração com pedidos e WhatsApp!")
+                }
+              >
+                ✅ Finalizar Pedido
+              </button>
+            </div>
           </div>
         </div>
       )}
