@@ -250,18 +250,19 @@ useEffect(() => {
       {/*  Faixa superior */}
       <section className="w-full bg-blue-700 text-white">
         {/* 🩵 Banner principal */}
+        <Link
+  href="/drogarias/drogariaredefabiano/pdv"
+  className="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2 rounded-md shadow-md"
+>
+  💻 Acessar PDV
+</Link>
 <section className="relative w-full">
   <img
     src="/banners/banner-rede-fabiano-faixa.jpg"
     alt="Drogaria Rede Fabiano"
     className="w-full h-36 sm:h-48 md:h-56 object-cover shadow-md"
   />
-  <Link
-  href="/drogarias/drogariaredefabiano/pdv"
-  className="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2 rounded-md shadow-md"
->
-  💻 Acessar PDV
-</Link>
+  
 </section>
         <div className="max-w-6xl mx-auto px-4 py-3">
           <div className="flex items-center gap-3">
