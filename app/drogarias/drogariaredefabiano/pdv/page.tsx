@@ -413,7 +413,184 @@ export default function PDVPage() {
       <h2 className="text-2xl font-bold text-blue-700 text-center mb-5">
         🧾 Finalizar Venda
       </h2>
-      {/* ... mesmo bloco do modal anterior ... */}
+
+      {/* Tipo de Venda */}
+      <div className="mb-4">
+        <label className="block font-semibold mb-2 text-gray-700">
+          Tipo de Venda:
+        </label>
+        <div className="flex justify-between gap-2">
+          {["Balcão", "Entrega", "Externo"].map((tipo) => (
+            <button
+              key={tipo}
+              onClick={() => setPagamento((prev: any) => ({ ...prev, tipo }))}
+              className={`flex-1 py-2 rounded-md border ${
+                pagamento.tipo === tipo
+                  ? "bg-blue-600 text-white border-blue-600"
+                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+              }`}
+            >
+              {tipo}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Dados do cliente se for entrega */}
+      {pagamento.tipo === "Entrega" && (
+        <div className="space-y-3 mb-4">
+          <input
+            type="text"
+            placeholder="Nome do Cliente"
+            value={pagamento.nome || ""}
+            onChange={(e) =>
+              setPagamento((prev: any) => ({ ...prev, nome: e.target.value }))
+            }
+            className="w-full border rounded p-2 focus:outline-blue-500"
+          />
+          <input
+            type="text"
+            placeholder="Telefone"
+            value={pagamento.telefone || ""}
+            onChange={(e) =>
+              setPagamento((prev: any) => ({ ...prev, telefone: e.target.value }))
+            }
+            className="w-full border rounded p-2 focus:outline-blue-500"
+          />
+          <input
+            type="text"
+            placeholder="Endereço de Entrega"
+            value={pagamento.endereco || ""}
+            onChange={(e) =>
+              setPagamento((prev: any) => ({ ...prev, endereco: e.target.value }))
+            }
+            className="w-full border rounded p-2 focus:outline-blue-500"
+          />
+        </div>
+      )}
+
+      {/* Forma de Pagamento */}
+      <div className="mb-4">
+        <label className="block font-semibold mb-2 text-gray-700">
+          Forma de Pagamento:
+        </label>
+        <div className="grid grid-cols-2 gap-2">
+          {["Pix", "Cartão", "Dinheiro", "Misto"].map((tipo) => (
+            <button
+              key={tipo}
+              onClick={() =>
+                setPagamento((prev: any) => ({ ...prev, forma: tipo }))
+              }
+              className={`py-2 rounded-md border ${
+                pagamento.forma === tipo
+                  ? "bg-green-600 text-white border-green-600"
+                  : "bg-gray-100 text-gray-700 hover:bg-gray-200"
+              }`}
+            >
+              {tipo}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* PIX */}
+      {pagamento.forma === "Pix" && (
+        <div className="bg-blue-50 border border-blue-200 rounded-md p-3 mb-4 text-center">
+          <p className="text-blue-700 font-semibold mb-1">💳 Pagamento via Pix</p>
+          <p className="text-gray-700 text-sm">CNPJ: 62.157.257/0001-09</p>
+        </div>
+      )}
+
+      {/* Dinheiro */}
+      {pagamento.forma === "Dinheiro" && (
+        <div className="mb-4">
+          <label className="block text-sm mb-1 text-gray-600">
+            Valor Recebido (R$)
+          </label>
+          <input
+            type="number"
+            value={pagamento.dinheiro}
+            onChange={(e) => calcularTroco(e.target.value)}
+            className="w-full border rounded p-2 text-right focus:outline-blue-500"
+          />
+          <p className="text-sm mt-2 text-gray-700">
+            Troco: <span className="font-bold text-green-600">R$ {pagamento.troco}</span>
+          </p>
+        </div>
+      )}
+
+      {/* Total */}
+      <div className="border-t mt-4 pt-3 text-center">
+        <p className="text-gray-600">Total da Venda</p>
+        <p className="text-3xl font-bold text-blue-700">R$ {total.toFixed(2)}</p>
+      </div>
+
+      {/* Botões finais */}
+      <div className="flex flex-col gap-2 mt-6">
+        <button
+          onClick={() => {
+            const mensagem = encodeURIComponent(`
+💊 Novo Pedido — Drogaria Rede Fabiano
+
+🧾 Tipo: ${pagamento.tipo || "Balcão"}
+👤 Cliente: ${pagamento.nome || "Não informado"}
+📞 Telefone: ${pagamento.telefone || "Não informado"}
+🏠 Endereço: ${pagamento.endereco || "Não informado"}
+
+📦 Produtos:
+${venda
+  .map(
+    (p) =>
+      `• ${p.nome} — ${p.qtd}x R$ ${p.preco_venda?.toFixed(
+        2
+      )} (${p.desconto}% desc)`
+  )
+  .join("\n")}
+
+💰 Total: R$ ${total.toFixed(2)}
+💳 Pagamento: ${pagamento.forma || "Não informado"}
+${pagamento.forma === "Pix" ? "🔢 CNPJ: 62.157.257/0001-09" : ""}
+            `);
+            const numero = "5511948343725";
+            window.open(`https://wa.me/${numero}?text=${mensagem}, "_blank"`);
+          }}
+          className="bg-green-600 text-white py-2 rounded-md font-semibold hover:bg-green-700 transition"
+        >
+          📲 Enviar WhatsApp da Loja
+        </button>
+
+        <button
+          onClick={() => {
+            imprimirCupom();
+          }}
+          className="bg-blue-600 text-white py-2 rounded-md font-semibold hover:bg-blue-700 transition"
+        >
+          🖨️ Imprimir Cupom
+        </button>
+
+        <button
+          onClick={finalizarVenda}
+          className="bg-blue-800 text-white py-2 rounded-md font-semibold hover:bg-blue-900 transition"
+        >
+          ✅ Confirmar Venda
+        </button>
+
+        <button
+          onClick={() => setShowPagamento(false)}
+          className="bg-gray-400 text-white py-2 rounded-md hover:bg-gray-500"
+        >
+          ↩️ Voltar
+        </button>
+      </div>
+
+      {/* X Fechar no canto */}
+      <button
+        onClick={() => setShowPagamento(false)}
+        className="absolute top-2 right-3 text-xl text-gray-400 hover:text-gray-600"
+        aria-label="Fechar"
+      >
+        ×
+      </button>
     </div>
   </div>
 )}
