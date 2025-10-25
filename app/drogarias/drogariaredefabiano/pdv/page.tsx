@@ -50,7 +50,12 @@ export default function PDVPage() {
     } else {
       novaVenda = [
         ...venda,
-        { ...produto, qtd: 1, desconto: 0, preco_desc: produto.preco_venda || 0 },
+        {
+          ...produto,
+          qtd: 1,
+          desconto: 0,
+          preco_desc: produto.preco_venda || 0,
+        },
       ];
     }
 
@@ -122,95 +127,6 @@ export default function PDVPage() {
     setShowPagamento(false);
   }
 
-  // 🖨️ Função para imprimir cupom
-  function imprimirCupom() {
-    const novaJanela = window.open("", "_blank");
-    if (!novaJanela) return;
-
-    const data = new Date();
-    const hora = data.toLocaleTimeString("pt-BR");
-    const dia = data.toLocaleDateString("pt-BR");
-
-    novaJanela.document.write(`
-      <html>
-        <head>
-          <title>Cupom de Venda</title>
-          <style>
-            body {
-              font-family: "Arial", sans-serif;
-              font-size: 13px;
-              padding: 8px;
-              color: #111;
-              width: 240px;
-            }
-            h2 { text-align: center; margin: 4px 0; color: #0b5394; font-weight: bold; }
-            h3 { text-align: center; font-size: 11px; color: #555; margin-top: 2px; }
-            .linha { border-bottom: 1px dashed #000; margin: 6px 0; }
-            table { width: 100%; border-collapse: collapse; margin-top: 5px; }
-            th, td { padding: 3px 0; text-align: left; }
-            th { font-weight: bold; border-bottom: 1px solid #555; }
-            .right { text-align: right; }
-            .center { text-align: center; }
-            .total { font-size: 16px; font-weight: bold; text-align: right; color: #0b5394; margin-top: 10px; }
-            small { display: block; text-align: center; color: #555; margin-top: 5px; }
-            img.logo { display: block; margin: 0 auto 5px auto; width: 70px; }
-            @media print {
-              body {
-                -webkit-print-color-adjust: exact;
-                print-color-adjust: exact;
-                transform: scale(1.15);
-                transform-origin: top left;
-              }
-            }
-          </style>
-        </head>
-        <body>
-          <img src="https://iadrogarias.com.br/logo-ia.png" alt="IA Drogarias" class="logo"/>
-          <h2>Drogaria Rede Fabiano</h2>
-          <h3>💙 IA Drogarias – Saúde com Inteligência</h3>
-
-          <div class="linha"></div>
-          <small>Data: ${dia} - ${hora}</small>
-          <div class="linha"></div>
-
-          <table>
-            <tr><th>Produto</th><th class="center">Qtd</th><th class="right">Preço</th></tr>
-            ${venda
-              .map(
-                (p) => `
-                <tr>
-                  <td>${p.nome}</td>
-                  <td class="center">${p.qtd}</td>
-                  <td class="right">R$ ${(p.preco_venda || 0).toFixed(2)}</td>
-                </tr>`
-              )
-              .join("")}
-          </table>
-
-          <div class="linha"></div>
-          <p class="total">Total: R$ ${total.toFixed(2)}</p>
-          <div class="linha"></div>
-
-          <p>Pagamento: <strong>${pagamento.forma || "Não informado"}</strong></p>
-          <p>Tipo de Venda: <strong>${pagamento.tipo}</strong></p>
-          ${
-            pagamento.tipo === "Entrega"
-              ? `<p>Cliente: <strong>${pagamento.nome || "Não informado"}</strong><br>
-                 Endereço: <strong>${pagamento.endereco || "Sem endereço"}</strong></p>`
-              : ""
-          }
-          <p>CNPJ: 62.157.257/0001-09</p>
-
-          <div class="linha"></div>
-          <small>💙 Obrigado pela preferência! 💙</small>
-        </body>
-      </html>
-    `);
-
-    novaJanela.document.close();
-    novaJanela.print();
-  }
-
   // --- INTERFACE ---
   return (
     <main className="max-w-6xl mx-auto p-4 sm:p-6">
@@ -230,39 +146,53 @@ export default function PDVPage() {
         className="w-full border p-2 rounded-md mb-4 text-lg focus:outline-blue-600"
       />
 
-      {/* Lista de produtos encontrados */}
+      {/* 🔍 Resultados da busca (modo loja visual) */}
       {resultados.length > 0 && (
-        <div className="border rounded bg-white shadow p-2 mb-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-4">
           {resultados.map((p, idx) => (
             <div
               key={p.id}
-              tabIndex={idx}
-              onClick={() => adicionarProduto(p)}
-              onKeyDown={(e) => e.key === "Enter" && adicionarProduto(p)}
-              className="cursor-pointer hover:bg-blue-100 p-2"
+              className="border rounded-lg bg-white shadow-sm hover:shadow-md transition cursor-pointer p-3 flex flex-col"
             >
-              {p.nome}{" "}
-              <span className="text-green-700 font-semibold">
-                R$ {p.preco_venda?.toFixed(2)}
-              </span>
+              <img
+                src={p.imagem || "/no-image.png"}
+                alt={p.nome}
+                className="w-full h-28 object-contain mb-2"
+              />
+              <div className="flex-1">
+                <p className="font-semibold text-gray-800">{p.nome}</p>
+                <p className="text-sm text-gray-500">
+                  Estoque:{" "}
+                  <span className="font-semibold text-green-700">
+                    {p.estoque || 0}
+                  </span>
+                </p>
+                <p className="text-blue-700 font-bold text-lg">
+                  R$ {Number(p.preco_venda || 0).toFixed(2)}
+                </p>
+              </div>
+              <button
+                onClick={() => adicionarProduto(p)}
+                className="mt-2 bg-blue-600 text-white py-1 rounded-md hover:bg-blue-700"
+              >
+                ➕ Adicionar
+              </button>
             </div>
           ))}
         </div>
       )}
 
-      {/* 📦 Tabela com preço de custo e estoque adicionados */}
+      {/* 🧾 Tabela da venda */}
       <div className="overflow-x-auto">
         <table className="w-full border-collapse border text-sm">
           <thead className="bg-blue-50 border-b text-gray-700 text-sm">
             <tr>
               <th className="border p-2 w-32">Código</th>
-              <th className="border p-2 text-left w-[30%]">Descrição</th>
+              <th className="border p-2 text-left w-[40%]">Descrição</th>
               <th className="border p-2 w-16">Qtde</th>
               <th className="border p-2 w-20">% Desc</th>
-              <th className="border p-2 w-20">💰 Pr. Custo</th>
               <th className="border p-2 w-20">Pr. Venda</th>
               <th className="border p-2 w-20">Pr. Desc</th>
-              <th className="border p-2 w-20">📦 Estoque</th>
               <th className="border p-2 w-20">Pr. Total</th>
             </tr>
           </thead>
@@ -276,40 +206,17 @@ export default function PDVPage() {
               >
                 <td className="border p-2 truncate">{p.id.slice(0, 6)}...</td>
                 <td className="border p-2 text-left">{p.nome}</td>
-                <td className="border p-2">
-                  <input
-                    type="number"
-                    value={p.qtd}
-                    min="1"
-                    onChange={(e) =>
-                      alterarQtd(p.id, Number(e.target.value) - p.qtd)
-                    }
-                    className="w-16 border rounded text-center focus:outline-blue-500"
-                  />
-                </td>
-                <td className="border p-2">
-                  <input
-                    id={`desconto-${idx}`}
-                    type="number"
-                    min="0"
-                    max="100"
-                    value={p.desconto}
-                    onChange={(e) => alterarDesconto(p.id, Number(e.target.value))}
-                    className="w-16 border rounded text-center focus:outline-blue-500"
-                  />
-                </td>
-                {/* 👇 NOVAS COLUNAS */}
-                <td className="border p-2 text-gray-600">
-                  R$ {p.preco_custo?.toFixed(2) || "0.00"}
-                </td>
+                <td className="border p-2">{p.qtd}</td>
+                <td className="border p-2">{p.desconto}%</td>
                 <td className="border p-2">
                   R$ {p.preco_venda?.toFixed(2) || "0.00"}
                 </td>
                 <td className="border p-2">
                   R${" "}
-                  {(p.preco_venda - p.preco_venda * (p.desconto / 100)).toFixed(2)}
+                  {(
+                    p.preco_venda - p.preco_venda * (p.desconto / 100)
+                  ).toFixed(2)}
                 </td>
-                <td className="border p-2">{p.estoque ?? "—"}</td>
                 <td className="border p-2 font-bold text-green-700">
                   R${" "}
                   {(
@@ -335,7 +242,7 @@ export default function PDVPage() {
         </div>
       )}
 
-      {/* Botões e modal — mantido exatamente igual */}
+      {/* Botões */}
       {venda.length > 0 && (
         <div className="flex justify-end gap-3 mt-6">
           <button
@@ -352,9 +259,6 @@ export default function PDVPage() {
           </button>
         </div>
       )}
-
-      {/* Modal de pagamento */}
-      {/* ... (toda sua parte do modal permanece igual) ... */}
     </main>
   );
 }
