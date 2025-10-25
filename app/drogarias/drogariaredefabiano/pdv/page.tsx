@@ -1,11 +1,13 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { useState, useEffect, useRef } from "react";
 import { createClient } from "@supabase/supabase-js";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const supabase = createClient(supabaseUrl, supabaseKey);
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
 export default function PDVPage() {
   const [busca, setBusca] = useState("");
@@ -17,7 +19,10 @@ export default function PDVPage() {
 
   // 🔍 Buscar produto
   async function buscarProduto(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key !== "Enter" || !busca.trim()) return;
+    if (e.key !== "Enter") return;
+
+    const valorBusca = busca.trim() || inputRef.current?.value.trim() || "";
+    if (!valorBusca) return;
 
     const { data, error } = await supabase
       .from("produtos")

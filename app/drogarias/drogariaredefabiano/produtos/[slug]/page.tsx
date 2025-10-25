@@ -3,6 +3,8 @@
 import { useState, useEffect } from "react";
 import { createClient } from "@supabase/supabase-js";
 import { useParams, useRouter } from "next/navigation";
+import Image from "next/image";
+import Link from "next/link";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -12,196 +14,143 @@ export default function ProdutoPage() {
   const { slug } = useParams();
   const router = useRouter();
   const [produto, setProduto] = useState<any>(null);
-  const [showModal, setShowModal] = useState(false);
-  const [pedido, setPedido] = useState({
-    tipo: "Entrega",
-    nome: "",
-    telefone: "",
-    endereco: "",
-    forma: "",
-  });
+  const [carregando, setCarregando] = useState(true);
 
-  // 🔍 Buscar produto pelo slug
   useEffect(() => {
     async function fetchProduto() {
+      setCarregando(true);
       const { data, error } = await supabase
         .from("produtos")
         .select("*")
-        .eq("slug", slug)
+        .or(`id.eq.${slug},slug.eq.${slug}`)
         .single();
 
       if (error) console.error("Erro ao buscar produto:", error);
       else setProduto(data);
+
+      setCarregando(false);
     }
-    fetchProduto();
+
+    if (slug) fetchProduto();
   }, [slug]);
 
-  if (!produto)
+  if (carregando)
     return (
-      <div className="flex items-center justify-center min-h-screen text-gray-500">
+      <div className="text-center text-gray-500 py-20 text-lg">
         Carregando produto...
       </div>
     );
 
-  // 📲 Enviar pedido pelo WhatsApp
-  function enviarWhatsApp() {
-    const mensagem = encodeURIComponent(`
-💊 Novo Pedido — Drogaria Rede Fabiano
+  if (!produto)
+    return (
+      <div className="text-center text-red-600 py-20 text-lg">
+        Produto não encontrado 😕
+      </div>
+    );
 
-🧾 Produto: ${produto.nome}
-💰 Preço: R$ ${produto.preco_venda?.toFixed(2)}
+  const mensagem = encodeURIComponent(
+    `💊 Olá! Tenho interesse no produto ${produto.nome} (R$ ${produto.preco_venda?.toFixed(
+      2
+    )}). Pode confirmar a disponibilidade pra mim?`
+  );
 
-🚚 Tipo: ${pedido.tipo}
-👤 Cliente: ${pedido.nome || "Não informado"}
-📞 Telefone: ${pedido.telefone || "Não informado"}
-🏠 Endereço: ${pedido.tipo === "Entrega" ? pedido.endereco || "Não informado" : "Retirada na loja"}
-💳 Pagamento: ${pedido.forma || "Não informado"}
-
-🔹 Acesse: iafarma.vercel.app/drogarias/drogariaredefabiano
-`);
-
-    const numero = "5511948343725";
-    window.open(`https://wa.me/${numero}?text=${mensagem}, "_blank"`);
-    setShowModal(false);
-  }
+  const whatsapp = `https://wa.me/5511948343725?text=${mensagem}`;
 
   return (
-    <main className="max-w-3xl mx-auto p-6">
-      {/* 🏷️ Produto */}
-      <div className="bg-white rounded-lg shadow-md p-5">
-        <img
-          src={produto.imagem || "/img/produto-generico.png"}
+    <main className="max-w-3xl mx-auto px-6 py-10">
+      <div className="bg-white shadow-lg rounded-xl p-6 text-center">
+        {/* 🖼️ Imagem do produto */}
+        <Image
+          src={produto.imagem || "/no-image.png"}
           alt={produto.nome}
-          className="w-full h-60 object-contain mb-4"
+          width={300}
+          height={300}
+          className="mx-auto mb-4 rounded-md object-contain"
         />
-        <h1 className="text-2xl font-bold text-blue-700 mb-2">{produto.nome}</h1>
-        <p className="text-gray-600 mb-4">{produto.descricao || "Sem descrição disponível."}</p>
-        <p className="text-3xl font-bold text-green-600 mb-6">
-          R$ {produto.preco_venda?.toFixed(2)}
+
+        {/* 🧾 Informações */}
+        <h1 className="text-2xl font-bold text-blue-700 mb-2">
+          {produto.nome}
+        </h1>
+        <p className="text-gray-600 mb-3">
+          {produto.descricao || "Produto sem descrição detalhada."}
         </p>
 
-        {/* Botões principais */}
-        <div className="flex flex-col sm:flex-row gap-3">
-          <button
-            onClick={() => setShowModal(true)}
-            className="flex-1 bg-green-600 text-white py-3 rounded-md font-semibold hover:bg-green-700 transition"
-          >
-            💚 Comprar Agora
-          </button>
-          <button
-            onClick={() => router.push("/drogarias/drogariaredefabiano")}
-            className="flex-1 bg-blue-600 text-white py-3 rounded-md font-semibold hover:bg-blue-700 transition"
-          >
-            🛍️ Continuar Comprando
-          </button>
-        </div>
-      </div>
-
-      {/* === MODAL DE COMPRA === */}
-      {showModal && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg shadow-xl w-[400px] p-6">
-            <h2 className="text-xl font-bold text-blue-700 mb-4 text-center">
-              🧾 Finalizar Pedido
-            </h2>
-
-            {/* Tipo de venda */}
-            <div className="mb-3">
-              <label className="block font-semibold mb-2 text-gray-700">
-                Tipo de Pedido:
-              </label>
-              <div className="flex justify-between gap-2">
-                {["Entrega", "Retirada"].map((tipo) => (
-                  <button
-                    key={tipo}
-                    onClick={() => setPedido((prev) => ({ ...prev, tipo }))}
-                    className={`flex-1 py-2 rounded-md border ${
-                      pedido.tipo === tipo
-                        ? "bg-blue-600 text-white border-blue-600"
-                        : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                    }`}
-                  >
-                    {tipo}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Dados do cliente */}
-            <div className="space-y-2 mb-3">
-              <input
-                type="text"
-                placeholder="Nome do Cliente"
-                value={pedido.nome}
-                onChange={(e) => setPedido({ ...pedido, nome: e.target.value })}
-                className="w-full border rounded p-2 focus:outline-blue-500"
-              />
-              <input
-                type="text"
-                placeholder="Telefone"
-                value={pedido.telefone}
-                onChange={(e) => setPedido({ ...pedido, telefone: e.target.value })}
-                className="w-full border rounded p-2 focus:outline-blue-500"
-              />
-              {pedido.tipo === "Entrega" && (
-                <input
-                  type="text"
-                  placeholder="Endereço de Entrega"
-                  value={pedido.endereco}
-                  onChange={(e) => setPedido({ ...pedido, endereco: e.target.value })}
-                  className="w-full border rounded p-2 focus:outline-blue-500"
-                />
-              )}
-            </div>
-
-            {/* Forma de pagamento */}
-            <div className="mb-4">
-              <label className="block font-semibold mb-2 text-gray-700">
-                Forma de Pagamento:
-              </label>
-              <div className="grid grid-cols-2 gap-2">
-                {["Pix", "Cartão", "Dinheiro"].map((forma) => (
-                  <button
-                    key={forma}
-                    onClick={() => setPedido((prev) => ({ ...prev, forma }))}
-                    className={`py-2 rounded-md border ${
-                      pedido.forma === forma
-                        ? "bg-green-600 text-white border-green-600"
-                        : "bg-gray-100 text-gray-700 hover:bg-gray-200"
-                    }`}
-                  >
-                    {forma}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Total */}
-            <div className="text-center border-t pt-3 mb-4">
-              <p className="text-gray-600">Total</p>
-              <p className="text-2xl font-bold text-blue-700">
-                R$ {produto.preco_venda?.toFixed(2)}
-              </p>
-            </div>
-
-            {/* Botões finais */}
-            <div className="flex flex-col gap-2">
-              <button
-                onClick={enviarWhatsApp}
-                className="bg-green-600 text-white py-2 rounded-md font-semibold hover:bg-green-700 transition"
-              >
-                📲 Enviar Pedido via WhatsApp
-              </button>
-              <button
-                onClick={() => setShowModal(false)}
-                className="bg-gray-400 text-white py-2 rounded-md hover:bg-gray-500 transition"
-              >
-                ↩️ Voltar
-              </button>
-            </div>
+        {/* 📦 Estoque e preços */}
+        <div className="flex flex-col sm:flex-row justify-center gap-6 mb-6">
+          <div className="text-sm text-gray-700">
+            <p>
+              <strong>Estoque:</strong>{" "}
+              <span className="text-green-600 font-semibold">
+                {produto.estoque || 0}
+              </span>
+            </p>
+          </div>
+          <div className="text-sm text-gray-700">
+            <p>
+              <strong>Preço de venda:</strong>{" "}
+              <span className="text-blue-700 font-bold">
+                R$ {Number(produto.preco_venda || 0).toFixed(2)}
+              </span>
+            </p>
+          </div>
+          <div className="text-sm text-gray-700">
+            <p>
+              <strong>Preço de custo:</strong>{" "}
+              <span className="text-gray-500">
+                R$ {Number(produto.preco_custo || 0).toFixed(2)}
+              </span>
+            </p>
           </div>
         </div>
-      )}
+
+        {/* 🛒 Botões */}
+        <div className="flex flex-col sm:flex-row justify-center gap-4">
+          <button
+            onClick={() => {
+              // salva produto no carrinho
+              const carrinhoAtual =
+                JSON.parse(localStorage.getItem("carrinhoFabiano") || "[]") || [];
+              const existente = carrinhoAtual.find(
+                (p: any) => p.id === produto.id
+              );
+              let atualizado;
+
+              if (existente) {
+                atualizado = carrinhoAtual.map((p: any) =>
+                  p.id === produto.id ? { ...p, quantidade: p.quantidade + 1 } : p
+                );
+              } else {
+                atualizado = [...carrinhoAtual, { ...produto, quantidade: 1 }];
+              }
+
+              localStorage.setItem(
+                "carrinhoFabiano",
+                JSON.stringify(atualizado)
+              );
+              router.push("/drogarias/drogariaredefabiano/carrinho");
+            }}
+            className="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-5 rounded-md transition"
+          >
+            🛒 Comprar Agora
+          </button>
+
+          <Link
+            href="/drogarias/drogariaredefabiano"
+            className="bg-gray-200 hover:bg-gray-300 text-gray-700 font-semibold py-2 px-5 rounded-md transition"
+          >
+            ⬅️ Continuar Comprando
+          </Link>
+
+          <a
+            href={whatsapp}
+            target="_blank"
+            className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-2 px-5 rounded-md transition"
+          >
+            💬 Falar no WhatsApp
+          </a>
+        </div>
+      </div>
     </main>
   );
 }
