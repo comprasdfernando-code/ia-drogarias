@@ -108,7 +108,7 @@ export default function PDVPage() {
     setTotal(0);
   }
 
-  // 💰 Dados de pagamento
+  // 💰 Pagamento
   const [pagamento, setPagamento] = useState<any>({
     dinheiro: "",
     troco: "",
@@ -151,7 +151,7 @@ export default function PDVPage() {
           ${venda
             .map(
               (p) =>
-                `${p.nome} (${p.qtd}x R$${p.preco_venda.toFixed(2)})`
+                `${p.nome} (${p.qtd}x R$${p.preco_venda.toFixed(2)})` 
             )
             .join("<br>")}
           <hr>
@@ -202,13 +202,19 @@ export default function PDVPage() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [venda]);
 
-  // --- INTERFACE ---
+  // === INTERFACE ===
   return (
     <main className="max-w-6xl mx-auto p-4 sm:p-6">
       <div className="flex flex-col sm:flex-row justify-between items-center gap-3">
         <h1 className="text-2xl sm:text-3xl font-bold text-blue-700">
           💻 PDV — Drogaria Rede Fabiano
         </h1>
+
+        {/* Informativo dos atalhos */}
+        <div className="hidden sm:block bg-blue-50 border border-blue-200 rounded-lg p-2 text-xs text-gray-700">
+          <p className="font-semibold text-blue-700 mb-1">⌨️ Atalhos Rápidos:</p>
+          <p>F2 - Buscar | F3 - Limpar | F7 - Finalizar | Ctrl+P - Imprimir | Del - Remover | Esc - Fechar</p>
+        </div>
       </div>
 
       <input
@@ -372,7 +378,7 @@ export default function PDVPage() {
             onClick={() => inputRef.current?.focus()}
             className="bg-blue-600 text-white px-3 py-2 rounded text-sm"
           >
-            🔍 Buscar (F2)
+            🔍 Buscar
           </button>
           <button
             onClick={limparVenda}
@@ -394,6 +400,23 @@ export default function PDVPage() {
           </button>
         </div>
       )}
+
+      {/* === MODAL DE FINALIZAÇÃO === */}
+{showPagamento && (
+  <div
+    className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60"
+    role="dialog"
+    aria-modal="true"
+    onKeyDown={(e) => e.key === "Escape" && setShowPagamento(false)}
+  >
+    <div className="bg-white w-[95%] sm:w-[420px] max-w-full rounded-xl shadow-2xl p-5 max-h-[90vh] overflow-y-auto animate-fadeIn relative">
+      <h2 className="text-2xl font-bold text-blue-700 text-center mb-5">
+        🧾 Finalizar Venda
+      </h2>
+      {/* ... mesmo bloco do modal anterior ... */}
+    </div>
+  </div>
+)}
     </main>
   );
 }
