@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { createClient } from "@supabase/supabase-js";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
@@ -63,13 +63,15 @@ export default function PDVPage() {
     calcularTotal(novaVenda);
     setResultados([]);
     setBusca("");
-    if (inputRef.current) inputRef.current.focus();
+    inputRef.current?.focus();
   }
 
   // 🧮 Calcular total
   function calcularTotal(lista: any[]) {
     const soma = lista.reduce(
-      (acc, p) => acc + p.qtd * (p.preco_venda - p.preco_venda * (p.desconto / 100)),
+      (acc, p) =>
+        acc +
+        p.qtd * (p.preco_venda - p.preco_venda * (p.desconto / 100)),
       0
     );
     setTotal(soma);
@@ -90,7 +92,11 @@ export default function PDVPage() {
   function alterarDesconto(id: any, valor: number) {
     const novaVenda = venda.map((p) =>
       p.id === id
-        ? { ...p, desconto: valor, preco_desc: p.preco_venda - p.preco_venda * (valor / 100) }
+        ? {
+            ...p,
+            desconto: valor,
+            preco_desc: p.preco_venda - p.preco_venda * (valor / 100),
+          }
         : p
     );
     setVenda(novaVenda);
@@ -102,10 +108,9 @@ export default function PDVPage() {
     setTotal(0);
   }
 
-  // 💰 Pagamento e fechamento
+  // 💰 Dados de pagamento
   const [pagamento, setPagamento] = useState<any>({
     dinheiro: "",
-    cartao: "",
     troco: "",
     forma: "",
     tipo: "Balcão",
@@ -127,6 +132,76 @@ export default function PDVPage() {
     setShowPagamento(false);
   }
 
+  // 🖨️ Imprimir cupom
+  function imprimirCupom() {
+    const novaJanela = window.open("", "_blank");
+    if (!novaJanela) return;
+
+    const data = new Date();
+    const hora = data.toLocaleTimeString("pt-BR");
+    const dia = data.toLocaleDateString("pt-BR");
+
+    novaJanela.document.write(`
+      <html>
+        <head><title>Cupom de Venda</title></head>
+        <body>
+          <h2>Drogaria Rede Fabiano</h2>
+          <p>Data: ${dia} - ${hora}</p>
+          <hr>
+          ${venda
+            .map(
+              (p) =>
+                `${p.nome} (${p.qtd}x R$${p.preco_venda.toFixed(2)})`
+            )
+            .join("<br>")}
+          <hr>
+          <h3>Total: R$ ${total.toFixed(2)}</h3>
+        </body>
+      </html>
+    `);
+    novaJanela.document.close();
+    novaJanela.print();
+  }
+
+  // ⌨️ Atalhos
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      switch (e.key) {
+        case "F2":
+          e.preventDefault();
+          inputRef.current?.focus();
+          break;
+        case "F3":
+          e.preventDefault();
+          limparVenda();
+          break;
+        case "F7":
+          e.preventDefault();
+          if (venda.length > 0) setShowPagamento(true);
+          break;
+        case "Delete":
+          e.preventDefault();
+          if (venda.length > 0) {
+            const ultimo = venda[venda.length - 1];
+            setVenda((prev) => prev.filter((p) => p.id !== ultimo.id));
+          }
+          break;
+        case "p":
+          if (e.ctrlKey) {
+            e.preventDefault();
+            imprimirCupom();
+          }
+          break;
+        case "Escape":
+          e.preventDefault();
+          setShowPagamento(false);
+          break;
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [venda]);
+
   // --- INTERFACE ---
   return (
     <main className="max-w-6xl mx-auto p-4 sm:p-6">
@@ -143,37 +218,41 @@ export default function PDVPage() {
         value={busca}
         onChange={(e) => setBusca(e.target.value)}
         onKeyDown={buscarProduto}
-        className="w-full border p-2 rounded-md mb-4 text-lg focus:outline-blue-600"
+        className="w-full border p-3 rounded-md mb-4 text-lg focus:outline-blue-600"
       />
 
-      {/* 🔍 Resultados da busca (modo loja visual) */}
+      {/* Produtos encontrados */}
       {resultados.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 mb-4">
-          {resultados.map((p, idx) => (
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
+          {resultados.map((p) => (
             <div
               key={p.id}
-              className="border rounded-lg bg-white shadow-sm hover:shadow-md transition cursor-pointer p-3 flex flex-col"
+              className="border rounded-xl bg-white shadow-md hover:shadow-lg transition-all p-4 flex flex-col"
             >
               <img
                 src={p.imagem || "/no-image.png"}
                 alt={p.nome}
-                className="w-full h-28 object-contain mb-2"
+                className="w-full h-32 object-contain mb-3 rounded-md bg-gray-50"
               />
-              <div className="flex-1">
-                <p className="font-semibold text-gray-800">{p.nome}</p>
-                <p className="text-sm text-gray-500">
-                  Estoque:{" "}
-                  <span className="font-semibold text-green-700">
-                    {p.estoque || 0}
+              <h3 className="font-semibold text-gray-800 text-sm mb-1">{p.nome}</h3>
+              <span className="text-green-700 text-xs mb-2">Estoque: {p.estoque || 0}</span>
+              <div className="grid grid-cols-2 gap-2 text-sm text-gray-700 bg-blue-50 rounded-md p-2 mb-3">
+                <div>
+                  <span className="block text-gray-500 text-xs">Custo</span>
+                  <span className="font-semibold text-gray-800">
+                    R$ {Number(p.preco_custo || 0).toFixed(2)}
                   </span>
-                </p>
-                <p className="text-blue-700 font-bold text-lg">
-                  R$ {Number(p.preco_venda || 0).toFixed(2)}
-                </p>
+                </div>
+                <div>
+                  <span className="block text-gray-500 text-xs">Venda</span>
+                  <span className="font-semibold text-blue-700">
+                    R$ {Number(p.preco_venda || 0).toFixed(2)}
+                  </span>
+                </div>
               </div>
               <button
                 onClick={() => adicionarProduto(p)}
-                className="mt-2 bg-blue-600 text-white py-1 rounded-md hover:bg-blue-700"
+                className="mt-auto bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-md font-medium transition"
               >
                 ➕ Adicionar
               </button>
@@ -183,46 +262,90 @@ export default function PDVPage() {
       )}
 
       {/* 🧾 Tabela da venda */}
-      <div className="overflow-x-auto">
-        <table className="w-full border-collapse border text-sm">
-          <thead className="bg-blue-50 border-b text-gray-700 text-sm">
+      <div className="overflow-x-auto mt-6">
+        <table className="w-full border-collapse border text-sm shadow-md rounded-lg overflow-hidden">
+          <thead className="bg-gradient-to-r from-blue-600 to-blue-400 text-white">
             <tr>
-              <th className="border p-2 w-32">Código</th>
-              <th className="border p-2 text-left w-[40%]">Descrição</th>
-              <th className="border p-2 w-16">Qtde</th>
-              <th className="border p-2 w-20">% Desc</th>
-              <th className="border p-2 w-20">Pr. Venda</th>
-              <th className="border p-2 w-20">Pr. Desc</th>
-              <th className="border p-2 w-20">Pr. Total</th>
+              <th className="p-2">Código</th>
+              <th className="p-2 text-left">Descrição</th>
+              <th className="p-2">Qtde</th>
+              <th className="p-2">% Desc</th>
+              <th className="p-2">Pr. Custo</th>
+              <th className="p-2">Pr. Venda</th>
+              <th className="p-2">Pr. Desc</th>
+              <th className="p-2">Total</th>
+              <th className="p-2">🗑️</th>
             </tr>
           </thead>
           <tbody>
             {venda.map((p, idx) => (
               <tr
                 key={p.id}
-                id={`produto-${idx}`}
-                tabIndex={0}
-                className="text-center border-b hover:bg-blue-50"
+                className={`text-center ${
+                  idx % 2 === 0 ? "bg-white" : "bg-blue-50"
+                } hover:bg-blue-100 transition`}
               >
-                <td className="border p-2 truncate">{p.id.slice(0, 6)}...</td>
-                <td className="border p-2 text-left">{p.nome}</td>
-                <td className="border p-2">{p.qtd}</td>
-                <td className="border p-2">{p.desconto}%</td>
-                <td className="border p-2">
-                  R$ {p.preco_venda?.toFixed(2) || "0.00"}
+                <td className="p-2">{p.id.slice(0, 6)}...</td>
+                <td className="p-2 text-left">{p.nome}</td>
+                <td className="p-2">
+                  <div className="flex justify-center items-center gap-2">
+                    <button
+                      onClick={() => alterarQtd(p.id, -1)}
+                      className="bg-gray-200 hover:bg-gray-300 px-2 rounded text-sm"
+                    >
+                      ➖
+                    </button>
+                    <span className="w-6 text-center">{p.qtd}</span>
+                    <button
+                      onClick={() => alterarQtd(p.id, 1)}
+                      className="bg-gray-200 hover:bg-gray-300 px-2 rounded text-sm"
+                    >
+                      ➕
+                    </button>
+                  </div>
                 </td>
-                <td className="border p-2">
+                <td className="p-2">
+                  <input
+                    type="number"
+                    min="0"
+                    max="100"
+                    value={p.desconto}
+                    onChange={(e) =>
+                      alterarDesconto(p.id, Number(e.target.value))
+                    }
+                    className="w-16 border rounded text-center focus:outline-blue-500"
+                  />
+                </td>
+                <td className="p-2 text-gray-600">
+                  R$ {Number(p.preco_custo || 0).toFixed(2)}
+                </td>
+                <td className="p-2 text-blue-800 font-semibold">
+                  R$ {Number(p.preco_venda || 0).toFixed(2)}
+                </td>
+                <td className="p-2 text-green-700 font-semibold">
                   R${" "}
                   {(
                     p.preco_venda - p.preco_venda * (p.desconto / 100)
                   ).toFixed(2)}
                 </td>
-                <td className="border p-2 font-bold text-green-700">
+                <td className="p-2 font-bold text-green-700">
                   R${" "}
                   {(
                     p.qtd *
                     (p.preco_venda - p.preco_venda * (p.desconto / 100))
                   ).toFixed(2)}
+                </td>
+                <td className="p-2">
+                  <button
+                    onClick={() =>
+                      setVenda((prev) =>
+                        prev.filter((item) => item.id !== p.id)
+                      )
+                    }
+                    className="text-red-500 hover:text-red-700 text-lg"
+                  >
+                    🗑️
+                  </button>
                 </td>
               </tr>
             ))}
@@ -230,7 +353,7 @@ export default function PDVPage() {
         </table>
       </div>
 
-      {/* Total */}
+      {/* 💰 Total */}
       {venda.length > 0 && (
         <div className="flex justify-between items-center mt-4 border-t pt-4">
           <div className="text-gray-600 text-sm">
@@ -242,20 +365,32 @@ export default function PDVPage() {
         </div>
       )}
 
-      {/* Botões */}
+      {/* 📱 Botões fixos no mobile */}
       {venda.length > 0 && (
-        <div className="flex justify-end gap-3 mt-6">
+        <div className="fixed bottom-0 left-0 w-full bg-white border-t flex justify-around p-2 sm:hidden z-50">
+          <button
+            onClick={() => inputRef.current?.focus()}
+            className="bg-blue-600 text-white px-3 py-2 rounded text-sm"
+          >
+            🔍 Buscar (F2)
+          </button>
           <button
             onClick={limparVenda}
-            className="bg-red-600 text-white px-5 py-2 rounded-md"
+            className="bg-red-600 text-white px-3 py-2 rounded text-sm"
           >
-            Cancelar
+            ❌ Limpar
+          </button>
+          <button
+            onClick={imprimirCupom}
+            className="bg-gray-600 text-white px-3 py-2 rounded text-sm"
+          >
+            🖨️ Imprimir
           </button>
           <button
             onClick={() => setShowPagamento(true)}
-            className="bg-green-600 text-white px-5 py-2 rounded-md"
+            className="bg-green-600 text-white px-3 py-2 rounded text-sm"
           >
-            Finalizar Venda (F7)
+            💰 Finalizar
           </button>
         </div>
       )}
