@@ -27,6 +27,7 @@ type Produto = {
   imagem?: string;
   disponivel?: boolean;
   loja?: string;
+  slug?: string; 
 };
 
 type ItemCarrinho = Produto & { quantidade: number };
@@ -318,6 +319,11 @@ useEffect(() => {
                 key={p.id}
                 className="bg-white rounded-lg shadow p-2 sm:p-3 text-center hover:shadow-lg transition flex flex-col justify-between"
               >
+                <Link
+      href={`/drogarias/drogariaredefabiano/produtos/${encodeURIComponent(p.slug ?? p.id)}`}
+      className="flex flex-col flex-1"
+      prefetch={false}
+    >
                 <Image
                   src={imgUrl(p.imagem)}
                   alt={p.nome || "Produto"}
@@ -334,6 +340,7 @@ useEffect(() => {
                 <p className="text-sm sm:text-base font-bold text-green-600 mt-1">
                   R$ {fmt(Number(p.preco_venda))}
                 </p>
+                </Link>
                 <button
                   onClick={() => adicionarAoCarrinho(p)}
                   className="mt-2 bg-blue-600 hover:bg-blue-700 text-white py-1 rounded-md text-xs sm:text-sm font-medium transition"
