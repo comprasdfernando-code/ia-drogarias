@@ -21,18 +21,28 @@ export default function ProdutoPage() {
     setCarregando(true);
 
     // 🧹 Corrige e normaliza o slug recebido
-    const cleanSlug = String(slug)
-      .replace(/^[-\s]+|[-\s]+$/g, "") // remove traços e espaços no início/fim
-      .trim()
-      .toLowerCase();
+    
 
     // 🧠 Tenta buscar de forma mais flexível
-    const { data, error } = await supabase
-      .from("produtos")
-      .select("*")
-      .filter("slug", "ilike", `%${cleanSlug}%`)
-      .limit(1)
-      .single();
+    const cleanSlug = decodeURIComponent(slug.toString().trim());
+
+// tenta buscar pelo slug exato
+let { data, error } = await supabase
+  .from("produtos")
+  .select("*")
+  .eq("slug", cleanSlug)
+  .single();
+
+// se não encontrar, tenta pelo ID (caso o slug seja numérico)
+if (!data && !error) {
+  const { data: dataById } = await supabase
+    .from("produtos")
+    .select("*")
+    .eq("id", cleanSlug)
+    .single();
+
+  data = dataById;
+}
 
     if (error || !data) {
       console.warn("Produto não encontrado, tentando alternativa...");
