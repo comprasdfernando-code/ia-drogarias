@@ -22,12 +22,15 @@ export default function ProdutoPage() {
       const { data, error } = await supabase
         .from("produtos")
         .select("*")
-        .or(`id.eq.${slug},slug.eq.${slug}`)
+        .or(`id.eq.${slug},slug.eq.${slug},slug.ilike.%${slug}%`)
+        .limit(1)
         .single();
 
-      if (error) console.error("Erro ao buscar produto:", error);
-      else setProduto(data);
-
+      if (error) {
+        console.error("Erro ao buscar produto:", error);
+      } else {
+        setProduto(data);
+      }
       setCarregando(false);
     }
 
