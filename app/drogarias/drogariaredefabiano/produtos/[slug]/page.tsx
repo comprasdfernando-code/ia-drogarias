@@ -17,25 +17,30 @@ export default function ProdutoPage() {
   const [carregando, setCarregando] = useState(true);
 
   useEffect(() => {
-    async function fetchProduto() {
-      setCarregando(true);
-      const { data, error } = await supabase
-        .from("produtos")
-        .select("*")
-        .or(`id.eq.${slug},slug.eq.${slug},slug.ilike.%${slug}%`)
-        .limit(1)
-        .single();
+  async function fetchProduto() {
+    setCarregando(true);
 
-      if (error) {
-        console.error("Erro ao buscar produto:", error);
-      } else {
-        setProduto(data);
-      }
-      setCarregando(false);
+    // 🧹 Corrige slug removendo traços extras e espaços
+    const cleanSlug = String(slug).replace(/^[-\s]+|[-\s]+$/g, "").trim();
+
+    const { data, error } = await supabase
+      .from("produtos")
+      .select("*")
+      .or(`id.eq.${cleanSlug},slug.eq.${cleanSlug},slug.ilike.%${cleanSlug}%`)
+      .limit(1)
+      .single();
+
+    if (error) {
+      console.error("Erro ao buscar produto:", error);
+    } else {
+      setProduto(data);
     }
 
-    if (slug) fetchProduto();
-  }, [slug]);
+    setCarregando(false);
+  }
+
+  if (slug) fetchProduto();
+}, [slug]);
 
   if (carregando)
     return (
