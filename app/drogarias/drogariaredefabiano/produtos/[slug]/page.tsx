@@ -20,18 +20,33 @@ export default function ProdutoPage() {
   async function fetchProduto() {
     setCarregando(true);
 
-    // 🧹 Corrige slug removendo traços extras e espaços
-    const cleanSlug = String(slug).replace(/^[-\s]+|[-\s]+$/g, "").trim();
+    // 🧹 Corrige e normaliza o slug recebido
+    const cleanSlug = String(slug)
+      .replace(/^[-\s]+|[-\s]+$/g, "") // remove traços e espaços no início/fim
+      .trim()
+      .toLowerCase();
 
+    // 🧠 Tenta buscar de forma mais flexível
     const { data, error } = await supabase
       .from("produtos")
       .select("*")
-      .or(`id.eq.${cleanSlug},slug.eq.${cleanSlug},slug.ilike.%${cleanSlug}%`)
+      .filter("slug", "ilike", `%${cleanSlug}%`)
       .limit(1)
       .single();
 
-    if (error) {
-      console.error("Erro ao buscar produto:", error);
+    if (error || !data) {
+      console.warn("Produto não encontrado, tentando alternativa...");
+      // Tenta buscar por ID se o slug for só número
+      if (/^\d+$/.test(cleanSlug)) {
+        const { data: byId } = await supabase
+          .from("produtos")
+          .select("*")
+          .eq("id", cleanSlug)
+          .single();
+        if (byId) setProduto(byId);
+      } else {
+        setProduto(null);
+      }
     } else {
       setProduto(data);
     }
