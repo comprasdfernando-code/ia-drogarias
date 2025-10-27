@@ -15,57 +15,49 @@ export default function ProdutoPage() {
   const router = useRouter();
   const [produto, setProduto] = useState<any>(null);
   const [carregando, setCarregando] = useState(true);
+  const [busca, setBusca] = useState("");
 
   useEffect(() => {
-  async function fetchProduto() {
-    setCarregando(true);
+    async function fetchProduto() {
+      setCarregando(true);
 
-    // 🧹 Corrige e normaliza o slug recebido
-    
+      const cleanSlug = decodeURIComponent(slug.toString().trim());
 
-    // 🧠 Tenta buscar de forma mais flexível
-    const cleanSlug = decodeURIComponent(slug.toString().trim());
+      let { data, error } = await supabase
+        .from("produtos")
+        .select("*")
+        .eq("slug", cleanSlug)
+        .single();
 
-// tenta buscar pelo slug exato
-let { data, error } = await supabase
-  .from("produtos")
-  .select("*")
-  .eq("slug", cleanSlug)
-  .single();
-
-// se não encontrar, tenta pelo ID (caso o slug seja numérico)
-if (!data && !error) {
-  const { data: dataById } = await supabase
-    .from("produtos")
-    .select("*")
-    .eq("id", cleanSlug)
-    .single();
-
-  data = dataById;
-}
-
-    if (error || !data) {
-      console.warn("Produto não encontrado, tentando alternativa...");
-      // Tenta buscar por ID se o slug for só número
-      if (/^\d+$/.test(cleanSlug)) {
-        const { data: byId } = await supabase
+      if (!data && !error) {
+        const { data: dataById } = await supabase
           .from("produtos")
           .select("*")
           .eq("id", cleanSlug)
           .single();
-        if (byId) setProduto(byId);
-      } else {
-        setProduto(null);
+        data = dataById;
       }
-    } else {
-      setProduto(data);
+
+      if (error || !data) {
+        console.warn("Produto não encontrado.");
+        setProduto(null);
+      } else {
+        setProduto(data);
+      }
+
+      setCarregando(false);
     }
 
-    setCarregando(false);
-  }
+    if (slug) fetchProduto();
+  }, [slug]);
 
-  if (slug) fetchProduto();
-}, [slug]);
+  // 🧠 Busca por texto
+  const handleBuscar = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (busca.trim()) {
+      router.push(`/drogarias/drogariaredefabiano?busca=${encodeURIComponent(busca)}`);
+    }
+  };
 
   if (carregando)
     return (
@@ -91,8 +83,28 @@ if (!data && !error) {
 
   return (
     <main className="max-w-3xl mx-auto px-6 py-10">
+      {/* 🔍 Barra de busca */}
+      <form
+        onSubmit={handleBuscar}
+        className="flex items-center bg-white shadow-md rounded-md mb-6 border"
+      >
+        <input
+          type="text"
+          placeholder="Buscar produtos..."
+          value={busca}
+          onChange={(e) => setBusca(e.target.value)}
+          className="flex-grow px-4 py-2 rounded-l-md outline-none"
+        />
+        <button
+          type="submit"
+          className="bg-blue-600 text-white px-4 py-2 rounded-r-md hover:bg-blue-700"
+        >
+          🔍
+        </button>
+      </form>
+
+      {/* 🧾 Card do produto */}
       <div className="bg-white shadow-lg rounded-xl p-6 text-center">
-        {/* 🖼️ Imagem do produto */}
         <Image
           src={produto.imagem || "/no-image.png"}
           alt={produto.nome}
@@ -101,47 +113,27 @@ if (!data && !error) {
           className="mx-auto mb-4 rounded-md object-contain"
         />
 
-        {/* 🧾 Informações */}
         <h1 className="text-2xl font-bold text-blue-700 mb-2">
           {produto.nome}
         </h1>
+
         <p className="text-gray-600 mb-3">
           {produto.descricao || "Produto sem descrição detalhada."}
         </p>
 
-        {/* 📦 Estoque e preços */}
-        <div className="flex flex-col sm:flex-row justify-center gap-6 mb-6">
-          <div className="text-sm text-gray-700">
-            <p>
-              <strong>Estoque:</strong>{" "}
-              <span className="text-green-600 font-semibold">
-                {produto.estoque || 0}
-              </span>
-            </p>
-          </div>
-          <div className="text-sm text-gray-700">
-            <p>
-              <strong>Preço de venda:</strong>{" "}
-              <span className="text-blue-700 font-bold">
-                R$ {Number(produto.preco_venda || 0).toFixed(2)}
-              </span>
-            </p>
-          </div>
-          <div className="text-sm text-gray-700">
-            <p>
-              <strong>Preço de custo:</strong>{" "}
-              <span className="text-gray-500">
-                R$ {Number(produto.preco_custo || 0).toFixed(2)}
-              </span>
-            </p>
-          </div>
+        <div className="text-sm text-gray-700 mb-6">
+          <p>
+            <strong>Preço:</strong>{" "}
+            <span className="text-blue-700 font-bold">
+              R$ {Number(produto.preco_venda || 0).toFixed(2)}
+            </span>
+          </p>
         </div>
 
         {/* 🛒 Botões */}
         <div className="flex flex-col sm:flex-row justify-center gap-4">
           <button
             onClick={() => {
-              // salva produto no carrinho
               const carrinhoAtual =
                 JSON.parse(localStorage.getItem("carrinhoFabiano") || "[]") || [];
               const existente = carrinhoAtual.find(
@@ -165,7 +157,7 @@ if (!data && !error) {
             }}
             className="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-5 rounded-md transition"
           >
-            🛒 Comprar Agora
+            🛒 Adicionar ao Carrinho
           </button>
 
           <Link
