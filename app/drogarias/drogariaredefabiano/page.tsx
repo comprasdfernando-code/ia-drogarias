@@ -86,41 +86,80 @@ useEffect(() => {
 
   // 🔄 Carregar produtos
   useEffect(() => {
-  async function carregarProdutos() {
-    setCarregando(true);
-    let pagina = 0;
-    const limite = 100;
-    let todos: Produto[] = [];
+    async function carregarProdutos() {
+      setCarregando(true);
+      let pagina = 0;
+      const limite = 100;
+      let todos: Produto[] = [];
 
-    while (true) {
-      const { data, error } = await supabase
-        .from("produtos")
-        .select("*")
-        .eq("loja", LOJA)
-        .eq("disponivel", true)
-        .gt("estoque", 0)
-        .order("nome", { ascending: true })
-        .range(pagina * limite, (pagina + 1) * limite - 1);
+      try {
+        while (true) {
+          // 🔹 Nova consulta principal (preferencial)
+          const { data, error } = await supabase
+            .from("estoque_farmacia")
+            .select(`
+              id,
+              quantidade,
+              preco_local,
+              produtos (
+                id,
+                nome,
+                slug,
+                imagem,
+                categoria,
+                preco_venda
+              )
+            `)
+            .eq("farmacia_id", 1) // ID da Drogaria Rede Fabiano
+            .gt("quantidade", 0)
+            .order("produtos(nome)", { ascending: true })
+            .range(pagina * limite, (pagina + 1) * limite - 1);
 
-      if (error) {
-        console.error(" Erro ao carregar produtos:", error);
-        break;
+          // 🔹 Fallback de segurança
+          if (error) {
+            console.warn("⚠️ Erro ao buscar estoque_farmacia, revertendo para tabela produtos:", error);
+            const fallback = await supabase
+              .from("produtos")
+              .select("*")
+              .eq("loja", LOJA)
+              .eq("disponivel", true)
+              .gt("estoque", 0)
+              .order("nome", { ascending: true })
+              .range(pagina * limite, (pagina + 1) * limite - 1);
+
+            if (!fallback.error && fallback.data?.length) {
+              todos = [...todos, ...fallback.data];
+            }
+            break;
+          }
+
+          if (!data || data.length === 0) break;
+
+          // 🔹 Formatar estrutura
+          const formatados = data.map((item: any) => ({
+            ...item.produtos,
+            preco_venda: item.preco_local ?? item.produtos?.preco_venda ?? 0,
+            estoque: item.quantidade,
+          }));
+
+          todos = [...todos, ...formatados];
+
+          if (data.length < limite) break;
+          pagina++;
+        }
+
+        console.log("✅ Total de produtos carregados:", todos.length);
+        setProdutos(todos);
+      } catch (err) {
+        console.error("❌ Erro inesperado ao carregar produtos:", err);
+      } finally {
+        setCarregando(false);
       }
-
-      if (!data || data.length === 0) break;
-
-      todos = [...todos, ...data];
-      if (data.length < limite) break;
-      pagina++;
     }
-
-    console.log(" Total de produtos carregados:", todos.length);
-    setProdutos(todos);
-    setCarregando(false);
-  }
 
     carregarProdutos();
   }, []);
+
 
   // 🛒 Carrinho
   function adicionarAoCarrinho(produto: Produto) {

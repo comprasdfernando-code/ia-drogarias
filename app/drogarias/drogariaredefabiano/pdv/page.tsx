@@ -24,22 +24,64 @@ export default function PDVPage() {
     const valorBusca = busca.trim() || inputRef.current?.value.trim() || "";
     if (!valorBusca) return;
 
-    const { data, error } = await supabase
-      .from("produtos")
-      .select("*")
-      .or(`nome.ilike.%${busca}%,codigo_barras.ilike.%${busca}%`)
-      .limit(10);
+    try {
+      // 🧠 1️⃣ Busca primeiro no estoque_farmacia (ligando com produtos)
+      const { data, error } = await supabase
+        .from("estoque_farmacia")
+        .select(`
+          id,
+          quantidade,
+          preco_local,
+          produtos (
+            id,
+            nome,
+            slug,
+            codigo_barras,
+            categoria,
+            preco_venda,
+            preco_custo,
+            imagem
+          )
+        `)
+        .eq("farmacia_id", 1) // ID da Drogaria Rede Fabiano
+        .or(`produtos.nome.ilike.%${valorBusca}%,produtos.codigo_barras.ilike.%${valorBusca}%`)
+        .limit(10);
 
-    if (error) {
-      alert("Erro ao buscar produto!");
-      console.error(error);
-      return;
-    }
+      // ⚠️ Fallback — caso a tabela estoque_farmacia não retorne nada
+      if (error || !data?.length) {
+        console.warn("⚠️ Falha ou sem resultados no estoque_farmacia. Tentando tabela produtos:", error);
+        const fallback = await supabase
+          .from("produtos")
+          .select("*")
+          .or(`nome.ilike.%${valorBusca}%,codigo_barras.ilike.%${valorBusca}%`)
+          .limit(10);
 
-    if (data && data.length > 0) {
-      setResultados(data);
-    } else {
-      alert("Produto não encontrado!");
+        if (fallback.error) {
+          alert("Erro ao buscar produto!");
+          console.error(fallback.error);
+          return;
+        }
+
+        if (fallback.data && fallback.data.length > 0) {
+          setResultados(fallback.data);
+        } else {
+          alert("Produto não encontrado!");
+        }
+        return;
+      }
+
+      // 🔄 Monta os produtos encontrados a partir do estoque_farmacia
+      const formatados = data.map((item: any) => ({
+        ...item.produtos,
+        preco_venda: item.preco_local ?? item.produtos?.preco_venda ?? 0,
+        preco_custo: item.produtos?.preco_custo ?? 0,
+        estoque: item.quantidade ?? 0,
+      }));
+
+      setResultados(formatados);
+    } catch (err) {
+      console.error("❌ Erro inesperado ao buscar produto:", err);
+      alert("Erro inesperado ao buscar produto!");
     }
   }
 
@@ -130,9 +172,48 @@ export default function PDVPage() {
       troco: troco > 0 ? troco.toFixed(2) : "0.00",
     }));
   }
+// 🔄 Atualizar estoque no Supabase
+  async function atualizarEstoque(vendaAtual: any[]) {
+    for (const item of vendaAtual) {
+      try {
+        // Busca o registro do estoque_farmacia correspondente
+        const { data: estoque, error: buscaError } = await supabase
+          .from("estoque_farmacia")
+          .select("id, quantidade")
+          .eq("farmacia_id", 1)
+          .eq("produto_id", item.id)
+          .maybeSingle();
 
-  function finalizarVenda() {
+        if (buscaError) {
+          console.warn("⚠️ Erro ao buscar estoque:", buscaError);
+          continue;
+        }
+
+        if (!estoque) {
+          console.warn("⚠️ Produto não encontrado no estoque_farmacia:", item.nome);
+          continue;
+        }
+
+        const novaQtd = Math.max(0, (estoque.quantidade || 0) - (item.qtd || 0));
+
+        const { error: updateError } = await supabase
+          .from("estoque_farmacia")
+          .update({ quantidade: novaQtd })
+          .eq("id", estoque.id);
+
+        if (updateError) {
+          console.error("❌ Erro ao atualizar estoque:", updateError);
+        } else {
+          console.log(`✅ Estoque atualizado: ${item.nome} = ${novaQtd}`);
+        }
+      } catch (err) {
+        console.error("❌ Erro inesperado ao atualizar estoque:", err);
+      } //
+    }//
+  }
+  async function finalizarVenda() {
     alert("💰 Venda finalizada com sucesso!");
+    await atualizarEstoque(venda);
     limparVenda();
     setShowPagamento(false);
   }
