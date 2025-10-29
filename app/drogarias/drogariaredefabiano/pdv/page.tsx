@@ -153,7 +153,6 @@ export default function PDVPage() {
   function limparVenda() {
     setVenda([]);
     setTotal(0);
-    localStorage.removeItem("carrinho-rede-fabiano");
   }
 
   // 💰 Pagamento
