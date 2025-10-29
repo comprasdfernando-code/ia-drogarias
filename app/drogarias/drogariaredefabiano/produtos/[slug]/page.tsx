@@ -64,9 +64,11 @@ export default function ProdutoPage() {
   // 🧠 Busca por texto
 const handleBuscar = (e: React.FormEvent) => {
   e.preventDefault();
+
   if (busca.trim()) {
     const destino = `/drogarias/drogariaredefabiano?busca=${encodeURIComponent(busca)}`;
-    window.location.href = destino; // 🔁 Força o redirecionamento completo
+    router.push(destino); // redireciona via Next.js
+    router.refresh(); // 🔁 força recarregar a nova rota (corrige cache)
   }
 };
 
