@@ -17,6 +17,7 @@ export default function ProdutoPage() {
   const [carregando, setCarregando] = useState(true);
   const [busca, setBusca] = useState("");
   const [carrinho, setCarrinho] = useState<any[]>([]); // 🛒 novo estado do carrinho
+  const [mensagemAdd, setMensagemAdd] = useState(""); // 💬 feedback visual
 
   // ✅ 1. Carregar carrinho existente ao abrir a pagina
   useEffect(() => {
@@ -61,12 +62,13 @@ export default function ProdutoPage() {
   }, [slug]);
 
   // 🧠 Busca por texto
-  const handleBuscar = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (busca.trim()) {
-      router.push(`/drogarias/drogariaredefabiano?busca=${encodeURIComponent(busca)}`);
-    }
-  };
+const handleBuscar = (e: React.FormEvent) => {
+  e.preventDefault();
+  if (busca.trim()) {
+    const destino = `/drogarias/drogariaredefabiano?busca=${encodeURIComponent(busca)}`;
+    window.location.href = destino; // 🔁 Força o redirecionamento completo
+  }
+};
 
   if (carregando)
     return (
@@ -90,7 +92,7 @@ export default function ProdutoPage() {
 
   const whatsapp = `https://wa.me/5511948343725?text=${mensagem}`;
 
-  // ✅ 2. Função de adicionar ao carrinho corrigida
+  // ✅ 2. Função de adicionar ao carrinho (agora sem sair da página)
   function adicionarAoCarrinho(produto: any) {
     const carrinhoAtual =
       JSON.parse(localStorage.getItem("carrinho-rede-fabiano") || "[]");
@@ -108,11 +110,14 @@ export default function ProdutoPage() {
 
     localStorage.setItem("carrinho-rede-fabiano", JSON.stringify(atualizado));
     setCarrinho(atualizado);
-    router.push("/drogarias/drogariaredefabiano/carrinho");
+
+    // 💬 Feedback visual (dura 2s e some)
+    setMensagemAdd("✅ Produto adicionado ao carrinho!");
+    setTimeout(() => setMensagemAdd(""), 2000);
   }
 
   return (
-    <main className="max-w-3xl mx-auto px-6 py-10">
+    <main className="max-w-3xl mx-auto px-6 py-10 relative">
       {/* 🔍 Barra de busca */}
       <form
         onSubmit={handleBuscar}
@@ -134,7 +139,7 @@ export default function ProdutoPage() {
       </form>
 
       {/* 🧾 Card do produto */}
-      <div className="bg-white shadow-lg rounded-xl p-6 text-center">
+      <div className="bg-white shadow-lg rounded-xl p-6 text-center relative">
         <Image
           src={produto.imagem || "/no-image.png"}
           alt={produto.nome}
@@ -184,6 +189,13 @@ export default function ProdutoPage() {
             💬 Falar no WhatsApp
           </a>
         </div>
+
+        {/* ✅ Mensagem de confirmação flutuante */}
+        {mensagemAdd && (
+          <div className="absolute top-3 right-3 bg-green-600 text-white text-sm px-4 py-2 rounded shadow-md animate-fade">
+            {mensagemAdd}
+          </div>
+        )}
       </div>
     </main>
   );
