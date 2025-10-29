@@ -16,6 +16,15 @@ export default function ProdutoPage() {
   const [produto, setProduto] = useState<any>(null);
   const [carregando, setCarregando] = useState(true);
   const [busca, setBusca] = useState("");
+  const [carrinho, setCarrinho] = useState<any[]>([]); // 🛒 novo estado do carrinho
+
+  // ✅ 1. Carregar carrinho existente ao abrir a pagina
+  useEffect(() => {
+    const salvo = localStorage.getItem("carrinho-rede-fabiano");
+    if (salvo) {
+      setCarrinho(JSON.parse(salvo));
+    }
+  }, []);
 
   useEffect(() => {
     async function fetchProduto() {
@@ -39,7 +48,7 @@ export default function ProdutoPage() {
       }
 
       if (error || !data) {
-        console.warn("Produto não encontrado.");
+        console.warn("Produto nao encontrado.");
         setProduto(null);
       } else {
         setProduto(data);
@@ -80,6 +89,27 @@ export default function ProdutoPage() {
   );
 
   const whatsapp = `https://wa.me/5511948343725?text=${mensagem}`;
+
+  // ✅ 2. Função de adicionar ao carrinho corrigida
+  function adicionarAoCarrinho(produto: any) {
+    const carrinhoAtual =
+      JSON.parse(localStorage.getItem("carrinho-rede-fabiano") || "[]");
+
+    const existente = carrinhoAtual.find((p: any) => p.id === produto.id);
+    let atualizado;
+
+    if (existente) {
+      atualizado = carrinhoAtual.map((p: any) =>
+        p.id === produto.id ? { ...p, quantidade: p.quantidade + 1 } : p
+      );
+    } else {
+      atualizado = [...carrinhoAtual, { ...produto, quantidade: 1 }];
+    }
+
+    localStorage.setItem("carrinho-rede-fabiano", JSON.stringify(atualizado));
+    setCarrinho(atualizado);
+    router.push("/drogarias/drogariaredefabiano/carrinho");
+  }
 
   return (
     <main className="max-w-3xl mx-auto px-6 py-10">
@@ -133,25 +163,7 @@ export default function ProdutoPage() {
         {/* 🛒 Botões */}
         <div className="flex flex-col sm:flex-row justify-center gap-4">
           <button
-            onClick={() => {
-              const carrinhoAtual =
-                JSON.parse(localStorage.getItem("carrinhoFabiano") || "[]") || [];
-              const existente = carrinhoAtual.find(
-                (p: any) => p.id === produto.id
-              );
-              let atualizado;
-
-              if (existente) {
-                atualizado = carrinhoAtual.map((p: any) =>
-                  p.id === produto.id ? { ...p, quantidade: p.quantidade + 1 } : p
-                );
-              } else {
-                atualizado = [...carrinhoAtual, { ...produto, quantidade: 1 }];
-              }
-
-              localStorage.setItem("carrinho-rede-fabiano", JSON.stringify(atualizado));
-              router.push("/drogarias/drogariaredefabiano/carrinho");
-            }}
+            onClick={() => adicionarAoCarrinho(produto)}
             className="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-5 rounded-md transition"
           >
             🛒 Adicionar ao Carrinho
