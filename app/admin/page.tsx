@@ -12,6 +12,7 @@ type Produto = {
   nome: string;
   descricao?: string;
   preco_venda: number;
+  preco_custo?: number;
   categoria: string;
   codigo_barras?: string;
   imagem?: string;
@@ -32,6 +33,7 @@ export default function AdminPage() {
     nome: "",
     descricao: "",
     preco_venda: 0,
+    preco_custo: 0,
     categoria: "",
     codigo_barras: "",
     imagem: "",
@@ -119,35 +121,34 @@ export default function AdminPage() {
     }
   }
 
-async function uploadImagem(e) {
-  const file = e.target.files[0];
-  if (!file) return;
+  async function uploadImagem(e: any) {
+    const file = e.target.files[0];
+    if (!file) return;
 
-  setUploading(true);
+    setUploading(true);
+    try {
+      const fileName = `${Date.now()}-${file.name}`;
+      const { error } = await supabase.storage
+        .from("produtos")
+        .upload(fileName, file);
 
-  try {
-    const fileName = `${Date.now()}-${file.name}`;
-    const { data, error } = await supabase.storage
-      .from("produtos")
-      .upload(fileName, file);
+      if (error) throw error;
 
-    if (error) throw error;
+      const { data: publicUrlData } = supabase.storage
+        .from("produtos")
+        .getPublicUrl(fileName);
 
-    const { data: publicUrlData } = supabase.storage
-      .from("produtos")
-      .getPublicUrl(fileName);
-
-    if (publicUrlData?.publicUrl) {
-      setForm({ ...form, imagem: publicUrlData.publicUrl });
-      alert("✅ Imagem enviada com sucesso!");
+      if (publicUrlData?.publicUrl) {
+        setForm({ ...form, imagem: publicUrlData.publicUrl });
+        alert("✅ Imagem enviada com sucesso!");
+      }
+    } catch (error) {
+      console.error(error);
+      alert("❌ Erro ao enviar imagem!");
+    } finally {
+      setUploading(false);
     }
-  } catch (error) {
-    console.error(error);
-    alert("❌ Erro ao enviar imagem!");
-  } finally {
-    setUploading(false);
   }
-}
 
   function editarProduto(produto: Produto) {
     setEditando(produto);
@@ -160,6 +161,7 @@ async function uploadImagem(e) {
       nome: "",
       descricao: "",
       preco_venda: 0,
+      preco_custo: 0,
       categoria: "",
       codigo_barras: "",
       imagem: "",
@@ -168,12 +170,11 @@ async function uploadImagem(e) {
   }
 
   function exportarCSV() {
-    const csvHeader = "Nome,Descrição,Preço,Categoria,EAN,Estoque\n";
+    const csvHeader = "Nome,Descrição,Preço Venda,Preço Custo,Categoria,EAN,Estoque\n";
     const csvBody = produtos
       .map(
         (p) =>
-          `${p.nome},${p.descricao || ""},${p.preco_venda},${p.categoria},${
-            p.codigo_barras || ""
+          `${p.nome},${p.descricao || ""},${p.preco_venda},${p.preco_custo || ""},${p.categoria},${p.codigo_barras || ""
           },${p.estoque}`
       )
       .join("\n");
@@ -187,6 +188,34 @@ async function uploadImagem(e) {
     link.click();
   }
 
+  // 📥 IMPORTAR CSV (atualiza preço, custo e estoque pelo código de barras)
+  async function importarCSV(e: any) {
+    const file = e.target.files[0];
+    if (!file) return;
+
+    const text = await file.text();
+    const linhas = text.split("\n").slice(1);
+
+    for (const linha of linhas) {
+      const [codigo_barras, preco_venda, preco_custo, estoque] = linha.split(",");
+      if (!codigo_barras) continue;
+
+      const { error } = await supabase
+        .from("produtos")
+        .update({
+          preco_venda: parseFloat(preco_venda) || 0,
+          preco_custo: parseFloat(preco_custo) || 0,
+          estoque: parseInt(estoque) || 0,
+        })
+        .eq("codigo_barras", codigo_barras.trim());
+
+      if (error) console.error("Erro ao atualizar:", codigo_barras, error);
+    }
+
+    alert("✅ Atualização concluída com sucesso!");
+    buscarProdutos();
+  }
+
   return (
     <main className="max-w-6xl mx-auto px-6 py-10">
       <h1 className="text-2xl font-bold text-blue-700 mb-6">
@@ -195,133 +224,80 @@ async function uploadImagem(e) {
 
       {/* FORMULÁRIO */}
       <div className="grid grid-cols-2 gap-4 mb-6">
-        <input
-          type="text"
-          placeholder="Nome do Produto"
-          value={form.nome}
+        <input type="text" placeholder="Nome do Produto" value={form.nome}
           onChange={(e) => setForm({ ...form, nome: e.target.value })}
-          className="border p-2 rounded"
-        />
+          className="border p-2 rounded" />
 
-        <input
-          type="number"
-          placeholder="Preço de Venda"
-          value={form.preco_venda}
-          onChange={(e) =>
-            setForm({ ...form, preco_venda: parseFloat(e.target.value) })
-          }
-          className="border p-2 rounded"
-        />
+        <input type="number" placeholder="Preço de Venda" value={form.preco_venda}
+          onChange={(e) => setForm({ ...form, preco_venda: parseFloat(e.target.value) })}
+          className="border p-2 rounded" />
 
-        <input
-          type="text"
-          placeholder="Categoria"
-          value={form.categoria}
+        <input type="number" placeholder="Preço de Custo" value={form.preco_custo}
+          onChange={(e) => setForm({ ...form, preco_custo: parseFloat(e.target.value) })}
+          className="border p-2 rounded" />
+
+        <input type="text" placeholder="Categoria" value={form.categoria}
           onChange={(e) => setForm({ ...form, categoria: e.target.value })}
-          className="border p-2 rounded"
-        />
+          className="border p-2 rounded" />
 
-        <input
-          type="text"
-          placeholder="Código de Barras (EAN)"
-          value={form.codigo_barras}
+        <input type="text" placeholder="Código de Barras (EAN)" value={form.codigo_barras}
           onChange={(e) => setForm({ ...form, codigo_barras: e.target.value })}
-          className="border p-2 rounded"
-        />
+          className="border p-2 rounded" />
 
-        <input
-          type="number"
-          placeholder="Estoque"
-          value={form.estoque}
-          onChange={(e) =>
-            setForm({ ...form, estoque: parseInt(e.target.value) })
-          }
-          className="border p-2 rounded"
-        />
+        <input type="number" placeholder="Estoque" value={form.estoque}
+          onChange={(e) => setForm({ ...form, estoque: parseInt(e.target.value) })}
+          className="border p-2 rounded" />
 
-        {/* Upload de Imagem */}
+        {/* Upload Imagem */}
         <div className="flex flex-col gap-2">
-          <input
-            type="file"
-            accept="image/*"
-            onChange={uploadImagem}
-            disabled={uploading}
-            className="border p-2 rounded"
-          />
+          <input type="file" accept="image/*" onChange={uploadImagem} disabled={uploading}
+            className="border p-2 rounded" />
           {uploading && <p className="text-sm text-gray-500">Enviando...</p>}
-          {form.imagem && (
-            <img
-              src={form.imagem}
-              alt="Pré-visualização"
-              className="w-24 h-24 object-cover rounded"
-            />
-          )}
+          {form.imagem && <img src={form.imagem} alt="Prévia" className="w-24 h-24 object-cover rounded" />}
         </div>
 
-        {/* Descrição */}
-        <textarea
-          placeholder="Descrição do produto"
-          value={form.descricao}
+        <textarea placeholder="Descrição do produto" value={form.descricao}
           onChange={(e) => setForm({ ...form, descricao: e.target.value })}
-          className="border p-2 rounded col-span-2 h-24"
-        />
+          className="border p-2 rounded col-span-2 h-24" />
       </div>
 
       {/* BOTÕES */}
-      <div className="flex gap-4 mb-8">
-        <button
-          onClick={salvarProduto}
-          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-        >
+      <div className="flex flex-wrap gap-4 mb-8">
+        <button onClick={salvarProduto} className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
           {editando ? "Atualizar Produto" : "Salvar Produto"}
         </button>
         {editando && (
-          <button
-            onClick={limparFormulario}
-            className="bg-gray-400 text-white px-4 py-2 rounded hover:bg-gray-500"
-          >
+          <button onClick={limparFormulario}
+            className="bg-gray-400 text-white px-4 py-2 rounded hover:bg-gray-500">
             Cancelar
           </button>
         )}
-        <button
-          onClick={exportarCSV}
-          className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700"
-        >
+        <button onClick={exportarCSV}
+          className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700">
           📊 Exportar CSV
         </button>
+
+        <label className="bg-orange-500 hover:bg-orange-600 text-white px-4 py-2 rounded cursor-pointer">
+          📥 Importar CSV
+          <input type="file" accept=".csv" onChange={importarCSV} className="hidden" />
+        </label>
       </div>
 
       {/* FILTROS */}
       <div className="flex flex-wrap items-center gap-2 mb-4">
-        <input
-          type="text"
-          placeholder="Buscar por nome ou código de barras"
-          value={busca}
+        <input type="text" placeholder="Buscar por nome ou código de barras" value={busca}
           onChange={(e) => setBusca(e.target.value)}
-          className="border p-2 rounded flex-grow"
-        />
-        <select
-          value={categoriaFiltro}
-          onChange={(e) => {
-            setCategoriaFiltro(e.target.value);
-            setPagina(1);
-          }}
-          className="border p-2 rounded"
-        >
+          className="border p-2 rounded flex-grow" />
+        <select value={categoriaFiltro} onChange={(e) => {
+          setCategoriaFiltro(e.target.value); setPagina(1);
+        }} className="border p-2 rounded">
           <option value="">Todas as categorias</option>
           {categorias.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
+            <option key={c} value={c}>{c}</option>
           ))}
         </select>
-        <button
-          onClick={() => {
-            setPagina(1);
-            buscarProdutos();
-          }}
-          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700"
-        >
+        <button onClick={() => { setPagina(1); buscarProdutos(); }}
+          className="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700">
           Buscar
         </button>
       </div>
@@ -332,7 +308,8 @@ async function uploadImagem(e) {
           <tr className="bg-gray-100">
             <th className="border p-2">Nome</th>
             <th className="border p-2">Categoria</th>
-            <th className="border p-2">Preço</th>
+            <th className="border p-2">Preço Venda</th>
+            <th className="border p-2">Preço Custo</th>
             <th className="border p-2">Estoque</th>
             <th className="border p-2">Ações</th>
           </tr>
@@ -342,19 +319,16 @@ async function uploadImagem(e) {
             <tr key={p.id}>
               <td className="border p-2">{p.nome}</td>
               <td className="border p-2">{p.categoria}</td>
-              <td className="border p-2">R$ {p.preco_venda.toFixed(2)}</td>
+              <td className="border p-2">R$ {p.preco_venda?.toFixed(2)}</td>
+              <td className="border p-2 text-gray-600">R$ {p.preco_custo?.toFixed(2)}</td>
               <td className="border p-2">{p.estoque}</td>
               <td className="border p-2 text-center">
-                <button
-                  onClick={() => editarProduto(p)}
-                  className="bg-yellow-500 text-white px-2 py-1 rounded mr-2 hover:bg-yellow-600"
-                >
+                <button onClick={() => editarProduto(p)}
+                  className="bg-yellow-500 text-white px-2 py-1 rounded mr-2 hover:bg-yellow-600">
                   Editar
                 </button>
-                <button
-                  onClick={() => excluirProduto(p.id!)}
-                  className="bg-red-600 text-white px-2 py-1 rounded hover:bg-red-700"
-                >
+                <button onClick={() => excluirProduto(p.id!)}
+                  className="bg-red-600 text-white px-2 py-1 rounded hover:bg-red-700">
                   Excluir
                 </button>
               </td>
@@ -365,21 +339,15 @@ async function uploadImagem(e) {
 
       {/* PAGINAÇÃO */}
       <div className="flex justify-between items-center mt-4">
-        <button
-          onClick={() => setPagina(Math.max(1, pagina - 1))}
+        <button onClick={() => setPagina(Math.max(1, pagina - 1))}
           disabled={pagina === 1}
-          className="bg-gray-300 px-3 py-1 rounded disabled:opacity-50"
-        >
+          className="bg-gray-300 px-3 py-1 rounded disabled:opacity-50">
           ⬅ Anterior
         </button>
-        <span>
-          Página {pagina} de {totalPaginas}
-        </span>
-        <button
-          onClick={() => setPagina(Math.min(totalPaginas, pagina + 1))}
+        <span>Página {pagina} de {totalPaginas}</span>
+        <button onClick={() => setPagina(Math.min(totalPaginas, pagina + 1))}
           disabled={pagina === totalPaginas}
-          className="bg-gray-300 px-3 py-1 rounded disabled:opacity-50"
-        >
+          className="bg-gray-300 px-3 py-1 rounded disabled:opacity-50">
           Próximo ➡
         </button>
       </div>
