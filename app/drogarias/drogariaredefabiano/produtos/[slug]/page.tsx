@@ -149,10 +149,7 @@ export default function ProdutoPage() {
                 atualizado = [...carrinhoAtual, { ...produto, quantidade: 1 }];
               }
 
-              localStorage.setItem(
-                "carrinhoFabiano",
-                JSON.stringify(atualizado)
-              );
+              localStorage.setItem("carrinho-rede-fabiano", JSON.stringify(atualizado));
               router.push("/drogarias/drogariaredefabiano/carrinho");
             }}
             className="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-5 rounded-md transition"
