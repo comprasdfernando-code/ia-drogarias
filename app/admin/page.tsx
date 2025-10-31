@@ -201,7 +201,7 @@ export default function AdminPage() {
       if (!codigo_barras) continue;
 
       const { error } = await supabase
-        .from("produtos")
+        .from("estoque_farmacia")
         .update({
           preco_venda: parseFloat(preco_venda) || 0,
           preco_custo: parseFloat(preco_custo) || 0,
