@@ -190,31 +190,34 @@ export default function AdminPage() {
 
   // 📥 IMPORTAR CSV (atualiza preço, custo e estoque pelo código de barras)
   async function importarCSV(e: any) {
-    const file = e.target.files[0];
-    if (!file) return;
+  const file = e.target.files[0];
+  if (!file) return;
 
-    const text = await file.text();
-    const linhas = text.split("\n").slice(1);
+  const text = await file.text();
+  const linhas = text.split("\n").slice(1); // pula o cabeçalho
 
-    for (const linha of linhas) {
-      const [codigo_barras, preco_venda, preco_custo, estoque] = linha.split(",");
-      if (!codigo_barras) continue;
+  let atualizados = 0;
+  for (const linha of linhas) {
+    const [codigo_barras, nome, estoque, preco_venda, preco_custo] = linha.split(",");
+    if (!codigo_barras) continue;
 
-      const { error } = await supabase
-        .from("estoque_farmacia")
-        .update({
-          preco_venda: parseFloat(preco_venda) || 0,
-          preco_custo: parseFloat(preco_custo) || 0,
-          estoque: parseInt(estoque) || 0,
-        })
-        .eq("codigo_barras", codigo_barras.trim());
+    const { error } = await supabase
+      .from("produtos")
+      .update({
+        nome: nome?.trim(),
+        estoque: parseInt(estoque) || 0,
+        preco_venda: parseFloat(preco_venda) || 0,
+        preco_custo: parseFloat(preco_custo) || 0,
+      })
+      .eq("codigo_barras", codigo_barras.trim());
 
-      if (error) console.error("Erro ao atualizar:", codigo_barras, error);
-    }
-
-    alert("✅ Atualização concluída com sucesso!");
-    buscarProdutos();
+    if (!error) atualizados++;
+    else console.error("Erro ao atualizar:", codigo_barras, error);
   }
+
+  alert(`✅ Atualização concluída com sucesso! ${atualizados} produtos atualizados.`);
+  buscarProdutos();
+}
 
   return (
     <main className="max-w-6xl mx-auto px-6 py-10">
