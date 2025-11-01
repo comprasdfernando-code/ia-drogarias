@@ -120,10 +120,8 @@ export default function HomePage() {
   const produtosFiltrados = useMemo(() => {
     const t = busca.trim().toLowerCase();
     if (!t) return produtos;
-    return produtos.filter((p) =>
-  p.nome.toLowerCase().includes(busca.toLowerCase()) ||
-  (`p.codigo_barras && p.codigo_barras.includes(busca)`)
-);
+    return produtos.filter((p) => p.nome?.toLowerCase().includes(t));
+  }, [produtos, busca]);
 
   // Formatador de moeda
   function fmt(n: number) {
