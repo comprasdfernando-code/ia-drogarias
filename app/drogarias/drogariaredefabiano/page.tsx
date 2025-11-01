@@ -96,20 +96,20 @@ useEffect(() => {
         while (true) {
           // 🔹 Nova consulta principal (preferencial)
           const { data, error } = await supabase
-            .from("produtos")
-            .select(`
-              id,
-              quantidade,
-              preco_local,
-              produtos (
-                id,
-                nome,
-                slug,
-                imagem,
-                categoria,
-                preco_venda
-              )
-            `)
+  .from("estoque_farmacia")
+  .select(`
+    id,
+    quantidade,
+    preco_local,
+    produtos (
+      id,
+      nome,
+      slug,
+      imagem,
+      categoria,
+      preco_venda
+    )
+  `)
             .eq("farmacia_id", 1) // ID da Drogaria Rede Fabiano
             .gt("quantidade", 0)
             .order("produtos(nome)", { ascending: true })
