@@ -96,7 +96,7 @@ useEffect(() => {
         while (true) {
           // 🔹 Nova consulta principal (preferencial)
           const { data, error } = await supabase
-            .from("estoque_farmacia")
+            .from("produtos")
             .select(`
               id,
               quantidade,
