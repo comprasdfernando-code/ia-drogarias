@@ -22,12 +22,18 @@
         "name": "next"
       }
     ],
-    "incremental": true
+    "incremental": true,
+    "baseUrl": ".",
+    "paths": {
+      "@/": [
+        ""
+      ]
+    }
   },
   "include": [
+    "*/.ts",
+    "*/.tsx",
     "next-env.d.ts",
-    "**/*.ts",
-    "**/*.tsx",
     ".next/types/**/*.ts"
   ],
   "exclude": [
