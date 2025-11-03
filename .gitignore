@@ -4,3 +4,7 @@ node_modules/
 .env
 .env.local
 .env.*.local
+# Ignorar vídeos grandes
+/public/*.mp4
+/public/*_files/
+/public/videos/
