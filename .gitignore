@@ -8,3 +8,5 @@ node_modules/
 /public/*.mp4
 /public/*_files/
 /public/videos/
+/public/*.mov
+/public/*.avi
