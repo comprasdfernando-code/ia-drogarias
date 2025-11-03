@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { createClient } from "@supabase/supabase-js";
+import  UploadVideo  from "../../components/UploadVideo";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -263,6 +264,20 @@ export default function AdminPage() {
           onChange={(e) => setForm({ ...form, descricao: e.target.value })}
           className="border p-2 rounded col-span-2 h-24" />
       </div>
+
+      {/* 🔹 UPLOAD DE VÍDEOS PROMOCIONAIS / HISTÓRIAS */}
+<div className="my-10 p-6 bg-gray-50 border rounded-lg shadow-sm">
+  <h2 className="text-lg font-bold text-blue-700 mb-3">
+    🎥 Upload de Vídeos (Promoções / Histórias)
+  </h2>
+  <p className="text-sm text-gray-600 mb-4">
+    Envie vídeos .mp4 para suas campanhas do <strong>Gigante dos Assados</strong> ou <strong>IA Drogarias</strong>.
+  </p>
+
+  <UploadVideo bucket="videos_gigante" titulo="🍗 Vídeos - Gigante dos Assados" />
+  <hr className="my-6" />
+  <UploadVideo bucket="videos_drogarias" titulo="💊 Histórias - IA Drogarias" />
+</div>
 
       {/* BOTÕES */}
       <div className="flex flex-wrap gap-4 mb-8">
