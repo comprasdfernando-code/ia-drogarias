@@ -260,63 +260,39 @@ export default function GigantePage() {
         </Swiper>
       </div>
 
-      {/* 🎥 SEÇÃO DE VÍDEOS */}
-      <div
-        style={{
-          maxWidth: 900,
-          margin: "0 auto 60px",
-          padding: "20px",
-          borderTop: "3px solid #b91c1c",
-        }}
-      >
-        <h2 style={{ color: "#b91c1c", marginBottom: 20 }}>
-          📺 Vídeos de Propaganda
-        </h2>
+      {/* 🎥 VÍDEO DE PROPAGANDA */}
+<div
+  style={{
+    maxWidth: "600px",        // 🔹 Largura máxima (ajusta aqui se quiser menor ou maior)
+    margin: "30px auto",      // 🔹 Centraliza horizontalmente
+    textAlign: "center",
+  }}
+>
+  <video
+    src="/video1.mp4"
+    controls
+    autoPlay
+    muted
+    loop
+    style={{
+      width: "100%",
+      height: "auto",
+      borderRadius: "10px",
+      boxShadow: "0 2px 10px rgba(0,0,0,0.3)",
+    }}
+  />
 
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))",
-            gap: 20,
-          }}
-        >
-          <iframe
-            width="100%"
-            height="200"
-            src="https://www.youtube.com/embed/VIDEO_ID_1"
-            title="Propaganda 1"
-            allowFullScreen
-            style={{ borderRadius: 10 }}
-          ></iframe>
-
-          <video
-            width="100%"
-            height="200"
-            controls
-            style={{ borderRadius: 10, backgroundColor: "#000" }}
-          >
-            <source src="/video1.mp4" type="video/mp4" />
-          </video>
-
-          <video
-            width="100%"
-            height="200"
-            controls
-            style={{ borderRadius: 10, backgroundColor: "#000" }}
-          >
-            <source src="/video1.mp4" type="video1/mp4" />
-          </video>
-
-          <iframe
-            width="100%"
-            height="200"
-            src="https://www.youtube.com/embed/VIDEO_ID_2"
-            title="Propaganda 2"
-            allowFullScreen
-            style={{ borderRadius: 10 }}
-          ></iframe>
-        </div>
-      </div>
+  <p
+    style={{
+      marginTop: 10,
+      fontWeight: "bold",
+      color: "#b91c1c",
+      fontSize: "14px",
+    }}
+  >
+    🍗 Propaganda Oficial - Gigante dos Assados
+  </p>
+</div>
 
       {/* CSS RESPONSIVO INLINE */}
       <style>{`
