@@ -10,6 +10,11 @@ export default function RootClientLayout({ children }: { children: React.ReactNo
   const [userName, setUserName] = useState<string | null>(null);
   const [cartCount, setCartCount] = useState(0);
 
+  // 🚫 Desativa layout padrão nas rotas do Gigante
+  if (typeof window !== "undefined" && window.location.pathname.startsWith("/gigante")) {
+    return <>{children}</>;
+  }
+
   // 🧩 Atualiza contador do carrinho
   useEffect(() => {
     const storedCart = JSON.parse(localStorage.getItem("cart") || "[]");
