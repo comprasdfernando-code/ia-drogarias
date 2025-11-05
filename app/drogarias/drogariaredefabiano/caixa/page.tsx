@@ -99,8 +99,8 @@ export default function CaixaPage() {
   }
 
   async function marcarComoPago(boleto: any) {
-  // ✅ Atualiza o boleto como pago
-  await supabase
+  // ✅ Atualiza boleto como pago
+  const { error: erroBoleto } = await supabase
     .from("boletos_a_vencer")
     .update({
       pago: true,
@@ -108,8 +108,14 @@ export default function CaixaPage() {
     })
     .eq("id", boleto.id);
 
-  // ✅ Registra automaticamente no caixa
-  await supabase.from("movimentacoes_caixa").insert`({
+  if (erroBoleto) {
+    console.error("Erro ao atualizar boleto:", erroBoleto);
+    alert("Erro ao atualizar boleto!");
+    return;
+  }
+
+  // ✅ Insere movimentação no caixa
+  const { error: erroCaixa } = await supabase.from("movimentacoes_caixa").insert`({
     tipo: "Saída",
     descricao: Pagamento boleto - ${boleto.fornecedor},
     valor: Number(boleto.valor),
@@ -118,8 +124,13 @@ export default function CaixaPage() {
     loja: LOJA,
   })`;
 
-  alert("💸 Boleto pago e registrado no caixa com sucesso!");
-  carregarDados();
+  if (erroCaixa) {
+    console.error("Erro ao inserir no caixa:", erroCaixa);
+    alert("⚠️ Erro ao registrar no caixa!");
+  } else {
+    alert("💸 Boleto pago e registrado no caixa com sucesso!");
+    carregarDados();
+  }
 }
   const totalEntradas = entradas.reduce((a, i) => a + i.valor, 0);
   const totalSaidas = saidas.reduce((a, i) => a + i.valor, 0);
