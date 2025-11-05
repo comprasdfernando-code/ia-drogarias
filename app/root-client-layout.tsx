@@ -75,10 +75,17 @@ export default function RootClientLayout({ children }: { children: React.ReactNo
           {/* Menu Desktop */}
           <nav className="hidden sm:flex items-center gap-3">
             <Link
-              href="/produtos"
+              href="/drogariaredefabiano"
               className="px-4 py-2 bg-white text-blue-700 rounded-lg shadow hover:bg-gray-100 transition text-sm font-medium"
             >
-              E-commerce
+              D REDE FABIANO
+            </Link>
+
+            <Link
+              href="/drogariaredefabiano/pdv"
+              className="px-4 py-2 bg-white text-blue-700 rounded-lg shadow hover:bg-gray-100 transition text-sm font-medium"
+            >
+              PDV
             </Link>
 
             <Link
