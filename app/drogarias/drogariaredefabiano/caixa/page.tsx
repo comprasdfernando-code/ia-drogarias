@@ -99,24 +99,28 @@ export default function CaixaPage() {
   }
 
   async function marcarComoPago(boleto: any) {
-    await supabase
-      .from("boletos_a_vencer")
-      .update({ status: "pago" })
-      .eq("id", boleto.id);
+  // ✅ Atualiza o boleto como pago
+  await supabase
+    .from("boletos_a_vencer")
+    .update({
+      pago: true,
+      data_pagamento: new Date(),
+    })
+    .eq("id", boleto.id);
 
-    await supabase.from("movimentacoes_caixa").insert(`{
-      tipo: "Saída",
-      descricao: Pagamento de boleto ${boleto.fornecedor},
-      valor: boleto.valor,
-      forma_pagamento: "Boleto",
-      data: new Date(),
-      loja: LOJA,
-    }`);
+  // ✅ Registra automaticamente no caixa
+  await supabase.from("movimentacoes_caixa").insert`({
+    tipo: "Saída",
+    descricao: Pagamento boleto - ${boleto.fornecedor},
+    valor: Number(boleto.valor),
+    forma_pagamento: "Boleto",
+    data: new Date(),
+    loja: LOJA,
+  })`;
 
-    alert("Boleto pago e registrado no caixa ✅");
-    carregarDados();
-  }
-
+  alert("💸 Boleto pago e registrado no caixa com sucesso!");
+  carregarDados();
+}
   const totalEntradas = entradas.reduce((a, i) => a + i.valor, 0);
   const totalSaidas = saidas.reduce((a, i) => a + i.valor, 0);
   const saldo = totalEntradas - totalSaidas;
