@@ -325,54 +325,50 @@ export default function CaixaPage() {
             {boletos.length === 0 ? (
               <p className="text-gray-500 text-sm">Nenhum boleto pendente no momento.</p>
             ) : (
-              <table className="w-full border-collapse text-sm">
-                <thead>
-                  <tr className="bg-blue-100 text-blue-900 text-left">
-                    <th className="p-2 border">Fornecedor</th>
-                    <th className="p-2 border">Descrição</th>
-                    <th className="p-2 border">Valor (R$)</th>
-                    <th className="p-2 border">Vencimento</th>
-                    <th className="p-2 border text-center">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {boletos.map((b) => {
-                    const venc = new Date(b.data_vencimento);
-                    const hoje = new Date();
-                    const diasRestantes = Math.ceil(
-                      (venc.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24)
-                    );
-                    let cor = "text-gray-700";
-
-                    if (diasRestantes < 0) cor = "text-red-600 font-semibold";
-                    else if (diasRestantes <= 3) cor = "text-orange-600 font-semibold";
-                    else if (diasRestantes <= 7) cor = "text-blue-600";
-
-                    return (`
-                      <tr key={b.id} className="border-t hover:bg-gray-50 transition">
-                        <td className="p-2 border">{b.fornecedor}</td>
-                        <td className="p-2 border">{b.descricao}</td>
-                        <td className="p-2 border">R$ {fmt(b.valor)}</td>
-                        <td className={p-2 border ${cor}}>
-                          {new Date(b.data_vencimento).toLocaleDateString("pt-BR")}
-                        </td>
-                        <td className="p-2 border text-center">
-                          {b.status === "pago" ? (
-                            <span className="text-green-600 font-semibold">✅ Pago</span>
-                          ) : (
-                            <button
-                              onClick={() => marcarComoPago(b)}
-                              className="text-xs bg-green-600 hover:bg-green-700 text-white px-2 py-1 rounded"
-                            >
-                              Marcar Pago
-                            </button>
-                          )}
-                        </td>
-                      </tr>
-                    `);
-                  })}
-                </tbody>
-              </table>
+              <table className="w-full text-sm border mt-4">
+  <thead className="bg-blue-100 text-blue-700 font-semibold">
+    <tr>
+      <th className="p-2 border">Fornecedor</th>
+      <th className="p-2 border">Descrição</th>
+      <th className="p-2 border">Valor (R$)</th>
+      <th className="p-2 border">Vencimento</th>
+      <th className="p-2 border">Status</th>
+    </tr>
+  </thead>
+  <tbody>
+    {boletos.map((b) => (
+      <tr
+        key={b.id}
+        className={`border-t hover:bg-gray-50 transition ${
+          b.pago
+            ? "text-green-600"
+            : new Date(b.data_vencimento) < new Date()
+            ? "text-red-600"
+            : "text-yellow-600"
+        }`}
+      >
+        <td className="p-2 border">{b.fornecedor}</td>
+        <td className="p-2 border">{b.descricao}</td>
+        <td className="p-2 border">R$ {fmt(b.valor)}</td>
+        <td className="p-2 border text-center">
+          {new Date(b.data_vencimento).toLocaleDateString("pt-BR")}
+        </td>
+        <td className="p-2 border text-center">
+          {b.pago ? (
+            <span className="text-green-700 font-semibold">✅ Pago</span>
+          ) : (
+            <button
+              onClick={() => marcarComoPago(b)}
+              className="text-xs bg-green-600 hover:bg-green-700 text-white px-2 py-1 rounded"
+            >
+              Marcar Pago
+            </button>
+          )}
+        </td>
+      </tr>
+    ))}
+  </tbody>
+</table>
             )}
           </section>
 
