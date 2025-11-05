@@ -317,60 +317,59 @@ export default function CaixaPage() {
           </div>
 
           {/* PAINEL DE BOLETOS DETALHADO */}
-          <section className="bg-white rounded-lg shadow-md p-5 mb-6">
-            <h2 className="text-lg font-semibold text-blue-700 mb-4">
-              📅 Boletos a Vencer
-            </h2>
+          {/* BOLETOS */}
+<section className="bg-white p-4 rounded-lg shadow">
+  <h2 className="font-semibold text-blue-700 text-lg mb-3">
+    Boletos a Vencer 🧾
+  </h2>
 
-            {boletos.length === 0 ? (
-              <p className="text-gray-500 text-sm">Nenhum boleto pendente no momento.</p>
-            ) : (
-              <table className="w-full text-sm border mt-4">
-  <thead className="bg-blue-100 text-blue-700 font-semibold">
-    <tr>
-      <th className="p-2 border">Fornecedor</th>
-      <th className="p-2 border">Descrição</th>
-      <th className="p-2 border">Valor (R$)</th>
-      <th className="p-2 border">Vencimento</th>
-      <th className="p-2 border">Status</th>
-    </tr>
-  </thead>
-  <tbody>
-    {boletos.map((b) => (
-      <tr
-        key={b.id}
-        className={`border-t hover:bg-gray-50 transition ${
-          b.pago
-            ? "text-green-600"
-            : new Date(b.data_vencimento) < new Date()
-            ? "text-red-600"
-            : "text-yellow-600"
-        }`}
-      >
-        <td className="p-2 border">{b.fornecedor}</td>
-        <td className="p-2 border">{b.descricao}</td>
-        <td className="p-2 border">R$ {fmt(b.valor)}</td>
-        <td className="p-2 border text-center">
-          {new Date(b.data_vencimento).toLocaleDateString("pt-BR")}
-        </td>
-        <td className="p-2 border text-center">
-          {b.pago ? (
-            <span className="text-green-700 font-semibold">✅ Pago</span>
-          ) : (
-            <button
-              onClick={() => marcarComoPago(b)}
-              className="text-xs bg-green-600 hover:bg-green-700 text-white px-2 py-1 rounded"
-            >
-              Marcar Pago
-            </button>
-          )}
-        </td>
-      </tr>
-    ))}
-  </tbody>
-</table>
-            )}
-          </section>
+  <div className="overflow-x-auto">
+    <table className="w-full text-sm border mt-2">
+      <thead className="bg-blue-100 text-blue-700 font-semibold">
+        <tr>
+          <th className="p-2 border">Fornecedor</th>
+          <th className="p-2 border">Descrição</th>
+          <th className="p-2 border">Valor (R$)</th>
+          <th className="p-2 border">Vencimento</th>
+          <th className="p-2 border">Status</th>
+        </tr>
+      </thead>
+      <tbody>
+        {boletos.map((b) => (
+          <tr
+            key={b.id}
+            className={`border-t hover:bg-gray-50 transition ${
+              b.pago
+                ? "text-green-600"
+                : new Date(b.data_vencimento) < new Date()
+                ? "text-red-600"
+                : "text-yellow-600"
+            }`}
+          >
+            <td className="p-2 border">{b.fornecedor}</td>
+            <td className="p-2 border">{b.descricao}</td>
+            <td className="p-2 border text-right">R$ {fmt(b.valor)}</td>
+            <td className="p-2 border text-center">
+              {new Date(b.data_vencimento).toLocaleDateString("pt-BR")}
+            </td>
+            <td className="p-2 border text-center">
+              {b.pago ? (
+                <span className="text-green-700 font-semibold">✅ Pago</span>
+              ) : (
+                <button
+                  onClick={() => marcarComoPago(b)}
+                  className="text-xs bg-green-600 hover:bg-green-700 text-white px-2 py-1 rounded"
+                >
+                  Marcar Pago
+                </button>
+              )}
+            </td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  </div>
+</section>
 
           {/* SALDO FINAL */}
           <div className="mt-8 bg-white p-4 rounded-lg shadow text-center">
