@@ -27,6 +27,7 @@ export default function CaixaPage() {
   const [dataVencimento, setDataVencimento] = useState("");
   const [mostrarTodos, setMostrarTodos] = useState(false);
   const [selecionados, setSelecionados] = useState<number[]>([]);
+  const [linhaDigitavel, setLinhaDigitavel] = useState("");
 
   useEffect(() => {
     carregarDados();
@@ -85,19 +86,22 @@ export default function CaixaPage() {
     }
 
     await supabase.from("boletos_a_vencer").insert({
-      fornecedor,
-      descricao: descricaoBoleto,
-      valor: Number(valorBoleto),
-      data_vencimento: dataVencimento,
-      loja: LOJA,
-    });
+  fornecedor,
+  descricao: descricaoBoleto,
+  valor: Number(valorBoleto),
+  data_vencimento: dataVencimento,
+  linha_digitavel: linhaDigitavel || null,   // << aqui
+  loja: LOJA,
+});
 
     alert("Boleto cadastrado com sucesso! 🧾");
     setFornecedor("");
-    setDescricaoBoleto("");
-    setValorBoleto("");
-    setDataVencimento("");
-    carregarDados();
+setDescricaoBoleto("");
+setValorBoleto("");
+setDataVencimento("");
+setLinhaDigitavel("");    // << aqui
+carregarDados();
+
   }
 
   async function marcarComoPago(boleto: any) {
@@ -249,6 +253,14 @@ export default function CaixaPage() {
               />
 
               <input
+  type="text"
+  placeholder="Linha digitável (opcional)"
+  value={linhaDigitavel}
+  onChange={(e) => setLinhaDigitavel(e.target.value)}
+  className="border rounded px-3 py-2"
+/>
+
+              <input
                 type="number"
                 placeholder="Valor"
                 value={valor}
@@ -328,14 +340,15 @@ export default function CaixaPage() {
   <div className="overflow-x-auto">
     <table className="w-full text-sm border mt-2">
       <thead className="bg-blue-100 text-blue-700 font-semibold">
-        <tr>
-          <th className="p-2 border">Fornecedor</th>
-          <th className="p-2 border">Descrição</th>
-          <th className="p-2 border">Valor (R$)</th>
-          <th className="p-2 border">Vencimento</th>
-          <th className="p-2 border">Status</th>
-        </tr>
-      </thead>
+  <tr>
+    <th className="p-2 border">Fornecedor</th>
+    <th className="p-2 border">Descrição</th>
+    <th className="p-2 border">Valor (R$)</th>
+    <th className="p-2 border">Vencimento</th>
+    <th className="p-2 border">Linha Digitável</th> {/* nova coluna */}
+    <th className="p-2 border">Status</th>
+  </tr>
+</thead>
       <tbody>
   {boletos
     .filter((b) => {
@@ -409,6 +422,29 @@ export default function CaixaPage() {
           {new Date(b.data_vencimento).toLocaleDateString("pt-BR")}
         </td>
         <td className="p-2 border text-center">
+          <td className="p-2 border text-center">
+  {b.linha_digitavel ? (
+    <div className="flex items-center justify-center gap-2">
+      <span
+        className="text-xs font-mono truncate max-w-[150px]"
+        title={b.linha_digitavel}
+      >
+        {b.linha_digitavel}
+      </span>
+      <button
+        onClick={() => {
+          navigator.clipboard.writeText(b.linha_digitavel);
+          alert("Linha digitável copiada ✅");
+        }}
+        className="text-blue-600 hover:text-blue-800 text-xs underline"
+      >
+        Copiar
+      </button>
+    </div>
+  ) : (
+    <span className="text-gray-400 text-xs italic">—</span>
+  )}
+</td>
           {b.pago ? (
             <span className="text-green-700 font-semibold">✅ Pago</span>
           ) : (
