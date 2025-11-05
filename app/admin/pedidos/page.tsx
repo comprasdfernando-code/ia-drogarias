@@ -91,7 +91,7 @@ export default function RegistrarPedidoPage() {
       // 🔹 Cria boleto a vencer
       await supabase.from("boletos_a_vencer").insert({
         fornecedor,
-        descricao: Compra ${produto},
+        descricao: `Compra ${produto}`,
         valor: total,
         data_vencimento: dataVencimento || hoje,
         loja: LOJA,
@@ -100,7 +100,7 @@ export default function RegistrarPedidoPage() {
       // 🔹 Cria saída no caixa
       await supabase.from("movimentacoes_caixa").insert({
         tipo: "Saída",
-        descricao: Compra ${produto} - ${fornecedor},
+        descricao: `Compra ${produto} - ${fornecedor}`,
         valor: total,
         forma_pagamento: formaPagamento,
         data: hoje,
