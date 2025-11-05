@@ -101,7 +101,7 @@ export default function CaixaPage() {
   async function marcarComoPago(boleto: any) {
     await supabase
       .from("boletos_a_vencer")
-      .update({ pago: true, data_pagamento: new Date() })
+      .update({ status: "pago" })
       .eq("id", boleto.id);
 
     await supabase.from("movimentacoes_caixa").insert(`{
@@ -131,6 +131,83 @@ export default function CaixaPage() {
         <p className="text-center text-gray-500">Carregando dados...</p>
       ) : (
         <>
+
+        {/* 🔢 RESUMO DE PAGAMENTOS */}
+<div className="bg-white rounded-lg shadow p-4 mb-6">
+  <h2 className="font-semibold text-lg mb-3 text-blue-700">
+    📊 Resumo por Forma de Pagamento (Entradas)
+  </h2>
+
+  {entradas.length === 0 ? (
+    <p className="text-gray-500 text-sm">Nenhuma entrada registrada ainda.</p>
+  ) : (
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
+      {[
+        "Dinheiro",
+        "Pix",
+        "Cartão",
+        "Boleto",
+        "Fiado"
+      ].map((forma) => {
+        const totalForma = entradas
+          .filter((e) => e.forma_pagamento === forma)
+          .reduce((a, i) => a + i.valor, 0);
+
+        return (
+          <div
+            key={forma}
+            className="bg-gray-50 rounded-lg p-3 border text-center shadow-sm"
+          >
+            <p className="text-sm text-gray-600">{forma}</p>
+            <p className="font-bold text-green-700 text-lg">
+              R$ {fmt(totalForma || 0)}
+            </p>
+          </div>
+        );
+      })}
+    </div>
+  )}
+</div>
+
+{/* 💸 RESUMO DE SAÍDAS */}
+<div className="bg-white rounded-lg shadow p-4 mb-6">
+  <h2 className="font-semibold text-lg mb-3 text-red-700">
+    💸 Resumo de Saídas por Tipo
+  </h2>
+
+  {saidas.length === 0 ? (
+    <p className="text-gray-500 text-sm">Nenhuma saída registrada ainda.</p>
+  ) : (
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
+      {[
+        "Despesas",
+        "Compras",
+        "Sangrias",
+        "Boletos",
+        "Outros"
+      ].map((tipoSaida) => {
+        // Filtra por palavras-chave encontradas na descrição
+        const totalTipo = saidas
+          .filter((s) =>
+            s.descricao?.toLowerCase().includes(tipoSaida.toLowerCase())
+          )
+          .reduce((a, i) => a + i.valor, 0);
+
+        return (
+          <div
+            key={tipoSaida}
+            className="bg-gray-50 rounded-lg p-3 border text-center shadow-sm"
+          >
+            <p className="text-sm text-gray-600">{tipoSaida}</p>
+            <p className="font-bold text-red-700 text-lg">
+              R$ {fmt(totalTipo || 0)}
+            </p>
+          </div>
+        );
+      })}
+    </div>
+  )}
+</div>
           {/* FORMULÁRIO DE NOVA MOVIMENTAÇÃO */}
           <div className="bg-white rounded-lg shadow p-4 mb-6">
             <h2 className="font-semibold text-lg mb-3 text-blue-700">
@@ -224,84 +301,71 @@ export default function CaixaPage() {
             </button>
           </div>
 
-          {/* LISTAGENS */}
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {/* ENTRADAS */}
-            <section className="bg-white p-4 rounded-lg shadow">
-              <h2 className="font-semibold text-green-700 text-lg mb-3">Entradas 💰</h2>
-              <ul className="space-y-2 text-sm">
-                {entradas.map((e) => (
-                  <li key={e.id} className="flex justify-between border-b pb-1">
-                    <span>{e.descricao}</span>
-                    <b>R$ {fmt(e.valor)}</b>
-                  </li>
-                ))}
-              </ul>
-              <p className="mt-3 text-right font-bold text-green-700">
-                Total: R$ {fmt(totalEntradas)}
-              </p>
-            </section>
+          {/* PAINEL DE BOLETOS DETALHADO */}
+          <section className="bg-white rounded-lg shadow-md p-5 mb-6">
+            <h2 className="text-lg font-semibold text-blue-700 mb-4">
+              📅 Boletos a Vencer
+            </h2>
 
-            {/* SAÍDAS */}
-            <section className="bg-white p-4 rounded-lg shadow">
-              <h2 className="font-semibold text-red-700 text-lg mb-3">Saídas 💸</h2>
-              <ul className="space-y-2 text-sm">
-                {saidas.map((s) => (
-                  <li key={s.id} className="flex justify-between border-b pb-1">
-                    <span>{s.descricao}</span>
-                    <b>R$ {fmt(s.valor)}</b>
-                  </li>
-                ))}
-              </ul>
-              <p className="mt-3 text-right font-bold text-red-700">
-                Total: R$ {fmt(totalSaidas)}
-              </p>
-            </section>
+            {boletos.length === 0 ? (
+              <p className="text-gray-500 text-sm">Nenhum boleto pendente no momento.</p>
+            ) : (
+              <table className="w-full border-collapse text-sm">
+                <thead>
+                  <tr className="bg-blue-100 text-blue-900 text-left">
+                    <th className="p-2 border">Fornecedor</th>
+                    <th className="p-2 border">Descrição</th>
+                    <th className="p-2 border">Valor (R$)</th>
+                    <th className="p-2 border">Vencimento</th>
+                    <th className="p-2 border text-center">Status</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {boletos.map((b) => {
+                    const venc = new Date(b.data_vencimento);
+                    const hoje = new Date();
+                    const diasRestantes = Math.ceil(
+                      (venc.getTime() - hoje.getTime()) / (1000 * 60 * 60 * 24)
+                    );
+                    let cor = "text-gray-700";
 
-            {/* BOLETOS */}
-            <section className="bg-white p-4 rounded-lg shadow">
-              <h2 className="font-semibold text-blue-700 text-lg mb-3">Boletos a Vencer 🧾</h2>
-              <ul className="space-y-2 text-sm">
-                {boletos.map((b) => (
-                  <li
-                    key={b.id}
-                    className={`flex justify-between items-center border-b pb-2 ${
-                      b.pago
-                        ? "text-green-600"
-                        : new Date(b.data_vencimento) < new Date()
-                        ? "text-red-600"
-                        : "text-yellow-600"
-                    }`}
-                  >
-                    <div>
-                      <p className="font-medium">{b.fornecedor}</p>
-                      <p className="text-xs">
-                        Vence em {new Date(b.data_vencimento).toLocaleDateString()} – R$ {fmt(b.valor)}
-                      </p>
-                    </div>
-                    {!b.pago && (
-                      <button
-                        onClick={() => marcarComoPago(b)}
-                        className="text-xs bg-green-600 hover:bg-green-700 text-white px-2 py-1 rounded"
-                      >
-                        Marcar Pago
-                      </button>
-                    )}
-                  </li>
-                ))}
-              </ul>
-            </section>
-          </div>
+                    if (diasRestantes < 0) cor = "text-red-600 font-semibold";
+                    else if (diasRestantes <= 3) cor = "text-orange-600 font-semibold";
+                    else if (diasRestantes <= 7) cor = "text-blue-600";
+
+                    return (`
+                      <tr key={b.id} className="border-t hover:bg-gray-50 transition">
+                        <td className="p-2 border">{b.fornecedor}</td>
+                        <td className="p-2 border">{b.descricao}</td>
+                        <td className="p-2 border">R$ {fmt(b.valor)}</td>
+                        <td className={p-2 border ${cor}}>
+                          {new Date(b.data_vencimento).toLocaleDateString("pt-BR")}
+                        </td>
+                        <td className="p-2 border text-center">
+                          {b.status === "pago" ? (
+                            <span className="text-green-600 font-semibold">✅ Pago</span>
+                          ) : (
+                            <button
+                              onClick={() => marcarComoPago(b)}
+                              className="text-xs bg-green-600 hover:bg-green-700 text-white px-2 py-1 rounded"
+                            >
+                              Marcar Pago
+                            </button>
+                          )}
+                        </td>
+                      </tr>
+                    `);
+                  })}
+                </tbody>
+              </table>
+            )}
+          </section>
 
           {/* SALDO FINAL */}
           <div className="mt-8 bg-white p-4 rounded-lg shadow text-center">
             <h3 className="text-xl font-bold">
               💵 Saldo Atual:{" "}
-              <span
-                className={`${
-                  saldo >= 0 ? "text-green-700" : "text-red-700"
-                } font-bold`}
-              >
+              <span className={saldo >= 0 ? "text-green-700" : "text-red-700"}>
                 R$ {fmt(saldo)}
               </span>
             </h3>
