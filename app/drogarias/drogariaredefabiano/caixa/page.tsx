@@ -353,53 +353,12 @@ export default function CaixaPage() {
             : "text-yellow-600"
         }`}
       >
-        {/* ✅ Checkbox */}
-        <td className="p-2 border text-center">
-          <input
-            type="checkbox"
-            checked={selecionados.includes(b.id)}
-            onChange={(e) => {
-              if (e.target.checked) {
-                setSelecionados((prev) => [...prev, b.id]);
-              } else {
-                setSelecionados((prev) => prev.filter((id) => id !== b.id));
-              }
-            }}
-          />
-        </td>
-
         <td className="p-2 border">{b.fornecedor}</td>
         <td className="p-2 border">{b.descricao}</td>
         <td className="p-2 border text-right">R$ {fmt(b.valor)}</td>
         <td className="p-2 border text-center">
           {new Date(b.data_vencimento).toLocaleDateString("pt-BR")}
         </td>
-
-        {/* 🧾 Linha Digitável */}
-        <td className="p-2 border text-center">
-          {b.linha_digitavel ? (
-            <div className="flex items-center justify-center gap-2">
-              <span
-                className="text-xs font-mono truncate max-w-[140px]"
-                title={b.linha_digitavel}
-              >
-                {b.linha_digitavel}
-              </span>
-              <button
-                onClick={() => {
-                  navigator.clipboard.writeText(b.linha_digitavel);
-                  alert("Linha digitável copiada ✅");
-                }}
-                className="text-blue-600 hover:text-blue-800 text-xs underline"
-              >
-                Copiar
-              </button>
-            </div>
-          ) : (
-            <span className="text-gray-400 text-xs italic">—</span>
-          )}
-        </td>
-
         <td className="p-2 border text-center">
           {b.pago ? (
             <span className="text-green-700 font-semibold">✅ Pago</span>
@@ -419,14 +378,12 @@ export default function CaixaPage() {
   {boletos.filter((b) => b.data_vencimento !== new Date().toISOString().split("T")[0])
     .length > 0 && (
     <tr>
-      <td colSpan={7} className="text-center py-2">
+      <td colSpan={5} className="text-center py-2">
         <button
           onClick={() => setMostrarTodos(!mostrarTodos)}
           className="text-blue-700 hover:text-blue-900 font-semibold underline"
         >
-          {mostrarTodos
-            ? "⬆️ Ocultar próximos vencimentos"
-            : "📅 Ver próximos vencimentos"}
+          {mostrarTodos ? "⬆️ Ocultar próximos vencimentos" : "📅 Ver próximos vencimentos"}
         </button>
       </td>
     </tr>
@@ -445,48 +402,11 @@ export default function CaixaPage() {
             : "text-yellow-600"
         }`}
       >
-        <td className="p-2 border text-center">
-          <input
-            type="checkbox"
-            checked={selecionados.includes(b.id)}
-            onChange={(e) => {
-              if (e.target.checked) {
-                setSelecionados((prev) => [...prev, b.id]);
-              } else {
-                setSelecionados((prev) => prev.filter((id) => id !== b.id));
-              }
-            }}
-          />
-        </td>
-
         <td className="p-2 border">{b.fornecedor}</td>
         <td className="p-2 border">{b.descricao}</td>
         <td className="p-2 border text-right">R$ {fmt(b.valor)}</td>
         <td className="p-2 border text-center">
           {new Date(b.data_vencimento).toLocaleDateString("pt-BR")}
-        </td>
-        <td className="p-2 border text-center">
-          {b.linha_digitavel ? (
-            <div className="flex items-center justify-center gap-2">
-              <span
-                className="text-xs font-mono truncate max-w-[140px]"
-                title={b.linha_digitavel}
-              >
-                {b.linha_digitavel}
-              </span>
-              <button
-                onClick={() => {
-                  navigator.clipboard.writeText(b.linha_digitavel);
-                  alert("Linha digitável copiada ✅");
-                }}
-                className="text-blue-600 hover:text-blue-800 text-xs underline"
-              >
-                Copiar
-              </button>
-            </div>
-          ) : (
-            <span className="text-gray-400 text-xs italic">—</span>
-          )}
         </td>
         <td className="p-2 border text-center">
           {b.pago ? (
@@ -503,33 +423,21 @@ export default function CaixaPage() {
       </tr>
     ))}
 </tbody>
-</table>
-
-{/* 💰 TOTAL SELECIONADO */}
-{selecionados.length > 0 && (
-  <div className="mt-3 bg-blue-50 border-t border-blue-200 p-3 rounded text-sm text-blue-700 font-semibold">
-    {selecionados.length} boleto(s) selecionado(s) — Total:{" "}
-    R$
-    {fmt(
-      boletos
-        .filter((b) => selecionados.includes(b.id))
-        .reduce((a, b) => a + Number(b.valor), 0)
-    )}
+    </table>
   </div>
-)}
+</section>
 
-{/* SALDO FINAL */}
-<div className="mt-8 bg-white p-4 rounded-lg shadow text-center">
-  <h3 className="text-xl font-bold">
-    💵 Saldo Atual:{" "}
-    <span className={saldo >= 0 ? "text-green-700" : "text-red-700"}>
-      R$ {fmt(saldo)}
-    </span>
-  </h3>
-</div>
-
-</>
-)} 
-</main>
-);
+          {/* SALDO FINAL */}
+          <div className="mt-8 bg-white p-4 rounded-lg shadow text-center">
+            <h3 className="text-xl font-bold">
+              💵 Saldo Atual:{" "}
+              <span className={saldo >= 0 ? "text-green-700" : "text-red-700"}>
+                R$ {fmt(saldo)}
+              </span>
+            </h3>
+          </div>
+        </>
+      )}
+    </main>
+  );
 }
