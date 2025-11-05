@@ -19,6 +19,7 @@ export default function CaixaPage() {
   const [descricao, setDescricao] = useState("");
   const [valor, setValor] = useState("");
   const [formaPagamento, setFormaPagamento] = useState("Dinheiro");
+  const [linhaDigitavelMov, setLinhaDigitavelMov] = useState("");
 
   // Formulário de novo boleto
   const [fornecedor, setFornecedor] = useState("");
@@ -251,7 +252,14 @@ carregarDados();
                 onChange={(e) => setDescricao(e.target.value)}
                 className="border rounded px-3 py-2"
               />
-
+               <input
+  type="text"
+  placeholder="Linha digitável (opcional)"
+  value={linhaDigitavelMov}
+  onChange={(e) => setLinhaDigitavelMov(e.target.value)}
+  className="border rounded px-3 py-2"
+/>
+               
               <input
   type="text"
   placeholder="Linha digitável (opcional)"
