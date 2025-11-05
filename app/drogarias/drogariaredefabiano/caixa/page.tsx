@@ -70,7 +70,7 @@ export default function CaixaPage() {
       loja: LOJA,
     });
 
-    alert(${tipo} registrada com sucesso! ✅);
+    alert(`${tipo} registrada com sucesso! ✅`);
     setDescricao("");
     setValor("");
     carregarDados();
@@ -104,14 +104,14 @@ export default function CaixaPage() {
       .update({ pago: true, data_pagamento: new Date() })
       .eq("id", boleto.id);
 
-    await supabase.from("movimentacoes_caixa").insert({
+    await supabase.from("movimentacoes_caixa").insert(`{
       tipo: "Saída",
       descricao: Pagamento de boleto ${boleto.fornecedor},
       valor: boleto.valor,
       forma_pagamento: "Boleto",
       data: new Date(),
       loja: LOJA,
-    });
+    }`);
 
     alert("Boleto pago e registrado no caixa ✅");
     carregarDados();
