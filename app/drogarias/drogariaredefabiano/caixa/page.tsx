@@ -30,6 +30,14 @@ export default function CaixaPage() {
   const [selecionados, setSelecionados] = useState<number[]>([]);
   const [linhaDigitavel, setLinhaDigitavel] = useState("");
 
+
+  // Função para corrigir diferença de data UTC x horário do Brasil
+function formatarDataBR(data: string | Date) {
+  if (!data) return "";
+  const d = new Date(data);
+  d.setMinutes(d.getMinutes() + d.getTimezoneOffset()); // Corrige UTC
+  return d.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
+}
   useEffect(() => {
     carregarDados();
   }, []);
@@ -360,8 +368,13 @@ carregarDados();
       <tbody>
   {boletos
     .filter((b) => {
-      const hoje = new Date().toISOString().split("T")[0];
-      return b.data_vencimento === hoje;
+      const hoje = new Date();
+const venc = new Date(b.data_vencimento);
+return (
+  venc.getDate() === hoje.getDate() &&
+  venc.getMonth() === hoje.getMonth() &&
+  venc.getFullYear() === hoje.getFullYear()
+);
     })
     .map((b) => (
       <tr
@@ -378,7 +391,7 @@ carregarDados();
         <td className="p-2 border">{b.descricao}</td>
         <td className="p-2 border text-right">R$ {fmt(b.valor)}</td>
         <td className="p-2 border text-center">
-          {new Date(b.data_vencimento).toLocaleDateString("pt-BR")}
+          {formatarDataBR(b.data_vencimento)}
         </td>
         <td className="p-2 border text-center">
           {b.pago ? (
