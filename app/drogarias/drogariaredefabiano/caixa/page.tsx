@@ -30,6 +30,7 @@ export default function CaixaPage() {
   const [selecionados, setSelecionados] = useState<number[]>([]);
   const [linhaDigitavel, setLinhaDigitavel] = useState("");
 
+  
 
   // Função para corrigir diferença de data UTC x horário do Brasil
 function formatarDataBR(data: string | Date) {
@@ -44,7 +45,59 @@ function formatarDataBR(data: string | Date) {
 
   async function carregarDados() {
     setCarregando(true);
+// 🔄 Sincroniza vendas do PDV com o caixa (apenas as do dia e não lançadas ainda)
+async function sincronizarVendasComCaixa() {
+  const hojeISO = new Date().toISOString().split("T")[0];
+  const inicio = `${hojeISO}T00:00:00`;
+  const fim = `${hojeISO}T23:59:59`;
 
+  
+  // Busca vendas finalizadas do dia
+  const { data: vendas } = await supabase
+    .from("vendas_pdv")
+    .select("*")
+    .eq("loja", LOJA)
+    .eq("status", "Finalizada")
+    .gte("data_venda", inicio)
+    .lte("data_venda", fim);
+
+  if (!vendas || vendas.length === 0) return;
+
+  // Busca movimentações já registradas hoje
+  const { data: movs } = await supabase
+    .from("movimentacoes_caixa")
+    .select("referencia_venda")
+    .eq("loja", LOJA)
+    .gte("data", inicio)
+    .lte("data", fim);
+
+  const idsJaLancados = movs?.map((m) => m.referencia_venda) || [];
+
+  // Filtra vendas ainda não lançadas
+  const novasVendas = vendas.filter((v) => !idsJaLancados.includes(v.id));
+
+  if (novasVendas.length === 0) return;
+
+  // Monta os registros a inserir
+  const registros = novasVendas.map((v) => (`{
+    tipo: "Entrada",
+    descricao: Venda PDV - ${v.forma_pagamento},
+    valor: Number(v.total),
+    forma_pagamento: v.forma_pagamento,
+    data: v.data_venda,
+    loja: LOJA,
+    referencia_venda: v.id,
+  }`));
+
+  const { error } = await supabase.from("movimentacoes_caixa").insert(registros);
+
+  if (error) {
+    console.error("❌ Erro ao sincronizar vendas com caixa:", error);
+  } else {
+    console.log`(✅ ${registros.length} vendas lançadas automaticamente no caixa.)`;
+    carregarDados(); // Atualiza a tela
+  }
+}
     const { data: movs } = await supabase
       .from("movimentacoes_caixa")
       .select("*")
@@ -469,6 +522,9 @@ return (
     {b.pago ? (
       <span className="text-green-700 font-semibold">✅ Pago</span>
     ) : (
+
+
+    
       <button
         onClick={() => marcarComoPago(b)}
         className="text-xs bg-green-600 hover:bg-green-700 text-white px-2 py-1 rounded"
