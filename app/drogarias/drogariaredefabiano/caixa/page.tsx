@@ -442,41 +442,42 @@ return (
         <td className="p-2 border text-center">
           {formatarDataBR(b.data_vencimento)}
         </td>
-        <td className="p-2 border text-center">
-          <td className="p-2 border text-center">
-  {b.linha_digitavel ? (
-    <div className="flex items-center justify-center gap-2">
-      <span
-        className="text-xs font-mono truncate max-w-[150px]"
-        title={b.linha_digitavel}
-      >
-        {b.linha_digitavel}
-      </span>
+        <td className="p-2 border text-center align-middle">
+  <div className="flex flex-col items-center justify-center gap-1">
+    {b.linha_digitavel ? (
+      <div className="flex items-center justify-center gap-2">
+        <span
+          className="text-xs font-mono truncate max-w-[150px]"
+          title={b.linha_digitavel}
+        >
+          {b.linha_digitavel}
+        </span>
+        <button
+          onClick={() => {
+            navigator.clipboard.writeText(b.linha_digitavel);
+            alert("Linha digitável copiada ✅");
+          }}
+          className="text-blue-600 hover:text-blue-800 text-xs underline"
+        >
+          Copiar
+        </button>
+      </div>
+    ) : (
+      <span className="text-gray-400 text-xs italic">—</span>
+    )}
+
+    {b.pago ? (
+      <span className="text-green-700 font-semibold">✅ Pago</span>
+    ) : (
       <button
-        onClick={() => {
-          navigator.clipboard.writeText(b.linha_digitavel);
-          alert("Linha digitável copiada ✅");
-        }}
-        className="text-blue-600 hover:text-blue-800 text-xs underline"
+        onClick={() => marcarComoPago(b)}
+        className="text-xs bg-green-600 hover:bg-green-700 text-white px-2 py-1 rounded"
       >
-        Copiar
+        Marcar Pago
       </button>
-    </div>
-  ) : (
-    <span className="text-gray-400 text-xs italic">—</span>
-  )}
+    )}
+  </div>
 </td>
-          {b.pago ? (
-            <span className="text-green-700 font-semibold">✅ Pago</span>
-          ) : (
-            <button
-              onClick={() => marcarComoPago(b)}
-              className="text-xs bg-green-600 hover:bg-green-700 text-white px-2 py-1 rounded"
-            >
-              Marcar Pago
-            </button>
-          )}
-        </td>
       </tr>
     ))}
 </tbody>
