@@ -440,7 +440,7 @@ return (
         <td className="p-2 border">{b.descricao}</td>
         <td className="p-2 border text-right">R$ {fmt(b.valor)}</td>
         <td className="p-2 border text-center">
-          {new Date(b.data_vencimento).toLocaleDateString("pt-BR")}
+          {formatarDataBR(b.data_vencimento)}
         </td>
         <td className="p-2 border text-center">
           <td className="p-2 border text-center">
