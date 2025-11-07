@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from " ../../../lib/supabaseClient";
+import { supabase } from "../../lib/supabaseClient";
 import ProductCard from "./components/ProductCard";
 import type { SorveteProduto } from "../../types/sorveteria";
 
