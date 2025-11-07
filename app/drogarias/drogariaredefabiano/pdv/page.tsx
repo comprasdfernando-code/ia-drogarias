@@ -9,6 +9,8 @@ const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
+
+
 export default function PDVPage() {
   const [busca, setBusca] = useState("");
   const [venda, setVenda] = useState<any[]>([]);
@@ -16,30 +18,71 @@ export default function PDVPage() {
   const [showPagamento, setShowPagamento] = useState(false);
   const [resultados, setResultados] = useState<any[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
-  const [senha, setSenha] = useState("");
-const [mostrarVendas, setMostrarVendas] = useState(false);
-const [vendas, setVendas] = useState<any[]>([]);
 
-async function verificarSenha() {
-  if (senha !== "1234") {
-    alert("Senha incorreta! ❌");
+  // 🔐 Controle de acesso e exibição das vendas gravadas
+  const [senha, setSenha] = useState("");
+  const [mostrarVendas, setMostrarVendas] = useState(false);
+  const [vendas, setVendas] = useState<any[]>([]);
+
+  const [vendaSelecionada, setVendaSelecionada] = useState<any | null>(null);
+  const [filtroData, setFiltroData] = useState("");
+
+  // 🔎 Verificação da senha para liberar a lista de vendas
+  async function verificarSenha() {
+    if (senha === "102030") { // 🔑 senha padrão, pode mudar
+      setMostrarVendas(true);
+      carregarVendas();
+    } else {
+      alert("Senha incorreta!");
+    }
+  }
+
+  // 💾 Carrega vendas gravadas do Supabase
+  async function carregarVendas() {
+    const { data, error } = await supabase
+      .from("vendas")
+      .select("*")
+      .order("data_venda", { ascending: false });
+
+    if (error) {
+      console.error("Erro ao carregar vendas:", error);
+      alert("Erro ao carregar vendas!");
+    } else {
+      setVendas(data || []);
+    }
+  }
+
+  async function buscarPorData() {
+  if (!filtroData) {
+    alert("Selecione uma data para buscar!");
     return;
   }
+
+  console.log("Buscando vendas do dia:", filtroData);
 
   const { data, error } = await supabase
     .from("vendas")
     .select("*")
-    .order("data_venda", { ascending: false })
-    .limit(50);
+    .gte("data_venda", `${filtroData}T00:00:00`)
+    .lte("data_venda", `${filtroData}T23:59:59`)
+    .order("data_venda", { ascending: false });
 
   if (error) {
-    console.error(error);
-    alert("Erro ao carregar vendas!");
-  } else {
-    setVendas(data);
-    setMostrarVendas(true);
+    console.error("Erro ao buscar vendas:", error);
+    alert("Erro ao buscar vendas no banco!");
+    return;
   }
+
+  if (!data || data.length === 0) {
+    alert("Nenhuma venda encontrada nesta data.");
+    setVendas([]);
+    return;
+  }
+
+  setVendas(data);
 }
+
+  // ... (restante do seu código continua aqui normalmente)
 
   // 🔍 Buscar produto
   async function buscarProduto(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -744,10 +787,10 @@ ${pagamento.forma === "Pix" ? "🔢 CNPJ: 62.157.257/0001-09" : ""}
     
   </div>
 )}
-{/* 🔒 CONSULTAR VENDAS GRAVADAS */}
+{/* CONSULTAR VENDAS GRAVADAS */}
 <div className="mt-10 bg-white rounded-lg shadow p-4">
   <h2 className="text-blue-700 font-semibold text-lg mb-3">
-    🔒 Consultar Vendas Gravadas
+    📋 Consultar Vendas Gravadas
   </h2>
 
   {!mostrarVendas ? (
@@ -767,9 +810,10 @@ ${pagamento.forma === "Pix" ? "🔢 CNPJ: 62.157.257/0001-09" : ""}
       </button>
     </div>
   ) : (
-    <>
-      <div className="flex justify-between items-center mb-3">
-        <h3 className="font-semibold text-gray-700">📋 Lista de Vendas Gravadas</h3>
+    <div>
+      {/* 🔙 Título + botão sair */}
+      <div className="flex justify-between items-center mb-4">
+        <h3 className="font-semibold text-gray-700">📆 Lista de Vendas Gravadas</h3>
         <button
           onClick={() => setMostrarVendas(false)}
           className="text-red-600 underline text-sm"
@@ -778,6 +822,32 @@ ${pagamento.forma === "Pix" ? "🔢 CNPJ: 62.157.257/0001-09" : ""}
         </button>
       </div>
 
+      {/* 🔍 FILTRO POR DATA */}
+      <div className="flex items-center gap-3 mb-4">
+        <input
+          type="date"
+          value={filtroData}
+          onChange={(e) => setFiltroData(e.target.value)}
+          className="border rounded px-3 py-2"
+        />
+        <button
+          onClick={buscarPorData}
+          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
+        >
+          Buscar
+        </button>
+        <button
+          onClick={() => {
+            setFiltroData("");
+            carregarVendas();
+          }}
+          className="bg-gray-400 hover:bg-gray-500 text-white px-4 py-2 rounded"
+        >
+          Limpar
+        </button>
+      </div>
+
+      {/* 🧾 LISTA DE VENDAS */}
       {vendas.length === 0 ? (
         <p className="text-gray-500 text-sm">Nenhuma venda gravada ainda.</p>
       ) : (
@@ -787,26 +857,89 @@ ${pagamento.forma === "Pix" ? "🔢 CNPJ: 62.157.257/0001-09" : ""}
               <th className="p-2 border">Data</th>
               <th className="p-2 border">Atendente</th>
               <th className="p-2 border text-right">Total (R$)</th>
+              <th className="p-2 border text-center">Ações</th>
             </tr>
           </thead>
           <tbody>
             {vendas.map((v) => (
-              <tr key={v.id} className="border-t hover:bg-gray-50 transition">
+              <tr
+                key={v.id}
+                className="border-t hover:bg-gray-50 transition"
+              >
                 <td className="p-2 border text-center">
                   {new Date(v.data_venda).toLocaleDateString("pt-BR")}
                 </td>
-                <td className="p-2 border text-center">{v.atendente_no}</td>
+                <td className="p-2 border text-center">
+                  {v.atendente_nome || "—"}
+                </td>
                 <td className="p-2 border text-right text-green-700 font-semibold">
-                  R$ {v.total.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                  R$ {v.total?.toFixed(2)}
+                </td>
+                <td className="p-2 border text-center">
+                  <button
+                    onClick={() => `verDetalhes(v)`}
+                    className="text-xs bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded"
+                  >
+                    Ver Detalhes
+                  </button>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       )}
-    </>
+    </div>
   )}
 </div>
-    </main>
-  );
+
+{/* MODAL DETALHES DA VENDA */}
+{vendaSelecionada && (
+  <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center">
+    <div className="bg-white p-6 rounded shadow-lg max-w-md w-full">
+      <h3 className="text-xl font-semibold text-blue-700 mb-3">
+        Detalhes da Venda
+      </h3>
+
+      <p className="text-sm text-gray-600 mb-2">
+        Data:{" "}
+        {new Date(vendaSelecionada.data_venda).toLocaleDateString("pt-BR")}
+      </p>
+
+      <p className="text-sm text-gray-600 mb-4">
+        Atendente: {vendaSelecionada.atendente_nome}
+      </p>
+
+      <ul className="border-t border-gray-200 pt-3">
+        {vendaSelecionada.produtos?.map((p, i) => (
+          <li key={i} className="flex justify-between text-sm py-1">
+            <span>{p.nome} × {p.qtd}</span>
+            <span>R$ {(p.preco_venda * p.qtd).toFixed(2)}</span>
+          </li>
+        ))}
+      </ul>
+
+      <div className="mt-4 text-right font-bold text-green-700">
+        Total: R$ {vendaSelecionada.total.toFixed(2)}
+      </div>
+
+      <div className="mt-4 flex flex-col gap-2">
+        <button
+          onClick={() => `gerarCupomPDF(vendaSelecionada)`}
+          className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded"
+        >
+          Gerar Cupom PDF
+        </button>
+
+        <button
+          onClick={() => setVendaSelecionada(null)}
+          className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded"
+        >
+          Fechar
+        </button>
+      </div>
+    </div>
+  </div>
+)}
+</main>
+);
 }
