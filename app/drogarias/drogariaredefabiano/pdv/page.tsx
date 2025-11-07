@@ -250,16 +250,16 @@ async function verificarSenha() {
     const totalVenda = produtosFormatados.reduce((s, p) => s + p.subtotal, 0);
 
     const vendaData = {
-      origem: "Drogaria Rede Fabiano",
-      atendente_id: `atendente?.id || ""`,
-      atendente_nome: `atendente?.nome || "Atendente não identificado"`,
-      produtos: produtosFormatados,
-      total: totalVenda,
-      dinheiro: `valorDinheiro || 0`,
-      cartao: `valorCartao || 0`,
-      troco: `troco || 0`,
-      data_venda: new Date().toISOString(),
-    };
+  origem: "Drogaria Rede Fabiano",
+  atendente_id: `atendente?.id || ""`,
+  atendente_nome: `atendente?.nome || "Atendente não identificado"`,
+  produtos: produtosFormatados,
+  total: Number(totalVenda || 0),
+  dinheiro: Number`(valorDinheiro || 0)`,
+  cartao: Number`(valorCartao || 0)`,
+  troco: Number`(troco || 0)`,
+  data_venda: new Date().toISOString(),
+};
 
     console.log("📦 Enviando venda:", vendaData);
 
