@@ -252,7 +252,7 @@ async function verificarSenha() {
     const vendaData = {
       origem: "Drogaria Rede Fabiano",
       atendente_id: `atendente?.id || ""`,
-      atendente_no: `atendente?.nome || "Atendente não identificado"`,
+      atendente_nome: `atendente?.nome || "Atendente não identificado"`,
       produtos: produtosFormatados,
       total: totalVenda,
       dinheiro: `valorDinheiro || 0`,
