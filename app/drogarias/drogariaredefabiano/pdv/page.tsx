@@ -236,11 +236,38 @@ async function verificarSenha() {
     }//
   }
   async function finalizarVenda() {
-    alert("💰 Venda finalizada com sucesso!");
+  try {
+    // ⚙️ Salva no Supabase
+    const { error } = await supabase.from("vendas").insert([
+      {
+        origem: "Drogaria Rede Fabiano",
+        atendente_id: `atendente?.id || ""`,
+        atendente_no: `atendente?.nome || "Atendente não identificado"`,
+        produtos: venda, // array dos produtos atuais no carrinho
+        total: venda.reduce((s, p) => s + p.preco_venda * p.qtd, 0),
+        dinheiro: `valorDinheiro || 0`,
+        cartao: `valorCartao || 0`,
+        troco: `troco || 0`,
+        data_venda: new Date().toISOString(),
+      },
+    ]);
+
+    if (error) {
+      console.error("Erro ao salvar venda:", error);
+      alert("❌ Erro ao registrar venda no banco!");
+      return;
+    }
+
+    // 🧾 Atualiza estoque e confirma visualmente
     await atualizarEstoque(venda);
+    alert("✅ Venda finalizada e gravada com sucesso!");
     limparVenda();
     setShowPagamento(false);
+  } catch (err) {
+    console.error("Erro inesperado:", err);
+    alert("⚠️ Falha inesperada ao finalizar venda!");
   }
+}
 
   // 🖨️ Imprimir cupom
   function imprimirCupom() {
