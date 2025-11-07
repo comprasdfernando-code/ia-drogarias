@@ -53,17 +53,33 @@ export default function AdminSorveteriaPage() {
       let imagem_url = form.imagem_url || null;
 
       if (file) {
-        const fileName = `${Date.now()}_${file.name}`;
-        const { error: uploadError } = await supabase.storage
-          .from("sorveteria")
-          .upload(fileName, file);
-        if (uploadError) throw uploadError;
+  // 🔤 Gera nome de arquivo a partir do nome do produto (sem acento/espaço)
+  const baseName = (form.nome || "produto")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "") // remove acentos
+    .replace(/[^a-zA-Z0-9]/g, "_")   // troca espaços e símbolos por _
+    .toLowerCase();
 
-        const { data: publicUrl } = supabase.storage
-          .from("sorveteria")
-          .getPublicUrl(fileName);
-        imagem_url = publicUrl.publicUrl;
-      }
+  // 🧱 caminho no bucket
+  const fileName = `produtos/${baseName}_${Date.now()}.jpg`;
+
+  // 🚀 upload pro Supabase
+  const { error: uploadError } = await supabase.storage
+    .from("sorveteria")
+    .upload(fileName, file, {
+      cacheControl: "3600",
+      upsert: true, // substitui se já existir
+    });
+
+  if (uploadError) throw uploadError;
+
+  // 🔗 pega URL pública
+  const { data: publicUrl } = supabase.storage
+    .from("sorveteria")
+    .getPublicUrl(fileName);
+
+  imagem_url = publicUrl.publicUrl;
+}
 
       if (form.id) {
         const { error } = await supabase
