@@ -237,35 +237,47 @@ async function verificarSenha() {
   }
   async function finalizarVenda() {
   try {
-    // ⚙️ Salva no Supabase
-    const { error } = await supabase.from("vendas").insert([
-      {
-        origem: "Drogaria Rede Fabiano",
-        atendente_id: `atendente?.id || ""`,
-        atendente_no: `atendente?.nome || "Atendente não identificado"`,
-        produtos: venda, // array dos produtos atuais no carrinho
-        total: venda.reduce((s, p) => s + p.preco_venda * p.qtd, 0),
-        dinheiro: `valorDinheiro || 0`,
-        cartao: `valorCartao || 0`,
-        troco: `troco || 0`,
-        data_venda: new Date().toISOString(),
-      },
-    ]);
+    // ⚙️ Monta dados da venda
+    const produtosFormatados = Array.isArray(venda)
+      ? venda.map((p) => ({
+          nome: p.nome || p.descricao || "Produto",
+          qtd: p.qtd || 1,
+          preco_venda: Number(p.preco_venda || 0),
+          subtotal: Number(p.qtd || 1) * Number(p.preco_venda || 0),
+        }))
+      : [];
+
+    const totalVenda = produtosFormatados.reduce((s, p) => s + p.subtotal, 0);
+
+    const vendaData = {
+      origem: "Drogaria Rede Fabiano",
+      atendente_id: `atendente?.id || ""`,
+      atendente_no: `atendente?.nome || "Atendente não identificado"`,
+      produtos: produtosFormatados,
+      total: totalVenda,
+      dinheiro: `valorDinheiro || 0`,
+      cartao: `valorCartao || 0`,
+      troco: `troco || 0`,
+      data_venda: new Date().toISOString(),
+    };
+
+    console.log("📦 Enviando venda:", vendaData);
+
+    const { error } = await supabase.from("vendas").insert([vendaData]);
 
     if (error) {
-      console.error("Erro ao salvar venda:", error);
-      alert("❌ Erro ao registrar venda no banco!");
+      console.error("❌ Erro Supabase:", error.message);
+      alert("Erro ao registrar venda no banco!");
       return;
     }
 
-    // 🧾 Atualiza estoque e confirma visualmente
     await atualizarEstoque(venda);
     alert("✅ Venda finalizada e gravada com sucesso!");
     limparVenda();
     setShowPagamento(false);
   } catch (err) {
-    console.error("Erro inesperado:", err);
-    alert("⚠️ Falha inesperada ao finalizar venda!");
+    console.error("⚠️ Erro inesperado:", err);
+    alert("Falha ao finalizar venda!");
   }
 }
 
