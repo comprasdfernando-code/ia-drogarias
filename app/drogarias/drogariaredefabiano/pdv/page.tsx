@@ -877,7 +877,7 @@ ${pagamento.forma === "Pix" ? "🔢 CNPJ: 62.157.257/0001-09" : ""}
                 </td>
                 <td className="p-2 border text-center">
                   <button
-                    onClick={() => `verDetalhes(v)`}
+                    onClick={() => verDetalhes(v)} //
                     className="text-xs bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded"
                   >
                     Ver Detalhes
@@ -892,21 +892,19 @@ ${pagamento.forma === "Pix" ? "🔢 CNPJ: 62.157.257/0001-09" : ""}
   )}
 </div>
 
-{/* MODAL DETALHES DA VENDA */}
 {vendaSelecionada && (
-  <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center">
+  <div className="fixed inset-0 bg-black bg-opacity-50 flex justify-center items-center z-[9999]">
     <div className="bg-white p-6 rounded shadow-lg max-w-md w-full">
       <h3 className="text-xl font-semibold text-blue-700 mb-3">
         Detalhes da Venda
       </h3>
 
       <p className="text-sm text-gray-600 mb-2">
-        Data:{" "}
-        {new Date(vendaSelecionada.data_venda).toLocaleDateString("pt-BR")}
+        Data: {new Date(vendaSelecionada.data_venda).toLocaleDateString("pt-BR")}
       </p>
 
       <p className="text-sm text-gray-600 mb-4">
-        Atendente: {vendaSelecionada.atendente_nome}
+        Atendente: {vendaSelecionada.atendente_nome || "—"}
       </p>
 
       <ul className="border-t border-gray-200 pt-3">
@@ -924,10 +922,10 @@ ${pagamento.forma === "Pix" ? "🔢 CNPJ: 62.157.257/0001-09" : ""}
 
       <div className="mt-4 flex flex-col gap-2">
         <button
-          onClick={() => `gerarCupomPDF(vendaSelecionada)`}
+          onClick={() => gerarCupomPDF(vendaSelecionada)}
           className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded"
         >
-          Gerar Cupom PDF
+          🧾 Reimprimir Venda (PDF)
         </button>
 
         <button
