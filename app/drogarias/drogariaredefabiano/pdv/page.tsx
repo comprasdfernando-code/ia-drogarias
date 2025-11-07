@@ -368,37 +368,99 @@ function gerarCupomPDF(venda: any) {
   }
 }
 
-  // 🖨️ Imprimir cupom
-  function imprimirCupom() {
-    const novaJanela = window.open("", "_blank");
-    if (!novaJanela) return;
+  // 🖨️ Gerar Cupom PDF (formato 58mm - Térmica)
+function imprimirCupom(venda: any = null) {
+  const novaJanela = window.open("", "_blank");
+  if (!novaJanela) return;
 
-    const data = new Date();
-    const hora = data.toLocaleTimeString("pt-BR");
-    const dia = data.toLocaleDateString("pt-BR");
+  const data = new Date(venda.data_venda).toLocaleDateString("pt-BR");
+  const hora = new Date(venda.data_venda).toLocaleTimeString("pt-BR");
 
-    novaJanela.document.write(`
-      <html>
-        <head><title>Cupom de Venda</title></head>
-        <body>
-          <h2>Drogaria Rede Fabiano</h2>
-          <p>Data: ${dia} - ${hora}</p>
-          <hr>
-          ${venda
-            .map(
-              (p) =>
-                `${p.nome} (${p.qtd}x R$${p.preco_venda.toFixed(2)})` 
-            )
-            .join("<br>")}
-          <hr>
-          <h3>Total: R$ ${total.toFixed(2)}</h3>
-        </body>
-      </html>
-    `);
-    novaJanela.document.close();
-    novaJanela.print();
-  }
+  novaJanela.document.write(`
+    <html>
+      <head>
+        <title>Cupom de Venda - IA Drogarias</title>
+        <style>
+          body {
+            font-family: "Courier New", monospace;
+            width: 58mm;
+            margin: 0 auto;
+            padding: 5px;
+            font-size: 12px;
+            line-height: 1.3;
+          }
+          h2 {
+            text-align: center;
+            font-size: 14px;
+            margin-bottom: 4px;
+            color: #0b60db;
+          }
+          .logo {
+            text-align: center;
+            margin-bottom: 5px;
+          }
+          .logo img {
+            width: 45px;
+            height: auto;
+          }
+          .center { text-align: center; }
+          .right { text-align: right; }
+          .line { border-top: 1px dashed #999; margin: 5px 0; }
+          .produto {
+            display: flex;
+            justify-content: space-between;
+          }
+          .total {
+            font-weight: bold;
+            font-size: 13px;
+            color: #0a7a1d;
+            text-align: right;
+            margin-top: 6px;
+          }
+          .footer {
+            text-align: center;
+            margin-top: 10px;
+            font-size: 11px;
+            color: #555;
+          }
+        </style>
+      </head>
+      <body>
+        <div class="logo">
+          <img src="https://iadrogarias.com.br/logo-heart.png" alt="Logo">
+        </div>
+        <h2>IA Drogarias</h2>
+        <div class="center">Farmacêutico Amigo da Família</div>
+        <div class="line"></div>
+        <div class="center">
+          <b>Data:</b> ${data}<br>
+          <b>Hora:</b> ${hora}<br>
+          <b>Atendente:</b> ${venda.atendente_nome || "Não identificado"}
+        </div>
+        <div class="line"></div>
+        ${venda.produtos
+          ?.map(
+            (p: any) =>
+              `<div class="produto">
+                <span>${p.nome} x${p.qtd}</span>
+                <span>R$ ${(p.preco_venda * p.qtd).toFixed(2)}</span>
+              </div>`
+          )
+          .join("")}
+        <div class="line"></div>
+        <div class="total">Total: R$ ${venda.total.toFixed(2)}</div>
+        <div class="footer">
+          Deus é bom o tempo todo 🙏<br>
+          Saúde com Inteligência 💙<br>
+          iadrogarias.com.br
+        </div>
+      </body>
+    </html>
+  `);
 
+  novaJanela.document.close();
+  novaJanela.print();
+}
   // ⌨️ Atalhos
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -425,7 +487,7 @@ function gerarCupomPDF(venda: any) {
         case "p":
           if (e.ctrlKey) {
             e.preventDefault();
-            imprimirCupom();
+           imprimirCupom();
           }
           break;
         case "Escape":
