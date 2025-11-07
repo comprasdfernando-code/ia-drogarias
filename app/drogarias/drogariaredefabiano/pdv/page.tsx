@@ -27,6 +27,50 @@ export default function PDVPage() {
   const [vendaSelecionada, setVendaSelecionada] = useState<any | null>(null);
   const [filtroData, setFiltroData] = useState("");
 
+       // 🧾 Exibir detalhes da venda selecionada
+function verDetalhes(venda: any) {
+  setVendaSelecionada(venda);
+}
+
+// 🖨️ Gerar Cupom PDF da venda selecionada
+function gerarCupomPDF(venda: any) {
+  const novaJanela = window.open("", "_blank");
+  if (!novaJanela) return;
+
+  const data = new Date(venda.data_venda).toLocaleDateString("pt-BR");
+  const hora = new Date(venda.data_venda).toLocaleTimeString("pt-BR");
+
+  novaJanela.document.write(`
+    <html>
+      <head>
+        <title>Cupom de Venda</title>
+        <style>
+          body { font-family: Arial; font-size: 13px; padding: 10px; }
+          h2 { color: #2563eb; text-align: center; }
+          hr { margin: 8px 0; }
+          .total { text-align: right; font-weight: bold; color: #16a34a; }
+          .footer { text-align: center; margin-top: 10px; color: gray; }
+        </style>
+      </head>
+      <body>
+        <h2>💊 Drogaria Rede Fabiano</h2>
+        <p><b>Data:</b> ${data} — ${hora}</p>
+        <hr>
+        ${venda.produtos
+          ?.map(
+            (p: any) =>
+              `${p.nome} — ${p.qtd}x R$ ${p.preco_venda.toFixed(2)} = R$ ${(p.qtd * p.preco_venda).toFixed(2)}`
+          )
+          .join("<br>")}
+        <hr>
+        <p class="total">Total: R$ ${venda.total.toFixed(2)}</p>
+        <p class="footer">Deus é bom o tempo todo 🙏<br>IA Drogarias — Saúde com Inteligência</p>
+      </body>
+    </html>
+  `);
+  novaJanela.document.close();
+  novaJanela.print();
+}
   // 🔎 Verificação da senha para liberar a lista de vendas
   async function verificarSenha() {
     if (senha === "102030") { // 🔑 senha padrão, pode mudar
