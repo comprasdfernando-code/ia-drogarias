@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+import { supabase } from " ../../../lib/supabaseClient";
 import ProductCard from "./components/ProductCard";
-import type { SorveteProduto } from "@/types/sorveteria";
+import type { SorveteProduto } from "../../types/sorveteria";
 
 // ⚙️ CONFIG
 const WHATSAPP = process.env.NEXT_PUBLIC_WHATSAPP_NUMBER || "5511952068432"; // ex.: 55 + DDD + número
@@ -89,24 +89,24 @@ export default function SorveteriaPage() {
   );
 
   function sendWhatsApp() {
-    if (cart.length === 0) return;
+  if (cart.length === 0) return;
 
-    const linhas = cart
-      .map(
-        i =>
-          • ${i.nome}${i.sabor ? ` (${i.sabor}) : ""} — R$ ${i.preco
-            .toFixed(2)
-            .replace(".", ",")} x ${i.qty}`
-      )
-      .join("%0A");
+  const linhas = cart
+    .map(
+      (i) =>
+        `• ${i.nome}${i.sabor ? ` (${i.sabor})`: ""} — R$ ${i.preco 
+          .toFixed(2)
+          .replace(".", ",")} x ${i.qty}`
+    )
+    .join("%0A");
 
-    const msg = `Olá, quero fazer um pedido na ${LOJA_NOME}:%0A%0A${linhas}%0A%0A*Total:* R$ ${total
-      .toFixed(2)
-      .replace(".", ",")}%0A%0AEndereço para entrega:%0ABairro:%0AForma de pagamento:`;
-    const url = https://wa.me/${WHATSAPP}?text=${msg};
-    window.open(url, "_blank");
-  }
+  const msg = `Olá, quero fazer um pedido na ${LOJA_NOME}:%0A%0A${linhas}%0A%0A*Total:* R$ ${total
+    .toFixed(2)
+    .replace(".", ",")}%0A%0AEndereço para entrega:%0ABairro:%0AForma de pagamento:`;
 
+  const url = `https://wa.me/${WHATSAPP}?text=${msg};
+  window.open(url, "_blank")`;
+}
   return (
     <main className="min-h-screen bg-gradient-to-b from-fuchsia-50 to-white">
       <div className="mx-auto max-w-7xl px-4 pb-28 pt-10">
