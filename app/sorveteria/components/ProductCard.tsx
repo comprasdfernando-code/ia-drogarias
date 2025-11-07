@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { SorveteProduto } from "@/types/sorveteria";
+import { SorveteProduto } from "../../../types/sorveteria";
 
 type Props = {
   item: SorveteProduto;
