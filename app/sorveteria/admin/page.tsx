@@ -61,7 +61,12 @@ export default function AdminSorveteriaPage() {
     .toLowerCase();
 
   // 🧱 caminho no bucket
-  const fileName = `produtos/${baseName}_${Date.now()}.jpg`;
+  const safeName = file.name
+  .normalize("NFD")                // remove acentos
+  .replace(/[\u0300-\u036f]/g, "") // remove resíduos de acento
+  .replace(/[^a-zA-Z0-9.]/g, ""); // troca tudo que não for letra/número/ponto por ""
+
+const fileName = `${Date.now()}_${safeName}`;
 
   // 🚀 upload pro Supabase
   const { error: uploadError } = await supabase.storage
