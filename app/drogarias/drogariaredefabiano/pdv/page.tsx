@@ -16,6 +16,30 @@ export default function PDVPage() {
   const [showPagamento, setShowPagamento] = useState(false);
   const [resultados, setResultados] = useState<any[]>([]);
   const inputRef = useRef<HTMLInputElement>(null);
+  const [senha, setSenha] = useState("");
+const [mostrarVendas, setMostrarVendas] = useState(false);
+const [vendas, setVendas] = useState<any[]>([]);
+
+async function verificarSenha() {
+  if (senha !== "1234") {
+    alert("Senha incorreta! ❌");
+    return;
+  }
+
+  const { data, error } = await supabase
+    .from("vendas")
+    .select("*")
+    .order("data_venda", { ascending: false })
+    .limit(50);
+
+  if (error) {
+    console.error(error);
+    alert("Erro ao carregar vendas!");
+  } else {
+    setVendas(data);
+    setMostrarVendas(true);
+  }
+}
 
   // 🔍 Buscar produto
   async function buscarProduto(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -678,8 +702,72 @@ ${pagamento.forma === "Pix" ? "🔢 CNPJ: 62.157.257/0001-09" : ""}
         ×
       </button>
     </div>
+    
   </div>
 )}
+{/* 🔒 CONSULTAR VENDAS GRAVADAS */}
+<div className="mt-10 bg-white rounded-lg shadow p-4">
+  <h2 className="text-blue-700 font-semibold text-lg mb-3">
+    🔒 Consultar Vendas Gravadas
+  </h2>
+
+  {!mostrarVendas ? (
+    <div className="flex items-center gap-3">
+      <input
+        type="password"
+        placeholder="Digite a senha..."
+        value={senha}
+        onChange={(e) => setSenha(e.target.value)}
+        className="border rounded px-3 py-2"
+      />
+      <button
+        onClick={verificarSenha}
+        className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
+      >
+        Entrar
+      </button>
+    </div>
+  ) : (
+    <>
+      <div className="flex justify-between items-center mb-3">
+        <h3 className="font-semibold text-gray-700">📋 Lista de Vendas Gravadas</h3>
+        <button
+          onClick={() => setMostrarVendas(false)}
+          className="text-red-600 underline text-sm"
+        >
+          Sair
+        </button>
+      </div>
+
+      {vendas.length === 0 ? (
+        <p className="text-gray-500 text-sm">Nenhuma venda gravada ainda.</p>
+      ) : (
+        <table className="w-full text-sm border">
+          <thead className="bg-blue-100 text-blue-700 font-semibold">
+            <tr>
+              <th className="p-2 border">Data</th>
+              <th className="p-2 border">Atendente</th>
+              <th className="p-2 border text-right">Total (R$)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {vendas.map((v) => (
+              <tr key={v.id} className="border-t hover:bg-gray-50 transition">
+                <td className="p-2 border text-center">
+                  {new Date(v.data_venda).toLocaleDateString("pt-BR")}
+                </td>
+                <td className="p-2 border text-center">{v.atendente_no}</td>
+                <td className="p-2 border text-right text-green-700 font-semibold">
+                  R$ {v.total.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </>
+  )}
+</div>
     </main>
   );
 }
