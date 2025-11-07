@@ -45,7 +45,7 @@ export default function AdminSorveteriaPage() {
 
       // Upload da imagem, se tiver arquivo novo
       if (file) {
-        const fileName = ${Date.now()}_${file.name};
+        const fileName = `${Date.now()}_${file.name}`;
         const { data: uploadData, error: uploadError } = await supabase.storage
           .from("sorveteria")
           .upload(fileName, file);
