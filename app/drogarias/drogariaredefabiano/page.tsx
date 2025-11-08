@@ -15,23 +15,22 @@ const supabase = createClient(supabaseUrl, supabaseAnonKey);
 // 💾 Gravar venda no Supabase com origem SITE
 async function gravarVendaSite(venda: any) {
   try {
-    const { data, error } = await supabase.from("vendas").insert([
-      {
-        cliente_nome: venda.cliente.nome || "Cliente Site",
-        total: venda.total,
-        produtos: venda.produtos,
-        origem: "SITE", // 🔥 O PDV vai reconhecer essa tag
-        data_venda: new Date().toISOString(),
-        atendente_nome: "Venda Online",
-      },
-    ]);
+    const { error } = await supabase.from("vendas").insert({
+      atendente_id: null,
+      atendente_no: "Venda Online",
+      origem: "SITE", // 🔥 o PDV reconhece essa tag
+      produtos: venda.produtos,
+      total: venda.total,
+      data_venda: new Date().toISOString(),
+      status: "FINALIZADA",
+    });
 
     if (error) {
       console.error("❌ Erro ao gravar venda no Supabase:", error);
       return false;
     }
 
-    console.log("✅ Venda registrada no Supabase:", data);
+    console.log("✅ Venda do site registrada no PDV (origem SITE)");
     return true;
   } catch (err) {
     console.error("⚠️ Erro inesperado ao gravar venda:", err);
