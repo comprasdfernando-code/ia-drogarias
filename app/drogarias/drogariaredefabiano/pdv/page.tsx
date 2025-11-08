@@ -975,13 +975,14 @@ ${pagamento.forma === "Pix" ? "🔢 CNPJ: 62.157.257/0001-09" : ""}
       ) : (
         <table className="w-full text-sm border">
           <thead className="bg-blue-100 text-blue-700 font-semibold">
-            <tr>
-              <th className="p-2 border">Data</th>
-              <th className="p-2 border">Atendente</th>
-              <th className="p-2 border text-right">Total (R$)</th>
-              <th className="p-2 border text-center">Ações</th>
-            </tr>
-          </thead>
+  <tr>
+    <th className="p-2 border">Data</th>
+    <th className="p-2 border">Atendente</th>
+    <th className="p-2 border text-center">Origem</th>
+    <th className="p-2 border text-right">Total (R$)</th>
+    <th className="p-2 border text-center">Ações</th>
+  </tr>
+</thead>
           <tbody>
            {vendas.map((v) => (
   <tr
@@ -996,13 +997,16 @@ ${pagamento.forma === "Pix" ? "🔢 CNPJ: 62.157.257/0001-09" : ""}
       {new Date(v.data_venda).toLocaleDateString("pt-BR")}
     </td>
     <td className="p-2 border text-center">
-      {v.atendente_nome || "—"}
-      {v.origem === "SITE" && (
-        <span className="ml-2 text-xs bg-green-600 text-white px-2 py-0.5 rounded">
-          🌐 Site
-        </span>
-      )}
-    </td>
+  {v.origem === "SITE" ? (
+  <span className="ml-2 text-xs bg-blue-600 text-white px-2 py-0.5 rounded">
+    🌐 Site
+  </span>
+) : (
+  <span className="ml-2 text-xs bg-green-600 text-white px-2 py-0.5 rounded">
+    🏪 PDV
+  </span>
+)}
+</td>
     <td className="p-2 border text-right text-green-700 font-semibold">
       R$ {v.total?.toFixed(2)}
     </td>

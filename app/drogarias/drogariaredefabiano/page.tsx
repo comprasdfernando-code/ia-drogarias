@@ -12,6 +12,33 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
+// 💾 Gravar venda no Supabase com origem SITE
+async function gravarVendaSite(venda: any) {
+  try {
+    const { data, error } = await supabase.from("vendas").insert([
+      {
+        cliente_nome: venda.cliente.nome || "Cliente Site",
+        total: venda.total,
+        produtos: venda.produtos,
+        origem: "SITE", // 🔥 O PDV vai reconhecer essa tag
+        data_venda: new Date().toISOString(),
+        atendente_nome: "Venda Online",
+      },
+    ]);
+
+    if (error) {
+      console.error("❌ Erro ao gravar venda no Supabase:", error);
+      return false;
+    }
+
+    console.log("✅ Venda registrada no Supabase:", data);
+    return true;
+  } catch (err) {
+    console.error("⚠️ Erro inesperado ao gravar venda:", err);
+    return false;
+  }
+}
+
 // ⚙️ Constantes
 const LOJA = "drogariaredefabiano";
 const WHATSAPP = "5511948343725"; // Drogaria Rede Fabiano
@@ -270,10 +297,21 @@ useEffect(() => {
       .single();
 
     if (error) {
-      console.error("Erro ao salvar pedido:", error);
-      alert("Erro ao salvar pedido.");
-      return;
-    }
+  console.error("Erro ao salvar pedido:", error);
+  alert("Erro ao salvar pedido.");
+  return;
+}
+
+// 🔗 Grava também a venda no Supabase com origem SITE
+await gravarVendaSite({
+  cliente,
+  total,
+  produtos: carrinho.map((i) => ({
+    nome: i.nome,
+    qtd: i.quantidade,
+    preco_venda: i.preco_venda,
+  })),
+});
 
     const texto = montarTextoWhatsApp(data?.id, cliente, pagamento);
     const url = `https://wa.me/${WHATSAPP}?text=${encodeURIComponent(texto)}`;
