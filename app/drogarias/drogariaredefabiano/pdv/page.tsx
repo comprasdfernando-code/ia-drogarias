@@ -81,21 +81,37 @@ function gerarCupomPDF(venda: any) {
     }
   }
 
-  // 💾 Carrega vendas gravadas do Supabase
   async function carregarVendas() {
-    const { data, error } = await supabase
-      .from("vendas")
-      .select("*")
-      .order("data_venda", { ascending: false });
+  const { data, error } = await supabase
+    .from("vendas")
+    .select("*")
+    .order("data_venda", { ascending: false });
 
-    if (error) {
-      console.error("Erro ao carregar vendas:", error);
-      alert("Erro ao carregar vendas!");
-    } else {
-      setVendas(data || []);
-    }
+  if (error) {
+    console.error("Erro ao carregar vendas:", error);
+    alert("Erro ao carregar vendas!");
+  } else {
+    setVendas(data || []);
   }
+}
+async function confirmarVenda(id: string) {
+  try {
+    const { error } = await supabase
+      .from("vendas")
+      .update({ status: "FINALIZADA" })
+      .eq("id", id);
 
+    if (error) throw error;
+
+    alert("✅ Venda confirmada com sucesso!");
+    gerarCupomPDF(vendaSelecionada);
+    carregarVendas();
+    setVendaSelecionada(null);
+  } catch (err) {
+    console.error("Erro ao confirmar venda:", err);
+    alert("Erro ao confirmar venda!");
+  }
+}
   async function buscarPorData() {
   if (!filtroData) {
     alert("Selecione uma data para buscar!");
@@ -967,30 +983,39 @@ ${pagamento.forma === "Pix" ? "🔢 CNPJ: 62.157.257/0001-09" : ""}
             </tr>
           </thead>
           <tbody>
-            {vendas.map((v) => (
-              <tr
-                key={v.id}
-                className="border-t hover:bg-gray-50 transition"
-              >
-                <td className="p-2 border text-center">
-                  {new Date(v.data_venda).toLocaleDateString("pt-BR")}
-                </td>
-                <td className="p-2 border text-center">
-                  {v.atendente_nome || "—"}
-                </td>
-                <td className="p-2 border text-right text-green-700 font-semibold">
-                  R$ {v.total?.toFixed(2)}
-                </td>
-                <td className="p-2 border text-center">
-                  <button
-                    onClick={() => verDetalhes(v)} //
-                    className="text-xs bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded"
-                  >
-                    Ver Detalhes
-                  </button>
-                </td>
-              </tr>
-            ))}
+           {vendas.map((v) => (
+  <tr
+    key={v.id}
+    className={`border-t transition ${
+      v.origem === "SITE"
+        ? "bg-green-50 hover:bg-green-100"
+        : "hover:bg-gray-50"
+    }`}
+  >
+    <td className="p-2 border text-center">
+      {new Date(v.data_venda).toLocaleDateString("pt-BR")}
+    </td>
+    <td className="p-2 border text-center">
+      {v.atendente_nome || "—"}
+      {v.origem === "SITE" && (
+        <span className="ml-2 text-xs bg-green-600 text-white px-2 py-0.5 rounded">
+          🌐 Site
+        </span>
+      )}
+    </td>
+    <td className="p-2 border text-right text-green-700 font-semibold">
+      R$ {v.total?.toFixed(2)}
+    </td>
+    <td className="p-2 border text-center">
+      <button
+        onClick={() => verDetalhes(v)}
+        className="text-xs bg-blue-500 hover:bg-blue-600 text-white px-3 py-1 rounded"
+      >
+        Ver Detalhes
+      </button>
+    </td>
+  </tr>
+))}
           </tbody>
         </table>
       )}
@@ -1008,7 +1033,14 @@ ${pagamento.forma === "Pix" ? "🔢 CNPJ: 62.157.257/0001-09" : ""}
       <p className="text-sm text-gray-600 mb-2">
         Data: {new Date(vendaSelecionada.data_venda).toLocaleDateString("pt-BR")}
       </p>
-
+{vendaSelecionada.origem === "SITE" && (
+  <button
+    onClick={() => confirmarVenda(vendaSelecionada.id)}
+    className="bg-blue-700 hover:bg-blue-800 text-white px-4 py-2 rounded"
+  >
+    ✅ Converter em Venda (PDV)
+  </button>
+)}
       <p className="text-sm text-gray-600 mb-4">
         Atendente: {vendaSelecionada.atendente_nome || "—"}
       </p>
@@ -1025,7 +1057,7 @@ ${pagamento.forma === "Pix" ? "🔢 CNPJ: 62.157.257/0001-09" : ""}
       <div className="mt-4 text-right font-bold text-green-700">
         Total: R$ {vendaSelecionada.total.toFixed(2)}
       </div>
-
+       
       <div className="mt-4 flex flex-col gap-2">
         <button
           onClick={() => gerarCupomPDF(vendaSelecionada)}
