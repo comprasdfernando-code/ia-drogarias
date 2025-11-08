@@ -291,7 +291,7 @@ useEffect(() => {
     };
 
     const { data, error } = await supabase
-      .from("vendas")
+      .from("pedidos")
       .insert(payload)
       .select("id")
       .single();
