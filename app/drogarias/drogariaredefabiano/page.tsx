@@ -282,53 +282,57 @@ useEffect(() => {
   }
 
   // 💾 Finalizar pedido
-async function finalizarPedido(cliente: Cliente, pagamento: any) {
-  if (carrinho.length === 0) {
-    alert("Seu carrinho está vazio.");
-    return;
-  }
+  async function finalizarPedido(cliente: Cliente, pagamento: any) {
+    if (carrinho.length === 0) {
+      alert("Seu carrinho está vazio.");
+      return;
+    }
 
-  if (!cliente.nome || !cliente.telefone || !cliente.endereco) {
-    alert("Preencha os dados de entrega.");
-    return;
-  }
+    if (!cliente.nome || !cliente.telefone || !cliente.endereco) {
+      alert("Preencha os dados de entrega.");
+      return;
+    }
 
-  // Monta a venda completa antes de gravar
-  const venda = {
-    cliente,
-    total,
-    produtos: carrinho.map((i) => ({
-      nome: i.nome,
-      quantidade: i.quantidade,
-      preco_venda: i.preco_venda,
-    })),
-  };
+    const payload = {
+      itens: carrinho,
+      total: total,
+      pagamento,
+      status: "pendente",
+      loja: LOJA,
+      cliente,
+    };
 
-  // 🔹 Salva o pedido na tabela "pedidos"
-  const { data, error } = await supabase
-    .from("pedidos")
-    .insert(venda)
-    .select("id")
-    .single();
+    const { data, error } = await supabase
+      .from("vendas")
+      .insert(payload)
+      .select("id")
+      .single();
 
-  if (error) {
-    console.error("Erro ao salvar pedido:", error);
-    alert("Erro ao salvar pedido.");
-    return;
-  }
-
-  // 🔹 Grava também no PDV
-  await gravarVendaSite(venda);
-
-  // 🔹 Envia pro WhatsApp
-  const texto = montarTextoWhatsApp(data?.id, cliente, pagamento);
-  const url = `https://wa.me/${WHATSAPP}?text=${encodeURIComponent(texto)}`;
-  window.open(url, "_blank");
-
-  setCarrinho([]);
-  setCarrinhoAberto(false);
-  alert("Pedido enviado com sucesso! 🙌");
+    if (error) {
+  console.error("Erro ao salvar pedido:", error);
+  alert("Erro ao salvar pedido.");
+  return;
 }
+
+// 🔗 Grava também a venda no Supabase com origem SITE
+await gravarVendaSite({
+  cliente,
+  total,
+  produtos: carrinho.map((i) => ({
+    nome: i.nome,
+    qtd: i.quantidade,
+    preco_venda: i.preco_venda,
+  })),
+});
+
+    const texto = montarTextoWhatsApp(data?.id, cliente, pagamento);
+    const url = `https://wa.me/${WHATSAPP}?text=${encodeURIComponent(texto)}`;
+    window.open(url, "_blank");
+
+    setCarrinho([]);
+    setCarrinhoAberto(false);
+    alert("Pedido enviado com sucesso! 🙌");
+  } //
 
   //  Render
   return (
