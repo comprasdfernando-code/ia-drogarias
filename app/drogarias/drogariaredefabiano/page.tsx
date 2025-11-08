@@ -12,13 +12,12 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
-// 💾 Gravar venda no Supabase com origem SITE
 async function gravarVendaSite(venda: any) {
   try {
     const { error } = await supabase.from("vendas").insert({
       atendente_id: null,
-      atendente_no: "Venda Online",
-      origem: "SITE", // 🔥 o PDV reconhece essa tag
+      atendente_nome: "Venda Online", // 👈 tenta salvar com esse nome
+      origem: "SITE",
       produtos: venda.produtos,
       total: venda.total,
       data_venda: new Date().toISOString(),
@@ -27,13 +26,27 @@ async function gravarVendaSite(venda: any) {
 
     if (error) {
       console.error("❌ Erro ao gravar venda no Supabase:", error);
-      return false;
+
+      // 🔄 Tenta novamente com o outro nome (backup)
+      const { error: try2 } = await supabase.from("vendas").insert({
+        atendente_id: null,
+        atendente_no: "Venda Online",
+        origem: "SITE",
+        produtos: venda.produtos,
+        total: venda.total,
+        data_venda: new Date().toISOString(),
+        status: "FINALIZADA",
+      });
+
+      if (try2) console.error("⚠️ Segunda tentativa falhou também:", try2);
+      else console.log("✅ Venda gravada com atendente_no");
+      return !try2;
     }
 
-    console.log("✅ Venda do site registrada no PDV (origem SITE)");
+    console.log("✅ Venda gravada com atendente_nome");
     return true;
   } catch (err) {
-    console.error("⚠️ Erro inesperado ao gravar venda:", err);
+    console.error("⚠️ Erro inesperado:", err);
     return false;
   }
 }
@@ -269,57 +282,53 @@ useEffect(() => {
   }
 
   // 💾 Finalizar pedido
-  async function finalizarPedido(cliente: Cliente, pagamento: any) {
-    if (carrinho.length === 0) {
-      alert("Seu carrinho está vazio.");
-      return;
-    }
+async function finalizarPedido(cliente: Cliente, pagamento: any) {
+  if (carrinho.length === 0) {
+    alert("Seu carrinho está vazio.");
+    return;
+  }
 
-    if (!cliente.nome || !cliente.telefone || !cliente.endereco) {
-      alert("Preencha os dados de entrega.");
-      return;
-    }
+  if (!cliente.nome || !cliente.telefone || !cliente.endereco) {
+    alert("Preencha os dados de entrega.");
+    return;
+  }
 
-    const payload = {
-      itens: carrinho,
-      total: total,
-      pagamento,
-      status: "pendente",
-      loja: LOJA,
-      cliente,
-    };
+  // Monta a venda completa antes de gravar
+  const venda = {
+    cliente,
+    total,
+    produtos: carrinho.map((i) => ({
+      nome: i.nome,
+      quantidade: i.quantidade,
+      preco_venda: i.preco_venda,
+    })),
+  };
 
-    const { data, error } = await supabase
-      .from("pedidos")
-      .insert(payload)
-      .select("id")
-      .single();
+  // 🔹 Salva o pedido na tabela "pedidos"
+  const { data, error } = await supabase
+    .from("pedidos")
+    .insert(venda)
+    .select("id")
+    .single();
 
-    if (error) {
-  console.error("Erro ao salvar pedido:", error);
-  alert("Erro ao salvar pedido.");
-  return;
+  if (error) {
+    console.error("Erro ao salvar pedido:", error);
+    alert("Erro ao salvar pedido.");
+    return;
+  }
+
+  // 🔹 Grava também no PDV
+  await gravarVendaSite(venda);
+
+  // 🔹 Envia pro WhatsApp
+  const texto = montarTextoWhatsApp(data?.id, cliente, pagamento);
+  const url = `https://wa.me/${WHATSAPP}?text=${encodeURIComponent(texto)}`;
+  window.open(url, "_blank");
+
+  setCarrinho([]);
+  setCarrinhoAberto(false);
+  alert("Pedido enviado com sucesso! 🙌");
 }
-
-// 🔗 Grava também a venda no Supabase com origem SITE
-await gravarVendaSite({
-  cliente,
-  total,
-  produtos: carrinho.map((i) => ({
-    nome: i.nome,
-    qtd: i.quantidade,
-    preco_venda: i.preco_venda,
-  })),
-});
-
-    const texto = montarTextoWhatsApp(data?.id, cliente, pagamento);
-    const url = `https://wa.me/${WHATSAPP}?text=${encodeURIComponent(texto)}`;
-    window.open(url, "_blank");
-
-    setCarrinho([]);
-    setCarrinhoAberto(false);
-    alert("Pedido enviado com sucesso! 🙌");
-  } //
 
   //  Render
   return (
