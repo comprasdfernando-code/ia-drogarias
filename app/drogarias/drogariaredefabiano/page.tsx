@@ -12,41 +12,29 @@ const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
+// 💾 Gravar venda no Supabase com origem SITE
 async function gravarVendaSite(venda: any) {
   try {
-    const { error } = await supabase.from("vendas").insert({
-      atendente_id: null,
-      atendente_nome: "Venda Online", // 👈 tenta salvar com esse nome
-      origem: "SITE",
-      produtos: venda.produtos,
-      total: venda.total,
-      data_venda: new Date().toISOString(),
-      status: "FINALIZADA",
-    });
+    const { data, error } = await supabase.from("vendas").insert([
+      {
+        cliente_nome: venda.cliente.nome || "Cliente Site",
+        total: venda.total,
+        produtos: venda.produtos,
+        origem: "SITE", // 🔥 O PDV vai reconhecer essa tag
+        data_venda: new Date().toISOString(),
+        atendente_nome: "Venda Online",
+      },
+    ]);
 
     if (error) {
       console.error("❌ Erro ao gravar venda no Supabase:", error);
-
-      // 🔄 Tenta novamente com o outro nome (backup)
-      const { error: try2 } = await supabase.from("vendas").insert({
-        atendente_id: null,
-        atendente_no: "Venda Online",
-        origem: "SITE",
-        produtos: venda.produtos,
-        total: venda.total,
-        data_venda: new Date().toISOString(),
-        status: "FINALIZADA",
-      });
-
-      if (try2) console.error("⚠️ Segunda tentativa falhou também:", try2);
-      else console.log("✅ Venda gravada com atendente_no");
-      return !try2;
+      return false;
     }
 
-    console.log("✅ Venda gravada com atendente_nome");
+    console.log("✅ Venda registrada no Supabase:", data);
     return true;
   } catch (err) {
-    console.error("⚠️ Erro inesperado:", err);
+    console.error("⚠️ Erro inesperado ao gravar venda:", err);
     return false;
   }
 }
