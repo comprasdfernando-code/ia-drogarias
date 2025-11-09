@@ -19,6 +19,7 @@ type Produto = {
   estoque?: number | null;
   visivel?: boolean | null;
   categoria?: string | null;
+  EAN?: string | null;
 };
 
 export default function AdminDrogariasFernando() {
@@ -164,6 +165,7 @@ export default function AdminDrogariasFernando() {
                   <th className="p-2 text-left">Estoque</th>
                   <th className="p-2 text-left">Visível</th>
                   <th className="p-2 text-left">Salvar</th>
+                  <th className="p-2 text-left">EAN</th>
                 </tr>
               </thead>
               <tbody>
@@ -196,6 +198,22 @@ export default function AdminDrogariasFernando() {
                         className="border rounded px-2 py-1 w-56"
                       />
                     </td>
+
+                    <td className="p-2">
+  <input
+    type="text"
+    value={p.EAN || ""}
+    onChange={(e) =>
+      setItens((prev) =>
+        prev.map((x) =>
+          x.id === p.id ? { ...x, EAN: e.target.value } : x
+        )
+      )
+    }
+    className="border rounded px-2 py-1 w-32 text-center"
+    placeholder="EAN"
+  />
+</td>
                     <td className="p-2">
                       <input
                         type="number"

@@ -14,6 +14,7 @@ type Produto = {
   imagem?: string | null;
   estoque?: number | null;
   farmacia_slug?: string | null;
+  EAN?: string | null;
 };
 
 const LOJA = {
@@ -168,6 +169,10 @@ export default function DrogariasFernandoPage() {
                     {p.descricao}
                   </p>
                 )}
+
+                {p.EAN && (
+  <p className="text-xs text-gray-500 mt-1">EAN: {p.EAN}</p>
+)}
                 <div className="mt-3 flex items-center justify-between">
                   <span className="text-lg font-bold">
                     {formatarPreco(p.preco_venda)}
