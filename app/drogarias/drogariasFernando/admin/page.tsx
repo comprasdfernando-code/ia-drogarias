@@ -20,6 +20,8 @@ type Produto = {
   visivel?: boolean | null;
   categoria?: string | null;
   EAN?: string | null;
+  PF_18?: string | null;
+  PMC_18?: string | null;
 };
 
 export default function AdminDrogariasFernando() {
@@ -41,24 +43,44 @@ export default function AdminDrogariasFernando() {
     }
   }
 
-  // 🔍 carregar produtos
+  // 🔄 carregar produtos
   async function carregarProdutos() {
     try {
       setCarregando(true);
-      let query = supabase
-        .from("medicamentos_base")
+
+      // 1️⃣ Buscar dados da tabela medicamentos_site (editável)
+      const { data: siteData, error: siteError } = await supabase
+        .from("medicamentos_site")
         .select("*")
         .eq("farmacia_slug", LOJA_SLUG)
-        .order("nome", { ascending: true })
-        .limit(1000);
+        .order("nome", { ascending: true });
 
-      if (busca) {
-        query = query.or(`nome.ilike.%${busca}%,descricao.ilike.%${busca}%,EAN.ilike.%${busca}`);
-      }
+      if (siteError) throw siteError;
 
-      const { data, error } = await query;
-      if (error) throw error;
-      setItens(data || []);
+      // 2️⃣ Buscar dados da tabela medicamentos_base (dados fixos)
+      const { data: baseData, error: baseError } = await supabase
+        .from("medicamentos_base")
+        .select("EAN, NOME, PF_18, PMC_18");
+
+      if (baseError) throw baseError;
+
+      // 3️⃣ Combinar as duas tabelas pelo EAN
+      const produtosCompletos = siteData.map((item) => ({
+        ...item,
+        ...baseData.find((b) => b.EAN === item.EAN),
+      }));
+
+      // 4️⃣ Aplicar busca, se houver texto digitado
+      const termo = busca.trim().toLowerCase();
+      const filtrados = termo
+        ? produtosCompletos.filter(
+            (p) =>
+              p?.NOME?.toLowerCase().includes(termo) ||
+              p?.EAN?.toLowerCase().includes(termo)
+          )
+        : produtosCompletos;
+
+      setItens(filtrados || []);
     } catch (e: any) {
       console.error(e.message);
       setMsg("Erro ao carregar produtos.");
@@ -77,7 +99,7 @@ export default function AdminDrogariasFernando() {
     try {
       setSalvando(true);
       const { error } = await supabase
-        .from("medicamentos_base")
+        .from("medicamentos_site")
         .update({
           nome: p.nome,
           descricao: p.descricao,
@@ -157,20 +179,24 @@ export default function AdminDrogariasFernando() {
         ) : (
           <div className="overflow-x-auto border rounded bg-white shadow-sm">
             <table className="min-w-full text-sm">
-              <thead className="bg-blue-50">
+              <thead className="bg-blue-50 border-b text-gray-700">
                 <tr>
                   <th className="p-2 text-left">Imagem</th>
                   <th className="p-2 text-left">Nome</th>
-                  <th className="p-2 text-left">Preço</th>
+                  <th className="p-2 text-left">PF</th>
+                  <th className="p-2 text-left">PMC</th>
+                  <th className="p-2 text-left">Venda</th>
                   <th className="p-2 text-left">Estoque</th>
-                  <th className="p-2 text-left">Visível</th>
-                  <th className="p-2 text-left">Salvar</th>
+                  <th className="p-2 text-center">Visível</th>
+                  <th className="p-2 text-center">Salvar</th>
                   <th className="p-2 text-left">EAN</th>
                 </tr>
               </thead>
+
               <tbody>
                 {itens.map((p) => (
                   <tr key={p.id} className="border-t">
+                    {/* 🖼️ Imagem */}
                     <td className="p-2">
                       {p.imagem ? (
                         <Image
@@ -184,6 +210,8 @@ export default function AdminDrogariasFernando() {
                         <span className="text-gray-400">Sem</span>
                       )}
                     </td>
+
+                    {/* 🧾 Nome */}
                     <td className="p-2">
                       <input
                         type="text"
@@ -199,24 +227,19 @@ export default function AdminDrogariasFernando() {
                       />
                     </td>
 
-                    <td className="p-2">
-  <input
-    type="text"
-    value={p.EAN || ""}
-    onChange={(e) =>
-      setItens((prev) =>
-        prev.map((x) =>
-          x.id === p.id ? { ...x, EAN: e.target.value } : x
-        )
-      )
-    }
-    className="border rounded px-2 py-1 w-32 text-center"
-    placeholder="EAN"
-  />
-</td>
+                    {/* 📊 PF e PMC fixos */}
+                    <td className="p-2 text-sm text-gray-600">
+                      {p.PF_18 || "-"}
+                    </td>
+                    <td className="p-2 text-sm text-gray-600">
+                      {p.PMC_18 || "-"}
+                    </td>
+
+                    {/* 💲 Preço de venda editável */}
                     <td className="p-2">
                       <input
                         type="number"
+                        step="0.01"
                         value={p.preco_venda ?? ""}
                         onChange={(e) =>
                           setItens((prev) =>
@@ -228,8 +251,11 @@ export default function AdminDrogariasFernando() {
                           )
                         }
                         className="border rounded px-2 py-1 w-24 text-right"
+                        placeholder="Venda"
                       />
                     </td>
+
+                    {/* 📦 Estoque editável */}
                     <td className="p-2">
                       <input
                         type="number"
@@ -244,8 +270,11 @@ export default function AdminDrogariasFernando() {
                           )
                         }
                         className="border rounded px-2 py-1 w-20 text-right"
+                        placeholder="Estoque"
                       />
                     </td>
+
+                    {/* 👁️ Visível */}
                     <td className="p-2 text-center">
                       <input
                         type="checkbox"
@@ -261,7 +290,9 @@ export default function AdminDrogariasFernando() {
                         }
                       />
                     </td>
-                    <td className="p-2">
+
+                    {/* 💾 Botão Salvar */}
+                    <td className="p-2 text-center">
                       <button
                         onClick={() => salvarAlteracoes(p)}
                         disabled={salvando}
@@ -270,6 +301,9 @@ export default function AdminDrogariasFernando() {
                         {salvando ? "Salvando..." : "Salvar"}
                       </button>
                     </td>
+
+                    {/* 🧾 EAN */}
+                    <td className="p-2 text-sm text-gray-600">{p.EAN || "-"}</td>
                   </tr>
                 ))}
               </tbody>
