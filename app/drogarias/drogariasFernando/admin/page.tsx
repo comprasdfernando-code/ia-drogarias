@@ -52,7 +52,7 @@ export default function AdminDrogariasFernando() {
         .limit(1000);
 
       if (busca) {
-        query = query.or(`nome.ilike.%${busca}%,descricao.ilike.%${busca}%`);
+        query = query.or(`nome.ilike.%${busca}%,descricao.ilike.%${busca}%,EAN.ilike.%${busca}`);
       }
 
       const { data, error } = await query;
