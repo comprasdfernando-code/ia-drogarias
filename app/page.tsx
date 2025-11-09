@@ -90,7 +90,7 @@ export default function HomePage() {
 
       while (true) {
         const { data, error } = await supabase
-          .from("medicamentos_base")
+          .from("produtos")
           .select("*")
           .eq("loja", LOJA)
           .eq("disponivel", true)
@@ -230,7 +230,7 @@ export default function HomePage() {
       // (opcional) baixar estoque aqui, item a item
       for (const item of carrinho) {
         const novoEstoque = Math.max(0, Number(item.estoque) - Number(item.quantidade));
-        await supabase.from("medicamento_base").update({ estoque: novoEstoque }).eq("id", item.id);
+        await supabase.from("produtos").update({ estoque: novoEstoque }).eq("id", item.id);
       }
 
       const texto = montarTextoWhatsApp(data?.id, clienteFinal, pagamento);
