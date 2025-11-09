@@ -59,8 +59,10 @@ export default function DrogariasFernandoPage() {
         .range(from, to);
 
       if (categoria) query = query.ilike("categoria", categoria);
-      if (busca)
-        query = query.or(`nome.ilike.%${busca}%,descricao.ilike.%${busca}%,EAN.ilike.%${busca}`);
+      if (busca) {
+        const termo = busca.trim();
+        query = query.or(`nome.ilike.%${termo}%,descricao.ilike.%${termo}%,EAN.ilike.%${termo}`);
+      }
 
       const { data, error } = await query;
       if (error) throw error;
