@@ -104,11 +104,20 @@ export default function DrogariasFernandoPage() {
 
           <div className="mt-6 grid gap-3 sm:grid-cols-3">
             <input
-              value={busca}
-              onChange={(e) => setBusca(e.target.value)}
-              placeholder="Buscar por nome ou descrição…"
-              className="px-4 py-2 rounded text-gray-900"
-            />
+  value={busca}
+  onChange={(e) => setBusca(e.target.value)}
+  onKeyDown={(e) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      setPagina(1); // volta pra primeira página
+      // dispara o filtro imediatamente
+      const termo = e.currentTarget.value.trim();
+      setBusca(termo);
+    }
+  }}
+  placeholder="Buscar por nome, descrição ou código de barras…"
+  className="px-4 py-2 rounded text-gray-900"
+/>
             <select
               value={categoria}
               onChange={(e) => setCategoria(e.target.value)}
