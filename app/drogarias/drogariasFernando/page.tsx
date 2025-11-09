@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { supabase } from "@/lib/supabaseClient";
+import { supabase } from "../../../lib/supabaseClient";
 
 type Produto = {
   id: string;
@@ -59,7 +59,7 @@ export default function DrogariasFernandoPage() {
 
       if (categoria) query = query.ilike("categoria", categoria);
       if (busca)
-        query = query.or(nome.ilike.%${busca}%,descricao.ilike.%${busca}%);
+        query = query.or(`nome.ilike.%${busca}%,descricao.ilike.%${busca}%`);
 
       const { data, error } = await query;
       if (error) throw error;
@@ -88,13 +88,13 @@ export default function DrogariasFernandoPage() {
   }
 
   function linkWhatsApp(p: Produto) {
-    const msg = Olá, tenho interesse no produto: ${p.nome};
-    return https://wa.me/${LOJA.whatsapp}?text=${encodeURIComponent(msg)};
+    const msg = `Olá, tenho interesse no produto: ${p.nome}`;
+    return `https://wa.me/${LOJA.whatsapp}?text=${encodeURIComponent(msg)}`;
   }
 
   return (
     <main className="min-h-screen bg-gray-50">
-      <section className={bg-gradient-to-r ${LOJA.corPrimaria} text-white}>
+      <section className={`bg-gradient-to-r ${LOJA.corPrimaria} text-white`}>
         <div className="max-w-6xl mx-auto px-6 py-10">
           <h1 className="text-3xl font-bold">{LOJA.nome}</h1>
           <p className="opacity-90">Saúde com Inteligência • IA Drogarias</p>
