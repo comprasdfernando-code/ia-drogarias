@@ -30,6 +30,8 @@ export default function DrogariasFernandoPage() {
   const [erro, setErro] = useState<string | null>(null);
 
   const [busca, setBusca] = useState("");
+  const [buscaTemp, setBuscaTemp] = useState("");
+
   const [categoria, setCategoria] = useState("");
   const [pagina, setPagina] = useState(1);
   const LIMITE = 24;
@@ -78,7 +80,12 @@ export default function DrogariasFernandoPage() {
     carregar();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pagina]);
-
+useEffect(() => {
+  const delay = setTimeout(() => {
+    setBusca(buscaTemp.trim());
+  }, 300); // espera 0.3 s após parar de digitar/ler
+  return () => clearTimeout(delay);
+}, [buscaTemp]);
   useEffect(() => {
     setPagina(1);
     carregar();
@@ -104,15 +111,12 @@ export default function DrogariasFernandoPage() {
 
           <div className="mt-6 grid gap-3 sm:grid-cols-3">
             <input
-  value={busca}
-  onChange={(e) => setBusca(e.target.value)}
+  value={buscaTemp}
+  onChange={(e) => setBuscaTemp(e.target.value)}
   onKeyDown={(e) => {
     if (e.key === "Enter") {
       e.preventDefault();
-      setPagina(1); // volta pra primeira página
-      // dispara o filtro imediatamente
-      const termo = e.currentTarget.value.trim();
-      setBusca(termo);
+      setBusca(e.currentTarget.value.trim());
     }
   }}
   placeholder="Buscar por nome, descrição ou código de barras…"
