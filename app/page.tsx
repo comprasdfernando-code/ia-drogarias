@@ -83,34 +83,37 @@ export default function HomePage() {
   // 🔄 Carregar produtos do Supabase (em lotes p/ evitar timeout)
   useEffect(() => {
     async function carregarProdutos() {
-      setCarregando(true);
-      let pagina = 0;
-      const limite = 100;
-      let todos: Produto[] = [];
+  try {
+    setCarregando(true);
+    let pagina = 1;
+    const LIMITE = 100;
 
-      while (true) {
-        const { data, error } = await supabase
-  .from("public.medicamentos_site")
-  .select('"EAN", "NOME", "NOME_FABRICANTE", "PMC_18", preco_venda, disponivel')
-  .eq("disponivel", true)
-  .order("NOME", { ascending: true })
-  .range(pagina * limite, (pagina + 1) * limite - 1);
+    const from = (pagina - 1) * LIMITE;
+    const to = from + LIMITE - 1;
 
+    let query = supabase
+      .from("medicamentos_site")
+      .select("*")
+      .eq("disponivel", true)
+      .order("NOME", { ascending: true })
+      .range(from, to);
 
-        if (error) {
-          console.error("❌ Erro ao carregar produtos:", error);
-          break;
-        }
-        if (!data || data.length === 0) break;
-
-        `todos = [...todos, ...(data as Produto[])]` ;
-        if (data.length < limite) break;
-        pagina++;
-      }
-
-      setProdutos(todos);
-      setCarregando(false);
+    // 🔎 Se quiser permitir busca local na Home:
+    if (busca) {
+      const termo = busca.trim();
+      query = query.or(`NOME.ilike.%${termo}%,DESCRICAO.ilike.%${termo}%,EAN.ilike.%${termo}%`);
     }
+
+    const { data, error } = await query;
+    if (error) throw error;
+
+    setProdutos(data || []);
+  } catch (e: any) {
+    console.error("❌ Erro ao carregar produtos:", e.message);
+  } finally {
+    setCarregando(false);
+  }
+}
 
     carregarProdutos();
   }, []);
