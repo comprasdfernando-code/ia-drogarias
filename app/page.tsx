@@ -55,6 +55,9 @@ export default function HomePage() {
   const [carregando, setCarregando] = useState(true);
   const [busca, setBusca] = useState("");
   const router = useRouter();
+  const [erro, setErro] = useState<string | null>(null); // 👈 adiciona isso
+  const [pagina, setPagina] = useState(1);
+  const LIMITE = 100;
 
 
   // Paginação visual (Home): mostra 20 e carrega +20 por clique
@@ -81,42 +84,44 @@ export default function HomePage() {
   }, [carrinho]);
 
   // 🔄 Carregar produtos do Supabase (em lotes p/ evitar timeout)
-  useEffect(() => {
-    async function carregarProdutos() {
-  try {
-    setCarregando(true);
-    let pagina = 1;
-    const LIMITE = 100;
+useEffect(() => {
+  async function carregarProdutos() {
+    try {
+      setCarregando(true);
+      setErro(null);
 
-    const from = (pagina - 1) * LIMITE;
-    const to = from + LIMITE - 1;
+      const from = (pagina - 1) * LIMITE;
+      const to = from + LIMITE - 1;
 
-    let query = supabase
-      .from("medicamentos_site")
-      .select("*")
-      .eq("disponivel", true)
-      .order("NOME", { ascending: true })
-      .range(from, to);
+      let query = supabase
+        .from("medicamentos_site")
+        .select("*")
+        .eq("disponivel", true)
+        .order("NOME", { ascending: true })
+        .range(from, to);
 
-    // 🔎 Se quiser permitir busca local na Home:
-    if (busca) {
-      const termo = busca.trim();
-      query = query.or(`NOME.ilike.%${termo}%,DESCRICAO.ilike.%${termo}%,EAN.ilike.%${termo}%`);
+      if (busca) {
+        const termo = busca.trim();
+        query = query.or(
+          `NOME.ilike.%${termo}%,DESCRICAO.ilike.%${termo}%,EAN.ilike.%${termo}%`
+        );
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+
+      setProdutos(pagina === 1 ? data || [] : [...produtos, ...(data || [])]);
+    } catch (e: any) {
+      console.error("❌ Erro ao carregar produtos:", e.message);
+      setErro(e.message || "Erro ao carregar produtos");
+    } finally {
+      setCarregando(false);
     }
-
-    const { data, error } = await query;
-    if (error) throw error;
-
-    setProdutos(data || []);
-  } catch (e: any) {
-    console.error("❌ Erro ao carregar produtos:", e.message);
-  } finally {
-    setCarregando(false);
   }
-}
 
-    carregarProdutos();
-  }, []);
+  carregarProdutos();
+}, [busca, pagina]);
+
 
   // Filtro por busca (local)
   const produtosFiltrados = useMemo(() => {
