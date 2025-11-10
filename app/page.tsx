@@ -90,7 +90,7 @@ export default function HomePage() {
 
       while (true) {
         const { data, error } = await supabase
-  .from("medicamentos_site")
+  .from("public.medicamentos_site")
   .select('"EAN", "NOME", "NOME_FABRICANTE", "PMC_18", preco_venda, disponivel')
   .eq("disponivel", true)
   .order("NOME", { ascending: true })
