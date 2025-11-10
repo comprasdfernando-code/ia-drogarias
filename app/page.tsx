@@ -90,13 +90,12 @@ export default function HomePage() {
 
       while (true) {
         const { data, error } = await supabase
-          .from("produtos")
-          .select("*")
-          .eq("loja", LOJA)
-          .eq("disponivel", true)
-          .gt("estoque", 0)
-          .order("nome", { ascending: true })
-          .range(pagina * limite, (pagina + 1) * limite - 1);
+  .from("medicamentos_site")
+  .select('"EAN", "NOME", "NOME_FABRICANTE", "PMC_18", preco_venda, disponivel')
+  .eq("disponivel", true)
+  .order("NOME", { ascending: true })
+  .range(pagina * limite, (pagina + 1) * limite - 1);
+
 
         if (error) {
           console.error("❌ Erro ao carregar produtos:", error);
@@ -104,7 +103,7 @@ export default function HomePage() {
         }
         if (!data || data.length === 0) break;
 
-        todos = [...todos, ...(data as Produto[])];
+        `todos = [...todos, ...(data as Produto[])]` ;
         if (data.length < limite) break;
         pagina++;
       }
