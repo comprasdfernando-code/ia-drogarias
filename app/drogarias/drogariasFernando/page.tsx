@@ -8,10 +8,9 @@ import { supabase } from "../../../lib/supabaseClient";
 const LOJA = {
   nome: "Drogarias Fernando",
   slug: "drogarias-fernando",
-  whatsapp: "5511952068432", // substitui pelo número correto
+  whatsapp: "5511952068432",
   corPrimaria: "bg-blue-700",
 };
-
 const LIMITE = 40;
 
 type Produto = {
@@ -41,34 +40,37 @@ export default function DrogariasFernandoPage() {
 
   // 🔍 Buscar produtos
   async function carregar() {
-    try {
-      setCarregando(true);
-      setErro(null);
+  try {
+    setCarregando(true);
+    setErro(null);
 
-      let query = supabase.from("medicamentos_site_view").select("*").order("nome", { ascending: true });
+    // 🔹 define a variável query corretamente
+    let query = supabase
+      .from("medicamentos_site_view")
+      .select("*")
+      .eq("farmacia_slug", LOJA.slug) // ✅ usa o slug da loja
+      .order("nome", { ascending: true });
 
-      // Filtro por farmácia específica
-      query = query.eq("farmacia_id", LOJA.slug);
-
-      // Filtro de categoria
-      if (categoria) query = query.ilike("categoria", categoria);
-
-      // Filtro de busca
-      if (busca.trim()) {
-        const termo = busca.trim();
-        query = query.or(`nome.ilike.%${termo}%,descricao.ilike.%${termo}%,ean.ilike.%${termo}%`);
-      }
-
-      const { data, error } = await query.range(0, LIMITE - 1);
-
-      if (error) throw error;
-      setItens(data || []);
-    } catch (e: any) {
-      setErro(e.message);
-    } finally {
-      setCarregando(false);
+    if (categoria) {
+      query = query.ilike("categoria", categoria);
     }
+
+    if (busca.trim()) {
+      const termo = busca.trim();
+      query = query.or(`nome.ilike.%${termo}%,descricao.ilike.%${termo}%,ean.ilike.%${termo}%`);
+    }
+
+    const { data, error } = await query.range(0, LIMITE - 1);
+    if (error) throw error;
+
+    setItens(data || []);
+  } catch (e: any) {
+    setErro(e.message);
+  } finally {
+    setCarregando(false);
   }
+}
+
 
   useEffect(() => {
     carregar();
