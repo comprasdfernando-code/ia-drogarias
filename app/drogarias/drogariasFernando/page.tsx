@@ -35,6 +35,14 @@ export default function DrogariasFernandoPage() {
   const [categoria, setCategoria] = useState("");
   const [pagina, setPagina] = useState(1);
   const LIMITE = 24;
+  const LOJA = {
+  id: 2,
+  nome: "Drogarias Fernando",
+  whatsapp: "5511948843725", // ✅ número do WhatsApp
+  corPrimaria: "from-blue-700 to-cyan-500" // ✅ gradiente da loja
+};
+
+
 
   const categorias = useMemo(() => {
     const set = new Set(
@@ -56,7 +64,8 @@ export default function DrogariasFernandoPage() {
       let query = supabase
         .from("medicamentos_site")
         .select("*")
-        .eq("farmacia_id", 1)
+        
+
         .order("nome", { ascending: true })
         .range(from, to);
 
