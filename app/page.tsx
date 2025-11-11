@@ -137,6 +137,8 @@ export default function HomePage() {
     { src: "/banners/cadastro-drogaria.png", link: "/cadastro-drogaria" },
     { src: "/banners/ecommerce.png", link: "/drogarias/drogariaredefabiano" },
     { src: "/banners/cadastro-farmaceutico.png", link: "/cadastro-farmaceutico" },
+    { src: "/banners/fraldas pom pom.png", link: "/drogarias/drogariaredefabiano" },
+    { src: "/banners/herbamed.png", link: "/drogarias/drogariaredefabiano" },
   ];
 
   const listaParaExibir = produtosFiltrados.slice(0, visiveis);
