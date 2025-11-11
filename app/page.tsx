@@ -71,7 +71,7 @@ export default function HomePage() {
       try {
         setCarregando(true);
         const { data, error } = await supabase
-          .from("medicamentos_site")
+          .from("medicamentos_site_view")
           .select("*")
           .eq("disponivel", true)
           .gt("estoque_total", 0)

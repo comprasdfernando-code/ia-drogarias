@@ -62,7 +62,7 @@ export default function DrogariasFernandoPage() {
       const to = from + LIMITE - 1;
 
       let query = supabase
-        .from("medicamentos_site")
+        .from("medicamentos_site_view")
         .select("*")
         .eq("farmacia_id", LOJA.id)
 
