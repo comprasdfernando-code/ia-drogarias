@@ -89,24 +89,17 @@ export default function RootClientLayout({ children }: { children: React.ReactNo
             </Link>
 
             <Link
+              href="/drogarias/drogariasFernando"
+              className="px-4 py-2 bg-white text-blue-700 rounded-lg shadow hover:bg-gray-100 transition text-sm font-medium"
+            >
+              DF
+            </Link>
+
+            <Link
               href="/servicos"
               className="px-4 py-2 bg-white text-blue-700 rounded-lg shadow hover:bg-gray-100 transition text-sm font-medium"
             >
               Serviços
-            </Link>
-
-            {/* 🛒 Carrinho Dinâmico */}
-            <Link
-              href="/carrinho"
-              className="relative bg-white text-blue-700 rounded-full p-2 shadow hover:bg-gray-100 transition"
-              title="Ver carrinho"
-            >
-              <ShoppingCart size={22} />
-              {cartCount > 0 && (
-                <span className="absolute -top-1 -right-1 bg-red-600 text-white text-xs rounded-full px-1">
-                  {cartCount}
-                </span>
-              )}
             </Link>
 
             {/* 🔹 Saudação ou botão de login */}
@@ -142,8 +135,8 @@ export default function RootClientLayout({ children }: { children: React.ReactNo
         {/* Menu Mobile Aberto */}
         {menuOpen && (
           <div className="sm:hidden bg-white text-blue-700 flex flex-col items-center py-3 space-y-2 border-t border-blue-100">
-            <Link href="/produtos" onClick={() => setMenuOpen(false)} className="w-full text-center py-2 hover:bg-blue-50 transition">
-              E-commerce
+            <Link href="/drogarias/drogariasFernando" onClick={() => setMenuOpen(false)} className="w-full text-center py-2 hover:bg-blue-50 transition">
+              DF
             </Link>
             <Link href="/servicos" onClick={() => setMenuOpen(false)} className="w-full text-center py-2 hover:bg-blue-50 transition">
               Serviços

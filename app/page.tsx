@@ -74,9 +74,8 @@ export default function HomePage() {
           .from("medicamentos_site")
           .select("*")
           .eq("disponivel", true)
-          .gt("estoque", 0)
-          .order("nome", { ascending: true })
-          .limit(500);
+          .gt("estoque_total", 0)
+          .eq("farmacia_slug", LOJA)
 
         if (error) throw error;
         setProdutos(data || []);
