@@ -1,85 +1,70 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import Image from "next/image";
-import Link from "next/link";
 import { supabase } from "../../../lib/supabaseClient";
 
-type Produto = {
-  id: string;
-  nome: string;
-  descricao?: string | null;
-  categoria?: string | null;
-  preco_venda?: number | null;
-  imagem?: string | null;
-  estoque?: number | null;
-  farmacia_slug?: string | null;
-  EAN?: string | null;
-};
-
+// ⚙️ Identificação da loja
 const LOJA = {
   nome: "Drogarias Fernando",
   slug: "drogarias-fernando",
-  whatsapp: "5511952068441", // Ajuste se quiser
-  corPrimaria: "from-blue-600 to-emerald-500",
+  whatsapp: "5511952068432", // substitui pelo número correto
+  corPrimaria: "bg-blue-700",
+};
+
+const LIMITE = 40;
+
+type Produto = {
+  ean: string;
+  nome: string;
+  descricao?: string | null;
+  categoria?: string | null;
+  imagem?: string | null;
+  preco_venda?: string | null;
+  estoque_total?: number | null;
+  disponivel_geral?: boolean | null;
+  farmacia_id?: string | null;
+  disponivel_farmacia?: boolean | null;
 };
 
 export default function DrogariasFernandoPage() {
   const [itens, setItens] = useState<Produto[]>([]);
+  const [busca, setBusca] = useState("");
+  const [categoria, setCategoria] = useState("");
   const [carregando, setCarregando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
-  const [busca, setBusca] = useState("");
-  const [buscaTemp, setBuscaTemp] = useState("");
-
-  const [categoria, setCategoria] = useState("");
-  const [pagina, setPagina] = useState(1);
-  const LIMITE = 24;
-  const LOJA = {
-  id: 2,
-  nome: "Drogarias Fernando",
-  whatsapp: "5511948843725", // ✅ número do WhatsApp
-  corPrimaria: "from-blue-700 to-cyan-500" // ✅ gradiente da loja
-};
-
-
-
   const categorias = useMemo(() => {
-    const set = new Set(
-      itens
-        .map((p) => (p.categoria || "").trim())
-        .filter((c) => c && c.length > 0)
-    );
+    const set = new Set(itens.map((p) => p.categoria).filter(Boolean));
     return Array.from(set).sort();
   }, [itens]);
 
+  // 🔍 Buscar produtos
   async function carregar() {
     try {
       setCarregando(true);
       setErro(null);
 
-      const from = (pagina - 1) * LIMITE;
-      const to = from + LIMITE - 1;
+      let query = supabase.from("medicamentos_site_view").select("*").order("nome", { ascending: true });
 
-      let query = supabase
-        .from("medicamentos_site_view")
-        .select("*")
-        .eq("farmacia_id", LOJA.id)
+      // Filtro por farmácia específica
+      query = query.eq("farmacia_id", LOJA.slug);
 
-        .order("nome", { ascending: true })
-        .range(from, to);
-
+      // Filtro de categoria
       if (categoria) query = query.ilike("categoria", categoria);
-      if (busca) {
+
+      // Filtro de busca
+      if (busca.trim()) {
         const termo = busca.trim();
-        query = query.or(`nome.ilike.%${termo}%,descricao.ilike.%${termo}%,EAN.ilike.%${termo}`);
+        query = query.or(`nome.ilike.%${termo}%,descricao.ilike.%${termo}%,ean.ilike.%${termo}%`);
       }
 
-      const { data, error } = await query;
+      const { data, error } = await query.range(0, LIMITE - 1);
+
       if (error) throw error;
-      setItens((prev) => (pagina === 1 ? data || [] : [...prev, ...(data || [])]));
+      setItens(data || []);
     } catch (e: any) {
-      setErro(e.message || "Erro ao carregar produtos");
+      setErro(e.message);
     } finally {
       setCarregando(false);
     }
@@ -87,23 +72,12 @@ export default function DrogariasFernandoPage() {
 
   useEffect(() => {
     carregar();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pagina]);
-useEffect(() => {
-  const delay = setTimeout(() => {
-    setBusca(buscaTemp.trim());
-  }, 300); // espera 0.3 s após parar de digitar/ler
-  return () => clearTimeout(delay);
-}, [buscaTemp]);
-  useEffect(() => {
-    setPagina(1);
-    carregar();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [busca, categoria]);
 
-  function formatarPreco(v?: number | null) {
-    if (v == null) return "—";
-    return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  function formatarPreco(v: string | null) {
+    if (!v) return "R$ 0,00";
+    const num = parseFloat(v);
+    return num.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
   }
 
   function linkWhatsApp(p: Produto) {
@@ -113,28 +87,21 @@ useEffect(() => {
 
   return (
     <main className="min-h-screen bg-gray-50">
-      <section className={`bg-gradient-to-r ${LOJA.corPrimaria} text-white`}>
-        <div className="max-w-6xl mx-auto px-6 py-10">
+      <section className={`${LOJA.corPrimaria} text-white py-8`}>
+        <div className="max-w-6xl mx-auto px-6 text-center">
           <h1 className="text-3xl font-bold">{LOJA.nome}</h1>
-          <p className="opacity-90">Saúde com Inteligência • IA Drogarias</p>
-
-          <div className="mt-6 grid gap-3 sm:grid-cols-3">
+          <p>Saúde com Inteligência • IA Drogarias</p>
+          <div className="mt-4 grid gap-2 sm:grid-cols-3">
             <input
-  value={buscaTemp}
-  onChange={(e) => setBuscaTemp(e.target.value)}
-  onKeyDown={(e) => {
-    if (e.key === "Enter") {
-      e.preventDefault();
-      setBusca(e.currentTarget.value.trim());
-    }
-  }}
-  placeholder="Buscar por nome, descrição ou código de barras…"
-  className="px-4 py-2 rounded text-gray-900"
-/>
+              placeholder="Buscar por nome ou código"
+              className="p-2 rounded text-black"
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+            />
             <select
+              className="p-2 rounded text-black"
               value={categoria}
               onChange={(e) => setCategoria(e.target.value)}
-              className="px-4 py-2 rounded text-gray-900"
             >
               <option value="">Todas as categorias</option>
               {categorias.map((c) => (
@@ -143,14 +110,12 @@ useEffect(() => {
                 </option>
               ))}
             </select>
-
             <button
               onClick={() => {
                 setBusca("");
                 setCategoria("");
-                setPagina(1);
               }}
-              className="bg-white/20 hover:bg-white/30 text-white px-4 py-2 rounded transition"
+              className="bg-gray-200 text-black rounded p-2"
             >
               Limpar filtros
             </button>
@@ -158,100 +123,42 @@ useEffect(() => {
         </div>
       </section>
 
-      <section className="max-w-6xl mx-auto px-6 py-8">
-        {erro && (
-          <div className="mb-6 rounded border border-red-300 bg-red-50 text-red-800 px-4 py-3">
-            {erro}
-          </div>
-        )}
+      <section className="max-w-6xl mx-auto px-4 py-10 grid sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-6">
+        {erro && <p className="text-red-600">{erro}</p>}
+        {carregando && <p>Carregando produtos...</p>}
+        {!carregando && itens.length === 0 && <p>Nenhum produto encontrado.</p>}
 
-        <div className="grid gap-5 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4">
-          {itens.map((p) => (
-            <article
-              key={p.id}
-              className="rounded-lg border bg-white shadow-sm hover:shadow-md transition"
-            >
-              <div className="relative w-full aspect-[4/3] bg-gray-100 rounded-t-lg overflow-hidden">
-                {p.imagem ? (
-                  <Image
-                    src={p.imagem}
-                    alt={p.nome}
-                    fill
-                    sizes="(max-width:768px) 100vw, 33vw"
-                    className="object-contain p-2"
-                  />
+        {itens.map((p) => (
+          <div key={p.ean} className="bg-white rounded-2xl shadow-md overflow-hidden">
+            <Image
+              src={p.imagem || "/produtos/caixa-padrao.png"}
+              alt={p.nome}
+              width={300}
+              height={200}
+              className="w-full h-48 object-cover"
+            />
+            <div className="p-4">
+              <h2 className="font-bold text-lg">{p.nome}</h2>
+              <p className="text-sm text-gray-600">{p.descricao}</p>
+              <p className="font-bold text-blue-600 mt-2">{formatarPreco(p.preco_venda)}</p>
+
+              <div className="flex justify-between items-center mt-2">
+                {p.disponivel_farmacia ? (
+                  <span className="text-green-600 font-semibold">Disponível</span>
                 ) : (
-                  <div className="w-full h-full flex items-center justify-center text-gray-400">
-                    sem imagem
-                  </div>
+                  <span className="text-red-500 font-semibold">Indisponível</span>
                 )}
+                <a
+                  href={linkWhatsApp(p)}
+                  target="_blank"
+                  className="bg-green-500 text-white px-3 py-1 rounded-md text-sm"
+                >
+                  Pedir no WhatsApp
+                </a>
               </div>
-              <div className="p-4">
-                <h3 className="font-semibold line-clamp-2">{p.nome}</h3>
-                {p.descricao && (
-                  <p className="text-sm text-gray-600 line-clamp-2 mt-1">
-                    {p.descricao}
-                  </p>
-                )}
-
-                {p.EAN && (
-  <p className="text-xs text-gray-500 mt-1">EAN: {p.EAN}</p>
-)}
-                <div className="mt-3 flex items-center justify-between">
-                  <span className="text-lg font-bold">
-                    {formatarPreco(p.preco_venda)}
-                  </span>
-                  <span
-                    className={`text-xs px-2 py-1 rounded ${
-                      (p.estoque ?? 0) > 0
-                        ? "bg-emerald-100 text-emerald-700"
-                        : "bg-red-100 text-red-600"
-                    }`}
-                  >
-                    {(p.estoque ?? 0) > 0 ? "Disponível" : "Indisponível"}
-                  </span>
-                </div>
-                <div className="mt-4 flex gap-2">
-                  <Link
-                    href={linkWhatsApp(p)}
-                    target="_blank"
-                    className={`w-full text-center font-medium px-4 py-2 rounded ${
-                      (p.estoque ?? 0) > 0
-                        ? "bg-emerald-600 hover:bg-emerald-700 text-white"
-                        : "bg-gray-300 text-gray-500 cursor-not-allowed"
-                    }`}
-                  >
-                    {(p.estoque ?? 0) > 0
-                      ? "Pedir no WhatsApp"
-                      : "Indisponível"}
-                  </Link>
-                </div>
-              </div>
-            </article>
-          ))}
-        </div>
-
-        <div className="flex items-center justify-center gap-3 mt-8">
-          <button
-            onClick={() => setPagina((n) => Math.max(1, n - 1))}
-            disabled={pagina === 1 || carregando}
-            className="px-4 py-2 rounded border bg-white disabled:opacity-50"
-          >
-            Voltar
-          </button>
-          <span className="text-sm text-gray-600">Página {pagina}</span>
-          <button
-            onClick={() => setPagina((n) => n + 1)}
-            disabled={carregando || itens.length < LIMITE}
-            className="px-4 py-2 rounded border bg-white disabled:opacity-50"
-          >
-            Próxima
-          </button>
-        </div>
-
-        {carregando && (
-          <p className="text-center text-gray-500 mt-4">Carregando…</p>
-        )}
+            </div>
+          </div>
+        ))}
       </section>
     </main>
   );
