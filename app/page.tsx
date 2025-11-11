@@ -75,7 +75,7 @@ export default function HomePage() {
           .select("*")
           .eq("disponivel", true)
           .gt("estoque_total", 0)
-          .eq("farmacia_slug", LOJA)
+          
 
         if (error) throw error;
         setProdutos(data || []);
