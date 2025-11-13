@@ -67,26 +67,55 @@ export default function HomePage() {
 
   // 🔄 Carregar produtos (da view unificada)
   useEffect(() => {
-    async function carregarProdutos() {
-      try {
-        setCarregando(true);
-        const { data, error } = await supabase
-          .from("medicamentos_site_view")
-          .select("*")
-          .eq("disponivel", true)
-          .gt("estoque_total", 0)
-          
+  async function carregarProdutos() {
+    try {
+      setCarregando(true);
+      let { data, error } = await supabase
+        .from("medicamentos_site") // 👈 tabela base
+        .select("EAN, NOME, NOME_FABRICANTE, PMC_18")
+        .limit(50);
 
-        if (error) throw error;
-        setProdutos(data || []);
-      } catch (e) {
-        console.error("❌ Erro ao carregar produtos:", e);
-      } finally {
-        setCarregando(false);
+      if (error) throw error;
+
+      if (!data || data.length === 0) {
+        // fallback se estiver vazio
+        data = [
+          {
+            EAN: "7891234567890",
+            NOME: "Paracetamol 750mg - EMS",
+            NOME_FABRICANTE: "EMS",
+            PMC_18: 8.99,
+          },
+          {
+            EAN: "7896543219876",
+            NOME: "Dipirona Sódica 500mg - Neo Química",
+            NOME_FABRICANTE: "Neo Química",
+            PMC_18: 6.49,
+          },
+        ];
       }
+
+      // converte para o formato esperado
+      const produtosConvertidos = data.map((p: any) => ({
+        id: p.EAN,
+        nome: p.NOME,
+        descricao: p.NOME_FABRICANTE,
+        preco_venda: p.PMC_18,
+        estoque: 10,
+        imagem: "/produtos/caixa-padrao.png",
+      }));
+
+      setProdutos(produtosConvertidos);
+    } catch (e) {
+      console.error("❌ Erro ao carregar produtos:", e);
+    } finally {
+      setCarregando(false);
     }
-    carregarProdutos();
-  }, []);
+  }
+
+  carregarProdutos();
+}, []);
+
 
   const produtosFiltrados = useMemo(() => {
     const t = busca.trim().toLowerCase();
