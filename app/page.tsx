@@ -72,7 +72,7 @@ export default function HomePage() {
       setCarregando(true);
       // 🔹 busca todos os produtos visíveis (estoque 0 ou não)
       const { data, error } = await supabase
-        .from("medicamentos_site_view") // usa a view principal
+        .from("medicamentos_site") // usa a view principal
         .select("*")
         .eq("disponivel", true);
 
@@ -230,12 +230,22 @@ export default function HomePage() {
                   <p className="text-sm font-bold text-green-600 mt-1">
                     R$ {fmt(Number(p.preco_venda))}
                   </p>
-                  <button
-                    onClick={() => adicionarAoCarrinho(p)}
-                    className="mt-2 bg-blue-600 hover:bg-blue-700 text-white py-1 rounded-md text-xs sm:text-sm font-medium transition"
-                  >
-                    Adicionar
-                  </button>
+                  {p.estoque > 0 ? (
+  <button
+    onClick={() => adicionarAoCarrinho(p)}
+    className="mt-2 bg-blue-600 hover:bg-blue-700 text-white py-1 rounded-md text-xs sm:text-sm font-medium transition"
+  >
+    Adicionar
+  </button>
+) : (
+  <button
+    disabled
+    className="mt-2 bg-gray-400 text-white py-1 rounded-md text-xs sm:text-sm font-medium opacity-70 cursor-not-allowed"
+  >
+    Indisponível
+  </button>
+)}
+
                 </div>
               ))}
             </div>
