@@ -72,7 +72,7 @@ export default function HomePage() {
       setCarregando(true);
       // 🔹 busca todos os produtos visíveis (estoque 0 ou não)
       const { data, error } = await supabase
-        .from("medicamentos_site") // usa a view principal
+        .from("vw_disponibilidade_geral") // usa a view principal
         .select("*")
         .eq("disponivel", true);
 
