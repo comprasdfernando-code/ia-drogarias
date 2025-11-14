@@ -28,6 +28,7 @@ type Produto = {
   estoque: number;
   imagem?: string;
   disponivel?: boolean;
+  descricao?: string;
 };
 
 type ItemCarrinho = Produto & { quantidade: number };
@@ -74,7 +75,8 @@ export default function HomePage() {
       const { data, error } = await supabase
         .from("vw_disponibilidade_geral") // usa a view principal
         .select("*")
-        .eq("disponivel", true);
+        .order("NOME", { ascending: true});
+        
 
       if (error) throw error;
       setProdutos(data || []);
@@ -224,9 +226,11 @@ export default function HomePage() {
                     height={150}
                     className="mx-auto rounded object-contain h-24 sm:h-32"
                   />
+
                   <h2 className="font-medium text-blue-800 mt-2 text-xs sm:text-sm line-clamp-2">
-                    {p.nome}
+                    {p.nome} {p.descricao && ` - ${p.descricao}`}
                   </h2>
+
                   <p className="text-sm font-bold text-green-600 mt-1">
                     R$ {fmt(Number(p.preco_venda))}
                   </p>
