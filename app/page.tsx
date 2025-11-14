@@ -75,7 +75,7 @@ export default function HomePage() {
       const { data, error } = await supabase
         .from("vw_disponibilidade_geral") // usa a view principal
         .select("*")
-        .order("NOME", { ascending: true});
+        .order("nome", { ascending: true});
         
 
       if (error) throw error;
