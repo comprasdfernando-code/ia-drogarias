@@ -3,205 +3,226 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
-type Lancamento = {
+// Estrutura de cada item da implantação
+type Item = {
   id: string;
-  tipo: "entrada" | "saida";
-  descricao: string;
-  valor: number;
   categoria: string;
-  data: string;
+  descricao: string;
+  valor_total: number;
+  entrada: number;
+  parcelas: number;
+  parcelas_pagas: number;
+  valor_parcela: number;
+  saldo_restante: number;
 };
 
-export default function FisioPetFinanceiro() {
-  const [lancamentos, setLancamentos] = useState<Lancamento[]>([]);
-  const [loading, setLoading] = useState(true);
-
+export default function ImplantacaoFisioPet() {
+  const [itens, setItens] = useState<Item[]>([]);
   const [form, setForm] = useState({
-    tipo: "entrada",
-    descricao: "",
-    valor: "",
     categoria: "",
-    data: "",
+    descricao: "",
+    valor_total: "",
+    entrada: "",
+    parcelas: "",
   });
 
-  // 📌 Carrega lançamentos
-  async function carregarLancamentos() {
-    setLoading(true);
-
+  // Carregar dados
+  async function carregarItens() {
     const { data, error } = await supabase
-      .from("financeiro_fisiopet")
+      .from("implantacao_fisiopet")
       .select("*")
-      .order("data", { ascending: false });
+      .order("created_at", { ascending: false });
 
-    if (!error && data) setLancamentos(data);
-
-    setLoading(false);
+    if (!error && data) setItens(data);
   }
 
   useEffect(() => {
-    carregarLancamentos();
+    carregarItens();
   }, []);
 
-  // 📌 Salvar novo lançamento
-  async function salvarLancamento() {
-    if (!form.valor || !form.descricao || !form.data) {
-      alert("Preencha todos os campos.");
+  // Salvar novo item
+  async function salvarItem() {
+    if (!form.valor_total || !form.descricao || !form.categoria) {
+      alert("Preencha os campos obrigatórios.");
       return;
     }
 
-    const { error } = await supabase.from("financeiro_fisiopet").insert([
+    const valorTotal = Number(form.valor_total);
+    const entrada = Number(form.entrada || 0);
+    const parcelas = Number(form.parcelas || 0);
+
+    const saldoFinanciado = valorTotal - entrada;
+    const valorParcela = parcelas > 0 ? saldoFinanciado / parcelas : 0;
+
+    const { error } = await supabase.from("implantacao_fisiopet").insert([
       {
-        tipo: form.tipo,
-        descricao: form.descricao,
-        valor: Number(form.valor),
         categoria: form.categoria,
-        data: form.data,
+        descricao: form.descricao,
+        valor_total: valorTotal,
+        entrada: entrada,
+        parcelas: parcelas,
+        parcelas_pagas: 0,
+        valor_parcela: valorParcela,
+        saldo_restante: saldoFinanciado,
       },
     ]);
 
     if (error) {
-      console.error(error);
-      alert("Erro ao salvar. Verifique o console.");
+      alert("Erro ao salvar.");
       return;
     }
 
-    // limpa o formulário
     setForm({
-      tipo: "entrada",
-      descricao: "",
-      valor: "",
       categoria: "",
-      data: "",
+      descricao: "",
+      valor_total: "",
+      entrada: "",
+      parcelas: "",
     });
 
-    carregarLancamentos();
+    carregarItens();
   }
 
-  // 📌 Cálculos automáticos
-  const entradas = lancamentos
-    .filter((l) => l.tipo === "entrada")
-    .reduce((t, a) => t + a.valor, 0);
+  // Registrar pagamento de parcela
+  async function pagarParcela(item: Item) {
+    if (item.parcelas_pagas >= item.parcelas) return;
 
-  const saidas = lancamentos
-    .filter((l) => l.tipo === "saida")
-    .reduce((t, a) => t + a.valor, 0);
+    const novasPagas = item.parcelas_pagas + 1;
+    const novoSaldo = item.saldo_restante - item.valor_parcela;
 
-  const saldo = entradas - saidas;
+    const { error } = await supabase
+      .from("implantacao_fisiopet")
+      .update({
+        parcelas_pagas: novasPagas,
+        saldo_restante: novoSaldo,
+      })
+      .eq("id", item.id);
+
+    if (!error) carregarItens();
+  }
+
+  // Totais gerais
+  const totalInvestido = itens.reduce(
+    (acc, curr) => acc + (curr.valor_total - curr.saldo_restante),
+    0
+  );
+
+  const totalPendente = itens.reduce((acc, curr) => acc + curr.saldo_restante, 0);
 
   return (
-    <main className="max-w-2xl mx-auto p-6">
+    <main className="max-w-3xl mx-auto p-6">
 
       <h1 className="text-3xl font-bold text-center mb-6">
-        💛🐾 Controle Financeiro – FisioPet
+        🐾💛 Implantação FisioPet – Controle da Franquia
       </h1>
 
       {/* FORMULÁRIO */}
-      <div className="bg-white shadow p-4 rounded mb-6">
-        <h2 className="font-bold mb-4 text-lg">Novo Lançamento</h2>
+      <div className="bg-white shadow p-5 rounded mb-8">
+        <h2 className="text-lg font-bold mb-4">Cadastrar novo item</h2>
 
-        <div className="flex gap-3 mb-3">
-          <select
-            className="border p-2 rounded w-1/3"
-            value={form.tipo}
-            onChange={(e) => setForm({ ...form, tipo: e.target.value })}
-          >
-            <option value="entrada">Entrada</option>
-            <option value="saida">Saída</option>
-          </select>
-
-          <input
-            type="number"
-            className="border p-2 rounded w-2/3"
-            placeholder="Valor (R$)"
-            value={form.valor}
-            onChange={(e) => setForm({ ...form, valor: e.target.value })}
-          />
-        </div>
+        <select
+          className="border p-2 rounded w-full mb-3"
+          value={form.categoria}
+          onChange={(e) => setForm({ ...form, categoria: e.target.value })}
+        >
+          <option value="">Selecione a Categoria</option>
+          <option>Equipamentos</option>
+          <option>Reforma / Pedreiro</option>
+          <option>Fachada</option>
+          <option>Documentação</option>
+          <option>Taxa da Franquia</option>
+          <option>Marketing Inicial</option>
+          <option>Outros</option>
+        </select>
 
         <input
           className="border p-2 rounded w-full mb-3"
-          placeholder="Descrição"
+          placeholder="Descrição do item"
           value={form.descricao}
           onChange={(e) => setForm({ ...form, descricao: e.target.value })}
         />
 
         <input
+          type="number"
           className="border p-2 rounded w-full mb-3"
-          placeholder="Categoria (Sessão, Material, etc.)"
-          value={form.categoria}
-          onChange={(e) => setForm({ ...form, categoria: e.target.value })}
+          placeholder="Valor total do item"
+          value={form.valor_total}
+          onChange={(e) => setForm({ ...form, valor_total: e.target.value })}
         />
 
         <input
-          type="date"
+          type="number"
+          className="border p-2 rounded w-full mb-3"
+          placeholder="Entrada (opcional)"
+          value={form.entrada}
+          onChange={(e) => setForm({ ...form, entrada: e.target.value })}
+        />
+
+        <input
+          type="number"
           className="border p-2 rounded w-full mb-4"
-          value={form.data}
-          onChange={(e) => setForm({ ...form, data: e.target.value })}
+          placeholder="Quantidade de parcelas (opcional)"
+          value={form.parcelas}
+          onChange={(e) => setForm({ ...form, parcelas: e.target.value })}
         />
 
         <button
-          onClick={salvarLancamento}
-          className="bg-blue-600 text-white w-full p-2 rounded"
+          onClick={salvarItem}
+          className="bg-blue-600 text-white w-full p-3 rounded"
         >
-          Salvar
+          Salvar Item
         </button>
       </div>
 
-      {/* RESUMO */}
-      <div className="grid grid-cols-3 gap-4 text-center mb-8">
-        <div className="p-4 bg-green-100 rounded shadow">
-          <p className="text-xs">Entradas</p>
-          <p className="font-bold text-green-600 text-lg">
-            R$ {entradas.toFixed(2)}
+      {/* DASHBOARD */}
+      <div className="grid grid-cols-2 gap-4 mb-8">
+        <div className="bg-green-100 p-4 rounded text-center shadow">
+          <p>Total Investido</p>
+          <p className="font-bold text-green-700 text-xl">
+            R$ {totalInvestido.toFixed(2)}
           </p>
         </div>
 
-        <div className="p-4 bg-red-100 rounded shadow">
-          <p className="text-xs">Saídas</p>
-          <p className="font-bold text-red-600 text-lg">
-            R$ {saidas.toFixed(2)}
-          </p>
-        </div>
-
-        <div className="p-4 bg-blue-100 rounded shadow">
-          <p className="text-xs">Saldo</p>
-          <p className="font-bold text-blue-600 text-lg">
-            R$ {saldo.toFixed(2)}
+        <div className="bg-red-100 p-4 rounded text-center shadow">
+          <p>Total Pendente</p>
+          <p className="font-bold text-red-700 text-xl">
+            R$ {totalPendente.toFixed(2)}
           </p>
         </div>
       </div>
 
       {/* LISTAGEM */}
-      <h2 className="text-lg font-bold mb-3">Últimos Lançamentos</h2>
+      <h2 className="text-xl font-bold mb-4">Itens da Implantação</h2>
 
-      {loading ? (
-        <p>Carregando...</p>
-      ) : (
-        <ul className="space-y-3">
-          {lancamentos.map((l) => (
-            <li
-              key={l.id}
-              className="bg-white shadow p-4 rounded flex justify-between"
-            >
-              <div>
-                <p className="font-bold">{l.descricao}</p>
-                <p className="text-xs text-gray-500">
-                  {l.categoria} •{" "}
-                  {new Date(l.data).toLocaleDateString("pt-BR")}
-                </p>
-              </div>
+      <ul className="space-y-4">
+        {itens.map((item) => (
+          <li key={item.id} className="bg-white p-4 rounded shadow">
 
-              <span
-                className={`font-bold ${
-                  l.tipo === "entrada" ? "text-green-600" : "text-red-600"
-                }`}
-              >
-                {l.tipo === "entrada" ? "+" : "-"} R$ {l.valor.toFixed(2)}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
+            <p className="font-bold text-lg">{item.descricao}</p>
+            <p className="text-sm opacity-70 mb-2">{item.categoria}</p>
+
+            <p><strong>Valor total:</strong> R$ {item.valor_total.toFixed(2)}</p>
+            <p><strong>Entrada:</strong> R$ {item.entrada.toFixed(2)}</p>
+            <p><strong>Saldo restante:</strong> R$ {item.saldo_restante.toFixed(2)}</p>
+
+            {item.parcelas > 0 && (
+              <>
+                <p><strong>Parcelas:</strong> {item.parcelas_pagas}/{item.parcelas}</p>
+                <p><strong>Valor da parcela:</strong> R$ {item.valor_parcela.toFixed(2)}</p>
+
+                {item.parcelas_pagas < item.parcelas && (
+                  <button
+                    onClick={() => pagarParcela(item)}
+                    className="bg-green-600 text-white mt-3 p-2 rounded"
+                  >
+                    Registrar pagamento da próxima parcela
+                  </button>
+                )}
+              </>
+            )}
+          </li>
+        ))}
+      </ul>
     </main>
   );
 }
