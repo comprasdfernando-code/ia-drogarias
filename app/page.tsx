@@ -75,7 +75,7 @@ useEffect(() => {
       // 🔥 Buscar TODOS os produtos (estoque 0 ou não)
       // Removido eq("disponivel", true)
       const { data, error } = await supabase
-        .from("vw_disponibilidade_geral")
+        .from("medicamnetos_base")
         .select("*")
         .range(0, 20000); // carrega até 20 mil itens
 
