@@ -76,9 +76,8 @@ useEffect(() => {
       const { data, error } = await supabase
   .from("vw_disponibilidade_geral")
   .select("*")
-  .order("nome", { ascending: true })
-  .range(0, 20000); // traz todos os itens
-
+  .eq("disponivel", true)     // só produtos com estoque
+  
       if (error) throw error;
 
       // Ordenar no frontend para evitar erro no Supabase
