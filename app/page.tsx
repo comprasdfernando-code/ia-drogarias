@@ -73,19 +73,19 @@ useEffect(() => {
       setCarregando(true);
 
       // Buscar sem order (evita erro 500)
-      const { data, error } = await supabase
+const { data, error } = await supabase
   .from("vw_disponibilidade_geral")
   .select("*")
   .range(0, 20000);
-  
-      if (error) throw error;
 
-      // Ordenar no frontend para evitar erro no Supabase
-      const ordenados = (data || []).sort((a, b) =>
-        a.nome.localeCompare(b.nome)
-      );
+if (error) throw error;
 
-      setProdutos(ordenados);
+// Ordenar no frontend para evitar erro no Supabase
+const ordenados = Array.isArray(data)
+  ? data.sort((a, b) => (a.nome || "").localeCompare(b.nome || ""))
+  : [];
+
+setProdutos(ordenados);
     } catch (e) {
       console.error("❌ Erro ao carregar produtos:", e);
     } finally {
