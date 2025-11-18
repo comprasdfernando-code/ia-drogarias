@@ -66,26 +66,32 @@ export default function HomePage() {
     localStorage.setItem("carrinho-home", JSON.stringify(carrinho));
   }, [carrinho]);
 
-  // 🔄 Carregar produtos (da view unificada)
-  useEffect(() => {
+  // 🔵 Carregar produtos (da view unificada)
+useEffect(() => {
   async function carregarProdutos() {
     try {
       setCarregando(true);
-      // 🔹 busca todos os produtos visíveis (estoque 0 ou não)
+
+      // Buscar sem order (evita erro 500)
       const { data, error } = await supabase
-        .from("vw_disponibilidade_geral") // usa a view principal
-        .select("*")
-        .order("nome", { ascending: true});
-        
+        .from("vw_disponibilidade_geral")
+        .select("*");
 
       if (error) throw error;
-      setProdutos(data || []);
+
+      // Ordenar no frontend para evitar erro no Supabase
+      const ordenados = (data || []).sort((a, b) =>
+        a.nome.localeCompare(b.nome)
+      );
+
+      setProdutos(ordenados);
     } catch (e) {
       console.error("❌ Erro ao carregar produtos:", e);
     } finally {
       setCarregando(false);
     }
   }
+
   carregarProdutos();
 }, []);
 
