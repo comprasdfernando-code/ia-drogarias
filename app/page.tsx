@@ -66,22 +66,21 @@ export default function HomePage() {
     localStorage.setItem("carrinho-home", JSON.stringify(carrinho));
   }, [carrinho]);
 
-  // 🛒 Carregar produtos da view unificada
+  // 🔵 Carregar produtos (da view unificada)
 useEffect(() => {
   async function carregarProdutos() {
     try {
       setCarregando(true);
 
-      // 🔥 Buscar TODOS os produtos (estoque 0 ou não)
-      // Removido eq("disponivel", true)
+      // Buscar sem order (evita erro 500)
       const { data, error } = await supabase
-        .from("medicamnetos_base")
-        .select("*")
-        .range(0, 20000); // carrega até 20 mil itens
-
+  .from("vw_disponibilidade_geral")
+  .select("*")
+  .range(0, 20000);
+  
       if (error) throw error;
 
-      // 🔠 Ordenar no frontend para evitar erro 500 no Supabase
+      // Ordenar no frontend para evitar erro no Supabase
       const ordenados = (data || []).sort((a, b) =>
         a.nome.localeCompare(b.nome)
       );
