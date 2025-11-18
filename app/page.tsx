@@ -74,8 +74,10 @@ useEffect(() => {
 
       // Buscar sem order (evita erro 500)
       const { data, error } = await supabase
-        .from("vw_disponibilidade_geral")
-        .select("*");
+  .from("vw_disponibilidade_geral")
+  .select("*")
+  .order("nome", { ascending: true })
+  .range(0, 20000); // traz todos os itens
 
       if (error) throw error;
 
