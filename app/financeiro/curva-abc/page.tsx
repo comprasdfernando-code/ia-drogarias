@@ -1,14 +1,18 @@
-import { Card, CardHeader, CardContent } from "@/components/ui/card";
+import { 
+  FCard, 
+  FCardHeader, 
+  FCardContent 
+} from "../../financeiro/ui/card";
 
-export default function Page() {
+export default function CurvaABCPage() {
   return (
-    <Card>
-      <CardHeader title="Tela em construção" />
-      <CardContent>
+    <FCard>
+      <FCardHeader title="Tela em construção" />
+      <FCardContent>
         <p className="text-slate-400 text-sm">
           Conteúdo detalhado será carregado aqui.
         </p>
-      </CardContent>
-    </Card>
+      </FCardContent>
+    </FCard>
   );
 }
