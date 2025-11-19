@@ -1,181 +1,163 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { supabase } from "@/lib/supabaseClient";
 import {
-  FCard,
-  FCardHeader,
-  FCardContent,
-} from "../../financeiro/ui/card";
-import LineBasicChart from "@/components/charts/line-basic";
-import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
+  Card,
+  CardHeader,
+  CardTitle,
+  CardContent
+} from "@/components/ui/card";
+import LineChart from "../../financeiro/ui/charts/line-chart";
 
-const dadosMensais = [
-  { name: "jan", value: 598 },
-  { name: "fev", value: 365 },
-  { name: "mar", value: 716 },
-  { name: "abr", value: 631 },
-  { name: "mai", value: 683 },
-];
-
-const dadosProdutoServiço = [
-  { name: "Serviços", value: 92 },
-  { name: "Produtos", value: 8 },
-];
-
-const COLORS = ["#38bdf8", "#71717a"];
+type FatRow = {
+  valor_liquido: number;
+  competencia: string | null;
+};
 
 export default function Page() {
+  const [dados, setDados] = useState<FatRow[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function carregar() {
+      const { data, error } = await supabase
+        .from("finance_faturamento")
+        .select("valor_liquido, competencia")
+        .order("competencia", { ascending: true });
+
+      if (!error && data) {
+        setDados(data);
+      }
+
+      setLoading(false);
+    }
+
+    carregar();
+  }, []);
+
+  if (loading) return <p className="text-white p-4">Carregando...</p>;
+
+  // ------------------------------
+  // 🧮 CÁLCULOS
+  // ------------------------------
+
+  const total = dados.reduce((acc, item) => acc + Number(item.valor_liquido), 0);
+
+  const mesesValidos = dados.filter((d) => d.competencia);
+
+  const media = mesesValidos.length > 0 ? total / mesesValidos.length : 0;
+
+  const maiorMes = mesesValidos.reduce((a, b) =>
+    Number(a.valor_liquido) > Number(b.valor_liquido) ? a : b
+  );
+
+  const menorMes = mesesValidos.reduce((a, b) =>
+    Number(a.valor_liquido) < Number(b.valor_liquido) ? a : b
+  );
+
+  const nomeMes = (competencia: string | null) => {
+    if (!competencia) return "";
+    const [, mes] = competencia.split("-");
+    const nomes = [
+      "jan", "fev", "mar", "abr", "mai", "jun",
+      "jul", "ago", "set", "out", "nov", "dez"
+    ];
+    return nomes[Number(mes) - 1];
+  };
+
+  const chartData = mesesValidos.map((i) => ({
+    mes: nomeMes(i.competencia),
+    valor: Number(i.valor_liquido),
+  }));
+
+  const real = (v: number) =>
+    v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-8 px-4 md:px-8 py-6">
 
-      {/* CARD CABEÇALHO */}
-      <FCard>
-        <FCardHeader
-          title="Faturamento Total"
-          subtitle="Visão consolidada do faturamento anual"
-        />
-        <FCardContent>
-          <div className="grid gap-4 md:grid-cols-3 text-xs md:text-sm">
-            <div>
-              <p className="text-slate-400">Ano referência</p>
-              <p className="font-medium">2025</p>
-            </div>
-            <div>
-              <p className="text-slate-400">Atualização</p>
-              <p className="font-medium">Automática (Supabase)</p>
-            </div>
-            <div>
-              <p className="text-slate-400">Status</p>
-              <p className="font-medium text-emerald-400">Ativo</p>
-            </div>
-          </div>
-        </FCardContent>
-      </FCard>
+      {/* ----------------------------------------------------- */}
+      {/* TOPO */}
+      {/* ----------------------------------------------------- */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Faturamento Total</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-slate-400 text-sm">
+            Visão consolidada do faturamento anual
+          </p>
+          <p className="text-slate-400 text-sm">Ano referência: 2025</p>
+        </CardContent>
+      </Card>
 
-      {/* CARDS RESUMIDOS */}
+      {/* ----------------------------------------------------- */}
+      {/* CARDS PRINCIPAIS */}
+      {/* ----------------------------------------------------- */}
       <div className="grid gap-4 md:grid-cols-4">
 
-        <FCard>
-          <FCardHeader title="Faturamento Total" />
-          <FCardContent>
-            <p className="text-2xl font-semibold">R$ 6.383.192</p>
-            <p className="text-xs text-emerald-400 mt-1">
-              +12% nos últimos 12 meses
+        <Card>
+          <CardHeader>
+            <CardTitle>Faturamento Total</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-semibold">{real(total)}</p>
+            <p className="text-xs text-emerald-400 mt-1">Dados reais (Supabase)</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Média Mensal</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-semibold">{real(media)}</p>
+            <p className="text-xs text-slate-400 mt-1">Cálculo automático</p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle>Maior Faturamento</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-semibold">
+              {real(Number(maiorMes.valor_liquido))}
             </p>
-          </FCardContent>
-        </FCard>
+            <p className="text-xs text-slate-400 mt-1">
+              {nomeMes(maiorMes.competencia)}
+            </p>
+          </CardContent>
+        </Card>
 
-        <FCard>
-          <FCardHeader title="Média Mensal" />
-          <FCardContent>
-            <p className="text-2xl font-semibold">R$ 532.000</p>
-          </FCardContent>
-        </FCard>
-
-        <FCard>
-          <FCardHeader title="Maior Faturamento" />
-          <FCardContent>
-            <p className="text-2xl font-semibold">R$ 716.920</p>
-            <p className="text-xs text-slate-400 mt-1">Março</p>
-          </FCardContent>
-        </FCard>
-
-        <FCard>
-          <FCardHeader title="Menor Faturamento" />
-          <FCardContent>
-            <p className="text-2xl font-semibold">R$ 365.950</p>
-            <p className="text-xs text-slate-400 mt-1">Fevereiro</p>
-          </FCardContent>
-        </FCard>
+        <Card>
+          <CardHeader>
+            <CardTitle>Menor Faturamento</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-2xl font-semibold">
+              {real(Number(menorMes.valor_liquido))}
+            </p>
+            <p className="text-xs text-slate-400 mt-1">
+              {nomeMes(menorMes.competencia)}
+            </p>
+          </CardContent>
+        </Card>
 
       </div>
 
-      {/* GRÁFICO 1 — EVOLUÇÃO MENSAL */}
-      <FCard>
-        <FCardHeader
-          title="Evolução Mensal do Faturamento"
-          subtitle="Movimento de faturamento ao longo do ano"
-        />
-        <FCardContent>
-          <LineBasicChart data={dadosMensais} />
-        </FCardContent>
-      </FCard>
-
-      {/* GRÁFICO 2 — PRODUTO X SERVIÇO */}
-      <FCard>
-        <FCardHeader
-          title="Faturamento – Produto x Serviço"
-          subtitle="Distribuição percentual"
-        />
-        <FCardContent>
-          <div className="h-72">
-            <ResponsiveContainer>
-              <PieChart>
-                <Tooltip
-                  contentStyle={{
-                    backgroundColor: "#020617",
-                    borderColor: "#1e293b",
-                    borderRadius: 12,
-                  }}
-                />
-                <Pie
-                  data={dadosProdutoServiço}
-                  dataKey="value"
-                  nameKey="name"
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={50}
-                  outerRadius={80}
-                  paddingAngle={4}
-                >
-                  {dadosProdutoServiço.map((_, index) => (
-                    <Cell key={index} fill={COLORS[index]} />
-                  ))}
-                </Pie>
-              </PieChart>
-            </ResponsiveContainer>
-          </div>
-          <p className="text-center text-xs text-slate-400 mt-2">
-            *Valores mockados – depois conectamos no Supabase
-          </p>
-        </FCardContent>
-      </FCard>
-
-      {/* TABELA */}
-      <FCard>
-        <FCardHeader
-          title="Tabela Comparativa Mensal"
-          subtitle="Resumo por mês"
-        />
-        <FCardContent>
-          <table className="w-full text-left text-sm border-separate border-spacing-y-2">
-            <thead>
-              <tr className="text-slate-400">
-                <th>Mês</th>
-                <th>Faturamento (R$)</th>
-                <th>Variação</th>
-              </tr>
-            </thead>
-            <tbody>
-              {[
-                ["jan", "598.076", "+3%"],
-                ["fev", "365.950", "-9%"],
-                ["mar", "716.920", "+21%"],
-                ["abr", "631.810", "+8%"],
-                ["mai", "683.376", "+4%"],
-              ].map((item, i) => (
-                <tr
-                  key={i}
-                  className="bg-slate-900/40 rounded-xl overflow-hidden"
-                >
-                  <td className="py-2 px-1">{item[0]}</td>
-                  <td className="py-2 px-1 font-medium">{item[1]}</td>
-                  <td className="py-2 px-1 text-emerald-400">{item[2]}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </FCardContent>
-      </FCard>
+      {/* ----------------------------------------------------- */}
+      {/* GRÁFICO */}
+      {/* ----------------------------------------------------- */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Evolução Mensal do Faturamento</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <LineChart data={chartData} dataKey="valor" nameKey="mes" />
+        </CardContent>
+      </Card>
 
     </div>
   );
