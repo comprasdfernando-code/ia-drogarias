@@ -58,14 +58,15 @@ export default function Page() {
       {/* Gauge + Cards */}
       <div className="grid gap-4 md:grid-cols-3">
 
-        <FCard className="flex items-center justify-center">
+        <FCard>
+  <div className="flex items-center justify-center">
+    <FCardHeader title="Score Geral de Risco" />
+    <FCardContent>
+      <GaugeRisk value={68} />
+    </FCardContent>
+  </div>
+</FCard>
 
-
-          <FCardHeader title="Score Geral de Risco" />
-          <FCardContent>
-            <GaugeRisk value={68} />
-          </FCardContent>
-        </FCard>
 
         <FCard>
           <FCardHeader title="Alerta Máximo" />
