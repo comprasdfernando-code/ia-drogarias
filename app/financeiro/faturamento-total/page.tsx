@@ -74,86 +74,107 @@ export default function Page() {
   const real = (v: number) =>
     v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
+  // ------------------------------
+  // 🎨 CLASSES REUTILIZÁVEIS (tema escuro)
+  // ------------------------------
+
+  const cardClass =
+    "bg-[#0F172A] border border-white/10 shadow-blue-500/10 shadow-xl rounded-2xl";
+
+  const titleClass = "text-cyan-300";
+  const textGray = "text-slate-400";
+  const textWhite = "text-white";
+
+  // ------------------------------
+  // RENDER
+  // ------------------------------
+
   return (
     <div className="space-y-8 px-4 md:px-8 py-6">
 
       {/* ----------------------------------------------------- */}
-      {/* TOP HEADER */}
+      {/* CABEÇALHO */}
       {/* ----------------------------------------------------- */}
-      <Card className="bg-[#0D1B2A] border border-cyan-500/20 shadow-cyan-500/50 shadow-md">
+      <Card className={cardClass}>
         <CardHeader>
-          <CardTitle className="text-cyan-300">Faturamento Total</CardTitle>
+          <CardTitle className={titleClass}>Faturamento Total</CardTitle>
         </CardHeader>
         <CardContent>
-          <p className="text-slate-400 text-sm">Visão consolidada do faturamento anual</p>
-          <p className="text-slate-400 text-sm">Ano referência: 2025</p>
+          <p className={`${textGray} text-sm`}>
+            Visão consolidada do faturamento anual
+          </p>
+          <p className={`${textGray} text-sm`}>Ano referência: 2025</p>
         </CardContent>
       </Card>
 
       {/* ----------------------------------------------------- */}
-      {/* KPI CARDS */}
+      {/* CARDS PRINCIPAIS */}
       {/* ----------------------------------------------------- */}
       <div className="grid gap-4 md:grid-cols-4">
 
-        <Card className="bg-[#112240] border border-cyan-500/20 shadow-cyan-500/20 shadow">
+        <Card className={cardClass}>
           <CardHeader>
-            <CardTitle className="text-cyan-300">Faturamento Total</CardTitle>
+            <CardTitle className={titleClass}>Faturamento Total</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-3xl font-semibold text-cyan-400">{real(total)}</p>
-            <p className="text-xs text-emerald-400 mt-1">Dados reais (Supabase)</p>
+            <p className="text-2xl font-semibold text-white">{real(total)}</p>
+            <p className="text-xs text-emerald-400 mt-1">
+              Dados reais (Supabase)
+            </p>
           </CardContent>
         </Card>
 
-        <Card className="bg-[#112240] border border-cyan-500/20 shadow-cyan-500/20 shadow">
+        <Card className={cardClass}>
           <CardHeader>
-            <CardTitle className="text-cyan-300">Média Mensal</CardTitle>
+            <CardTitle className={titleClass}>Média Mensal</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-3xl font-semibold text-cyan-400">{real(media)}</p>
-            <p className="text-xs text-slate-400 mt-1">Cálculo automático</p>
+            <p className="text-2xl font-semibold text-white">{real(media)}</p>
+            <p className={`${textGray} text-xs mt-1`}>Cálculo automático</p>
           </CardContent>
         </Card>
 
-        <Card className="bg-[#112240] border border-cyan-500/20 shadow-cyan-500/20 shadow">
+        <Card className={cardClass}>
           <CardHeader>
-            <CardTitle className="text-cyan-300">Maior Faturamento</CardTitle>
+            <CardTitle className={titleClass}>Maior Faturamento</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-3xl font-semibold text-cyan-400">
+            <p className="text-2xl font-semibold text-white">
               {real(Number(maiorMes.valor_liquido))}
             </p>
-            <p className="text-xs text-slate-400 mt-1">{nomeMes(maiorMes.competencia)}</p>
+            <p className={`${textGray} text-xs mt-1`}>
+              {nomeMes(maiorMes.competencia)}
+            </p>
           </CardContent>
         </Card>
 
-        <Card className="bg-[#112240] border border-cyan-500/20 shadow-cyan-500/20 shadow">
+        <Card className={cardClass}>
           <CardHeader>
-            <CardTitle className="text-cyan-300">Menor Faturamento</CardTitle>
+            <CardTitle className={titleClass}>Menor Faturamento</CardTitle>
           </CardHeader>
           <CardContent>
-            <p className="text-3xl font-semibold text-cyan-400">
+            <p className="text-2xl font-semibold text-white">
               {real(Number(menorMes.valor_liquido))}
             </p>
-            <p className="text-xs text-slate-400 mt-1">{nomeMes(menorMes.competencia)}</p>
+            <p className={`${textGray} text-xs mt-1`}>
+              {nomeMes(menorMes.competencia)}
+            </p>
           </CardContent>
         </Card>
 
       </div>
 
       {/* ----------------------------------------------------- */}
-      {/* GRAFICO */}
+      {/* GRÁFICO */}
       {/* ----------------------------------------------------- */}
-      <Card className="bg-[#0A192F] border border-cyan-500/20 shadow-cyan-500/40 shadow-lg">
+      <Card className={cardClass}>
         <CardHeader>
-          <CardTitle className="text-cyan-300">Evolução Mensal do Faturamento</CardTitle>
+          <CardTitle className={titleClass}>
+            Evolução Mensal do Faturamento
+          </CardTitle>
         </CardHeader>
         <CardContent>
-          <LineChart
-            data={chartData}
-            dataKey="valor"
-            nameKey="mes"
-          />
+          <LineChart data={chartData} dataKey="valor" nameKey="mes" />
         </CardContent>
       </Card>
 
