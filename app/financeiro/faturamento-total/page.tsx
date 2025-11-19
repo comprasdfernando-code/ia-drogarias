@@ -2,94 +2,161 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
-import LineChart from "../ui/charts/line-chart";
+import {
+  Card,
+  CardHeader,
+  CardTitle,
+  CardContent
+} from "@/components/ui/card";
+import LineChart from "../../financeiro/ui/charts/line-chart";
 
-export default function FaturamentoTotal() {
-  const [dados, setDados] = useState<any[]>([]);
+type FatRow = {
+  valor_liquido: number;
+  competencia: string | null;
+};
+
+export default function Page() {
+  const [dados, setDados] = useState<FatRow[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function carregar() {
       const { data, error } = await supabase
         .from("finance_faturamento")
-        .select("*")
+        .select("valor_liquido, competencia")
         .order("competencia", { ascending: true });
 
       if (!error && data) {
         setDados(data);
       }
+
       setLoading(false);
     }
 
     carregar();
   }, []);
 
-  // Função formatadora
-  const real = (v: number | null | undefined) =>
-    v ? v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—";
+  if (loading) return <p className="text-white p-4">Carregando...</p>;
 
-  // Se não tiver dados ainda
-  if (loading) return <div className="text-center text-white">Carregando...</div>;
+  // ------------------------------
+  // 🧮 CÁLCULOS
+  // ------------------------------
 
-  // Cálculos automáticos
-  const total = dados.reduce((s, r) => s + Number(r.valor_liquido || 0), 0);
-  const mediaMensal = total / (dados.length || 1);
+  const total = dados.reduce((acc, item) => acc + Number(item.valor_liquido), 0);
 
-  const maior = Math.max(...dados.map((d) => Number(d.valor_liquido)), 0);
-  const menor = Math.min(...dados.map((d) => Number(d.valor_liquido)), 0);
+  const mesesValidos = dados.filter((d) => d.competencia);
 
-  const mesMaior = dados.find((d) => d.valor_liquido == maior)?.competencia || "—";
-  const mesMenor = dados.find((d) => d.valor_liquido == menor)?.competencia || "—";
+  const media = mesesValidos.length > 0 ? total / mesesValidos.length : 0;
+
+  const maiorMes = mesesValidos.reduce((a, b) =>
+    Number(a.valor_liquido) > Number(b.valor_liquido) ? a : b
+  );
+
+  const menorMes = mesesValidos.reduce((a, b) =>
+    Number(a.valor_liquido) < Number(b.valor_liquido) ? a : b
+  );
+
+  const nomeMes = (competencia: string | null) => {
+    if (!competencia) return "";
+    const [, mes] = competencia.split("-");
+    const nomes = [
+      "jan", "fev", "mar", "abr", "mai", "jun",
+      "jul", "ago", "set", "out", "nov", "dez"
+    ];
+    return nomes[Number(mes) - 1];
+  };
+
+  const chartData = mesesValidos.map((i) => ({
+    mes: nomeMes(i.competencia),
+    valor: Number(i.valor_liquido),
+  }));
+
+  const real = (v: number) =>
+    v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
   return (
-    <div className="p-6 text-white">
-      <h1 className="text-3xl font-bold mb-6">Painel Financeiro</h1>
+    <div className="space-y-8 px-4 md:px-8 py-6">
 
-      {/* Card Principal */}
-      <div className="bg-[#0F172A] border border-white/10 p-6 rounded-2xl shadow-lg shadow-blue-500/5 mb-6">
-        <h2 className="text-lg text-gray-300">Faturamento Total</h2>
-        <p className="text-sm text-green-400">Dados reais (Supabase)</p>
-        <p className="text-4xl font-semibold text-blue-400 mt-3">
-          {real(total)}
-        </p>
+      {/* ----------------------------------------------------- */}
+      {/* TOP HEADER */}
+      {/* ----------------------------------------------------- */}
+      <Card className="bg-[#0D1B2A] border border-cyan-500/20 shadow-cyan-500/50 shadow-md">
+        <CardHeader>
+          <CardTitle className="text-cyan-300">Faturamento Total</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-slate-400 text-sm">Visão consolidada do faturamento anual</p>
+          <p className="text-slate-400 text-sm">Ano referência: 2025</p>
+        </CardContent>
+      </Card>
+
+      {/* ----------------------------------------------------- */}
+      {/* KPI CARDS */}
+      {/* ----------------------------------------------------- */}
+      <div className="grid gap-4 md:grid-cols-4">
+
+        <Card className="bg-[#112240] border border-cyan-500/20 shadow-cyan-500/20 shadow">
+          <CardHeader>
+            <CardTitle className="text-cyan-300">Faturamento Total</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-semibold text-cyan-400">{real(total)}</p>
+            <p className="text-xs text-emerald-400 mt-1">Dados reais (Supabase)</p>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-[#112240] border border-cyan-500/20 shadow-cyan-500/20 shadow">
+          <CardHeader>
+            <CardTitle className="text-cyan-300">Média Mensal</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-semibold text-cyan-400">{real(media)}</p>
+            <p className="text-xs text-slate-400 mt-1">Cálculo automático</p>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-[#112240] border border-cyan-500/20 shadow-cyan-500/20 shadow">
+          <CardHeader>
+            <CardTitle className="text-cyan-300">Maior Faturamento</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-semibold text-cyan-400">
+              {real(Number(maiorMes.valor_liquido))}
+            </p>
+            <p className="text-xs text-slate-400 mt-1">{nomeMes(maiorMes.competencia)}</p>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-[#112240] border border-cyan-500/20 shadow-cyan-500/20 shadow">
+          <CardHeader>
+            <CardTitle className="text-cyan-300">Menor Faturamento</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-3xl font-semibold text-cyan-400">
+              {real(Number(menorMes.valor_liquido))}
+            </p>
+            <p className="text-xs text-slate-400 mt-1">{nomeMes(menorMes.competencia)}</p>
+          </CardContent>
+        </Card>
+
       </div>
 
-      {/* Cards Secundários */}
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">
-        <div className="bg-[#111827] p-5 rounded-xl shadow-md shadow-blue-500/10">
-          <h3 className="text-sm text-gray-400">Média Mensal</h3>
-          <p className="text-3xl font-semibold text-green-400">{real(mediaMensal)}</p>
-        </div>
+      {/* ----------------------------------------------------- */}
+      {/* GRAFICO */}
+      {/* ----------------------------------------------------- */}
+      <Card className="bg-[#0A192F] border border-cyan-500/20 shadow-cyan-500/40 shadow-lg">
+        <CardHeader>
+          <CardTitle className="text-cyan-300">Evolução Mensal do Faturamento</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <LineChart
+            data={chartData}
+            dataKey="valor"
+            nameKey="mes"
+          />
+        </CardContent>
+      </Card>
 
-        <div className="bg-[#111827] p-5 rounded-xl shadow-md shadow-yellow-500/10">
-          <h3 className="text-sm text-gray-400">Maior Faturamento</h3>
-          <p className="text-3xl font-semibold text-yellow-400">{real(maior)}</p>
-          <span className="text-xs text-gray-400">{mesMaior}</span>
-        </div>
-
-        <div className="bg-[#111827] p-5 rounded-xl shadow-md shadow-red-500/10">
-          <h3 className="text-sm text-gray-400">Menor Faturamento</h3>
-          <p className="text-3xl font-semibold text-red-400">{real(menor)}</p>
-          <span className="text-xs text-gray-400">{mesMenor}</span>
-        </div>
-
-        <div className="bg-[#111827] p-5 rounded-xl shadow-md shadow-cyan-500/10">
-          <h3 className="text-sm text-gray-400">Lançamentos</h3>
-          <p className="text-3xl font-semibold text-cyan-400">{dados.length}</p>
-        </div>
-      </div>
-
-      {/* Gráfico */}
-      <div className="bg-[#0F172A] border border-white/10 p-6 rounded-2xl shadow-lg shadow-blue-500/5">
-        <h3 className="text-gray-300 mb-4">Evolução Mensal do Faturamento</h3>
-
-        <LineChart
-  data={dados}
-  nameKey="competencia"
-  dataKey="valor_liquido"
-/>
-
-      </div>
     </div>
   );
 }
