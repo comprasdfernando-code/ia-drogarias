@@ -7,7 +7,7 @@ export default function BotaoTransporte() {
     "Olá! Gostaria de solicitar um transporte da Mundo Verde Tour em Monte Verde."
   );
 
-  const link = https://wa.me/${telefone}?text=${mensagem};
+  const link = `https://wa.me/${telefone}?text=${mensagem}`;
 
   return (
     <a
