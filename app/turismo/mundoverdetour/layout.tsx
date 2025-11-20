@@ -9,7 +9,7 @@ const poppins = Poppins({
 
 export default function TurismoLayout({ children }: { children: React.ReactNode }) {
   return (
-    <div className={${poppins.variable} font-sans}>
+    <div className={`${poppins.variable} font-sans`}>
       {children}
     </div>
   );
