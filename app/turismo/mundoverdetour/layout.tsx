@@ -1,5 +1,5 @@
 import { Poppins } from "next/font/google";
-import "../globals.css"; // garante tailwind
+import "@/app/globals.css"; // garante tailwind
 
 const poppins = Poppins({
   subsets: ["latin"],
