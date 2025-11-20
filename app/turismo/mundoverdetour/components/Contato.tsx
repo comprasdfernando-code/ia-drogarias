@@ -1,4 +1,4 @@
-// app/turismo/mundoverdetour/components/Contato.tsx
+"use client"// app/turismo/mundoverdetour/components/Contato.tsx
 export default function Contato() {
   return (
     <section
