@@ -1,25 +1,32 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { supabase } from "@/lib/supabaseClient";
 
 type Produto = {
-  id: number;
+  id: string;
   nome: string;
   preco: number;
 };
 
 export default function PDV() {
-  const listaProdutos: Produto[] = [
-    { id: 1, nome: "Frango Assado", preco: 39.90 },
-    { id: 2, nome: "Torresmo de Rolo", preco: 79.90 },
-    { id: 3, nome: "Coxa e Sobrecoxa", preco: 19.90 },
-    { id: 4, nome: "Maionese", preco: 14.90 },
-    { id: 5, nome: "Farofa", preco: 9.90 },
-  ];
-
+  const [listaProdutos, setListaProdutos] = useState<Produto[]>([]);
   const [busca, setBusca] = useState("");
   const [carrinho, setCarrinho] = useState<Produto[]>([]);
   const [pagamento, setPagamento] = useState("pix");
+
+  useEffect(() => {
+    carregarProdutos();
+  }, []);
+
+  async function carregarProdutos() {
+    const { data, error } = await supabase
+      .from("gigante_produtos")
+      .select("id, nome, preco")
+      .eq("ativo", true);
+
+    if (!error && data) setListaProdutos(data);
+  }
 
   const produtosFiltrados = listaProdutos.filter((p) =>
     p.nome.toLowerCase().includes(busca.toLowerCase())
@@ -36,12 +43,43 @@ export default function PDV() {
 
   const total = carrinho.reduce((acc, item) => acc + item.preco, 0);
 
-  function finalizarVenda() {
+  async function finalizarVenda() {
+    if (carrinho.length === 0) return;
+
+    // 1) Criar venda
+    const { data: venda, error: erroVenda } = await supabase
+      .from("gigante_vendas")
+      .insert([
+        {
+          metodo_pagamento: pagamento,
+          total,
+          origem: "PDV",
+        },
+      ])
+      .select()
+      .single();
+
+    if (erroVenda) {
+      alert("Erro ao registrar venda.");
+      return;
+    }
+
+    // 2) Registrar itens
+    const itens = carrinho.map((item) => ({
+      venda_id: venda.id,
+      produto_id: item.id,
+      preco: item.preco,
+      quantidade: 1,
+    }));
+
+    await supabase.from("gigante_venda_itens").insert(itens);
+
     alert(
       `Venda concluída!\n\nTotal: R$ ${total.toFixed(
         2
       )}\nPagamento: ${pagamento.toUpperCase()}`
     );
+
     setCarrinho([]);
     setPagamento("pix");
   }
@@ -55,11 +93,11 @@ export default function PDV() {
         autoFocus
         value={busca}
         onChange={(e) => setBusca(e.target.value)}
-        placeholder="Buscar ou digitar produto..."
+        placeholder="Buscar produto..."
         className="w-full border p-3 rounded-md mb-3 shadow"
       />
 
-      {/* Lista de produtos filtrados */}
+      {/* Lista de produtos */}
       {busca.length > 0 && (
         <div className="border rounded-md p-2 bg-white shadow">
           {produtosFiltrados.map((p) => (
