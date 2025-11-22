@@ -62,6 +62,13 @@ export default function Header() {
             🩺 Drogaria Rede Fabiano
           </Link>
           <Link
+  href="/dfdistribuidora/pdv"
+  className="px-4 py-2 rounded-md bg-blue-600 text-white hover:bg-blue-700 transition"
+>
+  📦 DF Distribuidora
+</Link>
+
+          <Link
             href="/servicos"
             className="block hover:text-blue-200"
             onClick={() => setMenuAberto(false)}

@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
+
+
 type Cliente = {
   id: string;
   nome_fantasia: string;
