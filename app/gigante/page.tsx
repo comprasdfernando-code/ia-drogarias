@@ -8,16 +8,17 @@ export default function Home() {
   const [slide, setSlide] = useState(0);
 
   const fotos = [
-    "/f1.jpg",
-    "/f2.jpg",
-    "/f3.jpg",
-    "/f4.jpg",
-    "/f5.jpg",
-    "/f6.jpg",
-    "/f7.jpg",
-    "/f8.jpg",
-    "/f9.jpg",
-  ];
+  "/gigante/f1.jpg",
+  "/gigante/f2.jpg",
+  "/gigante/f3.jpg",
+  "/gigante/f4.jpg",
+  "/gigante/f5.jpg",
+  "/gigante/f6.jpg",
+  "/gigante/f7.jpg",
+  "/gigante/f8.jpg",
+  "/gigante/f9.jpg",
+];
+
 
   const next = () => setSlide((slide + 1) % fotos.length);
   const prev = () => setSlide((slide - 1 + fotos.length) % fotos.length);
