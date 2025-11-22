@@ -93,6 +93,14 @@ export default function Home() {
     </section>
 
     {/* RODAPÉ */}
+
+    <a
+  href="/gigante/pdv"
+  className="fixed bottom-6 left-6 bg-blue-600 text-white font-bold px-6 py-3 rounded-full shadow-lg neon"
+>
+  PDV
+</a>
+
     <footer className="bg-yellow-500 text-center py-4 mt-10 shadow-inner">
       <p className="font-semibold text-[#2a2a2a]">
         © 2025 Gigante dos Assados — Todos os direitos reservados.

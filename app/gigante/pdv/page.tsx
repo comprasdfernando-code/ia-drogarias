@@ -1,81 +1,122 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
-import { supabase } from "../../../lib/supabaseClient";
+import { useState } from "react";
 
-export default function PDVGigante() {
-  const [produtos, setProdutos] = useState<any[]>([]);
+type Produto = {
+  id: number;
+  nome: string;
+  preco: number;
+};
+
+export default function PDV() {
+  const listaProdutos: Produto[] = [
+    { id: 1, nome: "Frango Assado", preco: 39.90 },
+    { id: 2, nome: "Torresmo de Rolo", preco: 79.90 },
+    { id: 3, nome: "Coxa e Sobrecoxa", preco: 19.90 },
+    { id: 4, nome: "Maionese", preco: 14.90 },
+    { id: 5, nome: "Farofa", preco: 9.90 },
+  ];
+
   const [busca, setBusca] = useState("");
-  const [carrinho, setCarrinho] = useState<any[]>([]);
+  const [carrinho, setCarrinho] = useState<Produto[]>([]);
   const [pagamento, setPagamento] = useState("pix");
 
-  useEffect(() => {
-    (async () => {
-      const { data } = await supabase
-        .from("produtos")
-        .select("*")
-        .eq("loja", "gigante")
-        .eq("disponivel", true);
-      setProdutos(data || []);
-    })();
-  }, []);
+  const produtosFiltrados = listaProdutos.filter((p) =>
+    p.nome.toLowerCase().includes(busca.toLowerCase())
+  );
 
-  const filtrados = useMemo(() => {
-    const q = busca.toLowerCase();
-    return produtos.filter((p) => p.nome.toLowerCase().includes(q));
-  }, [busca, produtos]);
-
-  function add(p: any) {
-    setCarrinho((prev) => {
-      const existe = prev.find((i) => i.id === p.id);
-      if (existe)
-        return prev.map((i) =>
-          i.id === p.id ? { ...i, qtd: i.qtd + 1 } : i
-        );
-      return [...prev, { ...p, qtd: 1 }];
-    });
+  function addCarrinho(produto: Produto) {
+    setCarrinho([...carrinho, produto]);
+    setBusca("");
   }
 
-  const total = carrinho.reduce((acc, i) => acc + i.qtd * i.preco_venda, 0);
+  function removerItem(i: number) {
+    setCarrinho(carrinho.filter((_, index) => index !== i));
+  }
+
+  const total = carrinho.reduce((acc, item) => acc + item.preco, 0);
 
   return (
-    <main style={{ padding: 20 }}>
-      <h1 style={{ color: "#C8102E" }}>🧾 PDV — Gigante</h1>
+    <div className="p-5 max-w-3xl mx-auto">
+      <h1 className="text-3xl font-bold mb-4">🧾 PDV — Gigante dos Assados</h1>
 
+      {/* Busca */}
       <input
-        placeholder="Buscar produto..."
         value={busca}
         onChange={(e) => setBusca(e.target.value)}
-        style={{
-          width: "100%",
-          padding: 10,
-          margin: "10px 0",
-          border: "1px solid #ccc",
-        }}
+        placeholder="Buscar produto..."
+        className="w-full border p-3 rounded-md mb-3"
       />
 
-      <div style={{ display: "flex", flexWrap: "wrap", gap: 10 }}>
-        {filtrados.map((p) => (
-          <button
-            key={p.id}
-            onClick={() => add(p)}
-            style={{
-              background: "#C8102E",
-              color: "#fff",
-              padding: 10,
-              border: "none",
-              borderRadius: 4,
-              cursor: "pointer",
-            }}
+      {/* Lista de produtos */}
+      {busca.length > 0 && (
+        <div className="border rounded-md p-2 bg-white shadow">
+          {produtosFiltrados.length === 0 && <p>Nenhum produto encontrado...</p>}
+
+          {produtosFiltrados.map((p) => (
+            <button
+              key={p.id}
+              onClick={() => addCarrinho(p)}
+              className="w-full text-left px-3 py-2 hover:bg-yellow-200 rounded-md border-b"
+            >
+              {p.nome} — R$ {p.preco.toFixed(2)}
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Carrinho */}
+      <h2 className="text-2xl font-semibold mt-6 mb-2">🛒 Carrinho</h2>
+
+      {carrinho.length === 0 && <p>Nenhum item no carrinho...</p>}
+
+      <ul className="space-y-2">
+        {carrinho.map((item, i) => (
+          <li
+            key={i}
+            className="flex justify-between items-center bg-white p-3 rounded-md shadow"
           >
-            {p.nome} — R$ {p.preco_venda?.toFixed(2)}
-          </button>
+            <span>
+              {item.nome} — R$ {item.preco.toFixed(2)}
+            </span>
+            <button
+              onClick={() => removerItem(i)}
+              className="text-red-600 font-bold"
+            >
+              X
+            </button>
+          </li>
         ))}
+      </ul>
+
+      {/* TOTAL */}
+      <div className="text-3xl font-black mt-6">
+        Total: R$ {total.toFixed(2)}
       </div>
 
-      <hr style={{ margin: "20px 0" }} />
-      <h3>Total: R$ {total.toFixed(2)}</h3>
-      <p>Pagamento: {pagamento}</p>
-    </main>
+      {/* Formas de Pagamento */}
+      <div className="mt-4">
+        <h3 className="text-xl font-semibold mb-2">💳 Forma de Pagamento</h3>
+
+        <select
+          className="border p-3 rounded-md w-full"
+          value={pagamento}
+          onChange={(e) => setPagamento(e.target.value)}
+        >
+          <option value="pix">PIX</option>
+          <option value="dinheiro">Dinheiro</option>
+          <option value="debito">Cartão Débito</option>
+          <option value="credito">Cartão Crédito</option>
+        </select>
+      </div>
+
+      {/* Finalizar */}
+      <button
+        onClick={() => alert("Venda finalizada!")}
+        className="w-full mt-6 bg-green-600 text-white p-4 rounded-lg shadow-lg text-xl font-bold"
+      >
+        Finalizar Venda
+      </button>
+    </div>
   );
 }
