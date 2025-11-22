@@ -26,7 +26,7 @@ export default function PDV() {
   );
 
   function addCarrinho(produto: Produto) {
-    setCarrinho([...carrinho, produto]);
+    setCarrinho((prev) => [...prev, produto]);
     setBusca("");
   }
 
@@ -36,28 +36,37 @@ export default function PDV() {
 
   const total = carrinho.reduce((acc, item) => acc + item.preco, 0);
 
+  function finalizarVenda() {
+    alert(
+      `Venda concluída!\n\nTotal: R$ ${total.toFixed(
+        2
+      )}\nPagamento: ${pagamento.toUpperCase()}`
+    );
+    setCarrinho([]);
+    setPagamento("pix");
+  }
+
   return (
-    <div className="p-5 max-w-3xl mx-auto">
+    <div className="p-6 max-w-3xl mx-auto">
       <h1 className="text-3xl font-bold mb-4">🧾 PDV — Gigante dos Assados</h1>
 
       {/* Busca */}
       <input
+        autoFocus
         value={busca}
         onChange={(e) => setBusca(e.target.value)}
-        placeholder="Buscar produto..."
-        className="w-full border p-3 rounded-md mb-3"
+        placeholder="Buscar ou digitar produto..."
+        className="w-full border p-3 rounded-md mb-3 shadow"
       />
 
-      {/* Lista de produtos */}
+      {/* Lista de produtos filtrados */}
       {busca.length > 0 && (
         <div className="border rounded-md p-2 bg-white shadow">
-          {produtosFiltrados.length === 0 && <p>Nenhum produto encontrado...</p>}
-
           {produtosFiltrados.map((p) => (
             <button
               key={p.id}
               onClick={() => addCarrinho(p)}
-              className="w-full text-left px-3 py-2 hover:bg-yellow-200 rounded-md border-b"
+              className="w-full text-left p-2 hover:bg-yellow-200 rounded-md border-b"
             >
               {p.nome} — R$ {p.preco.toFixed(2)}
             </button>
@@ -66,13 +75,13 @@ export default function PDV() {
       )}
 
       {/* Carrinho */}
-      <h2 className="text-2xl font-semibold mt-6 mb-2">🛒 Carrinho</h2>
+      <h2 className="text-2xl font-semibold mt-6">🛒 Carrinho</h2>
 
-      {carrinho.length === 0 && <p>Nenhum item no carrinho...</p>}
+      {carrinho.length === 0 && <p className="text-gray-500">Nenhum item...</p>}
 
-      <ul className="space-y-2">
+      <div className="space-y-2 mt-2">
         {carrinho.map((item, i) => (
-          <li
+          <div
             key={i}
             className="flex justify-between items-center bg-white p-3 rounded-md shadow"
           >
@@ -85,35 +94,36 @@ export default function PDV() {
             >
               X
             </button>
-          </li>
+          </div>
         ))}
-      </ul>
+      </div>
 
       {/* TOTAL */}
-      <div className="text-3xl font-black mt-6">
+      <div className="text-4xl font-black mt-6">
         Total: R$ {total.toFixed(2)}
       </div>
 
-      {/* Formas de Pagamento */}
+      {/* Pagamento */}
       <div className="mt-4">
         <h3 className="text-xl font-semibold mb-2">💳 Forma de Pagamento</h3>
 
         <select
-          className="border p-3 rounded-md w-full"
           value={pagamento}
           onChange={(e) => setPagamento(e.target.value)}
+          className="border p-3 rounded-md w-full shadow"
         >
           <option value="pix">PIX</option>
-          <option value="dinheiro">Dinheiro</option>
-          <option value="debito">Cartão Débito</option>
-          <option value="credito">Cartão Crédito</option>
+          <option value="dinheiro">DINHEIRO</option>
+          <option value="debito">DÉBITO</option>
+          <option value="credito">CRÉDITO</option>
         </select>
       </div>
 
       {/* Finalizar */}
       <button
-        onClick={() => alert("Venda finalizada!")}
-        className="w-full mt-6 bg-green-600 text-white p-4 rounded-lg shadow-lg text-xl font-bold"
+        onClick={finalizarVenda}
+        disabled={carrinho.length === 0}
+        className="w-full mt-6 bg-green-600 text-white p-4 rounded-lg shadow-lg text-xl font-bold disabled:bg-gray-400"
       >
         Finalizar Venda
       </button>
