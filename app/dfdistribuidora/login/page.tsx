@@ -10,7 +10,8 @@ export default function LoginDF() {
   const [senha, setSenha] = useState("");
 
   const fazerLogin = async () => {
-    router.push("/dfdistribuidora/pdv");
+    router.replace("/dfdistribuidora/pdv");
+
   };
 
   return (
