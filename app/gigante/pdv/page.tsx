@@ -22,7 +22,7 @@ export default function PDV() {
   async function carregarProdutos() {
     const { data, error } = await supabase
       .from("gigante_produtos")
-      .select("id, nome, preco")
+      .select("*")
       .eq("ativo", true);
 
     if (!error && data) setListaProdutos(data);
