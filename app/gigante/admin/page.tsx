@@ -7,178 +7,118 @@ type Produto = {
   id: string;
   nome: string;
   preco: number;
-  estoque: number;
-  imagem?: string;
+  categoria?: string;
+  estoque?: number;
+  ativo: boolean;
 };
 
-export default function AdminGigante() {
+export default function AdminProdutos() {
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [loading, setLoading] = useState(true);
-
-  const [nome, setNome] = useState("");
-  const [preco, setPreco] = useState("");
-  const [estoque, setEstoque] = useState("");
-  const [imagem, setImagem] = useState("");
-
-  async function carregarProdutos() {
-    const { data, error } = await supabase
-      .from("gigante_produtos")
-      .select("*")
-      .order("nome");
-
-    if (!error && data) setProdutos(data);
-    setLoading(false);
-  }
 
   useEffect(() => {
     carregarProdutos();
   }, []);
 
-  async function adicionar() {
-    if (!nome || !preco || !estoque) {
-      alert("Preencha todos os campos");
-      return;
-    }
+  async function carregarProdutos() {
+    setLoading(true);
 
-    const { error } = await supabase.from("gigante_produtos").insert({
-      nome,
-      preco: parseFloat(preco),
-      estoque: parseInt(estoque),
-      imagem,
-    });
-
-    if (!error) {
-      setNome("");
-      setPreco("");
-      setEstoque("");
-      setImagem("");
-      carregarProdutos();
-    }
-  }
-
-  async function atualizar(id: string, campo: keyof Produto, valor: any) {
-    await supabase
+    const { data, error } = await supabase
       .from("gigante_produtos")
-      .update({ [campo]: valor })
-      .eq("id", id);
+      .select("*")
+      .order("nome", { ascending: true });
 
-    carregarProdutos();
+    if (!error) setProdutos(data as Produto[]);
+    setLoading(false);
   }
 
-  async function deletar(id: string) {
-    if (!confirm("Tem certeza que deseja excluir?")) return;
-
-    await supabase.from("gigante_produtos").delete().eq("id", id);
-
-    carregarProdutos();
+  async function salvarAlteracao(
+    id: string,
+    campo: string,
+    valor: string | number | boolean
+  ) {
+    await supabase.from("gigante_produtos").update({ [campo]: valor }).eq("id", id);
   }
 
   return (
-    <div className="p-6 max-w-4xl mx-auto">
-      <h1 className="text-3xl font-bold mb-6">⚙️ Admin — Gigante dos Assados</h1>
+    <div className="p-6 max-w-5xl mx-auto">
+      <h1 className="text-3xl font-bold mb-6">🛠️ Administração — Produtos</h1>
 
-      {/* ADICIONAR PRODUTO */}
-      <div className="bg-white p-4 rounded shadow mb-6">
-        <h2 className="text-xl font-semibold mb-3">Adicionar Produto</h2>
+      {loading && <p>Carregando produtos...</p>}
 
-        <div className="grid grid-cols-4 gap-3">
-          <input
-            placeholder="Nome"
-            className="border p-2 rounded"
-            value={nome}
-            onChange={(e) => setNome(e.target.value)}
-          />
+      <div className="space-y-4">
+        {produtos.map((p) => (
+          <div
+            key={p.id}
+            className="bg-white p-4 shadow rounded-lg border flex flex-col gap-3 md:flex-row md:items-center md:justify-between"
+          >
+            {/* Nome */}
+            <input
+              className="border p-2 rounded w-full md:w-48"
+              value={p.nome}
+              onChange={(e) => {
+                const value = e.target.value;
+                setProdutos((prev) =>
+                  prev.map((x) => (x.id === p.id ? { ...x, nome: value } : x))
+                );
+                salvarAlteracao(p.id, "nome", value);
+              }}
+            />
 
-          <input
-            placeholder="Preço"
-            className="border p-2 rounded"
-            value={preco}
-            onChange={(e) => setPreco(e.target.value)}
-          />
+            {/* Preço */}
+            <input
+              type="number"
+              className="border p-2 rounded w-full md:w-24"
+              value={p.preco}
+              onChange={(e) => {
+                const value = parseFloat(e.target.value);
+                setProdutos((prev) =>
+                  prev.map((x) => (x.id === p.id ? { ...x, preco: value } : x))
+                );
+                salvarAlteracao(p.id, "preco", value);
+              }}
+            />
 
-          <input
-            placeholder="Estoque"
-            className="border p-2 rounded"
-            value={estoque}
-            onChange={(e) => setEstoque(e.target.value)}
-          />
+            {/* Estoque */}
+            <input
+              type="number"
+              className="border p-2 rounded w-full md:w-24"
+              value={p.estoque ?? 0}
+              onChange={async (e) => {
+                const value = Number(e.target.value);
 
-          <input
-            placeholder="URL da imagem"
-            className="border p-2 rounded"
-            value={imagem}
-            onChange={(e) => setImagem(e.target.value)}
-          />
-        </div>
+                setProdutos((prev) =>
+                  prev.map((x) =>
+                    x.id === p.id ? { ...x, estoque: value } : x
+                  )
+                );
 
-        <button
-          onClick={adicionar}
-          className="bg-green-600 mt-3 text-white px-4 py-2 rounded font-bold"
-        >
-          ➕ Cadastrar
-        </button>
-      </div>
+                await salvarAlteracao(p.id, "estoque", value);
+              }}
+            />
 
-      {/* LISTAGEM */}
-      <h2 className="text-2xl font-bold mt-6 mb-4">📦 Produtos</h2>
+            {/* Ativo */}
+            <label className="flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={p.ativo}
+                onChange={(e) => {
+                  const value = e.target.checked;
 
-      {loading ? (
-        <p>Carregando...</p>
-      ) : (
-        produtos.map((p) => (
-          <div key={p.id} className="bg-white p-4 rounded shadow mb-4">
-            <div className="font-bold text-lg">{p.nome}</div>
+                  setProdutos((prev) =>
+                    prev.map((x) =>
+                      x.id === p.id ? { ...x, ativo: value } : x
+                    )
+                  );
 
-            <div className="grid grid-cols-4 gap-4 mt-2">
-              {/* Preço */}
-              <div>
-                <label>Preço</label>
-                <input
-                  type="number"
-                  className="border p-2 w-full rounded"
-                  value={p.preco}
-                  onChange={(e) =>
-                    atualizar(p.id, "preco", parseFloat(e.target.value))
-                  }
-                />
-              </div>
-
-              {/* Estoque */}
-              <div>
-                <label>Estoque</label>
-                <input
-                  type="number"
-                  className="border p-2 w-full rounded"
-                  value={p.estoque}
-                  onChange={(e) =>
-                    atualizar(p.id, "estoque", parseInt(e.target.value))
-                  }
-                />
-              </div>
-
-              {/* Imagem */}
-              <div>
-                <label>Imagem</label>
-                <input
-                  className="border p-2 w-full rounded"
-                  value={p.imagem || ""}
-                  onChange={(e) => atualizar(p.id, "imagem", e.target.value)}
-                />
-              </div>
-
-              {/* Excluir */}
-              <div className="flex items-end">
-                <button
-                  onClick={() => deletar(p.id)}
-                  className="bg-red-600 text-white px-4 py-2 rounded w-full"
-                >
-                  🗑 Excluir
-                </button>
-              </div>
-            </div>
+                  salvarAlteracao(p.id, "ativo", value);
+                }}
+              />
+              <span>{p.ativo ? "Ativo" : "Inativo"}</span>
+            </label>
           </div>
-        ))
-      )}
+        ))}
+      </div>
     </div>
   );
 }
