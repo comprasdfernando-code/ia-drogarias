@@ -2,151 +2,108 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { Poppins } from "next/font/google";
+import { useState } from "react";
 
-const poppins = Poppins({
-  weight: ["400", "600", "700"],
-  subsets: ["latin"],
-});
+export default function Home() {
+  const [slide, setSlide] = useState(0);
 
-export default function GigantePage() {
+  const fotos = [
+    "/f1.jpg",
+    "/f2.jpg",
+    "/f3.jpg",
+    "/f4.jpg",
+    "/f5.jpg",
+    "/f6.jpg",
+    "/f7.jpg",
+    "/f8.jpg",
+    "/f9.jpg",
+  ];
+
+  const next = () => setSlide((slide + 1) % fotos.length);
+  const prev = () => setSlide((slide - 1 + fotos.length) % fotos.length);
+
   return (
-    <main className={poppins.className + " bg-gray-100 min-h-screen relative"}>
+    <main className="bg-[#fff7e6] text-[#2a2a2a] min-h-screen">
 
-      {/* ======================
-          CABEÇALHO MODERNO
-      ======================= */}
-      <header className="fixed top-0 left-0 w-full bg-red-700 shadow-lg z-50">
-        <div className="max-w-6xl mx-auto px-6 h-20 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Image
-              src="/gigante-logo.png"
-              alt="Gigante"
-              width={55}
-              height={55}
-              className="rounded"
-            />
-            <h1 className="text-white text-xl font-bold tracking-wide">
-              Gigante dos Assados
-            </h1>
-          </div>
+      {/* HEADER */}
+      <header className="w-full bg-yellow-500 p-4 shadow-md flex justify-between items-center">
+        <h1 className="text-2xl font-bold flex items-center gap-2">
+          <span>🍗🔥</span> Gigante dos Assados
+        </h1>
 
-          <nav className="hidden md:flex gap-4">
-            <Link
-              href="/gigante/pdv"
-              className="text-white font-semibold hover:text-gray-200 transition"
-            >
-              PDV
-            </Link>
-            <Link
-              href="/gigante/produtos"
-              className="text-white font-semibold hover:text-gray-200 transition"
-            >
-              Produtos
-            </Link>
-            <Link
-              href="/gigante/caixa"
-              className="text-white font-semibold hover:text-gray-200 transition"
-            >
-              Caixa
-            </Link>
-          </nav>
-        </div>
+        <nav className="hidden md:flex gap-6 font-semibold">
+          <a href="#sobre">Sobre</a>
+          <a href="#cardapio">Cardápio</a>
+          <a href="#contato">Contato</a>
+        </nav>
       </header>
 
-      <div className="h-20" />
+      {/* HERO */}
+      <section className="relative w-full h-[380px] overflow-hidden">
+        <Image
+          src={fotos[slide]}
+          fill
+          alt="Carrossel"
+          className="object-cover transition-all duration-700"
+        />
 
-      {/* ======================
-          HERO / TÍTULO
-      ======================= */}
-      <section className="text-center py-8">
-        <h2 className="text-3xl font-bold text-red-800">Gigante dos Assados</h2>
-        <p className="text-gray-600 mt-1">Grande no sabor 🍗</p>
+        {/* Botões */}
+        <button onClick={prev} className="absolute left-2 top-1/2 text-3xl bg-black/40 text-white px-3 py-1 rounded-full">‹</button>
+        <button onClick={next} className="absolute right-2 top-1/2 text-3xl bg-black/40 text-white px-3 py-1 rounded-full">›</button>
       </section>
 
-      {/* ======================
-          CARDS / PROMOÇÕES
-      ======================= */}
-      <section className="max-w-6xl mx-auto grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 px-6 pb-10">
-
-        <div className="bg-white rounded-xl shadow-md p-4">
-          <Image
-            src="/promo1.jpeg"
-            alt="Promo 1"
-            width={600}
-            height={400}
-            className="rounded-lg"
-          />
-          <h3 className="font-semibold text-lg mt-2 text-center">
-            Frango Assado — R$ 49,90
-          </h3>
-        </div>
-
-        <div className="bg-white rounded-xl shadow-md p-4">
-          <Image
-            src="/promo2.jpeg"
-            alt="Promo 2"
-            width={600}
-            height={400}
-            className="rounded-lg"
-          />
-          <h3 className="font-semibold text-lg mt-2 text-center">
-            Combo Família — R$ 79,90
-          </h3>
-        </div>
-
-        <div className="bg-white rounded-xl shadow-md p-4">
-          <Image
-            src="/promo3.jpeg"
-            alt="Promo 3"
-            width={600}
-            height={400}
-            className="rounded-lg"
-          />
-          <h3 className="font-semibold text-lg mt-2 text-center">
-            Costela no Bafo — R$ 49,90
-          </h3>
-        </div>
-
-      </section>
-
-      {/* ======================
-          VÍDEO
-      ======================= */}
-      <section className="max-w-3xl mx-auto pb-24 px-6">
-        <div className="bg-white rounded-xl shadow-lg overflow-hidden">
-          <video
-            src="https://SEU-LINK-DO-SUPABASE.mp4"
-            controls
-            className="w-full rounded-xl"
-          />
-        </div>
-        <p className="text-center mt-3 font-semibold text-red-700">
-          🍗 Propaganda Oficial — Gigante dos Assados
+      {/* SOBRE */}
+      <section id="sobre" className="p-6 text-center">
+        <h2 className="text-3xl font-bold mb-3">🔥 Sobre Nós</h2>
+        <p className="text-lg">
+          A casa de carnes e frangos assados mais tradicional da região.
+          Torresmo de rolo crocante, frango assado no ponto e cortes especiais!
         </p>
       </section>
 
-      {/* ======================
-          BOTÃO FLUTUANTE
-          IGUAL MUNDOVERDETOUR
-          MAS COM FRANGO 🍗🔥
-      ======================= */}
-      <Link
-        href="https://wa.me/5511948163211?text=Olá!%20Quero%20fazer%20um%20pedido%20🍗🔥"
-        target="_blank"
-        className="fixed bottom-5 right-5 z-50 flex items-center gap-3 bg-green-500 hover:bg-green-600 text-white px-5 py-3 rounded-full shadow-xl transition-transform hover:scale-110 active:scale-95"
-        style={{ fontWeight: "bold" }}
-      >
-        <Image
-          src="/frango-icon.png"
-          alt="Pedir"
-          width={35}
-          height={35}
-          className="animate-pulse"
-        />
-        Faça seu Pedido
-      </Link>
+      {/* GALERIA DE FOTOS */}
+      <section className="p-6" id="cardapio">
+        <h2 className="text-3xl font-bold mb-4 text-center">🍗 Nossos Assados</h2>
 
-    </main>
-  );
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          {fotos.map((img, i) => (
+            <div key={i} className="rounded-lg overflow-hidden shadow">
+              <Image src={img} alt="Foto" width={500} height={400} className="object-cover" />
+            </div>
+          ))}
+        </div>
+      </section>
+
+      {/* CONTATO */}
+      <section id="contato" className="p-6 text-center bg-white shadow-inner">
+        <h2 className="text-2xl font-bold mb-2">📞 Contato</h2>
+
+        <p className="text-lg">
+          WhatsApp: <a href="https://wa.me/5511948163211" className="text-green-600 font-bold">11 94816-3211</a>
+        </p>
+
+        <p className="mt-3">📍 Av. Sapopemba, 16015 — São Paulo, SP</p>
+              <a
+        href="https://maps.app.goo.gl/L6T84Y9qR8eXA8"
+        className="text-blue-600 underline"
+      >
+        ➜ Abrir no Google Maps
+      </a>
+    </section>
+
+    {/* RODAPÉ */}
+    <footer className="bg-yellow-500 text-center py-4 mt-10 shadow-inner">
+      <p className="font-semibold text-[#2a2a2a]">
+        © 2025 Gigante dos Assados — Todos os direitos reservados.
+      </p>
+
+      <a
+        href="https://wa.me/5511948163211"
+        className="fixed bottom-6 right-6 bg-green-600 text-white font-bold px-6 py-3 rounded-full shadow-lg neon"
+      >
+        FAÇA SEU PEDIDO
+      </a>
+    </footer>
+  </main>
+);
 }
