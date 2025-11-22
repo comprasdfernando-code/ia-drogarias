@@ -56,3 +56,58 @@ html, body {
 .animate-fadeIn {
   animation: fadeIn 0.2s ease-in-out;
 }
+
+.sys-header {
+  background: linear-gradient(to right, #003a78, #0059b3);
+  color: white;
+  padding: 10px;
+  font-weight: bold;
+  border-bottom: 3px solid #00284d;
+}
+
+.sys-box {
+  background: #f4f7fb;
+  padding: 10px;
+  border: 2px solid #c9d6e6;
+  border-radius: 4px;
+  margin-bottom: 10px;
+}
+
+.sys-input {
+  background: white;
+  border: 1px solid #8aa6c9;
+  padding: 6px;
+  border-radius: 4px;
+  width: 100%;
+}
+
+.sys-input:focus {
+  outline: 2px solid #0059b3;
+}
+
+.sys-btn {
+  background: #0059b3;
+  color: white;
+  padding: 8px 14px;
+  border-radius: 4px;
+}
+
+.sys-btn:hover {
+  background: #003d80;
+}
+
+.sys-grid {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.sys-grid th {
+  background: #003d80;
+  color: white;
+  padding: 6px;
+}
+
+.sys-grid td {
+  border: 1px solid #c2cce0;
+  padding: 5px;
+}
