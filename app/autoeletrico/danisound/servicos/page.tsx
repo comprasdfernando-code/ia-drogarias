@@ -1,78 +1,122 @@
-// app/dani-sound/servicos/page.tsx
-import Link from "next/link";
-
-const servicos = [
-  {
-    categoria: "Elétrica automotiva",
-    itens: [
-      "Diagnóstico de curto elétrico",
-      "Reparo de alternador",
-      "Motor de partida",
-      "Falha de carga de bateria",
-      "Revisão de chicote elétrico",
-    ],
-  },
-  {
-    categoria: "Som & multimídia",
-    itens: [
-      "Instalação de som completo",
-      "Projetos personalizados (mala / caixa)",
-      "Módulos, amplificadores, subwoofer",
-      "Troca de alto-falantes",
-      "Centrais multimídia e câmera de ré",
-    ],
-  },
-  {
-    categoria: "Acessórios & iluminação",
-    itens: [
-      "Kit LED / super LED",
-      "Faróis auxiliares / milha",
-      "Alarmes e travas elétricas",
-      "Vidros elétricos",
-      "Outros upgrades sob medida",
-    ],
-  },
-];
+import Image from "next/image";
 
 export default function ServicosDaniSound() {
   return (
-    <div className="max-w-5xl mx-auto px-4 py-8 space-y-6">
-      <div className="flex items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold">Serviços</h1>
-          <p className="text-sm text-zinc-300 max-w-xl mt-1">
-            Aqui estão os principais serviços que faço na Dani Sound. Se tiver
-            alguma ideia diferente para o seu projeto, chama no Whats que a
-            gente desenha junto.
-          </p>
-        </div>
-        <Link
-          href="/dani-sound/orcamento"
-          className="hidden sm:inline-flex px-4 py-2 rounded-full bg-emerald-500 hover:bg-emerald-600 text-xs font-semibold"
-        >
-          Pedir orçamento
-        </Link>
+    <div className="max-w-6xl mx-auto px-4 py-12 space-y-20">
+
+      {/* TÍTULO */}
+      <div className="text-center space-y-3">
+        <h1 className="text-4xl font-bold">Serviços Profissionais</h1>
+        <p className="text-zinc-400 max-w-2xl mx-auto text-sm">
+          Do básico ao avançado: elétrica, multimídia, LED, alarmes, rastreadores,
+          acessórios e muito mais. Instalações sempre com acabamento premium.
+        </p>
       </div>
 
-      <div className="grid md:grid-cols-3 gap-4 text-sm">
-        {servicos.map((s) => (
+      {/* GRID DE SERVIÇOS */}
+      <section className="grid md:grid-cols-3 gap-8">
+        {[
+          {
+            icon: "🔧",
+            title: "Elétrica Automotiva",
+            desc: "Alternador, motor de partida, curto elétrico, chicote, fusíveis, relês, testes e diagnósticos.",
+            img: "/danisound/car-led.jpg",
+          },
+          {
+            icon: "🔊",
+            title: "Som Automotivo",
+            desc: "Alto-falantes, módulos, subwoofer, caixas, tratamento acústico e instalação limpa.",
+            img: "/danisound/falante-hurricane.jpg",
+          },
+          {
+            icon: "💡",
+            title: "Iluminação & LED",
+            desc: "Super LED, farol, milha, DRL, angel eyes, iluminação interna e externa.",
+            img: "/danisound/led-s14.jpg",
+          },
+          {
+            icon: "🎛️",
+            title: "Multimídia Premium",
+            desc: "Centrais Android, Tesla screen, molduras, câmera de ré, TV digital, entradas USB.",
+            img: "/danisound/depois-kia.jpg",
+          },
+          {
+            icon: "🔐",
+            title: "Alarmes & Segurança",
+            desc: "Alarmes, trava elétrica, bloqueador, atuadores, travas de porta e sensores.",
+            img: "/danisound/alarme.jpg",
+          },
+          {
+            icon: "📡",
+            title: "Acessórios",
+            desc: "Antenas internas, controles, câmeras, sensores de ré, carregadores e cabos.",
+            img: "/danisound/antena-lookout.jpg",
+          },
+        ].map((item, i) => (
           <div
-            key={s.categoria}
-            className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 space-y-2"
+            key={i}
+            className="border border-zinc-800 bg-zinc-900/30 rounded-xl overflow-hidden hover:border-red-700/50 transition shadow-lg"
           >
-            <h2 className="font-semibold text-zinc-50">{s.categoria}</h2>
-            <ul className="text-xs text-zinc-300 space-y-1">
-              {s.itens.map((item) => (
-                <li key={item}>• {item}</li>
-              ))}
-            </ul>
+            <div className="relative h-40 w-full">
+              <Image
+                src={item.img}
+                alt={item.title}
+                fill
+                className="object-cover"
+              />
+            </div>
+
+            <div className="p-5 space-y-2">
+              <div className="text-3xl">{item.icon}</div>
+              <h3 className="text-xl font-semibold">{item.title}</h3>
+              <p className="text-sm text-zinc-400">{item.desc}</p>
+            </div>
           </div>
         ))}
-      </div>
+      </section>
 
-      <div className="mt-4 text-xs text-zinc-400">
-        Os valores podem variar conforme o modelo e o estado do carro. O ideal é
-        enviar modelo, ano e, se possível, uma foto do painel/defeito.
+      {/* PORQUE ESCOLHER O DANI SOUND */}
+      <section className="bg-zinc-900/40 border border-zinc-800 rounded-2xl p-8 space-y-6">
+        <h2 className="text-3xl font-semibold text-center">
+          Por que escolher o Dani Sound?
+        </h2>
+
+        <div className="grid md:grid-cols-3 gap-6 mt-6">
+          <div className="text-center">
+            <div className="text-4xl mb-3">⚡</div>
+            <h4 className="font-semibold">Acabamento Profissional</h4>
+            <p className="text-sm text-zinc-400 mt-2">
+              Instalações limpas, sem cortes desnecessários e sem gambiarra.
+            </p>
+          </div>
+
+          <div className="text-center">
+            <div className="text-4xl mb-3">🔧</div>
+            <h4 className="font-semibold">Experiência Real</h4>
+            <p className="text-sm text-zinc-400 mt-2">
+              Anos de experiência com elétrica, multimídia, LED e som automotivo.
+            </p>
+          </div>
+
+          <div className="text-center">
+            <div className="text-4xl mb-3">📍</div>
+            <h4 className="font-semibold">Local de Fácil Acesso</h4>
+            <p className="text-sm text-zinc-400 mt-2">
+              Atendimento rápido na Av. Rodolfo Pirani — Zona Leste, SP.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* CHAMADA PARA WHATSAPP */}
+      <div className="text-center mt-10">
+        <a
+          href="https://wa.me/5511977844066?text=Olá,+quero+um+orçamento+para+meu+carro!"
+          target="_blank"
+          className="inline-block bg-red-600 hover:bg-red-700 text-white px-8 py-4 rounded-full text-lg shadow-lg shadow-red-800/50"
+        >
+          Pedir orçamento agora
+        </a>
       </div>
     </div>
   );
