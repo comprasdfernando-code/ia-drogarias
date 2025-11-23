@@ -1,5 +1,8 @@
+"use client";
+
 export const dynamic = "force-static";
 
+import { useState } from "react";
 import "./styles.css";
 import Image from "next/image";
 import Link from "next/link";
@@ -11,17 +14,18 @@ export const metadata = {
 };
 
 export default function DaniSoundLayout({ children }) {
+  const [open, setOpen] = useState(false);
+
   return (
     <div
-  className="min-h-screen text-white"
-  style={{
-    backgroundImage: 'url("/danisound/bg-neon.jpg")',
-    backgroundSize: "cover",
-    backgroundPosition: "center",
-    backgroundAttachment: "fixed",
-  }}
->
-
+      className="min-h-screen text-white"
+      style={{
+        backgroundImage: 'url("/danisound/bg-neon.jpg")',
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+        backgroundAttachment: "fixed",
+      }}
+    >
       {/* HEADER PREMIUM */}
       <header className="backdrop-blur-xl bg-black/70 border-b border-red-800/40 sticky top-0 z-50">
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
@@ -39,7 +43,7 @@ export default function DaniSoundLayout({ children }) {
             <h1 className="text-lg font-bold">Dani Sound</h1>
           </div>
 
-          {/* Menu */}
+          {/* MENU DESKTOP */}
           <nav className="hidden md:flex gap-6 text-sm">
             <Link href="/autoeletrico/danisound">Início</Link>
             <Link href="/autoeletrico/danisound/servicos">Serviços</Link>
@@ -49,15 +53,40 @@ export default function DaniSoundLayout({ children }) {
             <Link href="/autoeletrico/danisound/orcamento">Orçamento</Link>
           </nav>
 
-          {/* Botão WhatsApp */}
+          {/* BOTÃO WHATSAPP */}
           <a
             href="https://wa.me/5511977844066?text=Olá,+quero+um+orçamento!"
             target="_blank"
-            className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-full shadow-lg shadow-red-900/40"
+            className="hidden md:block bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-full shadow-lg shadow-red-900/40"
           >
             WhatsApp
           </a>
+
+          {/* MENU MOBILE - 6 TRAÇOS */}
+          <div
+            className="md:hidden flex flex-col gap-1 cursor-pointer"
+            onClick={() => setOpen(!open)}
+          >
+            <span className="w-8 h-[3px] bg-white rounded"></span>
+            <span className="w-8 h-[3px] bg-white rounded"></span>
+            <span className="w-8 h-[3px] bg-white rounded"></span>
+            <span className="w-8 h-[3px] bg-white rounded"></span>
+            <span className="w-8 h-[3px] bg-white rounded"></span>
+            <span className="w-8 h-[3px] bg-white rounded"></span>
+          </div>
         </div>
+
+        {/* DROPDOWN MOBILE */}
+        {open && (
+          <div className="md:hidden bg-black/90 backdrop-blur-lg text-white p-6 space-y-4 w-full z-50 border-b border-red-700/40">
+            <Link href="/autoeletrico/danisound" onClick={() => setOpen(false)} className="block text-lg">Início</Link>
+            <Link href="/autoeletrico/danisound/servicos" onClick={() => setOpen(false)} className="block text-lg">Serviços</Link>
+            <Link href="/autoeletrico/danisound/produtos" onClick={() => setOpen(false)} className="block text-lg">Produtos</Link>
+            <Link href="/autoeletrico/danisound/antes-depois" onClick={() => setOpen(false)} className="block text-lg">Antes e Depois</Link>
+            <Link href="/autoeletrico/danisound/galeria" onClick={() => setOpen(false)} className="block text-lg">Galeria</Link>
+            <Link href="/autoeletrico/danisound/orcamento" onClick={() => setOpen(false)} className="block text-lg">Orçamento</Link>
+          </div>
+        )}
       </header>
 
       {/* CONTEÚDO DAS PÁGINAS */}

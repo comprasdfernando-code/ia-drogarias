@@ -1,24 +1,41 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 
 export default function AdvogadoMarcosPage() {
   return (
-    <div className="min-h-screen bg-white text-gray-800">
+    <div className="min-h-screen bg-[#0B0F19] text-white">
       {/* HERO */}
-      <section className="w-full bg-gray-100 px-6 py-14 text-center border-b">
-        <h1 className="text-3xl font-bold text-gray-900">
-          Dr. Marcos Luciano – Advogado
-        </h1>
-        <p className="text-lg text-gray-600 mt-2">
-          Especialista em Direito Civil, Consumidor e Família
-        </p>
+      <section className="max-w-6xl mx-auto px-6 py-20 flex flex-col md:flex-row items-center gap-10">
+        
+        {/* FOTO – LEFT */}
+        <div className="w-full md:w-1/2 flex justify-center">
+          <Image
+            src="/drmarcos-premium.png"  // <- Substitua pelo nome da imagem
+            width={500}
+            height={600}
+            alt="Dr. Marcos Luciano"
+            className="rounded-lg shadow-xl object-cover"
+          />
+        </div>
 
-        <div className="mt-6">
+        {/* TEXTO – RIGHT */}
+        <div className="w-full md:w-1/2">
+          <h1 className="text-4xl font-bold mb-3">Dr. Marcos Luciano</h1>
+          <h2 className="text-xl text-gray-300 mb-6">
+            Advogado Especialista em Direito Civil, Consumidor e Família
+          </h2>
+
+          <p className="text-gray-400 leading-relaxed mb-6">
+            Atuação moderna e eficiente. Atendimento humanizado, análise completa do caso 
+            e estratégias jurídicas claras para resolver seu problema de forma rápida e segura.
+          </p>
+
           <Link
             href="https://wa.me/5511998362568"
             target="_blank"
-            className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-medium text-lg transition"
+            className="bg-green-600 hover:bg-green-700 text-white px-8 py-3 rounded-lg text-lg font-medium transition"
           >
             Falar no WhatsApp
           </Link>
@@ -26,94 +43,65 @@ export default function AdvogadoMarcosPage() {
       </section>
 
       {/* ÁREAS DE ATUAÇÃO */}
-      <section className="px-6 py-10 max-w-3xl mx-auto">
-        <h2 className="text-2xl font-semibold mb-6 text-gray-900 text-center">
-          Áreas de Atuação
-        </h2>
+      <section className="bg-[#111522] py-16">
+        <div className="max-w-5xl mx-auto px-6">
+          <h3 className="text-3xl font-bold text-center mb-10">Áreas de Atuação</h3>
 
-        <div className="space-y-6 text-gray-700">
-          <div>
-            <h3 className="font-semibold text-lg text-gray-900">
-              📌 Direito do Consumidor
-            </h3>
-            <p>
-              Cobranças indevidas, golpes bancários, problemas com empresas,
-              compras online, reembolsos e cancelamentos.
-            </p>
-          </div>
+          <div className="grid md:grid-cols-2 gap-10 text-gray-300">
 
-          <div>
-            <h3 className="font-semibold text-lg text-gray-900">
-              📌 Direito de Família
-            </h3>
-            <p>
-              Divórcio, pensão alimentícia, guarda, regulamentação de visitas e
-              dissolução de união estável.
-            </p>
-          </div>
+            <div>
+              <h4 className="text-xl font-semibold text-white">📌 Direito do Consumidor</h4>
+              <p className="mt-2">Cobranças indevidas, golpes bancários, compras online, reembolsos e cancelamentos.</p>
+            </div>
 
-          <div>
-            <h3 className="font-semibold text-lg text-gray-900">
-              📌 Direito Civil
-            </h3>
-            <p>
-              Contratos, inventário, usucapião, dívidas e ações de indenização.
-            </p>
-          </div>
+            <div>
+              <h4 className="text-xl font-semibold text-white">📌 Direito de Família</h4>
+              <p className="mt-2">Divórcio, pensão alimentícia, guarda, visitas e dissolução de união estável.</p>
+            </div>
 
-          <div>
-            <h3 className="font-semibold text-lg text-gray-900">
-              📌 Direito Trabalhista
-            </h3>
-            <p>
-              Rescisão, verbas não pagas, adicional, horas extras e assédio
-              moral.
-            </p>
+            <div>
+              <h4 className="text-xl font-semibold text-white">📌 Direito Civil</h4>
+              <p className="mt-2">Contratos, inventário, usucapião, dívidas e ações de indenização.</p>
+            </div>
+
+            <div>
+              <h4 className="text-xl font-semibold text-white">📌 Direito Trabalhista</h4>
+              <p className="mt-2">Rescisão, verbas não pagas, adicional, horas extras e assédio moral.</p>
+            </div>
+
           </div>
         </div>
       </section>
 
-      {/* SOBRE O ADVOGADO */}
-      <section className="px-6 py-10 bg-gray-50 border-y">
-        <h2 className="text-2xl font-semibold mb-4 text-gray-900 text-center">
-          Sobre o Advogado
-        </h2>
-
-        <p className="max-w-3xl mx-auto text-center text-gray-700 leading-relaxed">
-          O Dr. Marcos Luciano é advogado atuante com experiência prática em
-          resolução de conflitos e defesa jurídica preventiva. Seu atendimento é
-          humanizado, claro e direto, com total transparência em todas as etapas
-          do processo.
-          <br />
-          <br />
-          Compromisso com agilidade, profissionalismo e ética.
+      {/* SOBRE */}
+      <section className="max-w-4xl mx-auto px-6 py-16">
+        <h3 className="text-3xl font-bold text-center mb-6">Sobre o Advogado</h3>
+        <p className="text-gray-300 text-center leading-relaxed text-lg">
+          O Dr. Marcos Luciano atua de forma estratégica, objetiva e moderna.  
+          Cada caso é analisado com profundidade e clareza, com foco na solução mais rápida, segura e eficiente.  
+          Atendimento personalizado e comprometimento total com o cliente.
         </p>
       </section>
 
       {/* CHAMADA FINAL */}
-      <section className="px-6 py-14 text-center">
-        <h2 className="text-2xl font-semibold text-gray-900">
-          Precisa falar com um advogado agora?
-        </h2>
-        <p className="text-gray-600 mt-2">
-          Atendimento online e presencial. Clique abaixo e fale diretamente com
-          o Dr. Marcos.
+      <section className="bg-[#0D121F] py-16 text-center">
+        <h3 className="text-3xl font-bold mb-4">Precisa de orientação jurídica?</h3>
+        <p className="text-gray-300 mb-8 text-lg">
+          Clique abaixo e fale diretamente com o advogado.
         </p>
 
-        <div className="mt-6">
-          <Link
-            href="https://wa.me/5511998362568"
-            target="_blank"
-            className="bg-green-600 hover:bg-green-700 text-white px-6 py-3 rounded-lg font-medium text-lg transition"
-          >
-            Falar com Dr. Marcos no WhatsApp
-          </Link>
-        </div>
+        <Link
+          href="https://wa.me/5511998362568"
+          target="_blank"
+          className="bg-green-600 hover:bg-green-700 text-white px-8 py-3 rounded-lg text-lg font-medium transition"
+        >
+          Falar com Dr. Marcos no WhatsApp
+        </Link>
       </section>
 
       {/* FOOTER */}
-      <footer className="py-6 text-center text-sm text-gray-500 border-t">
-        © {new Date().getFullYear()} – Página demonstrativa criada por Fernando.
+      <footer className="py-6 text-center text-sm text-gray-500 border-t border-gray-700">
+        © {new Date().getFullYear()} – Página criada por Fernando.
       </footer>
     </div>
   );
