@@ -1,6 +1,6 @@
 import "./globals.css";
 import type { Metadata } from "next";
-import RootClientLayout from "./root-client-layout"; // ✅ usa o wrapper
+import RootClientLayout from "./root-client-layout"; // já é client
 
 export const metadata: Metadata = {
   title: "IA Drogarias",
@@ -11,7 +11,6 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="pt-BR">
       <body>
-        {/* ✅ O Header/rodapé passam a ser controlados aqui dentro */}
         <RootClientLayout>{children}</RootClientLayout>
       </body>
     </html>
