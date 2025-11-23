@@ -14,7 +14,8 @@ export const metadata = {
 export default function DaniSoundLayout({ children }) {
   return (
     <html lang="pt-BR">
-      <body className="bg-black text-white">
+      <body>
+
 
         {/* HEADER PREMIUM */}
         <header className="backdrop-blur-xl bg-black/70 border-b border-red-800/40 sticky top-0 z-50">
