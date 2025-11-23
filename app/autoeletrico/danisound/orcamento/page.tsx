@@ -1,130 +1,120 @@
-// app/dani-sound/orcamento/page.tsx
 "use client";
 
-import { FormEvent, useState } from "react";
-
-const WHATSAPP = "5511977844066"; // TROCAR PELO NÚMERO REAL
+import { useState } from "react";
+import Image from "next/image";
 
 export default function OrcamentoDaniSound() {
   const [nome, setNome] = useState("");
-  const [telefone, setTelefone] = useState("");
   const [carro, setCarro] = useState("");
-  const [ano, setAno] = useState("");
   const [servico, setServico] = useState("");
-  const [detalhes, setDetalhes] = useState("");
+  const [foto, setFoto] = useState<string | null>(null);
 
-  function handleSubmit(e: FormEvent) {
-    e.preventDefault();
+  const handleFoto = (e: any) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
-    const mensagem = `
-Olá, tudo bem?
-Gostaria de um orçamento na Dani Sound.
+    const reader = new FileReader();
+    reader.onload = () => setFoto(reader.result as string);
+    reader.readAsDataURL(file);
+  };
 
-Nome: ${nome || "-"}
-Telefone: ${telefone || "-"}
-Carro: ${carro || "-"}
-Ano: ${ano || "-"}
-Serviço desejado: ${servico || "-"}
-Detalhes: ${detalhes || "-"}
-    `.trim();
+  const gerarMensagem = () => {
+    return `Olá! Quero fazer um orçamento.%0A
+Nome: ${nome}%0A
+Carro: ${carro}%0A
+Serviço desejado: ${servico}%0A
+(Se tiver foto, estou enviando aí no WhatsApp!)`;
+  };
 
-    const url = `https://wa.me/${WHATSAPP}?text=${encodeURIComponent(
-      mensagem
-    )}`;
-
-    window.open(url, "_blank");
-  }
+  const linkWhats = `https://wa.me/5511977844066?text=${gerarMensagem()}`;
 
   return (
-    <div className="max-w-xl mx-auto px-4 py-8">
-      <h1 className="text-2xl sm:text-3xl font-bold mb-2">
-        Orçamento rápido
-      </h1>
-      <p className="text-sm text-zinc-300 mb-6">
-        Preencha os dados e vou te responder no WhatsApp com uma ideia de valor
-        e as opções para o seu carro.
-      </p>
+    <div className="max-w-2xl mx-auto px-4 py-12 space-y-10 text-white">
 
-      <form
-        onSubmit={handleSubmit}
-        className="space-y-4 bg-zinc-900/70 border border-zinc-800 rounded-2xl p-4 sm:p-6"
-      >
-        <div className="grid sm:grid-cols-2 gap-4">
-          <div className="space-y-1">
-            <label className="text-xs text-zinc-300">Seu nome</label>
-            <input
-              value={nome}
-              onChange={(e) => setNome(e.target.value)}
-              className="w-full rounded-lg bg-black border border-zinc-700 px-3 py-2 text-sm outline-none focus:border-emerald-500"
-              placeholder="Ex: Fernando"
-            />
-          </div>
-          <div className="space-y-1">
-            <label className="text-xs text-zinc-300">Seu WhatsApp</label>
-            <input
-              value={telefone}
-              onChange={(e) => setTelefone(e.target.value)}
-              className="w-full rounded-lg bg-black border border-zinc-700 px-3 py-2 text-sm outline-none focus:border-emerald-500"
-              placeholder="(11) 9 9999-9999"
-            />
-          </div>
-        </div>
+      {/* TÍTULO */}
+      <div className="text-center space-y-3">
+        <h1 className="text-4xl font-bold neon-red">Solicitar Orçamento</h1>
+        <p className="text-zinc-300 text-sm">
+          Preencha os dados abaixo e envie sua foto. O Dani responde em poucos minutos.
+        </p>
+      </div>
 
-        <div className="grid sm:grid-cols-2 gap-4">
-          <div className="space-y-1">
-            <label className="text-xs text-zinc-300">Modelo do carro</label>
-            <input
-              value={carro}
-              onChange={(e) => setCarro(e.target.value)}
-              className="w-full rounded-lg bg-black border border-zinc-700 px-3 py-2 text-sm outline-none focus:border-emerald-500"
-              placeholder="Ex: Gol, Onix, HB20..."
-            />
-          </div>
-          <div className="space-y-1">
-            <label className="text-xs text-zinc-300">Ano</label>
-            <input
-              value={ano}
-              onChange={(e) => setAno(e.target.value)}
-              className="w-full rounded-lg bg-black border border-zinc-700 px-3 py-2 text-sm outline-none focus:border-emerald-500"
-              placeholder="Ex: 2015"
-            />
-          </div>
-        </div>
+      {/* FORMULÁRIO */}
+      <div className="card-premium-dark p-6 space-y-6">
 
-        <div className="space-y-1">
-          <label className="text-xs text-zinc-300">Serviço desejado</label>
+        {/* Nome */}
+        <div className="space-y-2">
+          <label className="text-sm font-semibold">Seu nome</label>
           <input
+            type="text"
+            value={nome}
+            onChange={(e) => setNome(e.target.value)}
+            placeholder="Ex: Fernando Santos"
+            className="w-full px-3 py-2 bg-black/40 border border-zinc-700 rounded-lg text-white"
+          />
+        </div>
+
+        {/* Carro */}
+        <div className="space-y-2">
+          <label className="text-sm font-semibold">Modelo do carro</label>
+          <input
+            type="text"
+            value={carro}
+            onChange={(e) => setCarro(e.target.value)}
+            placeholder="Ex: Honda Fit 2015"
+            className="w-full px-3 py-2 bg-black/40 border border-zinc-700 rounded-lg text-white"
+          />
+        </div>
+
+        {/* Serviço */}
+        <div className="space-y-2">
+          <label className="text-sm font-semibold">Serviço desejado</label>
+          <textarea
             value={servico}
             onChange={(e) => setServico(e.target.value)}
-            className="w-full rounded-lg bg-black border border-zinc-700 px-3 py-2 text-sm outline-none focus:border-emerald-500"
-            placeholder="Som, elétrica, LED, acessório..."
+            placeholder="Ex: Instalar multimídia + câmera de ré"
+            className="w-full px-3 py-2 bg-black/40 border border-zinc-700 rounded-lg text-white h-24"
           />
         </div>
 
-        <div className="space-y-1">
-          <label className="text-xs text-zinc-300">Detalhes (opcional)</label>
-          <textarea
-            value={detalhes}
-            onChange={(e) => setDetalhes(e.target.value)}
-            rows={4}
-            className="w-full rounded-lg bg-black border border-zinc-700 px-3 py-2 text-sm outline-none focus:border-emerald-500 resize-none"
-            placeholder="Ex: Som corta quando aumenta, carro não pega de manhã, quero colocar LED branco, etc."
+        {/* Foto */}
+        <div className="space-y-2">
+          <label className="text-sm font-semibold">Enviar foto do problema (opcional)</label>
+
+          <input
+            type="file"
+            accept="image/*"
+            onChange={handleFoto}
+            className="w-full text-sm text-zinc-300"
           />
+
+          {foto && (
+            <div className="relative w-full h-64 mt-3 rounded-xl overflow-hidden img-neon">
+              <Image
+                src={foto}
+                alt="Foto enviada"
+                fill
+                className="object-cover"
+              />
+            </div>
+          )}
+
+          <p className="text-xs text-zinc-500">
+            Pode ser foto do painel, porta, farol, módulo, multimídia, etc.
+          </p>
         </div>
 
-              <button
-        type="submit"
-        className="w-full mt-2 inline-flex items-center justify-center px-4 py-2 rounded-full bg-emerald-500 hover:bg-emerald-600 text-sm font-semibold"
-      >
-        Enviar no WhatsApp
-      </button>
-    </form>
+        {/* BOTÃO ENVIAR */}
+        <a
+          href={linkWhats}
+          target="_blank"
+          className="btn-neon w-full block text-center py-3 rounded-full text-lg"
+        >
+          Enviar no WhatsApp
+        </a>
 
-    <p className="text-xs text-zinc-400 mt-3">
-      Você receberá o retorno diretamente no WhatsApp.
-    </p>
+      </div>
 
-  </div>
+    </div>
   );
 }
-
