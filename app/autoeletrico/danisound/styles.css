@@ -17,10 +17,11 @@
     0 0 30px rgba(255, 0, 0, 0.7);
   transform: scale(1.05);
 }
+
 /* --- Cards fundo preto premium --- */
 .card-premium-dark {
-  background: #0a0a0a; /* Preto real */
-  border: 1px solid rgba(255, 0, 0, 0.3); /* Borda vermelha suave */
+  background: #0a0a0a;
+  border: 1px solid rgba(255, 0, 0, 0.3);
   border-radius: 12px;
   box-shadow:
     inset 0 0 10px rgba(255, 0, 0, 0.15),
@@ -34,7 +35,9 @@
 .card-premium-dark span {
   color: white !important;
 }
-body {
+
+/* --- Fundo azul neon exclusivo do DaniSound --- */
+.danisound-bg {
   background: url("/danisound/bg-neon.jpg") no-repeat center center fixed;
   background-size: cover;
   color: white !important;
