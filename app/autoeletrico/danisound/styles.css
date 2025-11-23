@@ -34,3 +34,8 @@
 .card-premium-dark span {
   color: white !important;
 }
+body {
+  background: url("/danisound/bg-neon.jpg") no-repeat center center fixed;
+  background-size: cover;
+  color: white !important;
+}
