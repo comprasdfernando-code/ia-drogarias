@@ -1,34 +1,3 @@
-/* ====== GIH PREMIUM PACK — Dani Sound ====== */
-/* Neon vermelho, efeitos de vidro fosco, animações suaves e destaque premium */
-
-/* --- Neon Red Glow --- */
-.neon-red {
-  text-shadow:
-    0 0 10px rgba(255, 0, 0, 0.8),
-    0 0 20px rgba(255, 0, 0, 0.6),
-    0 0 40px rgba(255, 0, 0, 0.5),
-    0 0 80px rgba(255, 0, 0, 0.4);
-}
-
-/* --- Card com brilho interno --- */
-.card-premium {
-  background: linear-gradient(145deg, rgba(20, 20, 20, 0.9), rgba(10, 10, 10, 0.8));
-  border: 1px solid rgba(255, 0, 0, 0.25);
-  border-radius: 16px;
-  box-shadow:
-    inset 0 0 12px rgba(255, 0, 0, 0.15),
-    0 4px 12px rgba(0, 0, 0, 0.65);
-  transition: 0.3s ease-in-out;
-}
-
-.card-premium:hover {
-  border-color: rgba(255, 0, 0, 0.55);
-  box-shadow:
-    inset 0 0 18px rgba(255, 0, 0, 0.3),
-    0 6px 18px rgba(255, 0, 0, 0.4);
-  transform: translateY(-4px);
-}
-
 /* --- Botão neon vermelho --- */
 .btn-neon {
   background: linear-gradient(90deg, #9b0000, #d10000);
@@ -39,4 +8,12 @@
   box-shadow:
     0 0 10px rgba(255, 0, 0, 0.6),
     0 0 20px rgba(255, 0, 0, 0.4);
-  transition: 0.25
+  transition: 0.25s ease-in-out;
+}
+
+.btn-neon:hover {
+  box-shadow:
+    0 0 15px rgba(255, 0, 0, 0.9),
+    0 0 30px rgba(255, 0, 0, 0.7);
+  transform: scale(1.05);
+}
