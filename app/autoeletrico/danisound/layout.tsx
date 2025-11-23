@@ -1,6 +1,7 @@
 export const dynamic = "force-static";
 
 import "./styles.css";
+
 import Image from "next/image";
 import Link from "next/link";
 
