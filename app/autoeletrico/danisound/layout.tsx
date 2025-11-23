@@ -12,7 +12,15 @@ export const metadata = {
 
 export default function DaniSoundLayout({ children }) {
   return (
-    <div className="min-h-screen text-white">
+    <div
+  className="min-h-screen text-white"
+  style={{
+    backgroundImage: 'url("/danisound/bg-neon.jpg")',
+    backgroundSize: "cover",
+    backgroundPosition: "center",
+    backgroundAttachment: "fixed",
+  }}
+>
 
       {/* HEADER PREMIUM */}
       <header className="backdrop-blur-xl bg-black/70 border-b border-red-800/40 sticky top-0 z-50">
