@@ -3,7 +3,7 @@
 
 import { FormEvent, useState } from "react";
 
-const WHATSAPP = "5511999999999"; // TROCAR PELO NÚMERO REAL
+const WHATSAPP = "5511977844066"; // TROCAR PELO NÚMERO REAL
 
 export default function OrcamentoDaniSound() {
   const [nome, setNome] = useState("");
@@ -112,11 +112,19 @@ Detalhes: ${detalhes || "-"}
           />
         </div>
 
-        <button
-          type="submit"
-          className="w-full mt-2 inline-flex items-center justify-center px-4 py-2 rounded-full bg-emerald-500 hover:bg-emerald-600 text-sm font-semibold"
-        >
-          Enviar no WhatsApp
-        </button>
+              <button
+        type="submit"
+        className="w-full mt-2 inline-flex items-center justify-center px-4 py-2 rounded-full bg-emerald-500 hover:bg-emerald-600 text-sm font-semibold"
+      >
+        Enviar no WhatsApp
+      </button>
+    </form>
 
-        <p class
+    <p className="text-xs text-zinc-400 mt-3">
+      Você receberá o retorno diretamente no WhatsApp.
+    </p>
+
+  </div>
+  );
+}
+
