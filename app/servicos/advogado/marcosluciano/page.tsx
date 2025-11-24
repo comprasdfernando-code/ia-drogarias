@@ -2,16 +2,6 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect } from "react";
-
-useEffect(() => {
-  const header = document.querySelector("header");
-  if (header) header.style.display = "none";
-
-  return () => {
-    if (header) header.style.display = "flex";
-  };
-}, []);
 
 
 export default function AdvogadoMarcosPage() {
