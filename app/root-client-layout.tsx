@@ -14,7 +14,7 @@ export default function RootClientLayout({ children }: { children: React.ReactNo
   if (typeof window !== "undefined" && window.location.pathname.startsWith("/gigante")) {
     return <>{children}</>;
   }
-  if (typeof window !== "undefined" && window.location.pathname.startsWith("/turismo/monteverdetour")) {
+  if (typeof window !== "undefined" && window.location.pathname.startsWith("/turismo/mundoverdetour")) {
     return <>{children}</>;
   } 
   if (typeof window !== "undefined" && window.location.pathname.startsWith("/autoeletrico/danisound")) {
