@@ -66,69 +66,72 @@ export default function AdvogadoMarcosPage() {
       </section>
 
       {/* ÁREAS DE ATUAÇÃO */}
-      <section className="bg-[#111522] py-16">
-        <div className="max-w-5xl mx-auto px-6">
-          <h3 className="text-3xl font-bold text-center mb-10">
-            Áreas de Atuação
-          </h3>
+<section className="bg-[#111522] py-16">
+  <div className="max-w-5xl mx-auto px-6">
+    <h3 className="text-3xl font-bold text-center mb-10">
+      Áreas de Atuação
+    </h3>
 
-          <div className="grid md:grid-cols-2 gap-10 text-gray-300">
+    <div className="grid md:grid-cols-2 gap-10 text-gray-300">
 
-            <div>
-              <h4 className="text-xl font-semibold text-white">📌 Direito do Consumidor</h4>
-              <p className="mt-2">
-                Cobranças indevidas, golpes, compras online, reembolsos e cancelamentos.
-              </p>
-            </div>
+      {/* PRIMEIRA ÁREA — DIREITO PENAL */}
+      <div className="md:col-span-2 bg-[#0B0F19] p-6 rounded-lg border border-gray-700">
+        <h4 className="text-2xl font-semibold text-red-400">
+          ⚖️ Direito Penal / Advogado Criminalista
+        </h4>
 
-            <div>
-              <h4 className="text-xl font-semibold text-white">📌 Direito de Família</h4>
-              <p className="mt-2">
-                Divórcio, pensão, guarda, visitas e dissolução de união estável.
-              </p>
-            </div>
+        <p className="mt-3 text-gray-300">
+          Atuação técnica, firme e estratégica na defesa dos direitos fundamentais.
+          Sigilo absoluto, análise profunda e presença em todas as fases do processo penal.
+        </p>
 
-            <div>
-              <h4 className="text-xl font-semibold text-white">📌 Direito Civil</h4>
-              <p className="mt-2">
-                Contratos, inventário, usucapião, dívidas e indenizações.
-              </p>
-            </div>
+        <ul className="mt-3 space-y-1 text-gray-400 text-sm md:text-base">
+          <li>• Defesa em inquérito policial</li>
+          <li>• Prisão em flagrante e audiências de custódia</li>
+          <li>• Habeas Corpus</li>
+          <li>• Crimes patrimoniais</li>
+          <li>• Violência doméstica (Lei Maria da Penha)</li>
+          <li>• Crimes de trânsito</li>
+          <li>• Medidas cautelares e recursos</li>
+          <li>• Acompanhamento de investigações</li>
+          <li>• Revisões criminais</li>
+        </ul>
+      </div>
 
-            <div>
-              <h4 className="text-xl font-semibold text-white">📌 Direito Trabalhista</h4>
-              <p className="mt-2">
-                Rescisão, verbas, horas extras e assédio moral.
-              </p>
-            </div>
+      {/* DEMAIS ÁREAS */}
 
-            {/* NOVA ÁREA – DIREITO PENAL */}
-            <div className="md:col-span-2 bg-[#0B0F19] p-6 rounded-lg border border-gray-700">
-              <h4 className="text-2xl font-semibold text-red-400">
-                ⚖️ Direito Penal / Advogado Criminalista
-              </h4>
+      <div>
+        <h4 className="text-xl font-semibold text-white">📌 Direito do Consumidor</h4>
+        <p className="mt-2">
+          Cobranças indevidas, golpes, compras online, reembolsos e cancelamentos.
+        </p>
+      </div>
 
-              <p className="mt-3 text-gray-300">
-                Atuação técnica, firme e estratégica na defesa dos direitos fundamentais.
-                Sigilo absoluto, análise profunda e presença em todas as fases do processo penal.
-              </p>
+      <div>
+        <h4 className="text-xl font-semibold text-white">📌 Direito de Família</h4>
+        <p className="mt-2">
+          Divórcio, pensão, guarda, visitas e dissolução de união estável.
+        </p>
+      </div>
 
-              <ul className="mt-3 space-y-1 text-gray-400 text-sm md:text-base">
-                <li>• Defesa em inquérito policial</li>
-                <li>• Prisão em flagrante e audiências de custódia</li>
-                <li>• Habeas Corpus</li>
-                <li>• Crimes patrimoniais</li>
-                <li>• Violência doméstica (Lei Maria da Penha)</li>
-                <li>• Crimes de trânsito</li>
-                <li>• Medidas cautelares e recursos</li>
-                <li>• Acompanhamento de investigações</li>
-                <li>• Revisões criminais</li>
-              </ul>
-            </div>
+      <div>
+        <h4 className="text-xl font-semibold text-white">📌 Direito Civil</h4>
+        <p className="mt-2">
+          Contratos, inventário, usucapião, dívidas e indenizações.
+        </p>
+      </div>
 
-          </div>
-        </div>
-      </section>
+      <div>
+        <h4 className="text-xl font-semibold text-white">📌 Direito Trabalhista</h4>
+        <p className="mt-2">
+          Rescisão, verbas, horas extras e assédio moral.
+        </p>
+      </div>
+
+    </div>
+  </div>
+</section>
+
 
       {/* SEÇÃO NO ESCRITÓRIO */}
       <section className="bg-[#0D121F] py-20">
