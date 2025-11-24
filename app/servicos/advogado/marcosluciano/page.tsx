@@ -27,7 +27,7 @@ export default function AdvogadoMarcosPage() {
 
           {/* ESPECIALIDADES ATUALIZADAS */}
           <h2 className="text-xl text-gray-300 mb-6">
-            Advogado Especialista em Penal (Criminalista) Direito Civil, Consumidor e Família
+            Advogado Especialista em Direito Penal (Criminalista) Direito Civil, Consumidor e Família
           </h2>
 
           <p className="text-gray-400 leading-relaxed mb-6">
