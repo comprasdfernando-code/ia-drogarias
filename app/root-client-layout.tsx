@@ -14,7 +14,13 @@ export default function RootClientLayout({ children }: { children: React.ReactNo
   if (typeof window !== "undefined" && window.location.pathname.startsWith("/gigante")) {
     return <>{children}</>;
   }
-if (typeof window !== "undefined" && window.location.pathname.startsWith("/servicos/advogado/marcosluciano")) {
+  if (typeof window !== "undefined" && window.location.pathname.startsWith("/turismo/monteverdetour")) {
+    return <>{children}</>;
+  } 
+  if (typeof window !== "undefined" && window.location.pathname.startsWith("/autoeletrico/danisound")) {
+    return <>{children}</>;
+  } 
+  if (typeof window !== "undefined" && window.location.pathname.startsWith("/servicos/advogado/marcosluciano")) {
     return <>{children}</>;
   }
   // 🧩 Atualiza contador do carrinho

@@ -6,6 +6,8 @@ import TransporteDestaque from "./components/TransporteDestaque";
 import Galeria from "./components/Galeria";
 import Contato from "./components/Contato";
 import BotaoTransporte from "./components/BotaoTransporte";
+import { useState } from "react";
+
 
 export default function MundoVerdeTourPage() {
   return (
