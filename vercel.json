@@ -1,0 +1,9 @@
+{
+  "redirects": [
+    {
+      "source": "/",
+      "destination": "/servicos/advogado/marcosluciano",
+      "permanent": false
+    }
+  ]
+}
