@@ -24,8 +24,10 @@ export default function AdvogadoMarcosPage() {
         {/* TEXTO DO HERO */}
         <div className="w-full md:w-1/2">
           <h1 className="text-4xl font-bold mb-3">Dr. Marcos Luciano</h1>
+
+          {/* ESPECIALIDADES ATUALIZADAS */}
           <h2 className="text-xl text-gray-300 mb-6">
-            Advogado Especialista em Direito Civil, Consumidor e Família
+            Advogado Especialista em Direito Civil, Consumidor, Família e Penal (Criminalista)
           </h2>
 
           <p className="text-gray-400 leading-relaxed mb-6">
@@ -71,25 +73,59 @@ export default function AdvogadoMarcosPage() {
           </h3>
 
           <div className="grid md:grid-cols-2 gap-10 text-gray-300">
+
             <div>
               <h4 className="text-xl font-semibold text-white">📌 Direito do Consumidor</h4>
-              <p className="mt-2">Cobranças indevidas, golpes, compras online, reembolsos e cancelamentos.</p>
+              <p className="mt-2">
+                Cobranças indevidas, golpes, compras online, reembolsos e cancelamentos.
+              </p>
             </div>
 
             <div>
               <h4 className="text-xl font-semibold text-white">📌 Direito de Família</h4>
-              <p className="mt-2">Divórcio, pensão, guarda, visitas e dissolução de união estável.</p>
+              <p className="mt-2">
+                Divórcio, pensão, guarda, visitas e dissolução de união estável.
+              </p>
             </div>
 
             <div>
               <h4 className="text-xl font-semibold text-white">📌 Direito Civil</h4>
-              <p className="mt-2">Contratos, inventário, usucapião, dívidas e indenizações.</p>
+              <p className="mt-2">
+                Contratos, inventário, usucapião, dívidas e indenizações.
+              </p>
             </div>
 
             <div>
               <h4 className="text-xl font-semibold text-white">📌 Direito Trabalhista</h4>
-              <p className="mt-2">Rescisão, verbas, horas extras e assédio moral.</p>
+              <p className="mt-2">
+                Rescisão, verbas, horas extras e assédio moral.
+              </p>
             </div>
+
+            {/* NOVA ÁREA – DIREITO PENAL */}
+            <div className="md:col-span-2 bg-[#0B0F19] p-6 rounded-lg border border-gray-700">
+              <h4 className="text-2xl font-semibold text-red-400">
+                ⚖️ Direito Penal / Advogado Criminalista
+              </h4>
+
+              <p className="mt-3 text-gray-300">
+                Atuação técnica, firme e estratégica na defesa dos direitos fundamentais.
+                Sigilo absoluto, análise profunda e presença em todas as fases do processo penal.
+              </p>
+
+              <ul className="mt-3 space-y-1 text-gray-400 text-sm md:text-base">
+                <li>• Defesa em inquérito policial</li>
+                <li>• Prisão em flagrante e audiências de custódia</li>
+                <li>• Habeas Corpus</li>
+                <li>• Crimes patrimoniais</li>
+                <li>• Violência doméstica (Lei Maria da Penha)</li>
+                <li>• Crimes de trânsito</li>
+                <li>• Medidas cautelares e recursos</li>
+                <li>• Acompanhamento de investigações</li>
+                <li>• Revisões criminais</li>
+              </ul>
+            </div>
+
           </div>
         </div>
       </section>
@@ -109,13 +145,14 @@ export default function AdvogadoMarcosPage() {
           <div>
             <h3 className="text-3xl font-bold mb-4">Excelência no Atendimento</h3>
             <p className="text-gray-300 leading-relaxed">
-              Cada caso é tratado com máxima atenção e cuidado. A atuação combina
-              técnica jurídica, experiência prática e sensibilidade humana.
+              Cada caso é tratado com máxima atenção, estratégia e dedicação.
+              A combinação de técnica jurídica e sensibilidade humana garante um
+              atendimento completo e eficiente.
             </p>
 
             <p className="text-gray-300 leading-relaxed mt-4">
-              O Dr. Marcos oferece acompanhamento completo, clareza em todas as
-              etapas e foco total no resultado para o cliente.
+              O foco é sempre o melhor resultado possível para o cliente, com
+              total transparência e acompanhamento contínuo.
             </p>
           </div>
 
