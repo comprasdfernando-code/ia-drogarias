@@ -12,13 +12,13 @@ const projects = [
     title: "Gigante dos Assados",
     desc: "Sistema de PDV, vendas e operação completa.",
     link: "/gigante",
-    image: "/projetos/gigante.png",
+    image: "/gigante.png",
   },
   {
     title: "Sorveteria Oggi",
     desc: "Site + sistema de pedidos (em construção).",
     link: "/sorveteria/oggi",
-    image: "/projetos/oggi.png",
+    image: "/oggi.png",
   },
  
 
@@ -27,7 +27,7 @@ const projects = [
     title: "Mundo Verde Tour",
     desc: "Site + painel admin para agência de viagens.",
     link: "/turismo/mundoverdetour",
-    image: "/projetos/mundoverde.png",
+    image: "/mundoverde.png",
   },
   
 
@@ -36,7 +36,7 @@ const projects = [
     title: "Dani Sound",
     desc: "Site para auto elétrica e som automotivo.",
     link: "/danisound",
-    image: "/projetos/danisound.png",
+    image: "/danisound.png",
   },
 
  // ⚖️ Jurídico
@@ -44,7 +44,7 @@ const projects = [
     title: "Dr Marcos Luciano",
     desc: "Site institucional para advogado criminalista.",
     link: "/servicos/advogado/marcosluciano",
-    image: "/projetos/marcosluciano.png",
+    image: "/marcosluciano.png",
   },
  
    
