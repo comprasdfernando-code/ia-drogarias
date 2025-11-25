@@ -1,12 +1,12 @@
-export const metadata = {
-  title: "Tech Fernando Pereira",
-  description: "Soluções digitais inteligentes para o seu negócio.",
-};
+import Navbar from "./components/Navbar";
 
-export default function Layout({ children }: { children: React.ReactNode }) {
+export default function Layout({ children }) {
   return (
     <div className="min-h-screen bg-[#05070A] text-white">
-      {children}
+      <Navbar />
+      <div className="pt-24"> {/* Dá espaço porque a navbar é fixa */}
+        {children}
+      </div>
     </div>
   );
 }

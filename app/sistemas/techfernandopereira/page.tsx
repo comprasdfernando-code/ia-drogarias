@@ -5,6 +5,7 @@ import Portfolio from "./components/Portfolio";
 import Processo from "./components/Processo";
 import Depoimentos from "./components/Depoimentos";
 import Contato from "./components/Contato";
+import Footer from "./components/Footer";
 
 export default function Page() {
   return (
@@ -16,6 +17,7 @@ export default function Page() {
       <Processo />
       <Depoimentos />
       <Contato />
+      <Footer />  {/* AQUI */}
     </main>
   );
 }
