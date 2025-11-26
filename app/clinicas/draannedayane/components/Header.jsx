@@ -14,7 +14,7 @@ export default function Header() {
         {/* LOGO */}
         <div className="anne-logo">
           <Image
-            src="/clinicas/draannedayane/logo.png"
+            src="/clinicas/logo.png"
             width={60}
             height={60}
             alt="Logo Dra Anne Dayane"
