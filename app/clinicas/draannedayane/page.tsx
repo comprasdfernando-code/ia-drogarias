@@ -25,7 +25,7 @@ export default function DraAnneDayane() {
 
         <div className="anne-hero-img">
           <Image
-            src="/clinicas/draannedayane/hero.jpg"
+            src="/clinicas/hero.jpg"
             width={450}
             height={550}
             alt="Dra Anne Dayane"
@@ -38,7 +38,7 @@ export default function DraAnneDayane() {
       <section className="anne-sobre">
         <div className="anne-sobre-img">
           <Image
-            src="/clinicas/draannedayane/sobre.jpg"
+            src="/clinicas/sobre.jpg"
             width={420}
             height={500}
             alt="Dra Anne Dayane"
