@@ -116,3 +116,485 @@ body {
   background-size: cover;
   color: white !important;
 }
+/* ===== HERO ===== */
+
+.anne-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 80px 40px;
+  background: linear-gradient(#f7ece9, #ead8d1);
+}
+
+.anne-hero-content {
+  max-width: 50%;
+}
+
+.anne-hero h1 {
+  font-size: 46px;
+  font-weight: 700;
+  color: #7a5f4d;
+  line-height: 1.2;
+}
+
+.anne-hero p {
+  margin-top: 20px;
+  font-size: 20px;
+  color: #a0867a;
+  line-height: 1.6;
+}
+
+.anne-hero-btn {
+  margin-top: 30px;
+  display: inline-block;
+  background: linear-gradient(145deg, #c97a89, #e8d7c8);
+  color: white;
+  padding: 14px 34px;
+  border-radius: 40px;
+  border: 2px solid #d6b676;
+  font-weight: 600;
+  transition: 0.2s ease;
+}
+
+.anne-hero-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 14px rgba(0,0,0,0.25);
+}
+
+.anne-hero-img img {
+  border-radius: 26px;
+  border: 3px solid #d6b676;
+}
+/* ===== TRATAMENTOS ===== */
+
+.anne-tratamentos {
+  padding: 80px 40px;
+  background: #f3ebe8;
+  text-align: center;
+}
+
+.anne-tratamentos h2 {
+  font-size: 36px;
+  font-weight: 700;
+  color: #7a5f4d;
+  margin-bottom: 50px;
+}
+
+.anne-tratamentos-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 28px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.anne-card {
+  background: #ffffff;
+  padding: 34px 24px;
+  border-radius: 22px;
+  border: 2px solid #d6b676;
+  box-shadow: 0 6px 16px rgba(0,0,0,0.15);
+  transition: all 0.25s ease;
+  text-align: center;
+}
+
+.anne-card:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 12px 24px rgba(0,0,0,0.25);
+  border-color: #c97a89;
+}
+
+.anne-card span {
+  font-size: 42px;
+  display: block;
+  margin-bottom: 18px;
+}
+
+.anne-card h3 {
+  font-size: 22px;
+  font-weight: 700;
+  color: #7a5f4d;
+  margin-bottom: 12px;
+}
+
+.anne-card p {
+  font-size: 16px;
+  color: #8e7a74;
+  line-height: 1.6;
+}
+
+/* Responsivo */
+@media (max-width: 900px) {
+  .anne-tratamentos-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 600px) {
+  .anne-tratamentos-grid {
+    grid-template-columns: 1fr;
+  }
+}
+/* ===== TECNOLOGIA DIGITAL ===== */
+
+.anne-tecnologia {
+  padding: 90px 40px;
+  background: #fff9f8;
+  text-align: center;
+}
+
+.anne-tecnologia h2 {
+  font-size: 36px;
+  font-weight: 700;
+  color: #7a5f4d;
+}
+
+.anne-tec-sub {
+  font-size: 18px;
+  color: #a0867a;
+  margin-top: 10px;
+  margin-bottom: 50px;
+}
+
+.anne-tec-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 26px;
+  max-width: 1200px;
+  margin: 0 auto 60px auto;
+}
+
+.anne-tec-card {
+  background: #ffffff;
+  padding: 26px;
+  border-radius: 22px;
+  border: 2px solid #d6b676;
+  box-shadow: 0 6px 16px rgba(0,0,0,0.15);
+  transition: all .25s;
+}
+
+.anne-tec-card:hover {
+  transform: translateY(-6px);
+  border-color: #c97a89;
+  box-shadow: 0 16px 30px rgba(0,0,0,0.25);
+}
+
+.anne-tec-card span {
+  font-size: 42px;
+  display: block;
+  margin-bottom: 12px;
+}
+
+.anne-tec-card h3 {
+  font-size: 22px;
+  font-weight: 700;
+  color: #7a5f4d;
+  margin-bottom: 10px;
+}
+
+.anne-tec-card p {
+  font-size: 16px;
+  color: #8e7a74;
+  line-height: 1.6;
+}
+
+.anne-tec-foto img {
+  margin-top: 40px;
+  border-radius: 20px;
+  border: 3px solid #d6b676;
+}
+
+/* Responsivo */
+@media (max-width: 900px) {
+  .anne-tec-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 600px) {
+  .anne-tec-grid {
+    grid-template-columns: 1fr;
+  }
+}
+/* ===== ANTES E DEPOIS ===== */
+
+.anne-antesdepois {
+  padding: 90px 40px;
+  background: #f7ece9;
+  text-align: center;
+}
+
+.anne-antesdepois h2 {
+  font-size: 36px;
+  font-weight: 700;
+  color: #7a5f4d;
+}
+
+.anne-ad-sub {
+  font-size: 18px;
+  color: #a0867a;
+  margin-top: 10px;
+  margin-bottom: 50px;
+}
+
+/* SLIDER HORIZONTAL */
+.anne-slider {
+  display: flex;
+  gap: 34px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  padding-bottom: 20px;
+}
+
+.anne-slider::-webkit-scrollbar {
+  height: 10px;
+}
+
+.anne-slider::-webkit-scrollbar-thumb {
+  background: #c97a89;
+  border-radius: 6px;
+}
+
+.anne-ad-card {
+  min-width: 850px;
+  display: flex;
+  justify-content: center;
+  gap: 20px;
+  scroll-snap-align: start;
+}
+
+/* IMAGENS */
+.anne-ad-img {
+  position: relative;
+}
+
+.anne-ad-img img {
+  border-radius: 20px;
+  border: 3px solid #d6b676;
+}
+
+.anne-tag {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  background: #c97a89;
+  color: white;
+  padding: 6px 14px;
+  border-radius: 16px;
+  font-size: 14px;
+  font-weight: 600;
+  border: 2px solid #d6b676;
+}
+
+.anne-tag.antes {
+  background: #a0867a;
+}
+
+.anne-tag.depois {
+  background: #c97a89;
+}
+
+/* RESPONSIVO */
+@media (max-width: 900px) {
+  .anne-ad-card {
+    min-width: 600px;
+    flex-direction: column;
+  }
+}
+
+@media (max-width: 600px) {
+  .anne-ad-card {
+    min-width: 350px;
+  }
+}
+/* ===== DEPOIMENTOS ===== */
+
+.anne-depoimentos {
+  padding: 90px 40px;
+  background: #ffffff;
+  text-align: center;
+}
+
+.anne-depoimentos h2 {
+  font-size: 36px;
+  font-weight: 700;
+  color: #7a5f4d;
+}
+
+.anne-dep-sub {
+  font-size: 18px;
+  color: #a0867a;
+  margin-top: 10px;
+  margin-bottom: 50px;
+}
+
+/* Slider */
+.anne-dep-slider {
+  display: flex;
+  gap: 28px;
+  overflow-x: auto;
+  scroll-snap-type: x mandatory;
+  padding-bottom: 10px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.anne-dep-slider::-webkit-scrollbar {
+  height: 10px;
+}
+
+.anne-dep-slider::-webkit-scrollbar-thumb {
+  background: #c97a89;
+  border-radius: 6px;
+}
+
+/* Card */
+.anne-dep-card {
+  min-width: 350px;
+  padding: 32px;
+  background: #faf3f2;
+  border-radius: 22px;
+  border: 2px solid #d6b676;
+  box-shadow: 0 6px 16px rgba(0,0,0,0.12);
+  scroll-snap-align: center;
+  transition: all .25s ease;
+}
+
+.anne-dep-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 12px 25px rgba(0,0,0,0.25);
+  border-color: #c97a89;
+}
+
+.anne-dep-text {
+  font-size: 17px;
+  line-height: 1.7;
+  color: #8e7a74;
+  margin-bottom: 16px;
+}
+
+.anne-dep-author {
+  font-size: 16px;
+  color: #c97a89;
+  font-weight: 600;
+}
+
+/* Responsivo */
+@media (max-width: 600px) {
+  .anne-dep-card {
+    min-width: 280px;
+  }
+}
+/* ===== DIFERENCIAIS ===== */
+
+.anne-diferenciais {
+  padding: 90px 40px;
+  background: #faf8f7;
+  text-align: center;
+}
+
+.anne-diferenciais h2 {
+  font-size: 36px;
+  font-weight: 700;
+  color: #7a5f4d;
+  margin-bottom: 50px;
+}
+
+.anne-dif-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 34px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.anne-dif-card {
+  background: #ffffff;
+  padding: 32px;
+  border-radius: 22px;
+  border: 2px solid #d6b676;
+  box-shadow: 0 6px 16px rgba(0,0,0,0.12);
+  text-align: center;
+  transition: all .25s ease;
+}
+
+.anne-dif-card:hover {
+  transform: translateY(-6px);
+  border-color: #c97a89;
+  box-shadow: 0 15px 28px rgba(0,0,0,0.25);
+}
+
+.anne-dif-card span {
+  font-size: 44px;
+  display: block;
+  margin-bottom: 18px;
+}
+
+.anne-dif-card h3 {
+  font-size: 22px;
+  font-weight: 700;
+  color: #7a5f4d;
+  margin-bottom: 10px;
+}
+
+.anne-dif-card p {
+  font-size: 16px;
+  color: #8e7a74;
+  line-height: 1.6;
+}
+
+/* Responsivo */
+@media (max-width: 900px) {
+  .anne-dif-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 600px) {
+  .anne-dif-grid {
+    grid-template-columns: 1fr;
+  }
+}
+/* ===== CTA FINAL ===== */
+
+.anne-cta-final {
+  padding: 110px 40px;
+  background: linear-gradient(#f4e4df, #ead8d1);
+  text-align: center;
+  border-top: 4px solid #d6b676;
+  border-bottom: 4px solid #d6b676;
+}
+
+.anne-cta-final h2 {
+  font-size: 38px;
+  color: #7a5f4d;
+  font-weight: 700;
+  margin-bottom: 20px;
+}
+
+.anne-cta-final p {
+  font-size: 20px;
+  color: #8e7a74;
+  max-width: 700px;
+  margin: 0 auto 40px auto;
+  line-height: 1.7;
+}
+
+/* BOTÃO */
+.anne-cta-btn {
+  display: inline-block;
+  background: linear-gradient(145deg, #c97a89, #e8d7c8);
+  padding: 16px 40px;
+  border-radius: 40px;
+  border: 2px solid #d6b676;
+  color: #ffffff;
+  font-size: 20px;
+  font-weight: 600;
+  transition: all .25s ease;
+}
+
+.anne-cta-btn:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 10px 22px rgba(0,0,0,0.25);
+  background: linear-gradient(145deg, #d08a97, #f1dfd5);
+}

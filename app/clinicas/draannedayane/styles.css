@@ -1,0 +1,472 @@
+/* RESET */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* BODY */
+body {
+  background: #faf8f7;
+  font-family: "Poppins", sans-serif;
+  color: #4a3b36;
+}
+
+/* ============================
+      HEADER PREMIUM
+============================ */
+
+.anne-header {
+  width: 100%;
+  background: #faf8f7;
+  border-bottom: 2px solid #d6b676;
+  padding: 14px 0;
+  position: sticky;
+  top: 0;
+  z-index: 999;
+}
+
+.anne-header-container {
+  max-width: 1400px;
+  margin: 0 auto;
+  padding: 0 40px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.anne-logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.anne-logo-text {
+  font-size: 22px;
+  font-weight: 700;
+  color: #7a5f4d;
+}
+
+.anne-menu {
+  display: flex;
+  align-items: center;
+  gap: 34px;
+}
+
+.anne-menu a {
+  font-size: 17px;
+  font-weight: 500;
+  color: #8e7a74;
+  text-decoration: none;
+  transition: 0.2s ease;
+}
+
+.anne-menu a:hover {
+  color: #c97a89;
+  transform: translateY(-2px);
+}
+
+.anne-header-right {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
+.anne-header-agendar {
+  padding: 10px 20px;
+  background: linear-gradient(145deg, #c97a89, #e8d7c8);
+  border: 2px solid #d6b676;
+  border-radius: 30px;
+  color: #fff;
+  font-weight: 600;
+  font-size: 16px;
+  text-decoration: none;
+  transition: 0.25s ease;
+}
+
+.anne-header-agendar:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 8px 16px rgba(0,0,0,0.2);
+}
+
+/* MOBILE HEADER */
+@media (max-width: 900px) {
+  .anne-menu {
+    display: none;
+  }
+}
+
+
+/* ============================
+           HERO
+============================ */
+
+.anne-hero {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 80px 40px;
+  background: linear-gradient(#f7ece9, #ead8d1);
+}
+
+.anne-hero-content {
+  max-width: 50%;
+}
+
+.anne-hero h1 {
+  font-size: 46px;
+  font-weight: 700;
+  color: #7a5f4d;
+  line-height: 1.2;
+}
+
+.anne-hero p {
+  margin-top: 20px;
+  font-size: 20px;
+  color: #a0867a;
+}
+
+.anne-hero-btn {
+  margin-top: 30px;
+  display: inline-block;
+  background: linear-gradient(145deg, #c97a89, #e8d7c8);
+  padding: 14px 34px;
+  border-radius: 40px;
+  border: 2px solid #d6b676;
+  color: #fff;
+  font-weight: 600;
+  transition: 0.2s ease;
+}
+
+.anne-hero-btn:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 6px 14px rgba(0,0,0,0.25);
+}
+
+.anne-hero-img img {
+  border-radius: 26px;
+  border: 3px solid #d6b676;
+}
+
+/* ============================
+           SOBRE
+============================ */
+
+.anne-sobre {
+  display: flex;
+  align-items: center;
+  gap: 40px;
+  padding: 80px 40px;
+  background: #faf8f7;
+}
+
+.anne-sobre-img img {
+  border-radius: 26px;
+  border: 3px solid #d6b676;
+}
+
+.anne-sobre-text {
+  max-width: 600px;
+}
+
+.anne-sobre h2 {
+  font-size: 36px;
+  font-weight: 700;
+  color: #7a5f4d;
+  margin-bottom: 20px;
+}
+
+.anne-sobre p {
+  font-size: 18px;
+  line-height: 1.7;
+  margin-bottom: 16px;
+  color: #8e7a74;
+}
+
+.anne-sobre-destaque {
+  font-style: italic;
+  font-size: 20px;
+  color: #c97a89;
+  font-weight: 600;
+}
+
+
+/* ============================
+         TRATAMENTOS
+============================ */
+
+.anne-tratamentos {
+  padding: 80px 40px;
+  background: #f3ebe8;
+  text-align: center;
+}
+
+.anne-tratamentos h2 {
+  font-size: 36px;
+  color: #7a5f4d;
+  font-weight: 700;
+  margin-bottom: 50px;
+}
+
+.anne-tratamentos-grid {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 28px;
+}
+
+.anne-card {
+  background: #ffffff;
+  padding: 34px;
+  border-radius: 22px;
+  border: 2px solid #d6b676;
+  box-shadow: 0 6px 16px rgba(0,0,0,0.15);
+  transition: .25s ease;
+}
+
+.anne-card:hover {
+  transform: translateY(-6px);
+  border-color: #c97a89;
+}
+
+.anne-card span {
+  font-size: 42px;
+}
+
+.anne-card h3 {
+  font-size: 22px;
+  font-weight: 700;
+  color: #7a5f4d;
+  margin-top: 12px;
+}
+
+.anne-card p {
+  font-size: 16px;
+  color: #8e7a74;
+}
+
+
+/* ============================
+       TECNOLOGIA DIGITAL
+============================ */
+
+.anne-tecnologia {
+  padding: 90px 40px;
+  background: #fff9f8;
+  text-align: center;
+}
+
+.anne-tec-sub {
+  font-size: 18px;
+  color: #a0867a;
+  margin-bottom: 50px;
+}
+
+.anne-tec-grid {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 26px;
+}
+
+.anne-tec-card {
+  background: #ffffff;
+  padding: 26px;
+  border-radius: 22px;
+  border: 2px solid #d6b676;
+  transition: .25s ease;
+}
+
+.anne-tec-card:hover {
+  transform: translateY(-6px);
+  border-color: #c97a89;
+}
+
+.anne-tec-foto img {
+  margin-top: 40px;
+  border-radius: 20px;
+  border: 3px solid #d6b676;
+}
+
+
+/* ============================
+        ANTES E DEPOIS
+============================ */
+
+.anne-antesdepois {
+  padding: 90px 40px;
+  background: #f7ece9;
+  text-align: center;
+}
+
+.anne-slider {
+  display: flex;
+  overflow-x: auto;
+  gap: 34px;
+  padding-bottom: 20px;
+}
+
+.anne-ad-card {
+  min-width: 850px;
+  display: flex;
+  gap: 20px;
+}
+
+.anne-ad-img img {
+  border-radius: 20px;
+  border: 3px solid #d6b676;
+}
+
+.anne-tag {
+  position: absolute;
+  bottom: 10px;
+  right: 10px;
+  background: #c97a89;
+  color: white;
+  padding: 6px 14px;
+  border-radius: 16px;
+  border: 2px solid #d6b676;
+}
+
+
+/* ============================
+          DEPOIMENTOS
+============================ */
+
+.anne-depoimentos {
+  padding: 90px 40px;
+  background: #ffffff;
+  text-align: center;
+}
+
+.anne-dep-slider {
+  display: flex;
+  gap: 28px;
+  overflow-x: auto;
+}
+
+.anne-dep-card {
+  min-width: 350px;
+  padding: 32px;
+  background: #faf3f2;
+  border-radius: 22px;
+  border: 2px solid #d6b676;
+  transition: .25s ease;
+}
+
+.anne-dep-card:hover {
+  transform: translateY(-6px);
+  border-color: #c97a89;
+}
+
+.anne-dep-author {
+  font-size: 16px;
+  color: #c97a89;
+  font-weight: 600;
+}
+
+
+/* ============================
+         DIFERENCIAIS
+============================ */
+
+.anne-diferenciais {
+  padding: 90px 40px;
+  background: #faf8f7;
+  text-align: center;
+}
+
+.anne-dif-grid {
+  max-width: 1200px;
+  margin: 0 auto;
+  display: grid;
+  gap: 34px;
+  grid-template-columns: repeat(3, 1fr);
+}
+
+.anne-dif-card {
+  background: #ffffff;
+  padding: 32px;
+  border-radius: 22px;
+  border: 2px solid #d6b676;
+  transition: .25s ease;
+}
+
+
+/* ============================
+           CTA FINAL
+============================ */
+
+.anne-cta-final {
+  padding: 110px 40px;
+  background: linear-gradient(#f4e4df, #ead8d1);
+  text-align: center;
+  border-top: 4px solid #d6b676;
+  border-bottom: 4px solid #d6b676;
+}
+
+.anne-cta-btn {
+  display: inline-block;
+  padding: 16px 40px;
+  background: linear-gradient(145deg, #c97a89, #e8d7c8);
+  border: 2px solid #d6b676;
+  border-radius: 40px;
+  color: #fff;
+  font-size: 20px;
+  font-weight: 600;
+  transition: .25s ease;
+}
+
+.anne-cta-btn:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 10px 22px rgba(0,0,0,0.25);
+}
+
+
+/* ============================
+      BOTÃO FLUTUANTE
+============================ */
+
+.botao-dente-texto {
+  position: fixed;
+  bottom: 22px;
+  right: 22px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  background: linear-gradient(145deg, #c97a89, #e8d7c8);
+  padding: 10px 20px 10px 14px;
+  border-radius: 40px;
+  border: 2px solid #d6b676;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.25);
+  text-decoration: none;
+  z-index: 9999;
+  transition: 0.25s ease;
+}
+
+.botao-dente-texto:hover {
+  transform: translateY(-4px);
+}
+
+/* ============================
+           RODAPÉ
+============================ */
+
+.footer {
+  background: #c97a89;
+  padding: 40px 20px;
+  display: flex;
+  justify-content: center;
+  border-top: 3px solid #d6b676;
+}
+
+.link-insta {
+  display: flex;
+  align-items: center;
+  color: #fff;
+  gap: 10px;
+  font-size: 18px;
+  font-weight: 600;
+}
