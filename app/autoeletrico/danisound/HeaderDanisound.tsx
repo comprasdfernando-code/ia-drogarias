@@ -39,7 +39,7 @@ export default function HeaderDanisound() {
 
   {/* INSTAGRAM */}
   <a
-    href="https://www.instagram.com/autoeletricodanilsound"
+    href="https://www.instagram.com/dani_sound_01/"
     target="_blank"
     className="flex items-center gap-2 bg-gradient-to-r from-pink-600 to-purple-600 px-4 py-2 rounded-full shadow-lg shadow-purple-800/40 hover:scale-105 transition"
   >
