@@ -96,7 +96,6 @@ body {
   }
 }
 
-
 /* ============================
            HERO
 ============================ */
@@ -190,7 +189,6 @@ body {
   font-weight: 600;
 }
 
-
 /* ============================
          TRATAMENTOS
 ============================ */
@@ -246,7 +244,6 @@ body {
   color: #8e7a74;
 }
 
-
 /* ============================
        TECNOLOGIA DIGITAL
 ============================ */
@@ -290,7 +287,6 @@ body {
   border: 3px solid #d6b676;
 }
 
-
 /* ============================
         ANTES E DEPOIS
 ============================ */
@@ -330,7 +326,6 @@ body {
   border: 2px solid #d6b676;
 }
 
-
 /* ============================
           DEPOIMENTOS
 ============================ */
@@ -367,7 +362,6 @@ body {
   font-weight: 600;
 }
 
-
 /* ============================
          DIFERENCIAIS
 ============================ */
@@ -393,7 +387,6 @@ body {
   border: 2px solid #d6b676;
   transition: .25s ease;
 }
-
 
 /* ============================
            CTA FINAL
@@ -423,7 +416,6 @@ body {
   transform: translateY(-4px);
   box-shadow: 0 10px 22px rgba(0,0,0,0.25);
 }
-
 
 /* ============================
       BOTÃO FLUTUANTE
@@ -469,4 +461,318 @@ body {
   gap: 10px;
   font-size: 18px;
   font-weight: 600;
+}
+
+/* ============================
+     RESPONSIVIDADE MOBILE
+============================ */
+
+@media (max-width: 900px) {
+
+  /* HERO */
+  .anne-hero {
+    flex-direction: column;
+    text-align: center;
+    padding: 40px 20px;
+  }
+
+  .anne-hero-content {
+    max-width: 100%;
+  }
+
+  .anne-hero-img img {
+    width: 100%;
+    height: auto;
+  }
+
+  /* SOBRE */
+  .anne-sobre {
+    flex-direction: column;
+    padding: 40px 20px;
+  }
+
+  .anne-sobre-img img {
+    width: 100%;
+    height: auto;
+  }
+
+  /* TRATAMENTOS */
+  .anne-tratamentos-grid {
+    grid-template-columns: 1fr;
+    padding: 0 10px;
+  }
+
+  /* TECNOLOGIA */
+  .anne-tec-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .anne-tec-foto img {
+    width: 100%;
+    height: auto;
+  }
+
+  /* ANTES E DEPOIS */
+  .anne-ad-card {
+    min-width: 100% !important;
+    flex-direction: column;
+  }
+
+  .anne-ad-img img {
+    width: 100%;
+    height: auto;
+  }
+
+  /* DEPOIMENTOS */
+  .anne-dep-card {
+    min-width: 100% !important;
+  }
+
+  /* DIFERENCIAIS */
+  .anne-dif-grid {
+    grid-template-columns: 1fr;
+  }
+}
+/* ============================
+   INSTAGRAM NO HEADER
+============================ */
+
+.anne-header-insta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: linear-gradient(145deg, #c97a89, #e8d7c8);
+  padding: 8px 16px;
+  border-radius: 30px;
+  border: 2px solid #d6b676;
+  color: #fff;
+  font-weight: 600;
+  text-decoration: none;
+  font-size: 15px;
+  transition: 0.25s ease;
+}
+
+.anne-header-insta:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 6px 14px rgba(0,0,0,0.25);
+}
+
+.insta-icon {
+  font-size: 18px;
+  opacity: 0.9;
+}
+/* ================================
+    HAMBURGUER BUTTON (MOBILE)
+================================ */
+
+.hamburger-btn {
+  display: none;
+  font-size: 30px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #c97a89;
+  font-weight: bold;
+}
+
+/* Mostrar no mobile */
+@media (max-width: 900px) {
+  .hamburger-btn {
+    display: block;
+  }
+
+  .anne-menu {
+    display: none;
+  }
+
+  .anne-header-insta {
+    display: none;
+  }
+
+  .anne-header-agendar {
+    display: none;
+  }
+}
+
+/* ================================
+        MOBILE MENU DROPDOWN
+================================ */
+
+.mobile-menu {
+  position: fixed;
+  top: 70px;
+  right: 0;
+  width: 70%;
+  height: calc(100vh - 70px);
+  background: #fff5f4;
+  border-left: 3px solid #d6b676;
+  padding: 30px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+  z-index: 999999;
+  animation: menuSlide 0.4s ease forwards;
+}
+
+@keyframes menuSlide {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.mobile-menu a {
+  font-size: 20px;
+  color: #7a5f4d;
+  text-decoration: none;
+  font-weight: 600;
+  padding-bottom: 6px;
+  border-bottom: 2px solid #e4ccc3;
+  transition: 0.25s ease;
+}
+
+.mobile-menu a:hover {
+  color: #c97a89;
+  border-bottom-color: #c97a89;
+}
+
+/* ================================
+     MOBILE MENU GLASS PREMIUM
+================================ */
+
+.mobile-menu {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 78%;
+  height: 100vh;
+  padding: 40px 26px;
+  backdrop-filter: blur(22px);
+  background: rgba(255, 237, 237, 0.35);
+  border-left: 2px solid rgba(214, 182, 118, 0.45);
+  box-shadow: -10px 0 25px rgba(0,0,0,0.15);
+  display: flex;
+  flex-direction: column;
+  gap: 26px;
+  animation: slideInPremium 0.45s ease forwards;
+  z-index: 99999;
+}
+
+/* Animação suave */
+@keyframes slideInPremium {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+/* LINKS PREMIUM */
+.mobile-menu a {
+  font-size: 22px;
+  font-weight: 600;
+  color: #7a5f4d;
+  text-decoration: none;
+  padding-bottom: 6px;
+  border-bottom: 2px solid rgba(201, 122, 137, 0.3);
+  transition: 0.25s ease;
+}
+
+.mobile-menu a:hover {
+  color: #c97a89;
+  border-bottom-color: #c97a89;
+}
+
+/* CHIPS ESPECIAIS */
+.mm-insta {
+  background: linear-gradient(145deg, #c97a89, #e8d7c8);
+  padding: 14px;
+  border-radius: 14px;
+  text-align: center;
+  border: 2px solid #d6b676;
+  color: white !important;
+  font-size: 18px;
+  margin-top: 30px;
+}
+
+.mm-agendar {
+  background: #fff;
+  padding: 14px;
+  border-radius: 14px;
+  text-align: center;
+  border: 2px solid #d6b676;
+  color: #7a5f4d !important;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+/* ================================
+      OVERLAY ESCURECIDO LUXO
+================================ */
+
+.menu-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100vh;
+  background: rgba(0,0,0,0.25);
+  backdrop-filter: blur(4px);
+  z-index: 9999;
+  animation: fadeIn 0.35s ease forwards;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* ================================
+   HAMBURGUER ANIMADO PREMIUM
+================================ */
+
+.hamburger {
+  width: 34px;
+  height: 28px;
+  display: none;
+  flex-direction: column;
+  justify-content: space-between;
+  cursor: pointer;
+  background: none;
+  border: none;
+  padding: 0;
+  z-index: 999999;
+}
+
+.hamburger span {
+  display: block;
+  height: 4px;
+  width: 100%;
+  background: #c97a89;
+  border-radius: 6px;
+  transition: 0.35s ease;
+  box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+}
+
+.hamburger.open span:nth-child(1) {
+  transform: translateY(12px) rotate(45deg);
+}
+
+.hamburger.open span:nth-child(2) {
+  opacity: 0;
+}
+
+.hamburger.open span:nth-child(3) {
+  transform: translateY(-12px) rotate(-45deg);
+}
+
+@media (max-width: 900px) {
+  .hamburger {
+    display: flex;
+  }
 }
