@@ -1,0 +1,8 @@
+/public/clinicas/draannedayane/antesdepois/1a.jpg
+/public/clinicas/draannedayane/antesdepois/1d.jpg
+
+/public/clinicas/draannedayane/antesdepois/2a.jpg
+/public/clinicas/draannedayane/antesdepois/2d.jpg
+
+/public/clinicas/draannedayane/antesdepois/3a.jpg
+/public/clinicas/draannedayane/antesdepois/3d.jpg

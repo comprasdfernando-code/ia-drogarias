@@ -1,0 +1,4 @@
+;/*FB_PKG_DELIM*/
+
+__d("PolarisExplorePeopleRoot.entrypoint",["JSResourceForInteraction"],(function(t,n,r,o,a,i,l){"use strict";var e={getPreloadProps:function(t){return{}},root:r("JSResourceForInteraction")("PolarisExplorePeopleRoot.react").__setRef("PolarisExplorePeopleRoot.entrypoint")};l.default=e}),98);
+__d("PolarisLanguagePreferencesRoot.entrypoint",["JSResourceForInteraction"],(function(t,n,r,o,a,i,l){"use strict";var e={getPreloadProps:function(t){return{queries:{}}},root:r("JSResourceForInteraction")("PolarisLanguagePreferencesRoot.react").__setRef("PolarisLanguagePreferencesRoot.entrypoint")};l.default=e}),98);
