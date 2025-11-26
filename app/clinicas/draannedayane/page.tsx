@@ -193,63 +193,30 @@ export default function DraAnneDayane() {
       </section>
 
 
-           {/* DIFERENCIAIS */}
-      <section className="anne-diferenciais">
-        <h2>Diferenciais da Clínica</h2>
+      {/* DEPOIMENTOS */}
+      <section className="anne-depoimentos">
+        <h2>Depoimentos</h2>
+        <p className="anne-dep-sub">A experiência de nossos pacientes.</p>
 
-        <div className="anne-dif-grid">
+        <div className="anne-dep-slider">
 
-          <div className="anne-dif-card">
-            <span>🌸</span>
-            <h3>Atendimento Humanizado</h3>
-            <p>
-              Consultas tranquilas, explicativas e acolhedoras, pensando sempre no seu bem-estar.
+          <div className="anne-dep-card">
+            <p className="anne-dep-text">
+              "Atendimento impecável!"
             </p>
+            <span className="anne-dep-author">— Mariana S.</span>
           </div>
 
-          <div className="anne-dif-card">
-            <span>🖥️</span>
-            <h3>Tecnologia de Ponta</h3>
-            <p>
-              Escaneamento intraoral 3D, planejamento digital e precisão milimétrica.
-            </p>
-          </div>
-
-          <div className="anne-dif-card">
-            <span>🎯</span>
-            <h3>Resultados Naturais</h3>
-            <p>
-              Técnicas avançadas para manter a harmonia facial e dental sem excessos.
-            </p>
-          </div>
-
-          <div className="anne-dif-card">
-            <span>⏳</span>
-            <h3>Procedimentos Minimamente Invasivos</h3>
-            <p>
-              Menos dor, mais conforto e recuperação mais rápida para o paciente.
-            </p>
-          </div>
-
-          <div className="anne-dif-card">
-            <span>🧬</span>
-            <h3>Tratamentos Personalizados</h3>
-            <p>
-              Cada paciente recebe um plano de tratamento exclusivo, feito sob medida.
-            </p>
-          </div>
-
-          <div className="anne-dif-card">
-            <span>🏆</span>
-            <h3>Excelência Profissional</h3>
-            <p>
-              Constante atualização e protocolos modernos para entregar sempre o melhor.
-            </p>
-          </div>
-
+        <div className="anne-dep-card"> 
+          <p className="anne-dep-text">
+             "Fiz lentes de contato e ficou simplesmente perfeito.
+              Natural, delicado e elegante. Recomendo demais!" 
+              </p> <span className="anne-dep-author">— Juliana M.
+                </span> </div> 
+                
+          {/* MAIS CARDS… */}
         </div>
       </section>
-
 
 
       {/* CTA FINAL */}
