@@ -9,7 +9,6 @@ export default function ProdutosDaniSound() {
     { img: "alarme.jpg", nome: "Alarme Automotivo" },
     { img: "central-android.jpg", nome: "Central Multimídia Android" },
     { img: "camera-re.jpg", nome: "Câmera de Ré HD" },
-    { img: "subwoofer.jpg", nome: "Subwoofer 10”" },
     { img: "modulo.jpg", nome: "Módulo Amplificador" },
     { img: "led-interno.jpg", nome: "Iluminação Interna LED" },
     { img: "milha-led.jpg", nome: "Kit Milha LED" },

@@ -97,7 +97,7 @@ export default function DaniSoundHome() {
 
           {/* KIA */}
           <div className="space-y-3">
-            <h4 className="text-lg font-semibold">Multimídia Tela Grande (Kia)</h4>
+            <h4 className="text-lg font-semibold">Multimídia Tesla (Kia)</h4>
             <div className="grid grid-cols-2 gap-3">
               <Image src="/danisound/antes-kia.jpg" width={600} height={500} alt="Antes Kia" className="rounded-xl img-neon" />
               <Image src="/danisound/depois-kia.jpg" width={600} height={500} alt="Depois Kia" className="rounded-xl img-neon" />
