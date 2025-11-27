@@ -15,7 +15,7 @@ export default function Landing() {
         </p>
 
         <a
-          href="https://wa.me/5511964819472"
+          href="https://wa.me/5511962197021"
           className="mt-10 inline-block px-10 py-4 bg-blue-600 hover:bg-blue-700 
                      rounded-xl text-lg font-semibold transition-all duration-300 shadow-lg"
         >
@@ -97,7 +97,7 @@ export default function Landing() {
         </h2>
 
         <a
-          href="https://wa.me/5511964819472"
+          href="https://wa.me/5511962197021"
           className="mt-4 inline-block px-12 py-4 bg-blue-600 hover:bg-blue-700 
                      rounded-xl text-lg font-semibold transition-all duration-300 shadow-xl"
         >

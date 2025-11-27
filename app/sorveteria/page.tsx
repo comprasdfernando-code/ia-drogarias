@@ -94,7 +94,7 @@ export default function SorveteriaPage() {
   const linhas = cart
     .map(
       (i) =>
-        `• ${i.nome}${i.sabor ? ` (${i.sabor})`: ""} — R$ ${i.preco 
+        `• ${i.nome}${i.sabor ? ` (${i.sabor})`: ""} — R$ ${i.preco
           .toFixed(2)
           .replace(".", ",")} x ${i.qty}`
     )
@@ -104,9 +104,10 @@ export default function SorveteriaPage() {
     .toFixed(2)
     .replace(".", ",")}%0A%0AEndereço para entrega:%0ABairro:%0AForma de pagamento:`;
 
-  const url = `https://wa.me/${WHATSAPP}?text=${msg};
-  window.open(url, "_blank")`;
+  const url = `https://wa.me/${WHATSAPP}?text=${msg}`;
+  window.open(url, "_blank");
 }
+
   return (
     <main className="min-h-screen bg-gradient-to-b from-fuchsia-50 to-white">
       <div className="mx-auto max-w-7xl px-4 pb-28 pt-10">
