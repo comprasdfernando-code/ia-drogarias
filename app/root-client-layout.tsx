@@ -26,6 +26,9 @@ export default function RootClientLayout({ children }: { children: React.ReactNo
   if (typeof window !== "undefined" && window.location.pathname.startsWith("/servicos/advogado/marcosluciano")) {
     return <>{children}</>;
   }
+  if (typeof window !== "undefined" && window.location.pathname.startsWith("/sistemas/techfernandopereira")) {
+    return <>{children}</>;
+  }
   // 🧩 Atualiza contador do carrinho
   useEffect(() => {
     const storedCart = JSON.parse(localStorage.getItem("cart") || "[]");
