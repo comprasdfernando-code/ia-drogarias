@@ -6,6 +6,7 @@ export const metadata = {
 import "../globals.css";
 import { CartProvider } from "../contexts/CartContext";
 
+
 export default function SorveteriaLayout({
   children,
 }: {

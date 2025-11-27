@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useCart } from "../../contexts/CartContext";
+import { useCart } from "app/contexts/CartContext";
 
 export default function ProductCard({ item }) {
   const { adicionarProduto } = useCart();

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCart } from "@/contexts/CartContext";
+import { useCart } from "app/contexts/CartContext";
 import { useState } from "react";
 import FinalizarModal from "./FinalizarModal";
 
@@ -9,9 +9,10 @@ export default function CartBar() {
   const [open, setOpen] = useState(false);
 
   const total = carrinho.reduce(
-    (acc, item) => acc + parseFloat(item.preco),
-    0
-  );
+  (acc, item) => acc + Number(item.preco) * Number(item.quantidade ?? 1),
+  0
+);
+
 
   return (
     <>
