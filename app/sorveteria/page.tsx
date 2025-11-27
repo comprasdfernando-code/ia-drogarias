@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
 import ProductCard from "./components/ProductCard";
 import type { SorveteProduto } from "../../types/sorveteria";
+import CartSidebar from "./components/CartSidebar";
+
 
 // ⚙️ CONFIG
 const WHATSAPP = process.env.NEXT_PUBLIC_WHATSAPP_NUMBER || "5511952068432"; // ex.: 55 + DDD + número
@@ -16,6 +18,9 @@ const FALLBACK: SorveteProduto[] = [
   { id: "fb-3", nome: "Giratto", linha: "Linha Giratto", categoria: "Cone", sabor: "Crocante", preco: 7.99, ativo: true },
   { id: "fb-4", nome: "Açaí com Guaraná", linha: "Linha Açaí", categoria: "Açaí 1,5L", preco: 30.99, ativo: true },
 ];
+
+const [openCart, setOpenCart] = useState(false);
+
 
 type CartItem = SorveteProduto & { qty: number };
 
@@ -73,7 +78,19 @@ export default function SorveteriaPage() {
       }
       return [...prev, { ...p, qty: 1 }];
     });
+     <CartSidebar
+  cart={cart}
+  changeQty={changeQty}
+  total={total}
+  open={openCart}
+  onClose={() => setOpenCart(false)}
+  onSend={sendWhatsApp}
+/>
   }
+
+  
+ 
+
 
   function changeQty(id: string, qty: number) {
     setCart(prev =>
@@ -200,6 +217,20 @@ export default function SorveteriaPage() {
           >
             Pedir no WhatsApp
           </button>
+
+          {/* Botão flutuante do carrinho */}
+<button
+  onClick={() => setOpenCart(true)}
+  className="
+    fixed bottom-5 right-5 z-50
+    bg-fuchsia-600 text-white rounded-full shadow-xl
+    w-16 h-16 flex items-center justify-center text-xl
+    hover:bg-fuchsia-700
+  "
+>
+  🛒
+</button>
+
         </div>
       </div>
     </main>
