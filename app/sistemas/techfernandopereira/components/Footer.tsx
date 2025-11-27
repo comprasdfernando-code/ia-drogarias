@@ -18,7 +18,7 @@ export default function Footer() {
           <a href="#services" className="hover:text-white transition">Serviços</a>
           <a href="#sobre" className="hover:text-white transition">Sobre Mim</a>
           <a
-            href="https://wa.me/5511964819472"
+            href="https://wa.me/5511962197021"
             target="_blank"
             className="hover:text-white transition"
           >

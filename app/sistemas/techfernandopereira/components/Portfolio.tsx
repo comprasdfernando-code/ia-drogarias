@@ -17,7 +17,7 @@ const projects = [
   {
     title: "Sorveteria Oggi",
     desc: "Site + sistema de pedidos (em construção).",
-    link: "/sorveteria/oggi",
+    link: "/sorveteria",
     image: "/oggi.png",
   },
  
@@ -35,7 +35,7 @@ const projects = [
   {
     title: "Dani Sound",
     desc: "Site para auto elétrica e som automotivo.",
-    link: "/danisound",
+    link: "/autoeletrico/danisound",
     image: "/danisound.png",
   },
 
@@ -46,7 +46,13 @@ const projects = [
     link: "/servicos/advogado/marcosluciano",
     image: "/marcosluciano.png",
   },
- 
+ // Clinica Dentaria
+{
+    title: "Dra Anne Dayane",
+    desc: "Site institucional para Clincas Dentarias.",
+    link: "/clinicas/draannedayane",
+    image: "/draannedayane.png",
+  },
    
 ];
 

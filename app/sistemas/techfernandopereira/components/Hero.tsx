@@ -30,7 +30,7 @@ export default function Hero() {
 
         {/* CTA BUTTON */}
         <a
-          href="https://wa.me/5511964819472?text=Olá!%20Quero%20um%20orçamento%20do%20site%20ou%20sistema."
+          href="https://wa.me/5511962197021?text=Olá!%20Quero%20um%20orçamento%20do%20site%20ou%20sistema."
           className="mt-10 inline-block px-10 py-4 bg-blue-600 hover:bg-blue-700 
                      rounded-xl text-lg font-semibold transition-all duration-300 shadow-lg"
         >

@@ -28,7 +28,7 @@ export default function Navbar() {
           <Link href="#services" className="hover:text-white transition">Serviços</Link>
           <Link href="#sobre" className="hover:text-white transition">Sobre Mim</Link>
           <Link
-            href="https://wa.me/5511964819472?text=Olá!%20Quero%20fazer%20um%20site%20ou%20sistema."
+            href="https://wa.me/5511962197021?text=Olá!%20Quero%20fazer%20um%20site%20ou%20sistema."
             className="px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded-lg transition font-semibold"
           >
             Contato
