@@ -4,10 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
 import ProductCard from "./components/ProductCard";
 import type { SorveteProduto } from "../../types/sorveteria";
-import { useCart } from "../contexts/CartContext";
-
-
-
 
 // ⚙️ CONFIG
 const WHATSAPP = process.env.NEXT_PUBLIC_WHATSAPP_NUMBER || "5511952068432"; // ex.: 55 + DDD + número
@@ -98,7 +94,7 @@ export default function SorveteriaPage() {
   const linhas = cart
     .map(
       (i) =>
-        `• ${i.nome}${i.sabor ? ` (${i.sabor})` : ""} — R$ ${i.preco
+        `• ${i.nome}${i.sabor ? ` (${i.sabor})`: ""} — R$ ${i.preco 
           .toFixed(2)
           .replace(".", ",")} x ${i.qty}`
     )
@@ -108,26 +104,22 @@ export default function SorveteriaPage() {
     .toFixed(2)
     .replace(".", ",")}%0A%0AEndereço para entrega:%0ABairro:%0AForma de pagamento:`;
 
-  const url = `https://wa.me/${WHATSAPP}?text=${msg}`;
-  window.open(url, "_blank");
+  const url = `https://wa.me/${WHATSAPP}?text=${msg};
+  window.open(url, "_blank")`;
 }
-
   return (
-  <main className="min-h-screen bg-gradient-to-b from-fuchsia-50 to-white">
-    <div className="mx-auto max-w-7xl px-4 pb-28 pt-10">
-
-      {/* Cabeçalho */}
-      <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
-        <div>
-          <h1 className="text-3xl md:text-4xl font-extrabold text-fuchsia-800">
-            Sorveteria Oggi
-          </h1>
-          <p className="text-neutral-600">
-            Catálogo oficial – faça seu pedido pelo WhatsApp
-          </p>
-        </div>
-      </div>
-
+    <main className="min-h-screen bg-gradient-to-b from-fuchsia-50 to-white">
+      <div className="mx-auto max-w-7xl px-4 pb-28 pt-10">
+        {/* Cabeçalho */}
+        <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
+          <div>
+            <h1 className="text-3xl md:text-4xl font-extrabold text-fuchsia-800">
+              Sorveteria Oggi
+            </h1>
+            <p className="text-neutral-600">
+              Catálogo oficial – faça seu pedido pelo WhatsApp
+            </p>
+          </div>
 
           {/* Busca e filtros */}
           <div className="flex flex-col sm:flex-row gap-2">
@@ -155,15 +147,16 @@ export default function SorveteriaPage() {
         </div>
 
         {/* Grade */}
-{loading ? (
-  <div className="grid place-items-center h-64 text-neutral-500">Carregando…</div>
-) : (
-  <div className="mt-6 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
-    {filtrados.map((p) => (
-      <ProductCard key={p.id} item={p} />
-    ))}
-  </div>
-)}
+        {loading ? (
+          <div className="grid place-items-center h-64 text-neutral-500">Carregando…</div>
+        ) : (
+          <div className="mt-6 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
+            {filtrados.map((p) => (
+              <ProductCard key={p.id} item={p} onAdd={addToCart} />
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* Carrinho fixo */}
       <div className="fixed bottom-0 left-0 right-0 border-t bg-white/90 backdrop-blur supports-[backdrop-filter]:bg-white/60">

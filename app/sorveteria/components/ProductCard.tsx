@@ -1,72 +1,55 @@
 "use client";
 
 import Image from "next/image";
-import { useCart } from "../../contexts/CartContext";
+import { SorveteProduto } from "../../../types/sorveteria";
 
-export default function ProductCard({ item }) {
-  const { adicionarProduto } = useCart();
+type Props = {
+  item: SorveteProduto;
+  onAdd: (p: SorveteProduto) => void;
+};
 
+export default function ProductCard({ item, onAdd }: Props) {
   return (
     <div
-      style={{
-        background: "white",
-        borderRadius: 12,
-        padding: 15,
-        boxShadow: "0 2px 10px rgba(0,0,0,0.1)",
-      }}
+      className="rounded-xl border border-neutral-200 p-3 hover:shadow-md transition bg-white flex flex-col"
+      style={{ minHeight: 320 }}
     >
-      {/* Área da imagem – corrigida */}
-      <div
-        style={{
-          width: "100%",
-          height: 260, // AUMENTADO
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "center",
-          background: "transparent", // antes era #eee e COBRIA a imagem
-          borderRadius: 10,
-          overflow: "hidden",
-        }}
-      >
-        {item.imagem ? (
+      <div className="relative w-full h-40 mb-3 bg-white/40 rounded-lg overflow-hidden">
+        {item.imagem_url ? (
+          // se a imagem for externa, use unoptimized para evitar erro de domínio
           <Image
-            src={item.imagem}
+            src={item.imagem_url}
             alt={item.nome}
-            width={180}
-            height={250}
-            style={{ objectFit: "contain" }}
-            sizes="100%"
+            fill
+            className="object-contain"
+            unoptimized
           />
         ) : (
-          <span style={{ color: "#aaa" }}>sem imagem</span>
+          <div className="w-full h-full grid place-items-center text-sm text-neutral-400">
+            sem imagem
+          </div>
         )}
       </div>
 
-      <p style={{ marginTop: 10, fontWeight: "bold", color: "#333" }}>
-        {item.nome}
-      </p>
+      <div className="text-sm text-fuchsia-900/80 font-semibold">
+        {item.linha}
+      </div>
+      <div className="text-base font-bold leading-tight">{item.nome}</div>
+      {item.sabor && (
+        <div className="text-sm text-neutral-600">{item.sabor}</div>
+      )}
 
-      <p style={{ marginTop: 5, color: "#555" }}>{item.sabor}</p>
-
-      <p style={{ marginTop: 10, fontSize: 18, fontWeight: "bold" }}>
-        R$ {item.preco}
-      </p>
-
-      <button
-        onClick={() => adicionarProduto(item)}
-        style={{
-          width: "100%",
-          marginTop: 10,
-          background: "#ff48c4",
-          border: "none",
-          color: "white",
-          padding: "8px 0",
-          borderRadius: 8,
-          cursor: "pointer",
-        }}
-      >
-        Adicionar
-      </button>
+      <div className="mt-auto flex items-end justify-between">
+        <div className="text-xl font-extrabold mt-2">
+          R$ {item.preco.toFixed(2).replace(".", ",")}
+        </div>
+        <button
+          onClick={() => onAdd(item)}
+          className="px-3 py-2 text-sm rounded-lg bg-fuchsia-600 text-white hover:bg-fuchsia-700"
+        >
+          Adicionar
+        </button>
+      </div>
     </div>
   );
 }
