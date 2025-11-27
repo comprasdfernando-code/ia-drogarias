@@ -1,6 +1,6 @@
 "use client";
 
-import { useCart } from "@/contexts/CartContext";
+import { useCart } from "../../contexts/CartContext";
 
 export default function FinalizarModal({ close }) {
   const { carrinho, limparCarrinho } = useCart();
@@ -12,9 +12,10 @@ export default function FinalizarModal({ close }) {
     .join("%0A");
 
   const total = carrinho.reduce(
-    (acc, item) => acc + parseFloat(item.preco),
-    0
-  );
+  (acc, item) => acc + Number(item.preco) * Number(item.quantidade ?? 1),
+  0
+);
+
 
   const link = `https://wa.me/${telefone}?text=Olá!%20Quero%20fazer%20um%20pedido:%0A${mensagem}%0A%0ATotal:%20R$%20${total.toFixed(2)}`;
 
