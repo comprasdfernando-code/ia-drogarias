@@ -78,18 +78,7 @@ export default function SorveteriaPage() {
       }
       return [...prev, { ...p, qty: 1 }];
     });
-     <CartSidebar
-  cart={cart}
-  changeQty={changeQty}
-  total={total}
-  open={openCart}
-  onClose={() => setOpenCart(false)}
-  onSend={sendWhatsApp}
-/>
   }
-
-  
- 
 
 
   function changeQty(id: string, qty: number) {
