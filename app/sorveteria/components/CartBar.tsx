@@ -1,6 +1,6 @@
 "use client";
 
-import { useCart } from "app/contexts/CartContext";
+import { useCart } from "../../contexts/CartContext";
 import { useState } from "react";
 import FinalizarModal from "./FinalizarModal";
 

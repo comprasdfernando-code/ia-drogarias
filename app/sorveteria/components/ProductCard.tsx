@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useCart } from "app/contexts/CartContext";
+import { useCart } from "../../contexts/CartContext";
 
 export default function ProductCard({ item }) {
   const { adicionarProduto } = useCart();
@@ -15,24 +15,27 @@ export default function ProductCard({ item }) {
         boxShadow: "0 2px 10px rgba(0,0,0,0.1)",
       }}
     >
+      {/* Área da imagem – corrigida */}
       <div
         style={{
           width: "100%",
-          height: 180,
+          height: 260, // AUMENTADO
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          background: "#eee",
+          background: "transparent", // antes era #eee e COBRIA a imagem
           borderRadius: 10,
+          overflow: "hidden",
         }}
       >
         {item.imagem ? (
           <Image
             src={item.imagem}
             alt={item.nome}
-            width={140}
-            height={180}
+            width={180}
+            height={250}
             style={{ objectFit: "contain" }}
+            sizes="100%"
           />
         ) : (
           <span style={{ color: "#aaa" }}>sem imagem</span>
