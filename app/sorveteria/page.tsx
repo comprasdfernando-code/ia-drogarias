@@ -5,8 +5,6 @@ import { supabase } from "../../lib/supabaseClient";
 import ProductCard from "./components/ProductCard";
 import type { SorveteProduto } from "../../types/sorveteria";
 import CartSidebar from "./components/CartSidebar";
-import CheckoutModal from "./components/CheckoutModal";
-
 
 // ⚙️ CONFIG
 const WHATSAPP = process.env.NEXT_PUBLIC_WHATSAPP_NUMBER || "5511952068432";
@@ -31,8 +29,6 @@ export default function SorveteriaPage() {
   const [linha, setLinha] = useState("Todas");
   const [categoria, setCategoria] = useState("Todas");
   const [cart, setCart] = useState<CartItem[]>([]);
-  const [openCheckout, setOpenCheckout] = useState(false);
-
 
   // carregar produtos
   useEffect(() => {
@@ -45,11 +41,8 @@ export default function SorveteriaPage() {
         .order("ordem", { ascending: true })
         .order("nome", { ascending: true });
 
-      if (error) {
-        setProdutos(FALLBACK);
-      } else {
-        setProdutos((data?.length ?? 0) > 0 ? (data as SorveteProduto[]) : FALLBACK);
-      }
+      if (error) setProdutos(FALLBACK);
+      else setProdutos((data?.length ?? 0) > 0 ? (data as SorveteProduto[]) : FALLBACK);
 
       setLoading(false);
     })();
@@ -88,7 +81,6 @@ export default function SorveteriaPage() {
       return [...prev, { ...p, qty: 1 }];
     });
 
-    // abre carrinho automaticamente
     setOpenCart(true);
   }
 
@@ -107,17 +99,28 @@ export default function SorveteriaPage() {
     [cart]
   );
 
-  // enviar whatsapp
-  function sendWhatsApp() {
+  // enviar whatsapp com dados do checkout
+  function sendWhatsApp(dados: any) {
     if (cart.length === 0) return;
 
-    const linhas = cart
+    const itens = cart
       .map(i => `• ${i.nome}${i.sabor ? ` (${i.sabor})` : ""} — R$ ${i.preco.toFixed(2).replace(".", ",")} x ${i.qty}`)
       .join("%0A");
 
-    const msg = `Olá, quero fazer um pedido na ${LOJA_NOME}:%0A%0A${linhas}%0A%0A*Total:* R$ ${total
-      .toFixed(2)
-      .replace(".", ",")}%0A%0AEndereço:%0ABairro:%0AForma de pagamento:`;
+    const msg = `
+Olá, quero fazer um pedido na ${LOJA_NOME}:
+
+${itens}
+
+*Total:* R$ ${total.toFixed(2).replace(".", ",")}
+
+--- *DADOS DO CLIENTE* ---
+*Nome:* ${dados.nome}
+*Endereço:* ${dados.endereco}
+*Bairro:* ${dados.bairro}
+*Referência:* ${dados.referencia}
+*Pagamento:* ${dados.pagamento}
+*Obs:* ${dados.obs ?? ""}`.trim().replace(/\n/g, "%0A");
 
     const url = `https://wa.me/${WHATSAPP}?text=${msg}`;
     window.open(url, "_blank");
@@ -136,6 +139,7 @@ export default function SorveteriaPage() {
         onSend={sendWhatsApp}
       />
 
+      {/* Conteúdo principal */}
       <div className="mx-auto max-w-7xl px-4 pb-24 pt-10">
         {/* Cabeçalho */}
         <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-4">
@@ -173,14 +177,13 @@ export default function SorveteriaPage() {
         )}
       </div>
 
-      {/* BOTÃO FLUTUANTE – ABRIR CARRINHO */}
+      {/* BOTÃO FIXO DE ABRIR O CARRINHO */}
       <button
-  onClick={() => setOpenCheckout(true)}
-  className="px-4 py-2 rounded-lg bg-green-600 text-white disabled:opacity-50"
-  disabled={cart.length === 0}
->
-  Finalizar no WhatsApp
-</button>
+        onClick={() => setOpenCart(true)}
+        className="fixed bottom-4 right-4 bg-fuchsia-600 text-white px-5 py-3 rounded-full shadow-xl z-30 font-semibold hover:bg-fuchsia-700"
+      >
+        Carrinho ({cart.length})
+      </button>
 
     </main>
   );

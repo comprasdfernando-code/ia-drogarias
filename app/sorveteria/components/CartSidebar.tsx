@@ -1,15 +1,18 @@
 "use client";
 
+import { useState } from "react";
 import Image from "next/image";
-import { X, Minus, Plus, Trash2 } from "lucide-react";
+import type { SorveteProduto } from "../../../types/sorveteria";
+
+type CartItem = SorveteProduto & { qty: number };
 
 type Props = {
   open: boolean;
-  cart: any[];
+  cart: CartItem[];
   changeQty: (id: string, qty: number) => void;
   total: number;
   onClose: () => void;
-  onSend: () => void;
+  onSend: (data: any) => void;
 };
 
 export default function CartSidebar({
@@ -20,139 +23,191 @@ export default function CartSidebar({
   onClose,
   onSend,
 }: Props) {
+  const [step, setStep] = useState<"cart" | "checkout">("cart");
+
+  // Formulário do checkout
+  const [nome, setNome] = useState("");
+  const [endereco, setEndereco] = useState("");
+  const [bairro, setBairro] = useState("");
+  const [referencia, setReferencia] = useState("");
+  const [pagamento, setPagamento] = useState("");
+  const [obs, setObs] = useState("");
+
+  if (!open) return null;
+
   return (
-    <div className={`fixed inset-0 z-50 transition-all duration-300 ${open ? "visible" : "invisible"}`}>
-      
-      {/* Fundo escuro com blur — estilo iFood */}
+    <div className="fixed inset-0 z-50">
+      {/* Fundo escurecido */}
       <div
-        className={`absolute inset-0 bg-black/60 backdrop-blur-sm transition-opacity ${
-          open ? "opacity-100" : "opacity-0"
-        }`}
+        className="absolute inset-0 bg-black/40 backdrop-blur-sm"
         onClick={onClose}
       />
 
-      {/* Painel lateral */}
-      <div
-        className={`
-          absolute right-0 top-0 h-full w-[85%] sm:w-96 bg-white 
-          shadow-2xl rounded-l-2xl flex flex-col 
-          transition-transform duration-300
-          ${open ? "translate-x-0" : "translate-x-full"}
-        `}
-      >
-        
+      {/* Sidebar */}
+      <div className="absolute right-0 top-0 h-full w-full sm:w-[380px] bg-white shadow-2xl flex flex-col animate-slideLeft">
+
         {/* Cabeçalho */}
         <div className="flex items-center justify-between p-4 border-b">
-  <h2 className="text-xl font-bold">Seu Pedido</h2>
+          <h2 className="text-xl font-bold text-fuchsia-700">
+            {step === "cart" ? "Seu Pedido" : "Finalizar Pedido"}
+          </h2>
 
-  {/* BOTÃO VOLTAR PARA LOJA */}
-  <button
-  onClick={onClose}
-  className="px-4 py-2 rounded-full bg-white shadow hover:shadow-md border text-neutral-700 font-medium"
->
-  ← Voltar para a Loja
-</button>
+          <button onClick={onClose} className="text-neutral-500 text-xl">×</button>
+        </div>
 
-</div>
+        {/* ==========================
+              TELA DO CARRINHO
+        =========================== */}
+        {step === "cart" && (
+          <div className="flex flex-col flex-1 overflow-y-auto p-4 gap-4">
 
-
-        {/* Lista de itens */}
-        <div className="flex-1 overflow-y-auto p-5 space-y-4">
-          {cart.length === 0 ? (
-            <div className="text-neutral-500 text-center mt-20 text-lg">
-              Seu carrinho está vazio 😕
-            </div>
-          ) : (
-            cart.map((item) => (
-              <div
-                key={item.id}
-                className="flex gap-3 p-3 border rounded-xl shadow-sm bg-white"
-              >
-                {/* Imagem do produto */}
-                <div className="relative w-20 h-20 rounded-lg overflow-hidden bg-neutral-100">
-                  {item.imagem_url ? (
+            {cart.length === 0 ? (
+              <p className="text-neutral-500 text-center mt-10">
+                Seu carrinho está vazio 🛒
+              </p>
+            ) : (
+              cart.map((item) => (
+                <div
+                  key={item.id}
+                  className="flex gap-3 p-2 border rounded-lg shadow-sm"
+                >
+                  {/* Imagem */}
+                  {item.imagem_url && (
                     <Image
                       src={item.imagem_url}
                       alt={item.nome}
-                      fill
-                      className="object-contain"
+                      width={65}
+                      height={65}
+                      className="rounded-lg object-contain"
                       unoptimized
                     />
-                  ) : (
-                    <div className="w-full h-full grid place-items-center text-neutral-400 text-xs">
-                      sem imagem
-                    </div>
                   )}
-                </div>
 
-                {/* Conteúdo */}
-                <div className="flex-1 flex flex-col justify-between">
-                  <div>
-                    <div className="font-semibold text-fuchsia-700 text-sm">
-                      {item.nome}
-                    </div>
+                  {/* Texto */}
+                  <div className="flex-1">
+                    <div className="font-semibold text-sm">{item.nome}</div>
                     {item.sabor && (
-                      <div className="text-xs text-neutral-500">
-                        {item.sabor}
-                      </div>
+                      <div className="text-xs text-neutral-500">{item.sabor}</div>
                     )}
+
+                    {/* QUANTIDADE */}
+                    <div className="flex items-center gap-2 mt-2">
+                      <button
+                        className="px-2 py-1 rounded bg-neutral-200"
+                        onClick={() => changeQty(item.id, item.qty - 1)}
+                      >
+                        -
+                      </button>
+                      <span className="font-semibold text-fuchsia-700 w-6 text-center">
+                        {item.qty}
+                      </span>
+                      <button
+                        className="px-2 py-1 rounded bg-neutral-200"
+                        onClick={() => changeQty(item.id, item.qty + 1)}
+                      >
+                        +
+                      </button>
+                    </div>
                   </div>
 
-                  {/* Controles de quantidade */}
-                  <div className="flex items-center gap-2 mt-2">
-                    <button
-                      onClick={() => changeQty(item.id, item.qty - 1)}
-                      className="p-1 rounded-full bg-neutral-200 hover:bg-neutral-300"
-                    >
-                      <Minus size={16} />
-                    </button>
-
-                    <span className="font-semibold text-neutral-800 select-none">
-                    {item.qty}
-                    </span>
-
-
-                    <button
-                      onClick={() => changeQty(item.id, item.qty + 1)}
-                      className="p-1 rounded-full bg-fuchsia-600 text-white hover:bg-fuchsia-700"
-                    >
-                      <Plus size={16} />
-                    </button>
-
-                    <button
-                      onClick={() => changeQty(item.id, 0)}
-                      className="ml-auto text-red-500 hover:text-red-700"
-                    >
-                      <Trash2 size={18} />
-                    </button>
+                  {/* Preço */}
+                  <div className="font-bold text-fuchsia-700 text-sm">
+                    R$ {(item.preco * item.qty).toFixed(2).replace(".", ",")}
                   </div>
                 </div>
-
-                {/* Preço */}
-                <div className="font-bold text-fuchsia-700 whitespace-nowrap">
-                  R$ {(item.preco * item.qty).toFixed(2).replace(".", ",")}
-                </div>
-              </div>
-            ))
-          )}
-        </div>
-
-        {/* Rodapé com total */}
-        <div className="p-5 border-t bg-white shadow-xl rounded-bl-2xl">
-          <div className="flex justify-between text-lg font-semibold mb-3">
-            <span className="text-neutral-600">Total:</span>
-            <span className="text-fuchsia-700 font-extrabold">
-              R$ {total.toFixed(2).replace(".", ",")}
-            </span>
+              ))
+            )}
           </div>
+        )}
 
-          <button
-            onClick={onSend}
-            disabled={cart.length === 0}
-            className="w-full bg-green-600 hover:bg-green-700 text-white py-3 rounded-xl text-lg font-bold shadow-md disabled:opacity-40"
-          >
-            Finalizar no WhatsApp
-          </button>
+        {/* ==========================
+              TELA DE CHECKOUT
+        =========================== */}
+        {step === "checkout" && (
+          <div className="flex flex-col flex-1 overflow-y-auto p-4 gap-4">
+
+            <input
+              className="border rounded-lg px-3 py-2"
+              placeholder="Seu nome"
+              value={nome}
+              onChange={(e) => setNome(e.target.value)}
+            />
+            <input
+              className="border rounded-lg px-3 py-2"
+              placeholder="Endereço (Rua e número)"
+              value={endereco}
+              onChange={(e) => setEndereco(e.target.value)}
+            />
+            <input
+              className="border rounded-lg px-3 py-2"
+              placeholder="Bairro"
+              value={bairro}
+              onChange={(e) => setBairro(e.target.value)}
+            />
+            <input
+              className="border rounded-lg px-3 py-2"
+              placeholder="Referência"
+              value={referencia}
+              onChange={(e) => setReferencia(e.target.value)}
+            />
+
+            <select
+              className="border rounded-lg px-3 py-2"
+              value={pagamento}
+              onChange={(e) => setPagamento(e.target.value)}
+            >
+              <option value="">Forma de pagamento</option>
+              <option value="Pix">Pix</option>
+              <option value="Cartão">Cartão</option>
+              <option value="Dinheiro">Dinheiro</option>
+            </select>
+
+            <textarea
+              className="border rounded-lg px-3 py-2"
+              placeholder="Observações (opcional)"
+              value={obs}
+              onChange={(e) => setObs(e.target.value)}
+            />
+
+            <button
+              onClick={() => setStep("cart")}
+              className="w-full py-2 border rounded-lg text-neutral-700"
+            >
+              Voltar ao Carrinho
+            </button>
+          </div>
+        )}
+
+        {/* Rodapé */}
+        <div className="border-t p-4">
+          {step === "cart" ? (
+            <>
+              <div className="flex justify-between font-bold text-lg mb-3">
+                <span>Total:</span>
+                <span className="text-fuchsia-700">
+                  R$ {total.toFixed(2).replace(".", ",")}
+                </span>
+              </div>
+
+              <button
+                disabled={cart.length === 0}
+                onClick={() => setStep("checkout")}
+                className="w-full py-3 bg-green-600 text-white rounded-lg font-semibold
+                disabled:opacity-40"
+              >
+                Finalizar Pedido
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={() =>
+                onSend({ nome, endereco, bairro, referencia, pagamento, obs })
+              }
+              className="w-full py-3 bg-green-600 text-white rounded-lg font-semibold"
+            >
+              Enviar via WhatsApp
+            </button>
+          )}
         </div>
       </div>
     </div>
