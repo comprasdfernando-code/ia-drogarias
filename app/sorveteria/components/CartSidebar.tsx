@@ -25,7 +25,7 @@ export default function CartSidebar({
 }: Props) {
   const [step, setStep] = useState<"cart" | "checkout">("cart");
 
-  // Formulário do checkout
+  // Checkout fields
   const [nome, setNome] = useState("");
   const [endereco, setEndereco] = useState("");
   const [bairro, setBairro] = useState("");
@@ -37,14 +37,19 @@ export default function CartSidebar({
 
   return (
     <div className="fixed inset-0 z-50">
-      {/* Fundo escurecido */}
+
+      {/* Blur escuro */}
       <div
         className="absolute inset-0 bg-black/40 backdrop-blur-sm"
         onClick={onClose}
       />
 
-      {/* Sidebar */}
-      <div className="absolute right-0 top-0 h-full w-full sm:w-[380px] bg-white shadow-2xl flex flex-col animate-slideLeft">
+      {/* SIDEBAR */}
+      <div className="
+        absolute right-0 top-0 h-full w-full sm:w-[400px]
+        bg-white shadow-2xl flex flex-col 
+        animate-slideLeft
+      ">
 
         {/* Cabeçalho */}
         <div className="flex items-center justify-between p-4 border-b">
@@ -52,12 +57,17 @@ export default function CartSidebar({
             {step === "cart" ? "Seu Pedido" : "Finalizar Pedido"}
           </h2>
 
-          <button onClick={onClose} className="text-neutral-500 text-xl">×</button>
+          <button 
+            onClick={onClose} 
+            className="text-fuchsia-700 text-2xl font-bold hover:text-fuchsia-900"
+          >
+            ×
+          </button>
         </div>
 
-        {/* ==========================
-              TELA DO CARRINHO
-        =========================== */}
+        {/* ================================
+                TELA DO CARRINHO
+        ================================= */}
         {step === "cart" && (
           <div className="flex flex-col flex-1 overflow-y-auto p-4 gap-4">
 
@@ -69,40 +79,44 @@ export default function CartSidebar({
               cart.map((item) => (
                 <div
                   key={item.id}
-                  className="flex gap-3 p-2 border rounded-lg shadow-sm"
+                  className="flex gap-3 p-3 border rounded-xl shadow-sm bg-white"
                 >
-                  {/* Imagem */}
+                  {/* imagem */}
                   {item.imagem_url && (
                     <Image
                       src={item.imagem_url}
                       alt={item.nome}
-                      width={65}
-                      height={65}
+                      width={70}
+                      height={70}
                       className="rounded-lg object-contain"
                       unoptimized
                     />
                   )}
 
-                  {/* Texto */}
+                  {/* texto */}
                   <div className="flex-1">
-                    <div className="font-semibold text-sm">{item.nome}</div>
+                    <div className="font-semibold text-sm text-neutral-800">
+                      {item.nome}
+                    </div>
                     {item.sabor && (
-                      <div className="text-xs text-neutral-500">{item.sabor}</div>
+                      <div className="text-xs text-neutral-500">
+                        {item.sabor}
+                      </div>
                     )}
 
-                    {/* QUANTIDADE */}
+                    {/* quantidade */}
                     <div className="flex items-center gap-2 mt-2">
                       <button
-                        className="px-2 py-1 rounded bg-neutral-200"
+                        className="px-2 py-1 rounded bg-fuchsia-100 text-fuchsia-700 font-bold"
                         onClick={() => changeQty(item.id, item.qty - 1)}
                       >
                         -
                       </button>
-                      <span className="font-semibold text-fuchsia-700 w-6 text-center">
+                      <span className="font-bold text-fuchsia-700 w-6 text-center">
                         {item.qty}
                       </span>
                       <button
-                        className="px-2 py-1 rounded bg-neutral-200"
+                        className="px-2 py-1 rounded bg-fuchsia-100 text-fuchsia-700 font-bold"
                         onClick={() => changeQty(item.id, item.qty + 1)}
                       >
                         +
@@ -110,7 +124,7 @@ export default function CartSidebar({
                     </div>
                   </div>
 
-                  {/* Preço */}
+                  {/* preço */}
                   <div className="font-bold text-fuchsia-700 text-sm">
                     R$ {(item.preco * item.qty).toFixed(2).replace(".", ",")}
                   </div>
@@ -120,11 +134,23 @@ export default function CartSidebar({
           </div>
         )}
 
-        {/* ==========================
-              TELA DE CHECKOUT
-        =========================== */}
+        {/* ================================
+                TELA DE CHECKOUT
+        ================================= */}
         {step === "checkout" && (
           <div className="flex flex-col flex-1 overflow-y-auto p-4 gap-4">
+
+            {/* BOTÃO VOLTAR */}
+            <button
+              onClick={() => setStep("cart")}
+              className="
+                text-sm w-fit px-3 py-1 mb-2 
+                text-fuchsia-700 border border-fuchsia-300 rounded-lg
+                hover:bg-fuchsia-50 transition
+              "
+            >
+              ← Voltar ao Carrinho
+            </button>
 
             <input
               className="border rounded-lg px-3 py-2"
@@ -134,7 +160,7 @@ export default function CartSidebar({
             />
             <input
               className="border rounded-lg px-3 py-2"
-              placeholder="Endereço (Rua e número)"
+              placeholder="Endereço (Rua e nº)"
               value={endereco}
               onChange={(e) => setEndereco(e.target.value)}
             />
@@ -168,18 +194,11 @@ export default function CartSidebar({
               value={obs}
               onChange={(e) => setObs(e.target.value)}
             />
-
-            <button
-              onClick={() => setStep("cart")}
-              className="w-full py-2 border rounded-lg text-neutral-700"
-            >
-              Voltar ao Carrinho
-            </button>
           </div>
         )}
 
-        {/* Rodapé */}
-        <div className="border-t p-4">
+        {/* RODAPÉ */}
+        <div className="border-t p-4 bg-white">
           {step === "cart" ? (
             <>
               <div className="flex justify-between font-bold text-lg mb-3">
@@ -192,8 +211,11 @@ export default function CartSidebar({
               <button
                 disabled={cart.length === 0}
                 onClick={() => setStep("checkout")}
-                className="w-full py-3 bg-green-600 text-white rounded-lg font-semibold
-                disabled:opacity-40"
+                className="
+                  w-full py-3 bg-green-600 text-white rounded-lg font-semibold 
+                  hover:bg-green-700 transition
+                  disabled:opacity-40
+                "
               >
                 Finalizar Pedido
               </button>
@@ -203,7 +225,7 @@ export default function CartSidebar({
               onClick={() =>
                 onSend({ nome, endereco, bairro, referencia, pagamento, obs })
               }
-              className="w-full py-3 bg-green-600 text-white rounded-lg font-semibold"
+              className="w-full py-3 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700 transition"
             >
               Enviar via WhatsApp
             </button>
