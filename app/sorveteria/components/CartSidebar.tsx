@@ -55,6 +55,7 @@ export default function CartSidebar({
 </button>
 
 
+
         {/* ============================
               🧺 TELA DO CARRINHO
         ============================== */}
@@ -124,63 +125,76 @@ export default function CartSidebar({
         )}
 
         {/* ============================
-              🧾 TELA DO CHECKOUT
-        ============================== */}
-        {step === "checkout" && (
-          <div className="flex flex-col flex-1 overflow-y-auto p-4 gap-3">
+      🧾 TELA DO CHECKOUT
+=============================== */}
+{step === "checkout" && (
+  <div className="flex flex-col flex-1 overflow-y-auto p-4 gap-3">
 
-            {/* botão voltar no topo */}
-            <button
-              onClick={() => setStep("cart")}
-              className="py-2 px-3 bg-neutral-200 text-neutral-700 rounded-lg font-medium w-full mb-2"
-            >
-              ← Voltar ao Carrinho
-            </button>
+    {/* botão voltar no topo */}
+    <button
+      onClick={() => setStep("cart")}
+      className="py-2 px-3 bg-neutral-200 
+                 text-neutral-800 
+                 rounded-lg font-semibold 
+                 w-full mb-2 hover:bg-neutral-300 transition"
+    >
+      ← Voltar ao Carrinho
+    </button>
 
-            <input
-              className="border rounded-lg px-3 py-2"
-              placeholder="Seu nome"
-              value={nome}
-              onChange={(e) => setNome(e.target.value)}
-            />
-            <input
-              className="border rounded-lg px-3 py-2"
-              placeholder="Endereço (Rua e nº)"
-              value={endereco}
-              onChange={(e) => setEndereco(e.target.value)}
-            />
-            <input
-              className="border rounded-lg px-3 py-2"
-              placeholder="Bairro"
-              value={bairro}
-              onChange={(e) => setBairro(e.target.value)}
-            />
-            <input
-              className="border rounded-lg px-3 py-2"
-              placeholder="Referência"
-              value={referencia}
-              onChange={(e) => setReferencia(e.target.value)}
-            />
+    <input
+      className="border border-neutral-300 rounded-lg px-3 py-2
+                 text-neutral-900 placeholder-neutral-500"
+      placeholder="Seu nome"
+      value={nome}
+      onChange={(e) => setNome(e.target.value)}
+    />
 
-            <select
-              className="border rounded-lg px-3 py-2"
-              value={pagamento}
-              onChange={(e) => setPagamento(e.target.value)}
-            >
-              <option value="">Forma de pagamento</option>
-              <option value="Pix">Pix</option>
-              <option value="Cartão">Cartão</option>
-              <option value="Dinheiro">Dinheiro</option>
-            </select>
+    <input
+      className="border border-neutral-300 rounded-lg px-3 py-2
+                 text-neutral-900 placeholder-neutral-500"
+      placeholder="Endereço (Rua e nº)"
+      value={endereco}
+      onChange={(e) => setEndereco(e.target.value)}
+    />
 
-            <textarea
-              className="border rounded-lg px-3 py-2"
-              placeholder="Observações (opcional)"
-              value={obs}
-              onChange={(e) => setObs(e.target.value)}
-            />
-          </div>
-        )}
+    <input
+      className="border border-neutral-300 rounded-lg px-3 py-2
+                 text-neutral-900 placeholder-neutral-500"
+      placeholder="Bairro"
+      value={bairro}
+      onChange={(e) => setBairro(e.target.value)}
+    />
+
+    <input
+      className="border border-neutral-300 rounded-lg px-3 py-2
+                 text-neutral-900 placeholder-neutral-500"
+      placeholder="Referência"
+      value={referencia}
+      onChange={(e) => setReferencia(e.target.value)}
+    />
+
+    <select
+      className="border border-neutral-300 rounded-lg px-3 py-2
+                 text-neutral-900 bg-white"
+      value={pagamento}
+      onChange={(e) => setPagamento(e.target.value)}
+    >
+      <option value="">Forma de pagamento</option>
+      <option value="Pix">Pix</option>
+      <option value="Cartão">Cartão</option>
+      <option value="Dinheiro">Dinheiro</option>
+    </select>
+
+    <textarea
+      className="border border-neutral-300 rounded-lg px-3 py-2 
+                 text-neutral-900 placeholder-neutral-500"
+      placeholder="Observações (opcional)"
+      value={obs}
+      onChange={(e) => setObs(e.target.value)}
+    />
+  </div>
+)}
+
 
         {/* RODAPÉ */}
         <div className="border-t p-4 bg-white">
