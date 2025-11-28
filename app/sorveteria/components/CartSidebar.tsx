@@ -100,7 +100,10 @@ export default function CartSidebar({
                       <Minus size={16} />
                     </button>
 
-                    <span className="font-semibold">{item.qty}</span>
+                    <span className="font-semibold text-neutral-800 select-none">
+                    {item.qty}
+                    </span>
+
 
                     <button
                       onClick={() => changeQty(item.id, item.qty + 1)}
