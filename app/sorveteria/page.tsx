@@ -100,14 +100,18 @@ export default function SorveteriaPage() {
   );
 
   // enviar whatsapp com dados do checkout
-  function sendWhatsApp(dados: any) {
-    if (cart.length === 0) return;
+function sendWhatsApp(dados: any) {
+  if (cart.length === 0) return;
 
-    const itens = cart
-      .map(i => `• ${i.nome}${i.sabor ? ` (${i.sabor})` : ""} — R$ ${i.preco.toFixed(2).replace(".", ",")} x ${i.qty}`)
-      .join("%0A");
+  const itens = cart
+    .map(i =>
+      `• ${i.nome}${i.sabor ? ` (${i.sabor})` : ""} — R$ ${i.preco
+        .toFixed(2)
+        .replace(".", ",")} x ${i.qty}`
+    )
+    .join("%0A");
 
-    const msg = `
+  const msg = `
 Olá, quero fazer um pedido na ${LOJA_NOME}:
 
 ${itens}
@@ -120,11 +124,19 @@ ${itens}
 *Bairro:* ${dados.bairro}
 *Referência:* ${dados.referencia}
 *Pagamento:* ${dados.pagamento}
-*Obs:* ${dados.obs ?? ""}`.trim().replace(/\n/g, "%0A");
+*Obs:* ${dados.obs ?? ""}
+  `
+    .trim()
+    .replace(/\n/g, "%0A");
 
-    const url = `https://wa.me/${WHATSAPP}?text=${msg}`;
-    window.open(url, "_blank");
-  }
+  const url = `https://wa.me/${WHATSAPP}?text=${msg}`;
+  window.open(url, "_blank");
+
+  // 🔥 LIMPAR CARRINHO E FECHAR
+  setCart([]);
+  setOpenCart(false);
+}
+
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-fuchsia-50 to-white relative">

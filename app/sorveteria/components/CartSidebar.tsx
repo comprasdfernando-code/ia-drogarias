@@ -217,9 +217,11 @@ export default function CartSidebar({
             </>
           ) : (
             <button
-              onClick={() =>
-                onSend({ nome, endereco, bairro, referencia, pagamento, obs })
-              }
+              onClick={() => {
+              onSend({ nome, endereco, bairro, referencia, pagamento, obs });
+             // limpa e fecha
+            }}
+
               className="w-full py-3 bg-green-600 text-white rounded-lg font-semibold"
             >
               Enviar via WhatsApp
