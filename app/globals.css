@@ -598,3 +598,15 @@ body {
   box-shadow: 0 10px 22px rgba(0,0,0,0.25);
   background: linear-gradient(145deg, #d08a97, #f1dfd5);
 }
+@keyframes slideLeft {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+.animate-slideLeft {
+  animation: slideLeft 0.35s ease-out;
+}

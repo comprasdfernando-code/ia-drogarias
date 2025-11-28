@@ -5,6 +5,8 @@ import { supabase } from "../../lib/supabaseClient";
 import ProductCard from "./components/ProductCard";
 import type { SorveteProduto } from "../../types/sorveteria";
 import CartSidebar from "./components/CartSidebar";
+import CheckoutModal from "./components/CheckoutModal";
+
 
 // ⚙️ CONFIG
 const WHATSAPP = process.env.NEXT_PUBLIC_WHATSAPP_NUMBER || "5511952068432";
@@ -29,6 +31,8 @@ export default function SorveteriaPage() {
   const [linha, setLinha] = useState("Todas");
   const [categoria, setCategoria] = useState("Todas");
   const [cart, setCart] = useState<CartItem[]>([]);
+  const [openCheckout, setOpenCheckout] = useState(false);
+
 
   // carregar produtos
   useEffect(() => {
@@ -171,11 +175,13 @@ export default function SorveteriaPage() {
 
       {/* BOTÃO FLUTUANTE – ABRIR CARRINHO */}
       <button
-        onClick={() => setOpenCart(true)}
-        className="fixed bottom-4 right-4 bg-fuchsia-600 text-white px-6 py-4 rounded-full shadow-xl z-40 font-bold text-lg hover:bg-fuchsia-700"
-      >
-        🛒 Carrinho ({cart.length})
-      </button>
+  onClick={() => setOpenCheckout(true)}
+  className="px-4 py-2 rounded-lg bg-green-600 text-white disabled:opacity-50"
+  disabled={cart.length === 0}
+>
+  Finalizar no WhatsApp
+</button>
+
     </main>
   );
 }
