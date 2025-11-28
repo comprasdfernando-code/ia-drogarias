@@ -10,7 +10,7 @@ import CartSidebar from "./components/CartSidebar";
 // ⚙️ CONFIG
 const WHATSAPP = process.env.NEXT_PUBLIC_WHATSAPP_NUMBER || "5511952068432"; // ex.: 55 + DDD + número
 const LOJA_NOME = "Sorveteria Oggi (IA Drogarias)";
-const [openCart, setOpenCart] = useState(false);
+
 
 
 // fallback local (aparece se a tabela estiver vazia)
@@ -24,6 +24,8 @@ const FALLBACK: SorveteProduto[] = [
 type CartItem = SorveteProduto & { qty: number };
 
 export default function SorveteriaPage() {
+  const [openCart, setOpenCart] = useState(false);
+
   const [loading, setLoading] = useState(true);
   const [produtos, setProdutos] = useState<SorveteProduto[]>([]);
   const [q, setQ] = useState("");
