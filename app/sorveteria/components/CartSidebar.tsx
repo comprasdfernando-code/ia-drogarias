@@ -42,12 +42,19 @@ export default function CartSidebar({
       >
         
         {/* Cabeçalho */}
-        <div className="p-5 border-b flex items-center justify-between bg-white rounded-tl-2xl">
-          <h2 className="text-2xl font-extrabold text-fuchsia-700">Seu Pedido</h2>
-          <button onClick={onClose} className="text-neutral-500 hover:text-neutral-800">
-            <X size={26} />
-          </button>
-        </div>
+        <div className="flex items-center justify-between p-4 border-b">
+  <h2 className="text-xl font-bold">Seu Pedido</h2>
+
+  {/* BOTÃO VOLTAR PARA LOJA */}
+  <button
+  onClick={onClose}
+  className="px-4 py-2 rounded-full bg-white shadow hover:shadow-md border text-neutral-700 font-medium"
+>
+  ← Voltar para a Loja
+</button>
+
+</div>
+
 
         {/* Lista de itens */}
         <div className="flex-1 overflow-y-auto p-5 space-y-4">
