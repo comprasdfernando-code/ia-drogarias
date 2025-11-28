@@ -1,61 +1,93 @@
 "use client";
 
-import { SorveteProduto } from "../../../types/sorveteria";
+import { X } from "lucide-react";
 
-type CartItem = SorveteProduto & { qty: number };
-
-interface Props {
-  cart: CartItem[];
+type Props = {
+  open: boolean;
+  cart: any[];
   changeQty: (id: string, qty: number) => void;
   total: number;
-  open: boolean;
   onClose: () => void;
   onSend: () => void;
-}
+};
 
-export default function CartSidebar({ cart, changeQty, total, open, onClose, onSend }: Props) {
+export default function CartSidebar({
+  open,
+  cart,
+  changeQty,
+  total,
+  onClose,
+  onSend,
+}: Props) {
   return (
-    <>
+    <div
+      className={`fixed inset-0 z-40 transition-all duration-300 ${
+        open ? "visible" : "invisible"
+      }`}
+    >
       {/* Fundo escuro */}
-      {open && (
-        <div
-          className="fixed inset-0 bg-black/40 z-40"
-          onClick={onClose}
-        />
-      )}
+      <div
+        onClick={onClose}
+        className={`absolute inset-0 bg-black/50 backdrop-blur-sm transition-opacity ${
+          open ? "opacity-100" : "opacity-0"
+        }`}
+      ></div>
 
       {/* Painel lateral */}
       <div
         className={`
-          fixed top-0 right-0 h-full w-80 bg-white shadow-xl z-50
-          transform transition-transform duration-300
+          absolute right-0 top-0 h-full w-80 bg-white shadow-2xl 
+          flex flex-col transition-transform duration-300
           ${open ? "translate-x-0" : "translate-x-full"}
         `}
       >
+        {/* Título */}
         <div className="p-4 border-b flex items-center justify-between">
-          <h2 className="text-lg font-bold">Seu Carrinho</h2>
-          <button onClick={onClose} className="text-red-600 font-bold">X</button>
+          <h2 className="text-xl font-extrabold text-fuchsia-700">
+            🛒 Seu Carrinho
+          </h2>
+
+          <button
+            onClick={onClose}
+            className="text-neutral-500 hover:text-neutral-800"
+          >
+            <X size={22} />
+          </button>
         </div>
 
-        <div className="p-4 overflow-y-auto h-[calc(100%-150px)]">
+        {/* Itens */}
+        <div className="flex-1 overflow-y-auto p-4">
           {cart.length === 0 ? (
-            <p className="text-center text-neutral-500 mt-10">Carrinho vazio 😕</p>
+            <div className="text-neutral-500 text-center mt-20">
+              Carrinho vazio 😕
+            </div>
           ) : (
             cart.map((i) => (
-              <div key={i.id} className="flex items-center justify-between mb-4 border-b pb-2">
-                <div className="text-sm font-semibold">{i.nome}</div>
+              <div
+                key={i.id}
+                className="flex items-center justify-between border-b pb-3 mb-3"
+              >
+                <div>
+                  <div className="font-semibold text-fuchsia-700">
+                    {i.nome}
+                  </div>
+                  {i.sabor && (
+                    <div className="text-sm text-neutral-500">{i.sabor}</div>
+                  )}
+                </div>
 
                 <div className="flex items-center gap-2">
                   <input
                     type="number"
                     min={1}
-                    className="w-14 px-2 py-1 border rounded"
                     value={i.qty}
                     onChange={(e) =>
-                      changeQty(i.id, parseInt(e.target.value || "1", 10))
+                      changeQty(i.id, parseInt(e.target.value || "1"))
                     }
+                    className="w-12 border rounded px-2 py-1 text-sm"
                   />
-                  <div className="text-sm font-bold">
+
+                  <div className="font-bold text-fuchsia-700">
                     R$ {(i.preco * i.qty).toFixed(2).replace(".", ",")}
                   </div>
                 </div>
@@ -65,19 +97,26 @@ export default function CartSidebar({ cart, changeQty, total, open, onClose, onS
         </div>
 
         {/* Rodapé */}
-        <div className="p-4 border-t">
-          <div className="text-xl font-extrabold mb-3">
-            Total: R$ {total.toFixed(2).replace(".", ",")}
+        <div className="p-4 border-t bg-white">
+          <div className="flex justify-between mb-3">
+            <span className="text-lg font-semibold text-neutral-600">
+              Total:
+            </span>
+
+            <span className="text-lg font-extrabold text-fuchsia-700">
+              R$ {total.toFixed(2).replace(".", ",")}
+            </span>
           </div>
+
           <button
             onClick={onSend}
             disabled={cart.length === 0}
-            className="w-full px-4 py-3 rounded-lg bg-green-600 text-white text-lg disabled:opacity-50"
+            className="w-full bg-green-600 hover:bg-green-700 text-white text-lg py-3 rounded-lg font-semibold shadow-md disabled:opacity-50"
           >
-            Pedir no WhatsApp
+            Finalizar Pedido no WhatsApp
           </button>
         </div>
       </div>
-    </>
+    </div>
   );
 }
