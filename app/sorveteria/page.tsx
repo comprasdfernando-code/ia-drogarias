@@ -4,10 +4,14 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "../../lib/supabaseClient";
 import ProductCard from "./components/ProductCard";
 import type { SorveteProduto } from "../../types/sorveteria";
+import CartSidebar from "./components/CartSidebar";
+
 
 // ⚙️ CONFIG
 const WHATSAPP = process.env.NEXT_PUBLIC_WHATSAPP_NUMBER || "5511952068432"; // ex.: 55 + DDD + número
 const LOJA_NOME = "Sorveteria Oggi (IA Drogarias)";
+const [openCart, setOpenCart] = useState(false);
+
 
 // fallback local (aparece se a tabela estiver vazia)
 const FALLBACK: SorveteProduto[] = [
@@ -107,7 +111,18 @@ export default function SorveteriaPage() {
   const url = `https://wa.me/${WHATSAPP}?text=${msg};
   window.open(url, "_blank")`;
 }
+<CartSidebar
+  open={openCart}
+  cart={cart}
+  changeQty={changeQty}
+  total={total}
+  onClose={() => setOpenCart(false)}
+  onSend={sendWhatsApp}
+/>
+
   return (
+
+    
     <main className="min-h-screen bg-gradient-to-b from-fuchsia-50 to-white">
       <div className="mx-auto max-w-7xl px-4 pb-28 pt-10">
         {/* Cabeçalho */}
@@ -192,13 +207,14 @@ export default function SorveteriaPage() {
           <div className="text-lg font-extrabold">
             Total: R$ {total.toFixed(2).replace(".", ",")}
           </div>
-          <button
-            onClick={sendWhatsApp}
-            disabled={cart.length === 0}
-            className="px-4 py-2 rounded-lg bg-green-600 text-white disabled:opacity-50"
-          >
-            Pedir no WhatsApp
-          </button>
+          {/* BOTÃO FLUTUANTE FIXO */}
+<button
+  onClick={() => setOpenCart(true)}
+  className="fixed bottom-4 right-4 bg-fuchsia-600 text-white px-5 py-3 rounded-full shadow-xl z-30 font-semibold hover:bg-fuchsia-700"
+>
+  Carrinho ({cart.length})
+</button>
+
         </div>
       </div>
     </main>
