@@ -40,9 +40,10 @@ export default function ProductCard({ item, onAdd }: Props) {
       )}
 
       <div className="mt-auto flex items-end justify-between">
-        <div className="text-xl font-extrabold mt-2">
-          R$ {item.preco.toFixed(2).replace(".", ",")}
-        </div>
+        <div className="text-xl font-extrabold mt-2 text-fuchsia-700">
+       R$ {item.preco.toFixed(2).replace(".", ",")}
+       </div>
+
         <button
           onClick={() => onAdd(item)}
           className="px-3 py-2 text-sm rounded-lg bg-fuchsia-600 text-white hover:bg-fuchsia-700"

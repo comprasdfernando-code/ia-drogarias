@@ -70,16 +70,20 @@ export default function SorveteriaPage() {
   }, [produtos, q, linha, categoria]);
 
   function addToCart(p: SorveteProduto) {
-    setCart(prev => {
-      const i = prev.findIndex(x => x.id === p.id);
-      if (i >= 0) {
-        const cp = [...prev];
-        cp[i] = { ...cp[i], qty: cp[i].qty + 1 };
-        return cp;
-      }
-      return [...prev, { ...p, qty: 1 }];
-    });
-  }
+  setCart(prev => {
+    const i = prev.findIndex(x => x.id === p.id);
+    if (i >= 0) {
+      const cp = [...prev];
+      cp[i] = { ...cp[i], qty: cp[i].qty + 1 };
+      return cp;
+    }
+    return [...prev, { ...p, qty: 1 }];
+  });
+
+  // 👉 ABRE O CARRINHO AUTOMATICAMENTE
+  setOpenCart(true);
+}
+
 
   function changeQty(id: string, qty: number) {
     setCart(prev =>
