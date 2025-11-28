@@ -47,14 +47,13 @@ export default function CartSidebar({
       <div className="absolute right-0 top-0 h-full w-full sm:w-[380px] bg-white shadow-2xl flex flex-col animate-slideLeft">
 
         {/* CABEÇALHO */}
-        <div className="flex items-center justify-between p-4 border-b bg-white sticky top-0 z-20">
-          <h2 className="text-xl font-bold text-fuchsia-700">
-            {step === "cart" ? "Seu Pedido" : "Finalizar Pedido"}
-          </h2>
-          <button onClick={onClose} className="text-neutral-500 text-xl">
-            ×
-          </button>
-        </div>
+        <button
+  onClick={onClose}
+  className="px-4 py-2 rounded-full bg-white shadow hover:shadow-md border text-neutral-700 font-medium"
+>
+  ← Voltar para a Loja
+</button>
+
 
         {/* ============================
               🧺 TELA DO CARRINHO
