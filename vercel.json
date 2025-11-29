@@ -15,11 +15,7 @@
       "has": [{ "type": "host", "value": "gigantedosassados.com" }],
       "destination": "/gigante"
     },
-    {
-      "source": "/",
-      "has": [{ "type": "host", "value": "danisoundautoeletrica.com.br" }],
-      "destination": "/autoeletrico/danisound"
-    },
+   
     {
       "source": "/",
       "has": [{ "type": "host", "value": "advmarcosluciano.com" }],
