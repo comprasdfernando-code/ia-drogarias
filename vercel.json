@@ -1,9 +1,34 @@
 {
-  "redirects": [
+  "rewrites": [
     {
       "source": "/",
-      "destination": "/servicos/advogado/marcosluciano",
-      "permanent": false
+      "has": [{ "type": "host", "value": "techfernandopereira.com.br" }],
+      "destination": "/sistemas/techfernandopereira"
+    },
+    {
+      "source": "/",
+      "has": [{ "type": "host", "value": "oggisaomateus.com.br" }],
+      "destination": "/sorveteria/oggi"
+    },
+    {
+      "source": "/",
+      "has": [{ "type": "host", "value": "gigantedosassados.com" }],
+      "destination": "/gigante"
+    },
+    {
+      "source": "/",
+      "has": [{ "type": "host", "value": "danisoundautoeletrica.com.br" }],
+      "destination": "/autoeletrico/danisound"
+    },
+    {
+      "source": "/",
+      "has": [{ "type": "host", "value": "advmarcosluciano.com" }],
+      "destination": "/servicos/advogado/marcosluciano"
+    },
+    {
+      "source": "/",
+      "has": [{ "type": "host", "value": "iadrogarias.com.br" }],
+      "destination": "/"
     }
   ]
 }
