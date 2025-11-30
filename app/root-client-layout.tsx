@@ -32,6 +32,9 @@ export default function RootClientLayout({ children }: { children: React.ReactNo
   if (typeof window !== "undefined" && window.location.pathname.startsWith("/sorveteria")) {
     return <>{children}</>;
   }
+  if (typeof window !== "undefined" && window.location.pathname.startsWith("/megagil")) {
+    return <>{children}</>;
+  }
   // 🧩 Atualiza contador do carrinho
   useEffect(() => {
     const storedCart = JSON.parse(localStorage.getItem("cart") || "[]");
