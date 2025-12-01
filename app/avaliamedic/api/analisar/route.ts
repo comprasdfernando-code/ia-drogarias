@@ -1,11 +1,12 @@
 export const dynamic = "force-dynamic";
-export const runtime = "nodejs";
+
 
 
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { OpenAI } from "openai";
 
+export const runtime = "nodejs";
 
 // ===============================
 // 0) Criar clientes
