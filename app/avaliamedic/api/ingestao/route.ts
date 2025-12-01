@@ -51,31 +51,25 @@ export async function POST(req: Request) {
     // 2) OCR + Extração de Texto
     // ================================
 
-    const ocr = await openai.chat.completions.create({
-      model: "gpt-4o-mini-vision",
-      messages: [
-        {
-          role: "system",
-          content:
-            "Você é uma IA especializada em ler PDFs clínicos, protocolos e bulas. Extraia SOMENTE o texto limpo."
-        },
-        {
-          role: "user",
-          content: [
-            {
-              type: "input_text",
-              text: "Faça OCR completo deste arquivo PDF."
-            },
-            {
-              type: "input_file",
-              file_url: arquivo_url
-            }
-          ]
-        }
-      ]
-    });
+    const ocr = await openai.responses.create({
+  model: "gpt-4o-mini-vision",
+  input: [
+    {
+      role: "system",
+      content:
+        "Você é uma IA especializada em ler PDFs clínicos, protocolos e bulas. Extraia SOMENTE o texto limpo.",
+    },
+    {
+      role: "user",
+      content: [
+        { type: "input_text", text: "Faça OCR completo deste arquivo PDF." },
+        { type: "input_file", file_url: arquivo_url },
+      ],
+    },
+  ],
+});
 
-    const textoExtraido = ocr.choices[0].message.content;
+const textoExtraido = ocr.output_text;
 
     // ================================
     // 3) Salvar texto no banco

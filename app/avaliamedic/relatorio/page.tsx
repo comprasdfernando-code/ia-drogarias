@@ -1,11 +1,13 @@
-export const dynamic = "force-static";
-
 "use client";
+
+
 
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { CheckCircle, AlertTriangle, XCircle } from "lucide-react";
+
+export const dynamic = "force-static";
 
 export default function RelatorioAvaliacao() {
   const params = useSearchParams();

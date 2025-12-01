@@ -1,8 +1,9 @@
-export const dynamic = "force-static";
-
 "use client";
 
 import { useState } from "react";
+
+export const dynamic = "force-static";
+
 
 export default function IngestaoEnciclopedia() {
   const [arquivo, setArquivo] = useState<File | null>(null);

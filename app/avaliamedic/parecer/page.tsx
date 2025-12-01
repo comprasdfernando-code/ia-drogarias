@@ -1,10 +1,11 @@
-export const dynamic = "force-static";
-
 "use client";
+
 
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
+
+export const dynamic = "force-static";
 
 export default function ParecerFarmaceutico() {
   const router = useRouter();

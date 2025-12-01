@@ -1,8 +1,8 @@
-export const dynamic = "force-static";
-
 "use client";
 
 import { useEffect, useState } from "react";
+
+export const dynamic = "force-static";
 
 export default function EnciclopediaPainel() {
   const [conteudos, setConteudos] = useState<any[]>([]);
