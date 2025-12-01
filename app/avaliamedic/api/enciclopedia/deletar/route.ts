@@ -6,6 +6,7 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_KEY!
 );
 
+
 export async function POST(req: Request) {
   const { id, arquivo_url } = await req.json();
 
