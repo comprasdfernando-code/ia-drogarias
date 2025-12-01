@@ -1,20 +1,21 @@
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
-import { OpenAI } from "openai";
-
+import OpenAI from "openai";
 
 // ===============================
-// 0) Criar clientes
+// CONFIG SUPABASE
 // ===============================
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_KEY!
 );
 
+// ===============================
+// CONFIG OPENAI (API NOVA 2025)
+// ===============================
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY!,
 });
@@ -52,12 +53,10 @@ export async function POST(req: Request) {
     }
 
     const arquivo_url =
-      process.env.NEXT_PUBLIC_SUPABASE_URL +
-      "/storage/v1/object/public/avaliamedic/" +
-      fileName;
+      `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/avaliamedic/${fileName}`;
 
     // ===============================
-    // 2) Criar registro
+    // 2) Criar registro inicial
     // ===============================
     const { data: prescricao, error: prescError } = await supabase
       .from("prescricoes")
@@ -78,61 +77,58 @@ export async function POST(req: Request) {
     const prescricaoId = prescricao.id;
 
     // ===============================
-    // 3) OCR com Vision
+    // 3) OCR — API NOVA
     // ===============================
     const ocr = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
+  model: "gpt-4o-mini",
+  messages: [
+    {
+      role: "system",
+      content: "Você é uma IA especializada em ler prescrições hospitalares."
+    },
+    {
+      role: "user",
+      content: [
         {
-          role: "system",
-          content: "Você é uma IA especializada em ler prescrições hospitalares.",
+          type: "text",
+          text: "Leia totalmente esta prescrição e extraia tudo que for relevante."
         },
         {
-          role: "user",
-          content: [
-            {
-              type: "text",
-              text: "Leia totalmente esta prescrição e extraia tudo que for relevante.",
-            },
-            {
-              type: "image_url",
-              image_url: { url: arquivo_url },
-            },
-          ],
-        },
-      ],
-    });
+          type: "image_url",
+          image_url: { url: arquivo_url }
+        }
+      ]
+    }
+  ]
+});
 
-    const textoPrescricao = ocr.choices[0].message.content;
+const textoPrescricao = ocr.choices[0].message.content;
 
     // ===============================
-    // 4) Extrair itens
+    // 4) Extrair itens — API NOVA
     // ===============================
     const extracao = await openai.chat.completions.create({
-      model: "gpt-4o-mini",
-      messages: [
-        {
-          role: "system",
-          content: `
-            Extraia os itens da prescrição. Retorne JSON:
-            [
-              {
-                "medicamento": "",
-                "dose": "",
-                "via": "",
-                "frequencia": ""
-              }
-            ]
-          `,
-        },
-        {
-          role: "user",
-          content: textoPrescricao,
-        },
-      ],
-    });
+  model: "gpt-4o-mini",
+  messages: [
+    {
+      role: "system",
+      content: `
+        Extraia os itens da prescrição.
+        Retorne SOMENTE JSON:
+        [
+          {"medicamento":"", "dose":"", "via":"", "frequencia":""}
+        ]
+      `
+    },
+    {
+      role: "user",
+      content: textoPrescricao
+    }
+  ]
+});
 
-    const itens = JSON.parse(extracao.choices[0].message.content);
+const itens = JSON.parse(extracao.choices[0].message.content);
+
 
     // ===============================
     // 5) Busca Vetorial
@@ -146,85 +142,74 @@ export async function POST(req: Request) {
           headers: { "Content-Type": "application/json" },
         }
       );
+
       const json = await resp.json();
       return json.resultados || [];
     }
 
     // ===============================
-    // 6) Análise de cada item
+    // 6) Análise de cada item — API NOVA
     // ===============================
-    const analiseFinal: any[] = [];
-
-    for (const item of itens) {
-      const contexto = await buscarContexto(item.medicamento);
-
-      const analise = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
-        messages: [
-          {
-            role: "system",
-            content: `
-              Você é uma IA clínica hospitalar.
-              Analise usando:
-              - protocolos hospitalares
-              - peso: ${peso}
-              - vias permitidas
-              - incompatibilidades
-              - risco neonatal/UTI quando aplicável
-
-              Retorne JSON:
-              {
-                "status": "ok | atencao | risco_alto | risco_grave",
-                "motivo": ""
-              }
-            `,
-          },
-          {
-            role: "user",
-            content: `
-              Medicamento: ${item.medicamento}
-              Dose: ${item.dose}
-              Via: ${item.via}
-              Frequência: ${item.frequencia}
-
-              Contexto clínico:
-              ${contexto.map((c: any) => c.conteudo).join("\n\n")}
-            `,
-          },
-        ],
-      });
-
-      const resultado = JSON.parse(analise.choices[0].message.content);
-
-      analiseFinal.push({
-        ...item,
-        status: resultado.status,
-        motivo: resultado.motivo,
-      });
-    }
-
     // ===============================
-    // 7) Salvar análise
-    // ===============================
-    await supabase.from("analises_ia").insert({
-      prescricao_id: prescricaoId,
-      relatorio_json: analiseFinal,
-      alertas: analiseFinal.filter((i) => i.status !== "ok"),
-    });
+// 5) Análise de cada item
+// ===============================
 
-    // ===============================
-    // 8) Salvar itens
-    // ===============================
-    for (const item of analiseFinal) {
-      await supabase.from("itens_prescricao").insert({
-        prescricao_id: prescricaoId,
-        medicamento: item.medicamento,
-        dose: item.dose,
-        via: item.via,
-        frequencia: item.frequencia,
-        risco: item.status,
-      });
-    }
+// <-- AQUI: criar o array
+const analiseFinal: any[] = [];
+
+for (const item of itens) {
+  const contexto = await buscarContexto(item.medicamento);
+
+  const analise = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [
+      {
+        role: "system",
+        content: `
+          Você é uma IA clínica hospitalar.
+          Retorne APENAS JSON:
+          {"status":"", "motivo":""}
+        `
+      },
+      {
+        role: "user",
+        content: `
+          Medicamento: ${item.medicamento}
+          Dose: ${item.dose}
+          Via: ${item.via}
+          Frequência: ${item.frequencia}
+
+          Contexto clínico:
+          ${contexto.map((c: any) => c.conteudo).join("\n")}
+        `
+      }
+    ]
+  });
+
+  const resultado = JSON.parse(analise.choices[0].message.content);
+
+  analiseFinal.push({
+    ...item,
+    status: resultado.status,
+    motivo: resultado.motivo,
+  });
+}
+
+
+// ===============================
+// 8) Salvar itens individualmente
+// ===============================
+for (const item of analiseFinal) {
+  await supabase.from("itens_prescricao").insert({
+    prescricao_id: prescricaoId,
+    medicamento: item.medicamento,
+    dose: item.dose,
+    via: item.via,
+    frequencia: item.frequencia,
+    risco: item.status,
+  });
+}
+
 
     // ===============================
     // 9) Atualizar status
@@ -234,12 +219,10 @@ export async function POST(req: Request) {
       .update({ status: "aguardando_parecer" })
       .eq("id", prescricaoId);
 
-    return NextResponse.json({
-      sucesso: true,
-      prescricao_id: prescricaoId,
-    });
+    return NextResponse.json({ sucesso: true, prescricao_id: prescricaoId });
 
   } catch (err: any) {
+    console.error("ERRO NA ANÁLISE:", err);
     return NextResponse.json(
       { error: err.message || "Erro desconhecido" },
       { status: 500 }
