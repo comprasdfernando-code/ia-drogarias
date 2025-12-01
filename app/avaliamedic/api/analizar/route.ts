@@ -5,9 +5,9 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import OpenAI from "openai";
 
-
-
-
+// ===============================
+// 0) Criar clientes
+// ===============================
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_KEY!
@@ -17,6 +17,9 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY!,
 });
 
+// ===============================
+// ROTA PRINCIPAL
+// ===============================
 export async function POST(req: Request) {
   try {
     const form = await req.formData();
@@ -31,14 +34,14 @@ export async function POST(req: Request) {
     }
 
     // ===============================
-    // 1) Upload do arquivo no Storage
+    // 1) Upload do arquivo
     // ===============================
     const bytes = await arquivo.arrayBuffer();
     const buffer = Buffer.from(bytes);
 
     const fileName = `prescricoes/${Date.now()}-${arquivo.name}`;
 
-    const { data: upload, error: uploadError } = await supabase.storage
+    const { error: uploadError } = await supabase.storage
       .from("avaliamedic")
       .upload(fileName, buffer);
 
@@ -52,7 +55,7 @@ export async function POST(req: Request) {
       fileName;
 
     // ===============================
-    // 2) Criar registro da prescrição
+    // 2) Criar registro
     // ===============================
     const { data: prescricao, error: prescError } = await supabase
       .from("prescricoes")
@@ -66,39 +69,42 @@ export async function POST(req: Request) {
       .select()
       .single();
 
+    if (prescError) {
+      return NextResponse.json({ error: prescError.message }, { status: 500 });
+    }
+
     const prescricaoId = prescricao.id;
 
     // ===============================
-    // 3) OCR da prescrição (IA Vision)
+    // 3) OCR com Vision
     // ===============================
     const ocr = await openai.chat.completions.create({
-  model: "gpt-4o-mini",
-  messages: [
-    {
-      role: "system",
-      content: "Você é uma IA especializada em ler prescrições hospitalares."
-    },
-    {
-      role: "user",
-      content: [
+      model: "gpt-4o-mini",
+      messages: [
         {
-          type: "text",
-          text: "Leia totalmente esta prescrição e extraia tudo que for relevante."
+          role: "system",
+          content: "Você é uma IA especializada em ler prescrições hospitalares.",
         },
         {
-          type: "image_url",
-          image_url: { url: arquivo_url }
-        }
-      ]
-    }
-  ]
-});
-
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: "Leia totalmente esta prescrição e extraia tudo que for relevante.",
+            },
+            {
+              type: "image_url",
+              image_url: { url: arquivo_url },
+            },
+          ],
+        },
+      ],
+    });
 
     const textoPrescricao = ocr.choices[0].message.content;
 
     // ===============================
-    // 4) Extrair itens da prescrição
+    // 4) Extrair itens
     // ===============================
     const extracao = await openai.chat.completions.create({
       model: "gpt-4o-mini",
@@ -115,19 +121,19 @@ export async function POST(req: Request) {
                 "frequencia": ""
               }
             ]
-          `
+          `,
         },
         {
           role: "user",
-          content: textoPrescricao
-        }
-      ]
+          content: textoPrescricao,
+        },
+      ],
     });
 
     const itens = JSON.parse(extracao.choices[0].message.content);
 
     // ===============================
-    // 5) Consultar ENCICLOPÉDIA via Vetores
+    // 5) Busca Vetorial
     // ===============================
     async function buscarContexto(medicamento: string) {
       const resp = await fetch(
@@ -135,7 +141,7 @@ export async function POST(req: Request) {
         {
           method: "POST",
           body: JSON.stringify({ query: medicamento }),
-          headers: { "Content-Type": "application/json" }
+          headers: { "Content-Type": "application/json" },
         }
       );
       const json = await resp.json();
@@ -143,7 +149,7 @@ export async function POST(req: Request) {
     }
 
     // ===============================
-    // 6) Analisar cada item com IA
+    // 6) Análise de cada item
     // ===============================
     const analiseFinal: any[] = [];
 
@@ -157,21 +163,19 @@ export async function POST(req: Request) {
             role: "system",
             content: `
               Você é uma IA clínica hospitalar.
-              Analise o medicamento usando:
-              
-              - protocolos do hospital (contexto abaixo)
-              - bulas
-              - doses mg/kg (use peso: ${peso})
-              - vias aceitas
+              Analise usando:
+              - protocolos hospitalares
+              - peso: ${peso}
+              - vias permitidas
               - incompatibilidades
-              - neonatal/obstetrícia/UTI quando aplicável
+              - risco neonatal/UTI quando aplicável
 
               Retorne JSON:
               {
                 "status": "ok | atencao | risco_alto | risco_grave",
                 "motivo": ""
               }
-            `
+            `,
           },
           {
             role: "user",
@@ -183,9 +187,9 @@ export async function POST(req: Request) {
 
               Contexto clínico:
               ${contexto.map((c: any) => c.conteudo).join("\n\n")}
-            `
-          }
-        ]
+            `,
+          },
+        ],
       });
 
       const resultado = JSON.parse(analise.choices[0].message.content);
@@ -193,21 +197,21 @@ export async function POST(req: Request) {
       analiseFinal.push({
         ...item,
         status: resultado.status,
-        motivo: resultado.motivo
+        motivo: resultado.motivo,
       });
     }
 
     // ===============================
-    // 7) Salvar análise no banco
+    // 7) Salvar análise
     // ===============================
     await supabase.from("analises_ia").insert({
       prescricao_id: prescricaoId,
       relatorio_json: analiseFinal,
-      alertas: analiseFinal.filter((i) => i.status !== "ok")
+      alertas: analiseFinal.filter((i) => i.status !== "ok"),
     });
 
     // ===============================
-    // 8) Salvar itens na tabela itens_prescricao
+    // 8) Salvar itens
     // ===============================
     for (const item of analiseFinal) {
       await supabase.from("itens_prescricao").insert({
@@ -232,6 +236,7 @@ export async function POST(req: Request) {
       sucesso: true,
       prescricao_id: prescricaoId,
     });
+
   } catch (err: any) {
     return NextResponse.json(
       { error: err.message || "Erro desconhecido" },
