@@ -117,7 +117,7 @@ export default function ImplantacaoFisioPet() {
       </h1>
 
       {/* FORMULÁRIO */}
-      <div className="bg-white shadow p-5 rounded mb-8">
+      <div className="bg-black shadow p-5 rounded mb-8">
         <h2 className="text-lg font-bold mb-4">Cadastrar novo item</h2>
 
         <select
@@ -168,7 +168,7 @@ export default function ImplantacaoFisioPet() {
 
         <button
           onClick={salvarItem}
-          className="bg-blue-600 text-white w-full p-3 rounded"
+          className="bg-blue-600 text-black w-full p-3 rounded"
         >
           Salvar Item
         </button>
@@ -196,7 +196,7 @@ export default function ImplantacaoFisioPet() {
 
       <ul className="space-y-4">
         {itens.map((item) => (
-          <li key={item.id} className="bg-white p-4 rounded shadow">
+          <li key={item.id} className="bg-black p-4 rounded shadow">
 
             <p className="font-bold text-lg">{item.descricao}</p>
             <p className="text-sm opacity-70 mb-2">{item.categoria}</p>
@@ -213,7 +213,7 @@ export default function ImplantacaoFisioPet() {
                 {item.parcelas_pagas < item.parcelas && (
                   <button
                     onClick={() => pagarParcela(item)}
-                    className="bg-green-600 text-white mt-3 p-2 rounded"
+                    className="bg-green-600 text-black mt-3 p-2 rounded"
                   >
                     Registrar pagamento da próxima parcela
                   </button>
