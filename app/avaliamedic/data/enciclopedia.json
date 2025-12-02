@@ -1,0 +1,505 @@
+[
+  {
+    "id": 1,
+    "titulo": "Dipirona",
+    "texto": "A dipirona é um analgésico e antipirético amplamente utilizado para alívio de dor e febre. Atua reduzindo a sensação de dor e controlando a temperatura corporal elevada. Pode causar reações de hipersensibilidade em indivíduos sensíveis a pirazolônicos. Seu uso deve ser cauteloso em pessoas com histórico de alergias, problemas hematológicos raros ou uso excessivo de álcool."
+  },
+  {
+    "id": 2,
+    "titulo": "Paracetamol",
+    "texto": "Medicamento utilizado para alívio da dor e redução da febre. Atua no sistema nervoso central modulando a sensação dolorosa. Geralmente bem tolerado, mas deve ser usado com cautela em pessoas com doenças hepáticas ou consumo frequente de álcool."
+  },
+  {
+    "id": 3,
+    "titulo": "Ibuprofeno",
+    "texto": "Anti-inflamatório não esteroidal utilizado em dores, febre e processos inflamatórios. Pode causar desconforto gástrico e deve ser usado com cautela em pessoas com problemas renais, cardíacos ou histórico de gastrite."
+  },
+  {
+    "id": 4,
+    "titulo": "Amoxicilina",
+    "texto": "Antibiótico da classe das penicilinas usado em infecções bacterianas sensíveis. Pode causar alergia em indivíduos sensíveis a penicilinas e desconforto gastrointestinal leve."
+  },
+  {
+    "id": 5,
+    "titulo": "Azitromicina",
+    "texto": "Antibiótico macrolídeo utilizado em infecções respiratórias, cutâneas e outras. Geralmente bem tolerado, podendo causar náuseas ou desconforto abdominal."
+  },
+  {
+    "id": 6,
+    "titulo": "Cetirizina",
+    "texto": "Antialérgico utilizado no alívio de sintomas respiratórios e cutâneos relacionados a alergias. Pode causar leve sonolência em algumas pessoas."
+  },
+  {
+    "id": 7,
+    "titulo": "Loratadina",
+    "texto": "Anti-histamínico indicado para rinite, alergias cutâneas e sintomas alérgicos em geral. Não costuma causar sonolência, sendo bem tolerado."
+  },
+  {
+    "id": 8,
+    "titulo": "Losartana",
+    "texto": "Medicamento anti-hipertensivo utilizado para controle da pressão arterial. Pode causar tonturas leves especialmente no início do tratamento."
+  },
+  {
+    "id": 9,
+    "titulo": "Hidroclorotiazida",
+    "texto": "Diurético amplamente utilizado no tratamento da hipertensão e retenção de líquidos. Pode alterar níveis de eletrólitos como potássio e sódio."
+  },
+  {
+    "id": 10,
+    "titulo": "Metformina",
+    "texto": "Medicamento utilizado no controle do diabetes tipo 2. Pode melhorar a sensibilidade à insulina. Pode causar desconforto gastrointestinal no início."
+  },
+  {
+    "id": 11,
+    "titulo": "Omeprazol",
+    "texto": "Medicamento que reduz a acidez gástrica. Usado para gastrite, refluxo e úlceras. Pode afetar absorção de nutrientes em uso prolongado."
+  },
+  {
+    "id": 12,
+    "titulo": "Ranitidina",
+    "texto": "Medicamento anteriormente usado para redução de acidez. Em alguns países teve uso suspenso. Onde permanece autorizado, deve ser usado sob orientação."
+  },
+  {
+    "id": 13,
+    "titulo": "Buscopan Composto",
+    "texto": "Associação utilizada para dores abdominais de origem espasmódica. Deve ser evitado por pessoas com hipertensão não controlada ou alergia a pirazolônicos."
+  },
+  {
+    "id": 14,
+    "titulo": "Nimesulida",
+    "texto": "Anti-inflamatório usado para dor e processos inflamatórios. Pode causar impacto hepático em uso prolongado."
+  },
+  {
+    "id": 15,
+    "titulo": "Prednisona",
+    "texto": "Corticosteroide usado em inflamações e alergias. Pode alterar humor, apetite e glicemia. Uso prolongado exige acompanhamento."
+  },
+  {
+    "id": 16,
+    "titulo": "Sertralina",
+    "texto": "Medicamento utilizado no suporte emocional e ansiedade. Pode causar náusea leve e alteração de sono no início."
+  },
+  {
+    "id": 17,
+    "titulo": "Fluoxetina",
+    "texto": "Medicamento utilizado na regulação do humor. Pode causar leve agitação ou alteração do apetite."
+  },
+  {
+    "id": 18,
+    "titulo": "Clonazepam",
+    "texto": "Medicamento utilizado para sintomas relacionados ao sistema nervoso. Pode causar sonolência e redução de reflexos."
+  },
+  {
+    "id": 19,
+    "titulo": "Diazepam",
+    "texto": "Ansiolítico e relaxante muscular. Pode causar sedação e lentificação de reflexos."
+  },
+  {
+    "id": 20,
+    "titulo": "Tramadol",
+    "texto": "Analgésico de ação central usado em dores moderadas. Pode causar tontura, náusea e sonolência."
+  },
+  {
+    "id": 21,
+    "titulo": "Seretide",
+    "texto": "Associação de broncodilatador e corticosteroide usada no controle de doenças respiratórias crônicas. Bem tolerado quando usado corretamente."
+  },
+  {
+    "id": 22,
+    "titulo": "Salbutamol",
+    "texto": "Broncodilatador de ação rápida usado em crises de broncoespasmo. Pode causar tremores ou palpitação."
+  },
+  {
+    "id": 23,
+    "titulo": "Bromoprida",
+    "texto": "Medicamento usado para náuseas e distúrbios do trato gástrico. Pode causar sonolência leve."
+  },
+  {
+    "id": 24,
+    "titulo": "Domperidona",
+    "texto": "Usado para náuseas e desconfortos gástricos. Deve ser usado com cautela por pessoas com alterações cardíacas."
+  },
+  {
+    "id": 25,
+    "titulo": "Ondansetrona",
+    "texto": "Medicamento antiemético utilizado em náuseas intensas. Geralmente bem tolerado. Pode causar dor de cabeça leve."
+  }
+  ,
+  {
+    "id": 26,
+    "titulo": "Sucralfato",
+    "texto": "Medicamento que forma uma camada protetora em regiões irritadas do estômago e duodeno. Ajuda na redução de desconfortos gástricos e é bem tolerado pela maioria dos pacientes."
+  },
+  {
+    "id": 27,
+    "titulo": "Hidróxido de Alumínio e Magnésio",
+    "texto": "Antiácido de ação rápida que neutraliza a acidez do estômago. Pode causar constipação ou diarreia, dependendo da formulação."
+  },
+  {
+    "id": 28,
+    "titulo": "Diclofenaco",
+    "texto": "Anti-inflamatório utilizado para dores e inflamações. Deve ser usado com cautela devido ao risco de irritação gástrica ou efeitos cardiovasculares em uso prolongado."
+  },
+  {
+    "id": 29,
+    "titulo": "Ciclobenzaprina",
+    "texto": "Relaxante muscular utilizado em espasmos musculares. Pode causar sonolência, tontura e boca seca."
+  },
+  {
+    "id": 30,
+    "titulo": "Tionicol",
+    "texto": "Complexo vitamínico usado para suporte neurológico e metabólico. Geralmente bem tolerado e raramente causa reações adversas."
+  },
+  {
+    "id": 31,
+    "titulo": "Vitamina D",
+    "texto": "Suplemento essencial para saúde óssea e imunológica. Geralmente seguro quando usado nas doses adequadas. Excesso pode aumentar os níveis de cálcio."
+  },
+  {
+    "id": 32,
+    "titulo": "Ferro (Sulfato Ferroso)",
+    "texto": "Mineral usado na formação de hemoglobina. Pode escurecer as fezes ou causar leve desconforto gastrointestinal."
+  },
+  {
+    "id": 33,
+    "titulo": "Ácido Fólico",
+    "texto": "Vitamina importante para síntese celular. Geralmente bem tolerada e frequentemente utilizada em suporte metabólico."
+  },
+  {
+    "id": 34,
+    "titulo": "Levotiroxina",
+    "texto": "Hormônio tireoidiano sintético usado para reposição. Pode causar agitação se utilizado em doses maiores do que o necessário."
+  },
+  {
+    "id": 35,
+    "titulo": "Sinvastatina",
+    "texto": "Medicamento utilizado para controle de colesterol. Pode causar dores musculares leves em alguns casos."
+  },
+  {
+    "id": 36,
+    "titulo": "Atorvastatina",
+    "texto": "Auxilia no controle de colesterol e prevenção cardiovascular. Pode causar desconforto muscular leve."
+  },
+  {
+    "id": 37,
+    "titulo": "Furosemida",
+    "texto": "Diurético utilizado em retenção de líquidos. Pode alterar níveis de eletrólitos, incluindo sódio e potássio."
+  },
+  {
+    "id": 38,
+    "titulo": "Espironolactona",
+    "texto": "Diurético poupador de potássio. Deve ser usado com cautela em pessoas com função renal comprometida."
+  },
+  {
+    "id": 39,
+    "titulo": "Insulina Regular",
+    "texto": "Hormônio utilizado no controle imediato da glicemia. Pode causar hipoglicemia se administrado sem monitorização adequada."
+  },
+  {
+    "id": 40,
+    "titulo": "Insulina NPH",
+    "texto": "Insulina de ação intermediária usada no controle contínuo da glicemia. Pode causar hipoglicemia se utilizada incorretamente."
+  },
+  {
+    "id": 41,
+    "titulo": "Colecalciferol (Vitamina D3 em altas doses)",
+    "texto": "Usado para correção rápida de deficiência de vitamina D. Pode elevar níveis de cálcio se usado em excesso."
+  },
+  {
+    "id": 42,
+    "titulo": "Nebivolol",
+    "texto": "Betabloqueador utilizado no controle da pressão arterial. Pode causar fadiga leve ou redução da frequência cardíaca."
+  },
+  {
+    "id": 43,
+    "titulo": "Propafenona",
+    "texto": "Medicamento utilizado no controle de arritmias cardíacas. Pode causar tontura e alterações no paladar."
+  },
+  {
+    "id": 44,
+    "titulo": "Furoato de Mometasona",
+    "texto": "Corticosteroide usado em inflamações respiratórias e nasais. Pode causar leve irritação na garganta."
+  },
+  {
+    "id": 45,
+    "titulo": "Amoxicilina + Clavulanato",
+    "texto": "Antibiótico de amplo espectro usado em diversas infecções bacterianas. Pode causar desconforto gastrointestinal."
+  },
+  {
+    "id": 46,
+    "titulo": "Cefalexina",
+    "texto": "Antibiótico amplamente utilizado em infecções comuns de pele, trato respiratório e urinário. Geralmente bem tolerado."
+  },
+  {
+    "id": 47,
+    "titulo": "Ciprofloxacino",
+    "texto": "Antibiótico quinolona usado em infecções específicas. Deve ser usado com cautela em pessoas com problemas musculares ou tendinosos."
+  },
+  {
+    "id": 48,
+    "titulo": "Metformina",
+    "texto": "Auxilia no controle metabólico e sensibilidade à insulina. Pode causar efeitos gastrointestinais no início."
+  },
+  {
+    "id": 49,
+    "titulo": "Glibenclamida",
+    "texto": "Medicamento que estimula a liberação de insulina. Pode causar hipoglicemia em uso inadequado."
+  },
+  {
+    "id": 50,
+    "titulo": "Sitagliptina",
+    "texto": "Medicamento utilizado no suporte ao controle glicêmico com baixa incidência de hipoglicemia. Geralmente bem tolerado."
+  }
+  ,
+  {
+    "id": 51,
+    "titulo": "Prednisona",
+    "texto": "Corticosteroide utilizado em múltiplas condições inflamatórias e alérgicas. Pode causar alterações de apetite, humor e retenção de líquidos em uso prolongado."
+  },
+  {
+    "id": 52,
+    "titulo": "Dexametasona",
+    "texto": "Corticosteroide de ação potente usado em processos inflamatórios diversos. Pode causar alterações de humor e aumento de apetite."
+  },
+  {
+    "id": 53,
+    "titulo": "Hidrocortisona",
+    "texto": "Corticosteroide usado topicamente ou sistemicamente. A forma tópica pode causar afinamento da pele em uso prolongado."
+  },
+  {
+    "id": 54,
+    "titulo": "Anlodipino",
+    "texto": "Medicamento utilizado para controle da pressão arterial. Pode causar inchaço leve nos tornozelos."
+  },
+  {
+    "id": 55,
+    "titulo": "Captopril",
+    "texto": "Anti-hipertensivo utilizado para controle pressórico e proteção cardiovascular. Pode causar tosse seca em alguns usuários."
+  },
+  {
+    "id": 56,
+    "titulo": "Enalapril",
+    "texto": "Utilizado no controle da pressão arterial e suporte cardíaco. Pode causar tontura ou tosse seca."
+  },
+  {
+    "id": 57,
+    "titulo": "Losartana",
+    "texto": "Anti-hipertensivo amplamente usado para controle pressórico. Pode causar tontura leve."
+  },
+  {
+    "id": 58,
+    "titulo": "Hidroclorotiazida",
+    "texto": "Diurético utilizado em hipertensão e retenção de líquidos. Pode alterar eletrólitos e causar aumento da micção."
+  },
+  {
+    "id": 59,
+    "titulo": "Propranolol",
+    "texto": "Betabloqueador usado para controle cardiovascular e suporte em alguns sintomas específicos. Pode causar sensação de frio nas extremidades."
+  },
+  {
+    "id": 60,
+    "titulo": "Sertralina",
+    "texto": "Medicamento utilizado para suporte emocional. Pode causar náusea leve, alteração do sono ou redução do apetite no início."
+  },
+  {
+    "id": 61,
+    "titulo": "Fluoxetina",
+    "texto": "Auxilia no equilíbrio emocional e regulação do humor. Pode causar leve agitação ou alteração no apetite no início."
+  },
+  {
+    "id": 62,
+    "titulo": "Escitalopram",
+    "texto": "ISRS utilizado no suporte emocional e ansiedade. Geralmente bem tolerado, podendo causar leve sonolência."
+  },
+  {
+    "id": 63,
+    "titulo": "Clonazepam",
+    "texto": "Usado em situações de tensão emocional ou sintomas neurológicos. Pode causar sedação e lentidão nos reflexos."
+  },
+  {
+    "id": 64,
+    "titulo": "Diazepam",
+    "texto": "Ansiolítico e relaxante muscular. Pode causar sedação e diminuição de reflexos."
+  },
+  {
+    "id": 65,
+    "titulo": "Alprazolam",
+    "texto": "Ansiolítico utilizado em situações de estresse emocional. Pode causar sonolência, relaxamento intenso e deve ser monitorado."
+  },
+  {
+    "id": 66,
+    "titulo": "Carbamazepina",
+    "texto": "Medicamento usado para estabilização neurológica. Pode causar tontura e sonolência. Exige monitorização laboratorial."
+  },
+  {
+    "id": 67,
+    "titulo": "Lamotrigina",
+    "texto": "Utilizada como estabilizadora neurológica. Geralmente bem tolerada, podendo causar leve dor de cabeça."
+  },
+  {
+    "id": 68,
+    "titulo": "Ácido Valpróico",
+    "texto": "Utilizado em suporte neurológico. Pode causar tremores leves e alterações gastrointestinais."
+  },
+  {
+    "id": 69,
+    "titulo": "Quetiapina",
+    "texto": "Auxilia no equilíbrio emocional e organização do pensamento. Pode causar sonolência e aumento do apetite."
+  },
+  {
+    "id": 70,
+    "titulo": "Olanzapina",
+    "texto": "Medicamento usado no equilíbrio neuroquímico. Pode causar aumento do apetite e sonolência."
+  },
+  {
+    "id": 71,
+    "titulo": "Risperidona",
+    "texto": "Medicamento que atua na organização do pensamento e comportamento. Pode causar leve rigidez muscular."
+  },
+  {
+    "id": 72,
+    "titulo": "Aripiprazol",
+    "texto": "Utilizado no equilíbrio emocional e suporte comportamental. Pode causar leve inquietação ou insônia."
+  },
+  {
+    "id": 73,
+    "titulo": "Bupropion",
+    "texto": "Medicamento que atua aumentando energia e motivação. Pode causar leve agitação e redução do apetite."
+  },
+  {
+    "id": 74,
+    "titulo": "Mirtazapina",
+    "texto": "Medicamento com efeito relaxante e auxiliar no sono. Pode causar aumento do apetite."
+  },
+  {
+    "id": 75,
+    "titulo": "Trazodona",
+    "texto": "Utilizada como suporte emocional e regulador do sono. Pode causar tontura leve ao levantar rapidamente."
+  }
+  ,
+  {
+    "id": 76,
+    "titulo": "Buspirona",
+    "texto": "Medicamento utilizado no suporte emocional e redução de sintomas de ansiedade. Geralmente não causa sedação intensa. Pode causar dor de cabeça leve."
+  },
+  {
+    "id": 77,
+    "titulo": "Amitriptilina",
+    "texto": "Medicamento usado em regulação emocional e também em condições neurológicas periféricas. Pode causar sonolência, boca seca e sensação de peso."
+  },
+  {
+    "id": 78,
+    "titulo": "Nortriptilina",
+    "texto": "Medicamento da mesma classe da amitriptilina usado no suporte emocional. Pode causar leve tontura e variação do apetite."
+  },
+  {
+    "id": 79,
+    "titulo": "Venlafaxina",
+    "texto": "Antidepressivo que atua no reequilíbrio neuroquímico. Pode causar sudorese leve, alteração do sono ou náusea no início."
+  },
+  {
+    "id": 80,
+    "titulo": "Fenofibrato",
+    "texto": "Utilizado para suporte no controle dos níveis de triglicerídeos. Pode causar leve desconforto muscular em alguns casos."
+  },
+  {
+    "id": 81,
+    "titulo": "Clopidogrel",
+    "texto": "Auxilia na prevenção de eventos cardiovasculares em determinadas situações clínicas. Pode causar facilidade para hematomas."
+  },
+  {
+    "id": 82,
+    "titulo": "Ácido Acetilsalicílico (AAS)",
+    "texto": "Utilizado em doses específicas para suporte cardiovascular. Pode causar irritação gástrica e deve ser usado com cautela em pessoas com gastrite."
+  },
+  {
+    "id": 83,
+    "titulo": "Rivaroxabana",
+    "texto": "Medicamento utilizado para suporte em condições relacionadas à coagulação. Pode aumentar risco de sangramentos."
+  },
+  {
+    "id": 84,
+    "titulo": "Apixabana",
+    "texto": "Usado para suporte em estabilidade da coagulação. Geralmente bem tolerado. Atenção a sinais de sangramento."
+  },
+  {
+    "id": 85,
+    "titulo": "Heparina",
+    "texto": "Utilizada em ambiente hospitalar para suporte antitrombótico. Pode causar hematomas no local de aplicação."
+  },
+  {
+    "id": 86,
+    "titulo": "Enoxaparina",
+    "texto": "Heparina de baixo peso molecular usada para suporte anticoagulante. Pode causar hematomas leves."
+  },
+  {
+    "id": 87,
+    "titulo": "Dexclorfeniramina",
+    "texto": "Antialérgico de primeira geração. Pode causar sonolência e boca seca."
+  },
+  {
+    "id": 88,
+    "titulo": "Hidroxizina",
+    "texto": "Antialérgico com propriedade sedativa. Pode causar sonolência significativa."
+  },
+  {
+    "id": 89,
+    "titulo": "Adrenalina",
+    "texto": "Utilizada em situações de emergência, especialmente respiratórias e cardíacas. Pode causar aumento da frequência cardíaca."
+  },
+  {
+    "id": 90,
+    "titulo": "Noradrenalina",
+    "texto": "Usada exclusivamente em ambiente hospitalar para suporte hemodinâmico. Exige monitoramento contínuo."
+  },
+  {
+    "id": 91,
+    "titulo": "Dopamina",
+    "texto": "Medicamento intravenoso usado em suporte circulatório. Utilização monitorada e restrita ao ambiente hospitalar."
+  },
+  {
+    "id": 92,
+    "titulo": "Dobutamina",
+    "texto": "Utilizada para suporte da função cardíaca em situações críticas. Uso exclusivamente profissional."
+  },
+  {
+    "id": 93,
+    "titulo": "Midazolam",
+    "texto": "Sedativo utilizado em procedimentos e situações específicas. Pode causar amnésia do período de uso. Necessita monitoramento."
+  },
+  {
+    "id": 94,
+    "titulo": "Propofol",
+    "texto": "Sedativo usado para indução anestésica. Atua rapidamente. Uso restrito a profissionais treinados."
+  },
+  {
+    "id": 95,
+    "titulo": "Fentanil",
+    "texto": "Analgésico potente usado em ambiente hospitalar. Pode causar depressão respiratória."
+  },
+  {
+    "id": 96,
+    "titulo": "Morfina",
+    "texto": "Analgésico opióide usado em dores intensas. Pode causar náusea, sonolência e depressão respiratória."
+  },
+  {
+    "id": 97,
+    "titulo": "Ketamina",
+    "texto": "Medicamento usado em sedação e anestesia, podendo causar alterações de percepção. Uso profissional."
+  },
+  {
+    "id": 98,
+    "titulo": "Metilprednisolona",
+    "texto": "Corticosteroide potente usado em várias condições inflamatórias. Pode causar retenção de líquido e aumento de apetite."
+  },
+  {
+    "id": 99,
+    "titulo": "Tramadol",
+    "texto": "Analgésico de ação central. Pode causar tontura ou náusea. Geralmente bem tolerado quando monitorado."
+  },
+  {
+    "id": 100,
+    "titulo": "NPH Insulina",
+    "texto": "Insulina de ação intermediária usada no controle da glicemia. Pode causar hipoglicemia se utilizada incorretamente."
+  }
+]

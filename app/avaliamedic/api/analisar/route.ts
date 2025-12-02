@@ -30,18 +30,16 @@ export async function POST(req: Request) {
     const setor = form.get("setor") as string;
     const idade = form.get("idade") as string;
     const peso = form.get("peso") as string;
-    const arquivo: File | null = form.get("arquivo") as any;
+    const arquivo = form.get("arquivo") as File;
 
     if (!arquivo) {
       return NextResponse.json({ error: "Arquivo não recebido" }, { status: 400 });
     }
 
     // ===============================
-    // 1) Upload do arquivo
+    // 1) Upload do arquivo no bucket
     // ===============================
-    const bytes = await arquivo.arrayBuffer();
-    const buffer = Buffer.from(bytes);
-
+    const buffer = Buffer.from(await arquivo.arrayBuffer());
     const fileName = `prescricoes/${Date.now()}-${arquivo.name}`;
 
     const { error: uploadError } = await supabase.storage
@@ -80,160 +78,155 @@ export async function POST(req: Request) {
     // 3) OCR — API NOVA
     // ===============================
     const ocr = await openai.chat.completions.create({
-  model: "gpt-4o-mini",
-  messages: [
-    {
-      role: "system",
-      content: "Você é uma IA especializada em ler prescrições hospitalares."
-    },
-    {
-      role: "user",
-      content: [
+      model: "gpt-4o-mini",
+      messages: [
         {
-          type: "text",
-          text: "Leia totalmente esta prescrição e extraia tudo que for relevante."
+          role: "system",
+          content: "Você é uma IA especializada em ler prescrições hospitalares."
         },
         {
-          type: "image_url",
-          image_url: { url: arquivo_url }
+          role: "user",
+          content: [
+            {
+              type: "text",
+              text: "Leia totalmente esta prescrição e extraia tudo que for relevante."
+            },
+            {
+              type: "image_url",
+              image_url: { url: arquivo_url }
+            }
+          ]
         }
       ]
-    }
-  ]
-});
+    });
 
-const textoPrescricao = ocr.choices[0].message.content;
+    const textoPrescricao = ocr.choices[0].message.content || "";
 
     // ===============================
-    // 4) Extrair itens — API NOVA
+    // 4) Extrair itens
     // ===============================
     const extracao = await openai.chat.completions.create({
-  model: "gpt-4o-mini",
-  messages: [
-    {
-      role: "system",
-      content: `
-        Extraia os itens da prescrição.
-        Retorne SOMENTE JSON:
-        [
-          {"medicamento":"", "dose":"", "via":"", "frequencia":""}
-        ]
-      `
-    },
-    {
-      role: "user",
-      content: textoPrescricao
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content: `
+            Extraia os itens da prescrição.
+            Retorne SOMENTE JSON:
+            [
+              {"medicamento":"", "dose":"", "via":"", "frequencia":""}
+            ]
+          `
+        },
+        {
+          role: "user",
+          content: textoPrescricao
+        }
+      ]
+    });
+
+    let resultadoBruto = extracao.choices[0].message.content || "";
+
+    // Remover possíveis blocos markdown
+    resultadoBruto = resultadoBruto
+      .replace(/```json/gi, "")
+      .replace(/```/g, "")
+      .trim();
+
+    // Parse seguro
+    let itensJson: any;
+    try {
+      itensJson = JSON.parse(resultadoBruto);
+    } catch (e) {
+      return NextResponse.json(
+        { error: "Falha ao interpretar JSON retornado pela IA", bruto: resultadoBruto },
+        { status: 500 }
+      );
     }
-  ]
-});
 
-let resultadoBruto = extracao.choices[0].message.content;
-
-// Garante JSON válido
-try {
-  var itensJson = JSON.parse(resultadoBruto);
-} catch (e) {
-  return NextResponse.json(
-    { error: "Falha ao interpretar JSON retornado pela IA", retorno: resultadoBruto },
-    { status: 500 }
-  );
-}
-
-const itens = itensJson.itens;
-
-
-
-
+    // JSON já vem como array direto
+    const itens = itensJson;
 
     // ===============================
-    // 5) Busca Vetorial
+    // 5) Função de busca vetorial
     // ===============================
     async function buscarContexto(medicamento: string) {
       const resp = await fetch(
-        `${process.env.NEXT_PUBLIC_URL}/avaliamedic/api/busca-vetorial`,
-        {
-          method: "POST",
-          body: JSON.stringify({ query: medicamento }),
-          headers: { "Content-Type": "application/json" },
-        }
-      );
+        `${process.env.NEXT_PUBLIC_URL}/avaliamedic/api/busca-vetorial,{method: "POST",body: JSON.stringify({ query: medicamento }),headers: { "Content-Type": "application/json" },
+        }`);
 
       const json = await resp.json();
       return json.resultados || [];
     }
 
     // ===============================
-    // 6) Análise de cada item — API NOVA
+    // 6) Analisar cada item
     // ===============================
-    // ===============================
-// 5) Análise de cada item
-// ===============================
+    const analiseFinal: any[] = [];
 
-// <-- AQUI: criar o array
-const analiseFinal: any[] = [];
+    for (const item of itens) {
+      const contexto = await buscarContexto(item.medicamento);
 
-for (const item of itens) {
-  const contexto = await buscarContexto(item.medicamento);
+      const analise = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          {
+            role: "system",
+            content: `
+              Você é uma IA clínica hospitalar.
+              Retorne APENAS JSON:
+              {"status":"", "motivo":""}
+            `
+          },
+          {
+            role: "user",
+            content: `
+              Medicamento: ${item.medicamento}
+              Dose: ${item.dose}
+              Via: ${item.via}
+              Frequência: ${item.frequencia}
 
-  const analise = await openai.chat.completions.create({
-    model: "gpt-4o-mini",
-    messages: [
-      {
-        role: "system",
-        content: `
-          Você é uma IA clínica hospitalar.
-          Retorne APENAS JSON:
-          {"status":"", "motivo":""}
-        `
-      },
-      {
-        role: "user",
-        content: `
-          Medicamento: ${item.medicamento}
-          Dose: ${item.dose}
-          Via: ${item.via}
-          Frequência: ${item.frequencia}
+              Contexto clínico:
+              ${contexto.map((c: any) => c.conteudo).join("\n")}
+            `
+          }
+        ]
+      });
 
-          Contexto clínico:
-          ${contexto.map((c: any) => c.conteudo).join("\n")}
-        `
-      }
-    ]
-  });
+      const resultado = JSON.parse(analise.choices[0].message.content);
 
-  const resultado = JSON.parse(analise.choices[0].message.content);
-
-  analiseFinal.push({
-    ...item,
-    status: resultado.status,
-    motivo: resultado.motivo,
-  });
-}
-
-
-// ===============================
-// 8) Salvar itens individualmente
-// ===============================
-for (const item of analiseFinal) {
-  await supabase.from("itens_prescricao").insert({
-    prescricao_id: prescricaoId,
-    medicamento: item.medicamento,
-    dose: item.dose,
-    via: item.via,
-    frequencia: item.frequencia,
-    risco: item.status,
-  });
-}
-
+      analiseFinal.push({
+        ...item,
+        status: resultado.status,
+        motivo: resultado.motivo,
+      });
+    }
 
     // ===============================
-    // 9) Atualizar status
+    // 7) Gravar itens no banco
+    // ===============================
+    for (const item of analiseFinal) {
+      await supabase.from("itens_prescricao").insert({
+        prescricao_id: prescricaoId,
+        medicamento: item.medicamento,
+        dose: item.dose,
+        via: item.via,
+        frequencia: item.frequencia,
+        risco: item.status,
+      });
+    }
+
+    // ===============================
+    // 8) Atualizar status
     // ===============================
     await supabase
       .from("prescricoes")
       .update({ status: "aguardando_parecer" })
       .eq("id", prescricaoId);
 
+    // ===============================
+    // 9) Retorno final para o front
+    // ===============================
     return NextResponse.json({ sucesso: true, prescricao_id: prescricaoId });
 
   } catch (err: any) {

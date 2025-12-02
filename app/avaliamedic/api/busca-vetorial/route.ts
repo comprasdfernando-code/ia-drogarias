@@ -5,10 +5,8 @@ import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import OpenAI from "openai";
 
-
-
 // ==========================
-// CONFIGURAÇÃO SUPABASE
+// CONFIG SUPABASE
 // ==========================
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -33,38 +31,44 @@ export async function POST(req: Request) {
       );
     }
 
-    // ==============================
+    console.log("🔎 BUSCA-VETORIAL | Consulta:", query);
+
+    // ================================
     // 1) Criar embedding da pergunta
-    // ==============================
+    // ================================
     const embeddingRes = await openai.embeddings.create({
-      model: "text-embedding-3-small",
+      model: "text-embedding-3-small", // modelo atual
       input: query,
     });
 
     const embedding = embeddingRes.data[0].embedding;
+    console.log("📌 Embedding gerado:", embedding.length);
 
-    // ======================================
-    // 2) Buscar os VETORES mais próximos
-    // ======================================
-    const { data, error } = await supabase.rpc(
-      "match_conhecimento",
-      {
-        query_embedding: embedding,
-        similarity_threshold: 0.7, // ajustável
-        match_count: 5,            // retorna 5 trechos
-      }
-    );
+    // ==================================================
+    // 2) RPC correta (AJUSTE PARA O NOME CERTO)
+    // ==================================================
+    const { data, error } = await supabase.rpc("match_enciclopedia", {
+      query_embedding: embedding,
+      similarity_threshold: 0.25, // valor ideal
+      match_count: 5,
+    });
 
     if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      console.error("❌ ERRO NO SUPABASE:", error);
+      return NextResponse.json(
+        { error: "Erro Supabase RPC: " + error.message },
+        { status: 500 }
+      );
     }
+
+    console.log("📚 Resultados encontrados:", data?.length);
 
     return NextResponse.json({
       sucesso: true,
       resultados: data,
     });
-
   } catch (e: any) {
+    console.error("❌ ERRO GERAL /busca-vetorial:", e);
     return NextResponse.json(
       { error: e.message || "Erro interno" },
       { status: 500 }
