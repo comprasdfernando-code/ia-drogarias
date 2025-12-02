@@ -127,30 +127,19 @@ const textoPrescricao = ocr.choices[0].message.content;
   ]
 });
 
-// 1) Garantir que é string
-let texto = extracao.choices[0].message.content || "";
+let resultadoBruto = extracao.choices[0].message.content;
 
-// 2) Remover blocos markdown
-texto = texto.replace(/```json/gi, "")
-             .replace(/```/g, "")
-             .trim();
-
-// 3) Extrair SOMENTE o array JSON usando regex
-const match = texto.match(/\[[\s\S]*\]/);
-
-if (!match) {
-  throw new Error("JSON não encontrado na resposta da IA");
-}
-
-const jsonLimpo = match[0];
-
-let itens;
+// Garante JSON válido
 try {
-  itens = JSON.parse(jsonLimpo);
-} catch (err) {
-  console.error("ERRO AO PARSEAR JSON:", jsonLimpo);
-  throw new Error("JSON inválido na resposta da IA");
+  var itensJson = JSON.parse(resultadoBruto);
+} catch (e) {
+  return NextResponse.json(
+    { error: "Falha ao interpretar JSON retornado pela IA", retorno: resultadoBruto },
+    { status: 500 }
+  );
 }
+
+const itens = itensJson.itens;
 
 
 
