@@ -127,7 +127,13 @@ const textoPrescricao = ocr.choices[0].message.content;
   ]
 });
 
-const itens = JSON.parse(extracao.choices[0].message.content);
+let texto = extracao.choices[0].message.content || "";
+
+// remove blocos markdown tipo ```json
+texto = texto.replace(/```json/gi, "").replace(/```/g, "").trim();
+
+const itens = JSON.parse(texto);
+
 
 
     // ===============================
