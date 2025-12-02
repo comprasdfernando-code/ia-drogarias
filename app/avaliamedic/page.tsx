@@ -20,7 +20,7 @@ export default function AvaliaMedicDashboard() {
       </header>
 
       {/* BANNER */}
-      <section className="bg-white border shadow-sm rounded-xl p-6 mb-10">
+      <section className="bg-black border shadow-sm rounded-xl p-6 mb-10">
         <h2 className="text-2xl font-semibold text-emerald-700">
           Segurança Medicamentosa Inteligente
         </h2>
