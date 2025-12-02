@@ -34,7 +34,7 @@ export default function EnviarPrescricao() {
 
   return (
     <main className="min-h-screen bg-gray-50 p-6">
-      <div className="max-w-xl mx-auto bg-white border shadow-lg rounded-2xl p-8">
+      <div className="max-w-xl mx-auto bg-black border shadow-lg rounded-2xl p-8">
 
         <h1 className="text-3xl font-semibold text-emerald-700">
           Enviar Prescrição
