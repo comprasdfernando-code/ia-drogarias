@@ -129,10 +129,23 @@ const textoPrescricao = ocr.choices[0].message.content;
 
 let texto = extracao.choices[0].message.content || "";
 
-// remove blocos markdown tipo ```json
-texto = texto.replace(/```json/gi, "").replace(/```/g, "").trim();
+// remover marcas tipo ```json ``` ou outros
+texto = texto
+  .replace(/```json/gi, "")
+  .replace(/```/g, "")
+  .trim();
 
-const itens = JSON.parse(texto);
+// pegar somente o primeiro JSON válido
+const match = texto.match(/\[[\s\S]*\]/);
+if (!match) {
+  return NextResponse.json(
+    { error: "Resposta da IA não contém JSON válido" },
+    { status: 500 }
+  );
+}
+
+const itens = JSON.parse(match[0]);
+
 
 
 
