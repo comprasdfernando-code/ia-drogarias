@@ -15,18 +15,31 @@ export default function ProcessandoClient() {
     if (!prescricaoId) return;
 
     const interval = setInterval(async () => {
-      const res = await fetch(
-        `/avaliamedic/api/status?prescricao_id=${prescricaoId}`
-      );
-      const json = await res.json();
+      try {
+        const res = await fetch(
+          `/avaliamedic/api/status?prescricao_id=${prescricaoId}`
+        );
 
-      setStatus(json.status);
+        const json = await res.json();
+        setStatus(json.status);
 
-      if (json.status === "aguardando_parecer") {
-        clearInterval(interval);
-        router.push(`/avaliamedic/relatorio?prescricao_id=${prescricaoId}`);
+        console.log("STATUS ATUAL:", json.status);
+
+        // STATUS QUE FINALIZAM O PROCESSO
+        if (
+          json.status === "parecer_concluido" ||
+          json.status === "erro_ocr" ||
+          json.status === "erro_extracao" ||
+          json.status === "sem_itens"
+        ) {
+          clearInterval(interval);
+          router.push(`/avaliamedic/relatorio?prescricao_id=${prescricaoId}`);
+        }
+
+      } catch (e) {
+        console.error("Erro ao checar status:", e);
       }
-    }, 2000);
+    }, 1500);
 
     return () => clearInterval(interval);
   }, [prescricaoId, router]);
@@ -44,9 +57,7 @@ export default function ProcessandoClient() {
       <div className="mt-8 flex items-center gap-3 text-emerald-700">
         <Loader2 className="animate-spin w-8 h-8" />
         <span className="text-lg font-medium">
-          {status === "em_analise"
-            ? "Processando dados..."
-            : "Finalizando..."}
+          {status === "em_analise" ? "Processando dados..." : "Finalizando..."}
         </span>
       </div>
 
