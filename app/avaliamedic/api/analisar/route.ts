@@ -25,7 +25,6 @@ const openai = new OpenAI({
 // ===============================
 function limparJSON(texto: string): string {
   if (!texto) return "";
-
   return texto.replace(/json/gi, "").replace(/``/g, "").trim();
 }
 
@@ -33,13 +32,13 @@ function parseJSONSeguro(texto: string): any {
   try {
     return JSON.parse(texto);
   } catch (e) {
-    console.error("Erro ao fazer JSON.parse no texto:", texto);
+    console.error("JSON inválido recebido:", texto);
     throw e;
   }
 }
 
 // ======================================================================
-// 🚀 FUNÇÃO NOVA → GERA STATUS + MOTIVO AUTOMÁTICO PARA CADA MEDICAMENTO
+// 🚀 GERAR STATUS + MOTIVO AUTOMÁTICO (100% Seguro, nunca quebra)
 // ======================================================================
 async function gerarParecer(item: any) {
   try {
@@ -78,13 +77,22 @@ Frequência: ${item.frequencia}
     let bruto = resposta.choices[0].message.content || "";
     bruto = limparJSON(bruto);
 
-    return parseJSONSeguro(bruto);
+    // 🔥 PATCH de segurança — nunca deixa o JSON quebrar
+    try {
+      return JSON.parse(bruto);
+    } catch (e) {
+      console.warn("Parecer não retornou JSON válido:", bruto);
+      return {
+        status: "Indefinido",
+        motivo: "A IA não encontrou dados suficientes para gerar um parecer automático."
+      };
+    }
 
   } catch (e) {
     console.error("Erro ao gerar parecer:", e);
     return {
       status: "Indefinido",
-      motivo: "Não foi possível interpretar automaticamente."
+      motivo: "Falha ao processar o parecer."
     };
   }
 }
@@ -102,10 +110,7 @@ export async function POST(req: Request) {
     const arquivo: File | null = form.get("arquivo") as any;
 
     if (!arquivo) {
-      return NextResponse.json(
-        { error: "Arquivo não recebido" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "Arquivo não recebido" }, { status: 400 });
     }
 
     // ===============================
@@ -118,19 +123,15 @@ export async function POST(req: Request) {
 
     const { error: uploadError } = await supabase.storage
       .from("avaliamedic")
-      .upload(fileName, buffer, {
-        contentType: arquivo.type || "image/jpeg",
-      });
+      .upload(fileName, buffer, { contentType: arquivo.type || "image/jpeg" });
 
     if (uploadError) {
       console.error("Erro no upload:", uploadError);
-      return NextResponse.json(
-        { error: "Falha ao enviar arquivo para o storage." },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: "Falha ao enviar arquivo." }, { status: 500 });
     }
 
-    const arquivo_url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/avaliamedic/${fileName}`;
+    const arquivo_url =
+      `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/avaliamedic/${fileName}`;
 
     // ===============================
     // 2) Criar registro inicial
@@ -148,9 +149,9 @@ export async function POST(req: Request) {
       .single();
 
     if (prescError || !prescricao) {
-      console.error("Erro ao criar prescrição:", prescError);
+      console.error("Erro criando prescrição:", prescError);
       return NextResponse.json(
-        { error: "Falha ao registrar prescrição no banco." },
+        { error: "Falha ao registrar prescrição." },
         { status: 500 }
       );
     }
@@ -158,7 +159,7 @@ export async function POST(req: Request) {
     const prescricaoId = prescricao.id;
 
     // ===============================
-    // 3) OCR - Ler texto da receita
+    // 3) OCR - Ler texto da prescrição
     // ===============================
     let textoPrescricao = "";
 
@@ -168,13 +169,12 @@ export async function POST(req: Request) {
         messages: [
           {
             role: "system",
-            content:
-              "Você é uma IA especializada em ler prescrições hospitalares. Retorne apenas o texto legível da prescrição.",
+            content: "Transcreva a prescrição com clareza.",
           },
           {
             role: "user",
             content: [
-              { type: "text", text: "Leia essa prescrição:" },
+              { type: "text", text: "Leia esta prescrição:" },
               { type: "image_url", image_url: { url: arquivo_url } }
             ],
           },
@@ -184,20 +184,12 @@ export async function POST(req: Request) {
       textoPrescricao = ocr.choices[0].message.content || "";
     } catch (err) {
       console.error("Erro no OCR:", err);
-
-      await supabase
-        .from("prescricoes")
-        .update({ status: "erro_ocr" })
-        .eq("id", prescricaoId);
-
-      return NextResponse.json(
-        { error: "Falha ao ler a imagem da prescrição." },
-        { status: 500 }
-      );
+      await supabase.from("prescricoes").update({ status: "erro_ocr" }).eq("id", prescricaoId);
+      return NextResponse.json({ error: "Falha no OCR." }, { status: 500 });
     }
 
     // ===============================
-    // 4) Extrair itens via IA
+    // 4) Extração de itens
     // ===============================
     let itens: any[] = [];
 
@@ -222,27 +214,17 @@ Retorne SOMENTE JSON:
 
       let bruto = extracao.choices[0].message.content || "";
       bruto = limparJSON(bruto);
-
       itens = parseJSONSeguro(bruto);
 
     } catch (err) {
       console.error("Erro extraindo itens:", err);
-
-      await supabase
-        .from("prescricoes")
-        .update({ status: "erro_extracao" })
-        .eq("id", prescricaoId);
-
-      return NextResponse.json(
-        { error: "Falha ao extrair itens da prescrição." },
-        { status: 500 }
-      );
+      await supabase.from("prescricoes").update({ status: "erro_extracao" }).eq("id", prescricaoId);
+      return NextResponse.json({ error: "Falha ao extrair itens." }, { status: 500 });
     }
 
     // ===============================
     // 5) SALVAR CADA ITEM + PARECER
     // ===============================
-
     for (const item of itens) {
       const medicamento = item.medicamento || "";
       const dose = item.dose || "";
@@ -251,7 +233,7 @@ Retorne SOMENTE JSON:
 
       if (!medicamento) continue;
 
-      // 🔥 CHAMAR IA PARA GERAR STATUS + MOTIVO
+      // 🔥 Gerar parecer seguro
       const parecer = await gerarParecer({
         medicamento,
         dose,
@@ -271,13 +253,11 @@ Retorne SOMENTE JSON:
           motivo: parecer.motivo,
         });
 
-      if (itemError) {
-        console.error("Erro ao salvar item_prescricao:", itemError);
-      }
+      if (itemError) console.error("Erro salvando item:", itemError);
     }
 
     // ===============================
-    // 6) Atualizar status final
+    // 6) Finalizar prescrição
     // ===============================
     await supabase
       .from("prescricoes")
