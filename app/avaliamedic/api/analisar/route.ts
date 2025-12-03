@@ -189,38 +189,71 @@ export async function POST(req: Request) {
     }
 
     // ===============================
-    // 4) Extração de itens
-    // ===============================
-    let itens: any[] = [];
+// 4) Extrair itens via IA (VERSÃO CORRIGIDA)
+// ===============================
+let itens: any[] = [];
 
-    try {
-      const extracao = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
-        messages: [
-          {
-            role: "system",
-            content: `
-Extraia medicamentos, dose, via e frequência.
-Retorne SOMENTE JSON:
+try {
+  const extracao = await openai.chat.completions.create({
+    model: "gpt-4o-mini",
+    messages: [
+      {
+        role: "system",
+        content: `
+Você é um extrator clínico de prescrições.
+Retorne SOMENTE JSON puro.
 
+Formato obrigatório:
 [
- {"medicamento":"", "dose":"", "via":"", "frequencia":""}
+  {
+    "medicamento": "Nome",
+    "dose": "Texto",
+    "via": "Texto",
+    "frequencia": "Texto"
+  }
 ]
+
+NÃO escreva explicações, títulos, comentários, observações.
+Retorne apenas o JSON válido.
 `
-          },
-          { role: "user", content: textoPrescricao },
-        ],
-      });
+      },
+      {
+        role: "user",
+        content: textoPrescricao
+      }
+    ],
+  });
 
-      let bruto = extracao.choices[0].message.content || "";
-      bruto = limparJSON(bruto);
-      itens = parseJSONSeguro(bruto);
+  let bruto = extracao.choices[0].message.content || "";
 
-    } catch (err) {
-      console.error("Erro extraindo itens:", err);
-      await supabase.from("prescricoes").update({ status: "erro_extracao" }).eq("id", prescricaoId);
-      return NextResponse.json({ error: "Falha ao extrair itens." }, { status: 500 });
-    }
+  // Remove qualquer coisa antes/depois do JSON
+  bruto = bruto
+    .replace(/^[^{\[]+/g, "")      // remove texto antes de JSON
+    .replace(/[^}\]]+$/g, "")      // remove texto depois do JSON
+    .trim();
+
+  const parsed = JSON.parse(bruto);
+
+  if (Array.isArray(parsed)) {
+    itens = parsed;
+  }
+} catch (err) {
+  console.error("Erro extraindo itens:", err);
+}
+
+// Se itens vier vazio:
+if (!itens || itens.length === 0) {
+  await supabase
+    .from("prescricoes")
+    .update({ status: "sem_itens" })
+    .eq("id", prescricaoId);
+
+  return NextResponse.json(
+    { sucesso: true, prescricao_id: prescricaoId, itens: [] },
+    { status: 200 }
+  );
+}
+
 
     // ===============================
     // 5) SALVAR CADA ITEM + PARECER
