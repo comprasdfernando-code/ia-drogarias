@@ -210,27 +210,50 @@ export async function POST(req: Request) {
 
     try {
       const extracao = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
-        messages: [
-          {
-            role: "system",
-            content: `
-Extraia medicamentos, dose, via e frequência da prescrição.
-Retorne SOMENTE JSON no formato:
+  model: "gpt-4o-mini",
+  messages: [
+    {
+      role: "system",
+      content: `
+Você é uma IA especialista em farmacologia hospitalar.
+Seu trabalho é extrair MEDICAMENTOS mesmo quando o texto está incompleto, confuso,
+misturado ou mal formatado (como OCR de receita médica).
+
+REGRAS IMPORTANTES:
+- Identifique medicamento mesmo com texto parcial (ex: "Amox 500" → Amoxicilina 500mg)
+- Identifique dose mesmo se vier sem unidade (ex: "1" → "1 comprimido")
+- Identifique frequência mesmo se vier truncada (ex: "8 e" → "8/8h")
+- Se a via não aparecer, coloque via = "não informada"
+- Formate tudo de forma coerente e clínica.
+- Ignore frases como "Tipo de uso", "Interno", "Hospital", "Uso contínuo", etc.
+
+RETORNE APENAS JSON NO FORMATO:
 
 [
-  { "medicamento": "", "dose": "", "via": "", "frequencia": "" }
+  {
+    "medicamento": "",
+    "dose": "",
+    "via": "",
+    "frequencia": ""
+  }
 ]
+
+NÃO escreva explicações.
+NÃO escreva nada fora do JSON.
 `
-          },
-          { role: "user", content: textoPrescricao }
-        ]
-      });
+    },
+    {
+      role: "user",
+      content: `Texto da receita (OCR): ${textoPrescricao}`
+    }
+  ]
+});
 
-      let bruto = extracao.choices[0].message.content || "";
-      bruto = limparJSON(bruto);
+let bruto = extracao.choices[0].message.content || "";
+bruto = limparJSON(bruto);
 
-      itens = parseJSONSeguro(bruto) || [];
+itens = parseJSONSeguro(bruto) || [];
+
 
     } catch {
       await supabase
