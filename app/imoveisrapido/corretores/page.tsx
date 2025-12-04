@@ -34,12 +34,13 @@ export default function CorretoresPainel() {
 
       {/* BOTÃO CRIAR ANÚNCIO */}
       <div className="mb-8">
-        <Link
-          href="#"
-          className="bg-blue-700 text-white px-6 py-3 rounded-lg font-bold hover:bg-blue-800"
-        >
-          + Criar novo anúncio
-        </Link>
+       <Link
+  href="/imoveisrapido/anunciar"
+  className="bg-blue-700 text-white px-6 py-3 rounded-lg font-bold hover:bg-blue-800"
+>
+  + Criar novo anúncio
+</Link>
+
       </div>
 
       {/* TABELA DE IMÓVEIS */}
