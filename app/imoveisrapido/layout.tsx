@@ -8,6 +8,8 @@ export const metadata = {
   description: "Plataforma de anúncios imobiliários rápida e moderna.",
 };
 
+
+
 export default function Layout({ children }: { children: React.ReactNode }) {
   return (
     <div className="min-h-screen flex flex-col bg-white text-gray-900">
@@ -25,16 +27,16 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           </div>
 
           <nav className="flex gap-6 text-lg font-medium">
-            <Link href="/imoveisrapido" className="hover:text-blue-600">
+            <Link href="/imoveisrapido/imoveisrapido" className="hover:text-blue-600">
               Início
             </Link>
-            <Link href="/imovel/1" className="hover:text-blue-600">
+            <Link href="/imoveisrapido/imovel/1" className="hover:text-blue-600">
               Imóveis
             </Link>
-            <Link href="/anunciar" className="hover:text-blue-600">
+            <Link href="/imoveisrapido/anunciar" className="hover:text-blue-600">
               Anunciar
             </Link>
-            <Link href="/corretores" className="hover:text-blue-600">
+            <Link href="/imoveisrapido/corretores" className="hover:text-blue-600">
               Corretores
             </Link>
           </nav>
