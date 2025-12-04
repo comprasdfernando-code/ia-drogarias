@@ -27,7 +27,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
           </div>
 
           <nav className="flex gap-6 text-lg font-medium">
-            <Link href="/imoveisrapido/imoveisrapido" className="hover:text-blue-600">
+            <Link href="/imoveisrapido" className="hover:text-blue-600">
               Início
             </Link>
             <Link href="/imoveisrapido/imovel/1" className="hover:text-blue-600">
