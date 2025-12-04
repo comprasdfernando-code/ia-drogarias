@@ -8,21 +8,21 @@ export default function ImovelPage({ params }: any) {
   // MOCK de imóvel
   const imovel = {
     id,
-    titulo: "Casa à venda em São Mateus",
-    preco: "350.000",
+    titulo: "Casa à venda no Vila Bela-São Mateus",
+    preco: "160.000",
     descricao: `
-      Casa ampla, recém reformada, com excelente iluminação natural.
-      Possui sala grande, cozinha moderna, 3 dormitórios e área de serviço.
-      Localização privilegiada e segura.
+      Casa ampla, com excelente iluminação natural.
+      Possui sala grande, cozinha moderna, 2 dormitórios ( 1 Dormitorio Suite com Sacada ) e área de serviço.
+      Garagem pra Dois Carros.
     `,
     detalhes: {
-      quartos: 3,
+      quartos: 2,
       banheiros: 2,
       vagas: 2,
       tamanho: "120m²",
     },
     imagem: "/imoveisrapido/casa1.jpg",
-    endereco: "Rua Exemplo, Jardim São Mateus - SP",
+    endereco: "Vila Bela-São Mateus - SP",
     whatsapp: "5511982047548",
   };
 
