@@ -28,13 +28,13 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             <Link href="/imoveisrapido" className="hover:text-blue-600">
               Início
             </Link>
-            <Link href="#" className="hover:text-blue-600">
+            <Link href="/imovel/1" className="hover:text-blue-600">
               Imóveis
             </Link>
-            <Link href="#" className="hover:text-blue-600">
+            <Link href="/anunciar" className="hover:text-blue-600">
               Anunciar
             </Link>
-            <Link href="#" className="hover:text-blue-600">
+            <Link href="/corretores" className="hover:text-blue-600">
               Corretores
             </Link>
           </nav>
