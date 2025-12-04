@@ -2,27 +2,34 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { createClient } from "@supabase/supabase-js";
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
 export default function CorretoresPainel() {
-  const [meusImoveis] = useState([
-    {
-      id: 1,
-      titulo: "Casa à venda em São Mateus",
-      preco: "350.000",
-      imagem: "/imoveisrapido/casa1.jpg",
-      leads: 12,
-      status: "Publicado",
-    },
-    {
-      id: 2,
-      titulo: "Apartamento no Jardim Marabá",
-      preco: "280.000",
-      imagem: "/imoveisrapido/casa1.jpg",
-      leads: 7,
-      status: "Publicado",
-    },
-  ]);
+  const [meusImoveis, setMeusImoveis] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  async function carregarImoveis() {
+    const { data, error } = await supabase
+      .from("imoveis")
+      .select("*")
+      .order("id", { ascending: false });
+
+    if (!error) {
+      setMeusImoveis(data || []);
+    }
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    carregarImoveis();
+  }, []);
+
 
   return (
     <div className="max-w-7xl mx-auto px-4 py-10">
