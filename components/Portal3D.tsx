@@ -74,14 +74,16 @@ export default function Portal3D() {
 
       {/* ÁREA CENTRAL */}
       <div className="relative w-full flex items-center justify-center">
-        {lojas.map((loja, index) => {
-          // posições laterais
-          const pos = lojas.indexOf(loja) - lojas.indexOf(lojas.find(l => l.id === ativo)!);
+        {lojas.map((loja) => {
+          const pos =
+            lojas.indexOf(loja) -
+            lojas.indexOf(lojas.find((l) => l.id === ativo)!);
 
           return (
             <motion.div
               key={loja.id}
-              onClick={() => loja.id === ativo && abrirLoja()}
+              onTap={() => loja.id === ativo && abrirLoja()}
+              whileTap={{ scale: 0.96 }}
               className="absolute cursor-pointer rounded-xl overflow-hidden shadow-2xl"
               animate={{
                 scale: loja.id === ativo ? 1 : 0.75,
@@ -111,7 +113,11 @@ export default function Portal3D() {
             key={loja.id}
             onClick={() => setAtivo(loja.id)}
             className={`px-5 py-2 rounded-full text-white border transition 
-              ${ativo === loja.id ? "bg-cyan-500 border-cyan-400" : "bg-transparent border-gray-600"}
+              ${
+                ativo === loja.id
+                  ? "bg-cyan-500 border-cyan-400"
+                  : "bg-transparent border-gray-600"
+              }
             `}
           >
             {loja.nome}
