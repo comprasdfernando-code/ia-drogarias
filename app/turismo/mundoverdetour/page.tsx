@@ -1,3 +1,5 @@
+"use client";
+
 // app/turismo/mundoverdetour/page.tsx
 import Hero from "./components/Hero";
 import Sobre from "./components/Sobre";
