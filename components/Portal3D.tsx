@@ -84,7 +84,7 @@ export default function Portal3D() {
               key={loja.id}
               onTap={() => loja.id === ativo && abrirLoja()}
               whileTap={{ scale: 0.96 }}
-              className="absolute cursor-pointer rounded-xl overflow-hidden shadow-2xl"
+
               animate={{
                 scale: loja.id === ativo ? 1 : 0.75,
                 opacity: loja.id === ativo ? 1 : 0.4,
