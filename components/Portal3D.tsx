@@ -20,6 +20,12 @@ const lojas: Loja[] = [
     link: "/drogarias",
   },
   {
+    id: "mundoverdetour ",
+    nome: "Mundo Verde Tour",
+    imagem: "/shopping/mundoverde.png",
+    link: "/turismo/mundoverdetour",
+  },
+  {
     id: "gigante",
     nome: "Gigante dos Assados",
     imagem: "/shopping/gigante.png",
@@ -29,13 +35,13 @@ const lojas: Loja[] = [
     id: "oggi",
     nome: "Sorveteria Oggi",
     imagem: "/shopping/oggi.png",
-    link: "/sorveteria/oggi",
+    link: "/sorveteria",
   },
   {
     id: "danisound",
     nome: "Dani Sound",
     imagem: "/shopping/danisound.png",
-    link: "/danisound",
+    link: "/autoeletrico/danisound",
   },
   {
     id: "draanne",
@@ -53,7 +59,7 @@ const lojas: Loja[] = [
     id: "imoveis",
     nome: "Imóveis",
     imagem: "/shopping/imoveis.png",
-    link: "/imoveis",
+    link: "/imoveisrapido",
   },
 ];
 
