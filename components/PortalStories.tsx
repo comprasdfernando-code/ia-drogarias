@@ -68,7 +68,7 @@ useEffect(() => {
     <div className="w-full min-h-screen bg-[#050B15] flex flex-col items-center">
       
       <h1 className="text-white text-4xl font-bold mt-10 mb-8">
-        Shopping Digital Jd Rodolfo Pirani
+                        Shopping Digital Rodolfo 
       </h1>
 
       {/* CARROSSEL */}
