@@ -19,8 +19,10 @@ const lojas = [
 export default function PortalStories() {
   const router = useRouter();
 
+  
+
   // Embla Carousel hook
-  const [emblaRef, embla] = useEmblaCarousel({ loop: false, dragFree: true });
+  const [emblaRef, embla] = useEmblaCarousel({ loop: false, dragFree: true, align: "center", });
 
   const [index, setIndex] = useState(0);
 
