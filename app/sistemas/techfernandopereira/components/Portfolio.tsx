@@ -14,6 +14,37 @@ const projects = [
     link: "/gigante",
     image: "/gigante.png",
   },
+  
+  // Avaliação de Prescrição
+  {
+    title: "Avalia Medic",
+    desc: "Sistema de Avaliação de Prescrição Medica.",
+    link: "/avaliamedic",
+    image: "/avaliamedic.png",
+  },
+
+  // Controle Financeiro
+  {
+    title: "Controle Financeiro",
+    desc: "Sistema Financeiro Dashboard.",
+    link: "/financeiro",
+    image: "/financeiro.png",
+  },
+  
+  // E-commerce de Drogarias
+  {
+    title: "E-commerce de Drogaria",
+    desc: "E-commerce de Medicamentos e Perfumaria",
+    link: "/drogarias",
+    image: "/drogarias.png",
+  },
+  // Imobiliaria 
+  {
+    title: "Imoveis Compra e Venda",
+    desc: "Anuncio de Imoveis para compra e Venda.",
+    link: "/imoveisrapido",
+    image: "/imoveisrapido.png",
+  },
   {
     title: "Sorveteria Oggi",
     desc: "Site + sistema de pedidos (em construção).",
