@@ -9,11 +9,11 @@ import { useRouter } from "next/navigation";
 const lojas = [
   { id: "drogaria", nome: "IA Drogarias", imagem: "/shopping/drogaria.png", link: "/drogarias" },
   { id: "gigante", nome: "Gigante dos Assados", imagem: "/shopping/gigante.png", link: "/gigante" },
-  { id: "oggi", nome: "Sorveteria Oggi", imagem: "/shopping/oggi.png", link: "/sorveteria/oggi" },
-  { id: "danisound", nome: "Dani Sound", imagem: "/shopping/danisound.png", link: "/danisound" },
+  { id: "oggi", nome: "Sorveteria Oggi", imagem: "/shopping/oggi.png", link: "/sorveteria" },
+  { id: "danisound", nome: "Dani Sound", imagem: "/shopping/danisound.png", link: "/autoeletrico/danisound" },
   { id: "draanne", nome: "Dra Anne Dayane", imagem: "/shopping/draanne.png", link: "/clinicas/draannedayane" },
-  { id: "fisio", nome: "FisioPet", imagem: "/shopping/fisiopet.png", link: "/pet" },
-  { id: "imoveis", nome: "Imóveis", imagem: "/shopping/imoveis.png", link: "/imoveis" },
+  { id: "advmarcos", nome: "Adv Marcos", imagem: "/shopping/advmarcos.png", link: "/servicos/advogado/marcosluciano" },
+  { id: "imoveis", nome: "Imóveis", imagem: "/shopping/imoveis.png", link: "/imoveisrapido" },
 ];
 
 export default function PortalStories() {
@@ -36,12 +36,39 @@ export default function PortalStories() {
     embla.on("select", onSelect);
     onSelect();
   }, [embla, onSelect]);
+  // AUTOPLAY - troca automática de loja
+useEffect(() => {
+  if (!embla) return;
+
+  const interval = setInterval(() => {
+    embla.scrollNext();
+  }, 4000); // 4 segundos
+
+  return () => clearInterval(interval);
+}, [embla]);
+
+<div className="flex gap-8 mb-6">
+  <button
+    onClick={() => embla && embla.scrollPrev()}
+    className="px-4 py-2 bg-cyan-700 hover:bg-cyan-600 text-white rounded-full shadow-lg"
+  >
+    ◀
+  </button>
+
+  <button
+    onClick={() => embla && embla.scrollNext()}
+    className="px-4 py-2 bg-cyan-700 hover:bg-cyan-600 text-white rounded-full shadow-lg"
+  >
+    ▶
+  </button>
+</div>
+
 
   return (
     <div className="w-full min-h-screen bg-[#050B15] flex flex-col items-center">
       
       <h1 className="text-white text-4xl font-bold mt-10 mb-8">
-        Shopping IA Drogarias
+        Shopping Digital Jd Rodolfo Pirani
       </h1>
 
       {/* CARROSSEL */}
