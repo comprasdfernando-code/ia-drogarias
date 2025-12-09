@@ -150,7 +150,8 @@ export default function CaixaPage() {
 
     const { error } = await supabase.from("caixa_diario").insert({
       loja: LOJA,
-      data: dataFechamento + "T12:00:00",
+      data: dataFechamento + "T12:00:00", // força meio-dia para não cair no dia anterior
+
       venda_total: Number(vendaTotal),
       dinheiro: Number(dinheiroDia),
       pix_cnpj: Number(pixCNPJ),
