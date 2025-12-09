@@ -1,103 +1,105 @@
 "use client";
+
 import { useEffect, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 
+// ======================================================
+// 🔵 CONFIG SUPABASE
+// ======================================================
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 const LOJA = "drogariaredefabiano";
 
+// ======================================================
+// 🔷 COMPONENTE CARD DE ACUMULADO
+// ======================================================
+function CardAcum({ titulo, valor, cor }: any) {
+  const cores = {
+    blue: "text-blue-700",
+    green: "text-green-700",
+    red: "text-red-700",
+  };
+
+  return (
+    <div className="bg-gray-50 rounded-lg p-3 border shadow-sm text-center">
+      <p className="text-sm text-gray-600">{titulo}</p>
+      <p className={`font-bold text-lg ${cores[cor]}`}>R$ {valor?.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</p>
+    </div>
+  );
+}
+
+// ======================================================
+// 🔵 COMPONENTE PRINCIPAL
+// ======================================================
 export default function CaixaPage() {
   const [entradas, setEntradas] = useState<any[]>([]);
   const [saidas, setSaidas] = useState<any[]>([]);
   const [boletos, setBoletos] = useState<any[]>([]);
   const [carregando, setCarregando] = useState(true);
 
-  // Formulário de novas movimentações
+  // -----------------------------
+  // 🟦 ESTADOS FECHAMENTO DIÁRIO
+  // -----------------------------
+  const [dataFechamento, setDataFechamento] = useState("");
+  const [vendaTotal, setVendaTotal] = useState("");
+  const [dinheiroDia, setDinheiroDia] = useState("");
+  const [pixCNPJ, setPixCNPJ] = useState("");
+  const [pixQR, setPixQR] = useState("");
+  const [cartoesDia, setCartoesDia] = useState("");
+  const [sangriasDia, setSangriasDia] = useState("");
+  const [despesasDia, setDespesasDia] = useState("");
+  const [boletosDia, setBoletosDia] = useState("");
+  const [comprasDia, setComprasDia] = useState("");
+
+  // Lista de fechamentos
+  const [fechamentos, setFechamentos] = useState<any[]>([]);
+
+  // -----------------------------
+  // 🟧 ESTADOS FILTRO ACUMULADO
+  // -----------------------------
+  const [dataInicio, setDataInicio] = useState("");
+  const [dataFim, setDataFim] = useState("");
+  const [acumulado, setAcumulado] = useState<any>(null);
+
+  // -----------------------------
+  // 🟩 ESTADOS MOVIMENTAÇÃO
+  // -----------------------------
   const [tipo, setTipo] = useState<"Entrada" | "Saída">("Entrada");
   const [descricao, setDescricao] = useState("");
   const [valor, setValor] = useState("");
   const [formaPagamento, setFormaPagamento] = useState("Dinheiro");
   const [linhaDigitavelMov, setLinhaDigitavelMov] = useState("");
 
-  // Formulário de novo boleto
+  // -----------------------------
+  // 🟨 ESTADOS BOLETO
+  // -----------------------------
   const [fornecedor, setFornecedor] = useState("");
   const [descricaoBoleto, setDescricaoBoleto] = useState("");
   const [valorBoleto, setValorBoleto] = useState("");
   const [dataVencimento, setDataVencimento] = useState("");
-  const [mostrarTodos, setMostrarTodos] = useState(false);
-  const [selecionados, setSelecionados] = useState<number[]>([]);
   const [linhaDigitavel, setLinhaDigitavel] = useState("");
+  const [mostrarTodos, setMostrarTodos] = useState(false);
 
-  
+  function fmt(n: number) {
+    return n?.toLocaleString("pt-BR", { minimumFractionDigits: 2 });
+  }
 
-  // Função para corrigir diferença de data UTC x horário do Brasil
-function formatarDataBR(data: string | Date) {
-  if (!data) return "";
-  const d = new Date(data);
-  d.setMinutes(d.getMinutes() + d.getTimezoneOffset()); // Corrige UTC
-  return d.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" });
-}
+  // ======================================================
+  // 🔵 USE EFFECT
+  // ======================================================
   useEffect(() => {
     carregarDados();
+    carregarFechamentos();
   }, []);
 
+  // ======================================================
+  // 🔵 CARREGAR MOVIMENTAÇÕES E BOLETOS
+  // ======================================================
   async function carregarDados() {
     setCarregando(true);
-// 🔄 Sincroniza vendas do PDV com o caixa (apenas as do dia e não lançadas ainda)
-async function sincronizarVendasComCaixa() {
-  const hojeISO = new Date().toISOString().split("T")[0];
-  const inicio = `${hojeISO}T00:00:00`;
-  const fim = `${hojeISO}T23:59:59`;
 
-  
-  // Busca vendas finalizadas do dia
-  const { data: vendas } = await supabase
-    .from("vendas_pdv")
-    .select("*")
-    .eq("loja", LOJA)
-    .eq("status", "Finalizada")
-    .gte("data_venda", inicio)
-    .lte("data_venda", fim);
-
-  if (!vendas || vendas.length === 0) return;
-
-  // Busca movimentações já registradas hoje
-  const { data: movs } = await supabase
-    .from("movimentacoes_caixa")
-    .select("referencia_venda")
-    .eq("loja", LOJA)
-    .gte("data", inicio)
-    .lte("data", fim);
-
-  const idsJaLancados = movs?.map((m) => m.referencia_venda) || [];
-
-  // Filtra vendas ainda não lançadas
-  const novasVendas = vendas.filter((v) => !idsJaLancados.includes(v.id));
-
-  if (novasVendas.length === 0) return;
-
-  // Monta os registros a inserir
-  const registros = novasVendas.map((v) => (`{
-    tipo: "Entrada",
-    descricao: Venda PDV - ${v.forma_pagamento},
-    valor: Number(v.total),
-    forma_pagamento: v.forma_pagamento,
-    data: v.data_venda,
-    loja: LOJA,
-    referencia_venda: v.id,
-  }`));
-
-  const { error } = await supabase.from("movimentacoes_caixa").insert(registros);
-
-  if (error) {
-    console.error("❌ Erro ao sincronizar vendas com caixa:", error);
-  } else {
-    console.log`(✅ ${registros.length} vendas lançadas automaticamente no caixa.)`;
-    carregarDados(); // Atualiza a tela
-  }
-}
     const { data: movs } = await supabase
       .from("movimentacoes_caixa")
       .select("*")
@@ -113,16 +115,120 @@ async function sincronizarVendasComCaixa() {
     setEntradas(movs?.filter((m) => m.tipo === "Entrada") || []);
     setSaidas(movs?.filter((m) => m.tipo === "Saída") || []);
     setBoletos(bol || []);
+
     setCarregando(false);
   }
 
-  function fmt(n: number) {
-    return n?.toLocaleString("pt-BR", { minimumFractionDigits: 2 });
+  // ======================================================
+  // 🔵 CARREGAR FECHAMENTOS DIÁRIOS
+  // ======================================================
+  async function carregarFechamentos() {
+    const { data } = await supabase
+      .from("caixa_diario")
+      .select("*")
+      .eq("loja", LOJA)
+      .order("data", { ascending: false });
+
+    setFechamentos(data || []);
   }
 
+  // ======================================================
+  // 🔵 SALVAR FECHAMENTO DIÁRIO
+  // ======================================================
+  async function salvarFechamento() {
+    if (!dataFechamento || !vendaTotal) {
+      alert("Digite a data e o valor da venda total!");
+      return;
+    }
+
+    const saldo =
+      Number(vendaTotal) -
+      (Number(sangriasDia) +
+        Number(despesasDia) +
+        Number(boletosDia) +
+        Number(comprasDia));
+
+    const { error } = await supabase.from("caixa_diario").insert({
+      loja: LOJA,
+      data: dataFechamento,
+      venda_total: Number(vendaTotal),
+      dinheiro: Number(dinheiroDia),
+      pix_cnpj: Number(pixCNPJ),
+      pix_qr: Number(pixQR),
+      cartoes: Number(cartoesDia),
+      sangrias: Number(sangriasDia),
+      despesas: Number(despesasDia),
+      boletos: Number(boletosDia),
+      compras: Number(comprasDia),
+      saldo_dia: saldo,
+    });
+
+    if (error) {
+      console.error(error);
+      alert("Erro ao salvar fechamento");
+      return;
+    }
+
+    alert("Fechamento salvo com sucesso! ✔️");
+    carregarFechamentos();
+  }
+
+  // ======================================================
+// 🔵 ACUMULADO POR PERÍODO (CORRIGIDO, À PROVA DE ERROS)
+// ======================================================
+async function filtrarAcumulado() {
+  if (!dataInicio || !dataFim) {
+    alert("Selecione a data inicial e final!");
+    return;
+  }
+
+  const { data, error } = await supabase
+    .from("caixa_diario")
+    .select("*")
+    .eq("loja", LOJA)
+    .gte("data", dataInicio)
+    .lte("data", dataFim);
+
+  if (error) {
+    console.error("Erro ao carregar acumulado:", error);
+    return;
+  }
+
+  if (!data || data.length === 0) {
+    setAcumulado(null);
+    alert("Nenhum fechamento encontrado no período!");
+    return;
+  }
+
+  // 🔥 Garante que nenhum campo nulo quebre o cálculo
+  const calc = {
+    venda_total: data.reduce((t, d) => t + (d.venda_total ?? 0), 0),
+    dinheiro: data.reduce((t, d) => t + (d.dinheiro ?? 0), 0),
+    pix_cnpj: data.reduce((t, d) => t + (d.pix_cnpj ?? 0), 0),
+    pix_qr: data.reduce((t, d) => t + (d.pix_qr ?? 0), 0),
+    cartoes: data.reduce((t, d) => t + (d.cartoes ?? 0), 0),
+    sangrias: data.reduce((t, d) => t + (d.sangrias ?? 0), 0),
+    despesas: data.reduce((t, d) => t + (d.despesas ?? 0), 0),
+    boletos: data.reduce((t, d) => t + (d.boletos ?? 0), 0),
+    compras: data.reduce((t, d) => t + (d.compras ?? 0), 0),
+    saldo_final: 0,
+  };
+
+  // 🔵 saldo final acumulado do período
+  calc.saldo_final =
+    calc.venda_total -
+    (calc.sangrias + calc.despesas + calc.boletos + calc.compras);
+
+  setAcumulado(calc);
+}
+
+
+  // ======================================================
+  // 🔵 REGISTRAR MOVIMENTAÇÃO
+  // ======================================================
   async function registrarMovimentacao() {
     if (!descricao || !valor) {
-      alert("Preencha a descrição e o valor!");
+      alert("Descreva e informe o valor!");
       return;
     }
 
@@ -133,425 +239,365 @@ async function sincronizarVendasComCaixa() {
       forma_pagamento: formaPagamento,
       data: new Date(),
       loja: LOJA,
+      linha_digitavel: linhaDigitavelMov || null,
     });
 
-    alert(`${tipo} registrada com sucesso! ✅`);
-    setDescricao("");
-    setValor("");
+    alert("Movimentação salva!");
     carregarDados();
   }
 
+  // ======================================================
+  // 🔵 REGISTRAR BOLETO
+  // ======================================================
   async function registrarBoleto() {
     if (!fornecedor || !valorBoleto || !dataVencimento) {
-      alert("Preencha fornecedor, valor e data de vencimento!");
+      alert("Fornecedor, data e valor são obrigatórios");
       return;
     }
 
     await supabase.from("boletos_a_vencer").insert({
-  fornecedor,
-  descricao: descricaoBoleto,
-  valor: Number(valorBoleto),
-  data_vencimento: dataVencimento,
-  linha_digitavel: linhaDigitavel || null,   // << aqui
-  loja: LOJA,
-});
+      fornecedor,
+      descricao: descricaoBoleto,
+      valor: Number(valorBoleto),
+      data_vencimento: dataVencimento,
+      linha_digitavel: linhaDigitavel,
+      loja: LOJA,
+    });
 
-    alert("Boleto cadastrado com sucesso! 🧾");
-    setFornecedor("");
-setDescricaoBoleto("");
-setValorBoleto("");
-setDataVencimento("");
-setLinhaDigitavel("");    // << aqui
-carregarDados();
-
-  }
-
-  async function marcarComoPago(boleto: any) {
-  // ✅ Atualiza boleto como pago
-  const { error: erroBoleto } = await supabase
-    .from("boletos_a_vencer")
-    .update({
-      pago: true,
-      data_pagamento: new Date(),
-    })
-    .eq("id", boleto.id);
-
-  if (erroBoleto) {
-    console.error("Erro ao atualizar boleto:", erroBoleto);
-    alert("Erro ao atualizar boleto!");
-    return;
-  }
-
-  // ✅ Insere movimentação no caixa
-  const { error: erroCaixa } = await supabase.from("movimentacoes_caixa").insert`({
-    tipo: "Saída",
-    descricao: Pagamento boleto - ${boleto.fornecedor},
-    valor: Number(boleto.valor),
-    forma_pagamento: "Boleto",
-    data: new Date(),
-    loja: LOJA,
-  })`;
-
-  if (erroCaixa) {
-    console.error("Erro ao inserir no caixa:", erroCaixa);
-    alert("⚠️ Erro ao registrar no caixa!");
-  } else {
-    alert("💸 Boleto pago e registrado no caixa com sucesso!");
+    alert("Boleto registrado!");
     carregarDados();
   }
-}
+
+  // ======================================================
+  // 🔵 MARCAR BOLETO COMO PAGO
+  // ======================================================
+  async function marcarComoPago(boleto: any) {
+    const { error } = await supabase
+      .from("boletos_a_vencer")
+      .update({
+        pago: true,
+        data_pagamento: new Date(),
+      })
+      .eq("id", boleto.id);
+
+    if (error) {
+      alert("Erro ao atualizar!");
+      return;
+    }
+
+    // registra no caixa
+    await supabase.from("movimentacoes_caixa").insert({
+      tipo: "Saída",
+      descricao: `Pagamento boleto - ${boleto.fornecedor}`,
+      valor: Number(boleto.valor),
+      forma_pagamento: "Boleto",
+      data: new Date(),
+      loja: LOJA,
+    });
+
+    alert("Boleto pago!");
+    carregarDados();
+  }
+
+  // ======================================================
+  // 🔵 SALDO DO CAIXA ATUAL
+  // ======================================================
   const totalEntradas = entradas.reduce((a, i) => a + i.valor, 0);
   const totalSaidas = saidas.reduce((a, i) => a + i.valor, 0);
   const saldo = totalEntradas - totalSaidas;
 
+  // ======================================================
+  // 🔷 INTERFACE
+  // ======================================================
   return (
     <main className="min-h-screen bg-gray-100 p-6">
+
+      {/* TÍTULO */}
       <h1 className="text-2xl font-bold text-blue-700 mb-6 text-center">
         💼 Caixa - Drogaria Rede Fabiano
       </h1>
 
-      {carregando ? (
-        <p className="text-center text-gray-500">Carregando dados...</p>
-      ) : (
-        <>
+      {/* ========================================================== */}
+      {/* FECHAMENTO DIÁRIO */}
+      {/* ========================================================== */}
+      <div className="bg-white rounded-lg shadow p-4 mb-6">
+        <h2 className="font-bold text-lg text-blue-700 mb-3">📅 Fechamento Diário</h2>
 
-        {/* 🔢 RESUMO DE PAGAMENTOS */}
-<div className="bg-white rounded-lg shadow p-4 mb-6">
-  <h2 className="font-semibold text-lg mb-3 text-blue-700">
-    📊 Resumo por Forma de Pagamento (Entradas)
-  </h2>
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <input type="date" value={dataFechamento} onChange={(e) => setDataFechamento(e.target.value)} className="border p-2 rounded" />
+          <input type="number" placeholder="Venda total" value={vendaTotal} onChange={(e) => setVendaTotal(e.target.value)} className="border p-2 rounded" />
+          <input type="number" placeholder="Dinheiro" value={dinheiroDia} onChange={(e) => setDinheiroDia(e.target.value)} className="border p-2 rounded" />
+          <input type="number" placeholder="Pix CNPJ" value={pixCNPJ} onChange={(e) => setPixCNPJ(e.target.value)} className="border p-2 rounded" />
+          <input type="number" placeholder="Pix QR" value={pixQR} onChange={(e) => setPixQR(e.target.value)} className="border p-2 rounded" />
+          <input type="number" placeholder="Cartões" value={cartoesDia} onChange={(e) => setCartoesDia(e.target.value)} className="border p-2 rounded" />
+          <input type="number" placeholder="Sangrias" value={sangriasDia} onChange={(e) => setSangriasDia(e.target.value)} className="border p-2 rounded" />
+          <input type="number" placeholder="Despesas" value={despesasDia} onChange={(e) => setDespesasDia(e.target.value)} className="border p-2 rounded" />
+          <input type="number" placeholder="Boletos pagos" value={boletosDia} onChange={(e) => setBoletosDia(e.target.value)} className="border p-2 rounded" />
+          <input type="number" placeholder="Compras" value={comprasDia} onChange={(e) => setComprasDia(e.target.value)} className="border p-2 rounded" />
+        </div>
 
-  {entradas.length === 0 ? (
-    <p className="text-gray-500 text-sm">Nenhuma entrada registrada ainda.</p>
-  ) : (
-    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
-      {[
-        "Dinheiro",
-        "Pix",
-        "Cartão",
-        "Boleto",
-        "Fiado"
-      ].map((forma) => {
-        const totalForma = entradas
-          .filter((e) => e.forma_pagamento === forma)
-          .reduce((a, i) => a + i.valor, 0);
-
-        return (
-          <div
-            key={forma}
-            className="bg-gray-50 rounded-lg p-3 border text-center shadow-sm"
-          >
-            <p className="text-sm text-gray-600">{forma}</p>
-            <p className="font-bold text-green-700 text-lg">
-              R$ {fmt(totalForma || 0)}
-            </p>
-          </div>
-        );
-      })}
-    </div>
-  )}
-</div>
-
-{/* 💸 RESUMO DE SAÍDAS */}
-<div className="bg-white rounded-lg shadow p-4 mb-6">
-  <h2 className="font-semibold text-lg mb-3 text-red-700">
-    💸 Resumo de Saídas por Tipo
-  </h2>
-
-  {saidas.length === 0 ? (
-    <p className="text-gray-500 text-sm">Nenhuma saída registrada ainda.</p>
-  ) : (
-    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
-      {[
-        "Despesas",
-        "Compras",
-        "Sangrias",
-        "Boletos",
-        "Outros"
-      ].map((tipoSaida) => {
-        // Filtra por palavras-chave encontradas na descrição
-        const totalTipo = saidas
-          .filter((s) =>
-            s.descricao?.toLowerCase().includes(tipoSaida.toLowerCase())
-          )
-          .reduce((a, i) => a + i.valor, 0);
-
-        return (
-          <div
-            key={tipoSaida}
-            className="bg-gray-50 rounded-lg p-3 border text-center shadow-sm"
-          >
-            <p className="text-sm text-gray-600">{tipoSaida}</p>
-            <p className="font-bold text-red-700 text-lg">
-              R$ {fmt(totalTipo || 0)}
-            </p>
-          </div>
-        );
-      })}
-    </div>
-  )}
-</div>
-          {/* FORMULÁRIO DE NOVA MOVIMENTAÇÃO */}
-          <div className="bg-white rounded-lg shadow p-4 mb-6">
-            <h2 className="font-semibold text-lg mb-3 text-blue-700">
-              ➕ Nova Movimentação
-            </h2>
-            <div className="grid sm:grid-cols-2 md:grid-cols-4 gap-3">
-              <select
-                value={tipo}
-                onChange={(e) => setTipo(e.target.value as any)}
-                className="border rounded px-3 py-2"
-              >
-                <option>Entrada</option>
-                <option>Saída</option>
-              </select>
-
-              <input
-                type="text"
-                placeholder="Descrição"
-                value={descricao}
-                onChange={(e) => setDescricao(e.target.value)}
-                className="border rounded px-3 py-2"
-              />
-               <input
-  type="text"
-  placeholder="Linha digitável (opcional)"
-  value={linhaDigitavelMov}
-  onChange={(e) => setLinhaDigitavelMov(e.target.value)}
-  className="border rounded px-3 py-2"
-/>
-               
-              <input
-  type="text"
-  placeholder="Linha digitável (opcional)"
-  value={linhaDigitavel}
-  onChange={(e) => setLinhaDigitavel(e.target.value)}
-  className="border rounded px-3 py-2"
-/>
-
-              <input
-                type="number"
-                placeholder="Valor"
-                value={valor}
-                onChange={(e) => setValor(e.target.value)}
-                className="border rounded px-3 py-2"
-              />
-
-              <select
-                value={formaPagamento}
-                onChange={(e) => setFormaPagamento(e.target.value)}
-                className="border rounded px-3 py-2"
-              >
-                <option>Dinheiro</option>
-                <option>Pix</option>
-                <option>Cartão</option>
-                <option>Boleto</option>
-                <option>Fiado</option>
-              </select>
-            </div>
-            <button
-              onClick={registrarMovimentacao}
-              className="mt-3 bg-green-600 hover:bg-green-700 text-white px-5 py-2 rounded font-semibold"
-            >
-              Salvar
-            </button>
-          </div>
-
-          {/* FORMULÁRIO DE BOLETO */}
-          <div className="bg-white rounded-lg shadow p-4 mb-6">
-            <h2 className="font-semibold text-lg mb-3 text-blue-700">
-              🧾 Registrar Boleto a Vencer
-            </h2>
-            <div className="grid sm:grid-cols-2 md:grid-cols-4 gap-3">
-              <input
-                type="text"
-                placeholder="Fornecedor"
-                value={fornecedor}
-                onChange={(e) => setFornecedor(e.target.value)}
-                className="border rounded px-3 py-2"
-              />
-              <input
-                type="text"
-                placeholder="Descrição"
-                value={descricaoBoleto}
-                onChange={(e) => setDescricaoBoleto(e.target.value)}
-                className="border rounded px-3 py-2"
-              />
-              <input
-                type="number"
-                placeholder="Valor"
-                value={valorBoleto}
-                onChange={(e) => setValorBoleto(e.target.value)}
-                className="border rounded px-3 py-2"
-              />
-              <input
-                type="date"
-                value={dataVencimento}
-                onChange={(e) => setDataVencimento(e.target.value)}
-                className="border rounded px-3 py-2"
-              />
-            </div>
-            <button
-              onClick={registrarBoleto}
-              className="mt-3 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded font-semibold"
-            >
-              Registrar Boleto
-            </button>
-          </div>
-
-          {/* PAINEL DE BOLETOS DETALHADO */}
-          {/* BOLETOS */}
-<section className="bg-white p-4 rounded-lg shadow">
-  <h2 className="font-semibold text-blue-700 text-lg mb-3">
-    Boletos a Vencer 🧾
-  </h2>
-
-  <div className="overflow-x-auto">
-    <table className="w-full text-sm border mt-2">
-      <thead className="bg-blue-100 text-blue-700 font-semibold">
-  <tr>
-    <th className="p-2 border">Fornecedor</th>
-    <th className="p-2 border">Descrição</th>
-    <th className="p-2 border">Valor (R$)</th>
-    <th className="p-2 border">Vencimento</th>
-    <th className="p-2 border">Linha Digitável</th> {/* nova coluna */}
-    <th className="p-2 border">Status</th>
-  </tr>
-</thead>
-      <tbody>
-  {boletos
-    .filter((b) => {
-      const hoje = new Date();
-const venc = new Date(b.data_vencimento);
-return (
-  venc.getDate() === hoje.getDate() &&
-  venc.getMonth() === hoje.getMonth() &&
-  venc.getFullYear() === hoje.getFullYear()
-);
-    })
-    .map((b) => (
-      <tr
-        key={b.id}
-        className={`border-t hover:bg-gray-50 transition ${
-          b.pago
-            ? "text-green-600"
-            : new Date(b.data_vencimento) < new Date()
-            ? "text-red-600"
-            : "text-yellow-600"
-        }`}
-      >
-        <td className="p-2 border">{b.fornecedor}</td>
-        <td className="p-2 border">{b.descricao}</td>
-        <td className="p-2 border text-right">R$ {fmt(b.valor)}</td>
-        <td className="p-2 border text-center">
-          {formatarDataBR(b.data_vencimento)}
-        </td>
-        <td className="p-2 border text-center">
-          {b.pago ? (
-            <span className="text-green-700 font-semibold">✅ Pago</span>
-          ) : (
-            <button
-              onClick={() => marcarComoPago(b)}
-              className="text-xs bg-green-600 hover:bg-green-700 text-white px-2 py-1 rounded"
-            >
-              Marcar Pago
-            </button>
-          )}
-        </td>
-      </tr>
-    ))}
-
-  {/* BOTÃO PARA VER TODOS */}
-  {boletos.filter((b) => b.data_vencimento !== new Date().toISOString().split("T")[0])
-    .length > 0 && (
-    <tr>
-      <td colSpan={5} className="text-center py-2">
-        <button
-          onClick={() => setMostrarTodos(!mostrarTodos)}
-          className="text-blue-700 hover:text-blue-900 font-semibold underline"
-        >
-          {mostrarTodos ? "⬆️ Ocultar próximos vencimentos" : "📅 Ver próximos vencimentos"}
-        </button>
-      </td>
-    </tr>
-  )}
-
-  {/* MOSTRAR TODOS SE CLICADO */}
-  {mostrarTodos &&
-    boletos.map((b) => (
-      <tr
-        key={b.id + "-todos"}
-        className={`border-t hover:bg-gray-50 transition ${
-          b.pago
-            ? "text-green-600"
-            : new Date(b.data_vencimento) < new Date()
-            ? "text-red-600"
-            : "text-yellow-600"
-        }`}
-      >
-        <td className="p-2 border">{b.fornecedor}</td>
-        <td className="p-2 border">{b.descricao}</td>
-        <td className="p-2 border text-right">R$ {fmt(b.valor)}</td>
-        <td className="p-2 border text-center">
-          {formatarDataBR(b.data_vencimento)}
-        </td>
-        <td className="p-2 border text-center align-middle">
-  <div className="flex flex-col items-center justify-center gap-1">
-    {b.linha_digitavel ? (
-      <div className="flex items-center justify-center gap-2">
-        <span
-          className="text-xs font-mono truncate max-w-[150px]"
-          title={b.linha_digitavel}
-        >
-          {b.linha_digitavel}
-        </span>
-        <button
-          onClick={() => {
-            navigator.clipboard.writeText(b.linha_digitavel);
-            alert("Linha digitável copiada ✅");
-          }}
-          className="text-blue-600 hover:text-blue-800 text-xs underline"
-        >
-          Copiar
+        <button onClick={salvarFechamento} className="mt-3 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded font-semibold">
+          Salvar Fechamento
         </button>
       </div>
-    ) : (
-      <span className="text-gray-400 text-xs italic">—</span>
-    )}
 
-    {b.pago ? (
-      <span className="text-green-700 font-semibold">✅ Pago</span>
-    ) : (
+      {/* ========================================================== */}
+      {/* ACUMULADO */}
+      {/* ========================================================== */}
+      <div className="bg-white rounded-lg shadow p-4 mb-6">
+        <h2 className="font-bold text-lg text-blue-700 mb-3">📊 Acumulado por Período</h2>
 
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+          <input type="date" value={dataInicio} onChange={(e) => setDataInicio(e.target.value)} className="border p-2 rounded" />
+          <input type="date" value={dataFim} onChange={(e) => setDataFim(e.target.value)} className="border p-2 rounded" />
 
-    
-      <button
-        onClick={() => marcarComoPago(b)}
-        className="text-xs bg-green-600 hover:bg-green-700 text-white px-2 py-1 rounded"
-      >
-        Marcar Pago
-      </button>
-    )}
-  </div>
-</td>
-      </tr>
-    ))}
-</tbody>
-    </table>
-  </div>
-</section>
+          <button onClick={filtrarAcumulado} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded">
+            Filtrar
+          </button>
+        </div>
 
-          {/* SALDO FINAL */}
-          <div className="mt-8 bg-white p-4 rounded-lg shadow text-center">
-            <h3 className="text-xl font-bold">
-              💵 Saldo Atual:{" "}
-              <span className={saldo >= 0 ? "text-green-700" : "text-red-700"}>
-                R$ {fmt(saldo)}
-              </span>
-            </h3>
+        {acumulado && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4">
+            <CardAcum titulo="Venda Total" valor={acumulado.venda_total} cor="blue" />
+            <CardAcum titulo="Dinheiro" valor={acumulado.dinheiro} cor="green" />
+            <CardAcum titulo="Pix CNPJ" valor={acumulado.pix_cnpj} cor="green" />
+            <CardAcum titulo="Pix QR" valor={acumulado.pix_qr} cor="green" />
+            <CardAcum titulo="Cartões" valor={acumulado.cartoes} cor="green" />
+            <CardAcum titulo="Sangrias" valor={acumulado.sangrias} cor="red" />
+            <CardAcum titulo="Despesas" valor={acumulado.despesas} cor="red" />
+            <CardAcum titulo="Boletos" valor={acumulado.boletos} cor="red" />
+            <CardAcum titulo="Compras" valor={acumulado.compras} cor="red" />
+            <CardAcum titulo="Saldo Final" valor={acumulado.saldo_final} cor="blue" />
           </div>
-        </>
-      )}
+        )}
+      </div>
+
+      {/* ========================================================== */}
+      {/* FECHAMENTOS DIÁRIOS */}
+      {/* ========================================================== */}
+      <div className="bg-white rounded-lg shadow p-4 mb-6">
+        <h2 className="font-bold text-lg text-blue-700 mb-3">📘 Fechamentos Diários</h2>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm border">
+            <thead className="bg-blue-100 text-blue-700 font-semibold">
+              <tr>
+                <th className="p-2 border">Data</th>
+                <th className="p-2 border">Venda Total</th>
+                <th className="p-2 border">Dinheiro</th>
+                <th className="p-2 border">Pix CNPJ</th>
+                <th className="p-2 border">Pix QR</th>
+                <th className="p-2 border">Cartões</th>
+                <th className="p-2 border">Sangrias</th>
+                <th className="p-2 border">Despesas</th>
+                <th className="p-2 border">Boletos</th>
+                <th className="p-2 border">Compras</th>
+                <th className="p-2 border">Saldo</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {fechamentos.map((f) => (
+                <tr key={f.id} className="border hover:bg-gray-50">
+                  <td className="p-2 border text-center">
+                    {new Date(f.data).toLocaleDateString("pt-BR")}
+                  </td>
+                  <td className="p-2 border text-right">R$ {fmt(f.venda_total)}</td>
+                  <td className="p-2 border text-right">R$ {fmt(f.dinheiro)}</td>
+                  <td className="p-2 border text-right">R$ {fmt(f.pix_cnpj)}</td>
+                  <td className="p-2 border text-right">R$ {fmt(f.pix_qr)}</td>
+                  <td className="p-2 border text-right">R$ {fmt(f.cartoes)}</td>
+                  <td className="p-2 border text-right">R$ {fmt(f.sangrias)}</td>
+                  <td className="p-2 border text-right">R$ {fmt(f.despesas)}</td>
+                  <td className="p-2 border text-right">R$ {fmt(f.boletos)}</td>
+                  <td className="p-2 border text-right">R$ {fmt(f.compras)}</td>
+                  <td className={`p-2 border text-right font-bold ${f.saldo_dia >= 0 ? "text-green-700" : "text-red-700"}`}>
+                    R$ {fmt(f.saldo_dia)}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* ========================================================== */}
+      {/* RESUMO DE ENTRADAS */}
+      {/* ========================================================== */}
+      <div className="bg-white rounded-lg shadow p-4 mb-6">
+        <h2 className="font-semibold text-lg mb-3 text-blue-700">📊 Entradas</h2>
+
+        {entradas.length === 0 ? (
+          <p className="text-gray-500 text-sm">Nenhuma entrada registrada.</p>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
+            {["Dinheiro", "Pix", "Cartão", "Boleto", "Fiado"].map((forma) => {
+              const total = entradas
+                .filter((e) => e.forma_pagamento === forma)
+                .reduce((a, i) => a + i.valor, 0);
+
+              return (
+                <CardAcum key={forma} titulo={forma} valor={total} cor="green" />
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ========================================================== */}
+      {/* RESUMO DE SAÍDAS */}
+      {/* ========================================================== */}
+      <div className="bg-white rounded-lg shadow p-4 mb-6">
+        <h2 className="font-semibold text-lg mb-3 text-red-700">💸 Saídas</h2>
+
+        {saidas.length === 0 ? (
+          <p className="text-gray-500 text-sm">Nenhuma saída registrada.</p>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
+            {["Despesas", "Compras", "Sangrias", "Boletos", "Outros"].map((tipo) => {
+              const total = saidas
+                .filter((s) => s.descricao?.toLowerCase().includes(tipo.toLowerCase()))
+                .reduce((a, i) => a + i.valor, 0);
+
+              return (
+                <CardAcum key={tipo} titulo={tipo} valor={total} cor="red" />
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ========================================================== */}
+      {/* FORMULÁRIO MOVIMENTAÇÃO */}
+      {/* ========================================================== */}
+      <div className="bg-white rounded-lg shadow p-4 mb-6">
+        <h2 className="font-semibold text-lg mb-3 text-blue-700">➕ Nova Movimentação</h2>
+
+        <div className="grid sm:grid-cols-2 md:grid-cols-4 gap-3">
+
+          <select value={tipo} onChange={(e) => setTipo(e.target.value as any)} className="border p-2 rounded">
+            <option>Entrada</option>
+            <option>Saída</option>
+          </select>
+
+          <input type="text" value={descricao} onChange={(e) => setDescricao(e.target.value)} placeholder="Descrição" className="border p-2 rounded" />
+
+          <input type="text" value={linhaDigitavelMov} onChange={(e) => setLinhaDigitavelMov(e.target.value)} placeholder="Linha digitável (opcional)" className="border p-2 rounded" />
+
+          <input type="number" value={valor} onChange={(e) => setValor(e.target.value)} placeholder="Valor" className="border p-2 rounded" />
+
+          <select value={formaPagamento} onChange={(e) => setFormaPagamento(e.target.value)} className="border p-2 rounded">
+            <option>Dinheiro</option>
+            <option>Pix</option>
+            <option>Cartão</option>
+            <option>Boleto</option>
+            <option>Fiado</option>
+          </select>
+        </div>
+
+        <button onClick={registrarMovimentacao} className="mt-3 bg-green-600 hover:bg-green-700 text-white px-5 py-2 rounded font-semibold">
+          Salvar Movimentação
+        </button>
+      </div>
+
+      {/* ========================================================== */}
+      {/* FORMULÁRIO DE BOLETOS */}
+      {/* ========================================================== */}
+      <div className="bg-white rounded-lg shadow p-4 mb-6">
+        <h2 className="text-lg font-bold text-blue-700 mb-3">🧾 Registrar Boleto</h2>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+          <input className="border p-2 rounded" type="text" placeholder="Fornecedor" value={fornecedor} onChange={(e) => setFornecedor(e.target.value)} />
+          <input className="border p-2 rounded" type="text" placeholder="Descrição" value={descricaoBoleto} onChange={(e) => setDescricaoBoleto(e.target.value)} />
+          <input className="border p-2 rounded" type="number" placeholder="Valor" value={valorBoleto} onChange={(e) => setValorBoleto(e.target.value)} />
+          <input className="border p-2 rounded" type="date" value={dataVencimento} onChange={(e) => setDataVencimento(e.target.value)} />
+          <input className="border p-2 rounded" type="text" placeholder="Linha digitável" value={linhaDigitavel} onChange={(e) => setLinhaDigitavel(e.target.value)} />
+        </div>
+
+        <button onClick={registrarBoleto} className="mt-3 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded font-bold">
+          Registrar Boleto
+        </button>
+      </div>
+
+      {/* ========================================================== */}
+      {/* TABELA DE BOLETOS */}
+      {/* ========================================================== */}
+      <div className="bg-white rounded-lg shadow p-4">
+        <h2 className="text-lg font-bold text-blue-700 mb-3">📑 Boletos a Vencer</h2>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm border">
+            <thead className="bg-blue-100 text-blue-700">
+              <tr>
+                <th className="p-2 border">Fornecedor</th>
+                <th className="p-2 border">Descrição</th>
+                <th className="p-2 border">Valor</th>
+                <th className="p-2 border">Vencimento</th>
+                <th className="p-2 border">Linha Digitável</th>
+                <th className="p-2 border">Status</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {boletos.map((b) => (
+                <tr key={b.id} className="border hover:bg-gray-50">
+
+                  <td className="p-2 border">{b.fornecedor}</td>
+                  <td className="p-2 border">{b.descricao}</td>
+                  <td className="p-2 border text-right">R$ {fmt(b.valor)}</td>
+
+                  <td className="p-2 border text-center">
+                    {new Date(b.data_vencimento).toLocaleDateString("pt-BR")}
+                  </td>
+
+                  <td className="p-2 border text-center">
+                    {b.linha_digitavel ? (
+                      <>
+                        <span className="font-mono text-xs">{b.linha_digitavel}</span>
+                        <button
+                          onClick={() => navigator.clipboard.writeText(b.linha_digitavel)}
+                          className="ml-2 text-blue-600 underline text-xs"
+                        >
+                          Copiar
+                        </button>
+                      </>
+                    ) : (
+                      <span className="text-gray-400">—</span>
+                    )}
+                  </td>
+
+                  <td className="p-2 border text-center">
+                    {b.pago ? (
+                      <span className="text-green-700 font-bold">Pago ✔️</span>
+                    ) : (
+                      <button
+                        onClick={() => marcarComoPago(b)}
+                        className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 text-xs rounded"
+                      >
+                        Marcar Pago
+                      </button>
+                    )}
+                  </td>
+
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* ========================================================== */}
+      {/* SALDO FINAL */}
+      {/* ========================================================== */}
+      <div className="mt-8 bg-white p-4 rounded-lg shadow text-center">
+        <h3 className="text-xl font-bold">
+          💵 Saldo Atual:{" "}
+          <span className={saldo >= 0 ? "text-green-700" : "text-red-700"}>
+            R$ {fmt(saldo)}
+          </span>
+        </h3>
+      </div>
+
     </main>
   );
 }
