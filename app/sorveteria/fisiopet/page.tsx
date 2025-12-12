@@ -117,7 +117,8 @@ export default function ImplantacaoFisioPet() {
       </h1>
 
       {/* FORMULÁRIO */}
-      <div className="bg-black shadow p-5 rounded mb-8">
+      <div className="bg-white text-black shadow p-5 rounded mb-8">
+
         <h2 className="text-lg font-bold mb-4">Cadastrar novo item</h2>
 
         <select
@@ -196,10 +197,12 @@ export default function ImplantacaoFisioPet() {
 
       <ul className="space-y-4">
         {itens.map((item) => (
-          <li key={item.id} className="bg-black p-4 rounded shadow">
+          <li key={item.id} className="bg-white text-black p-4 rounded shadow">
+
 
             <p className="font-bold text-lg">{item.descricao}</p>
-            <p className="text-sm opacity-70 mb-2">{item.categoria}</p>
+            <p className="text-sm opacity-70 mb-2 text-black">{item.categoria}</p>
+
 
             <p><strong>Valor total:</strong> R$ {item.valor_total.toFixed(2)}</p>
             <p><strong>Entrada:</strong> R$ {item.entrada.toFixed(2)}</p>
