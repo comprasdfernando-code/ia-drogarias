@@ -373,54 +373,88 @@ async function filtrarAcumulado() {
         )}
       </div>
 
-      {/* ========================================================== */}
-      {/* FECHAMENTOS DIÁRIOS */}
-      {/* ========================================================== */}
-      <div className="bg-white rounded-lg shadow p-4 mb-6">
-        <h2 className="font-bold text-lg text-blue-700 mb-3">📘 Fechamentos Diários</h2>
+      {/* ===================================================== */}
+{/* 🟦 TABELA DE FECHAMENTOS DIÁRIOS — ATUALIZADA */}
+{/* ===================================================== */}
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm border">
-            <thead className="bg-blue-100 text-blue-700 font-semibold">
-              <tr>
-                <th className="p-2 border">Data</th>
-                <th className="p-2 border">Venda Total</th>
-                <th className="p-2 border">Dinheiro</th>
-                <th className="p-2 border">Pix CNPJ</th>
-                <th className="p-2 border">Pix QR</th>
-                <th className="p-2 border">Cartões</th>
-                <th className="p-2 border">Sangrias</th>
-                <th className="p-2 border">Despesas</th>
-                <th className="p-2 border">Boletos</th>
-                <th className="p-2 border">Compras</th>
-                <th className="p-2 border">Saldo</th>
-              </tr>
-            </thead>
+<div className="bg-white rounded-lg shadow p-4 mb-6">
+  <h2 className="font-bold text-lg text-blue-700 mb-3">📘 Fechamentos Diários</h2>
 
-            <tbody>
-              {fechamentos.map((f) => (
-                <tr key={f.id} className="border hover:bg-gray-50">
-                  <td className="p-2 border text-center">
-                    {new Date(f.data).toLocaleDateString("pt-BR")}
-                  </td>
-                  <td className="p-2 border text-right">R$ {fmt(f.venda_total)}</td>
-                  <td className="p-2 border text-right">R$ {fmt(f.dinheiro)}</td>
-                  <td className="p-2 border text-right">R$ {fmt(f.pix_cnpj)}</td>
-                  <td className="p-2 border text-right">R$ {fmt(f.pix_qr)}</td>
-                  <td className="p-2 border text-right">R$ {fmt(f.cartoes)}</td>
-                  <td className="p-2 border text-right">R$ {fmt(f.sangrias)}</td>
-                  <td className="p-2 border text-right">R$ {fmt(f.despesas)}</td>
-                  <td className="p-2 border text-right">R$ {fmt(f.boletos)}</td>
-                  <td className="p-2 border text-right">R$ {fmt(f.compras)}</td>
-                  <td className={`p-2 border text-right font-bold ${f.saldo_dia >= 0 ? "text-green-700" : "text-red-700"}`}>
-                    R$ {fmt(f.saldo_dia)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+  <div className="overflow-x-auto">
+    <table className="w-full text-sm border">
+      <thead className="bg-blue-100 text-blue-700 font-semibold">
+        <tr>
+          <th className="p-2 border">Data</th>
+          <th className="p-2 border">Venda Total</th>
+          <th className="p-2 border">Entradas</th>
+          <th className="p-2 border">Dinheiro</th>
+          <th className="p-2 border">Pix CNPJ</th>
+          <th className="p-2 border">Pix QR</th>
+          <th className="p-2 border">Cartões</th>
+          <th className="p-2 border">Sangrias</th>
+          <th className="p-2 border">Despesas</th>
+          <th className="p-2 border">Boletos</th>
+          <th className="p-2 border">Compras</th>
+          <th className="p-2 border">Saldo</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        {fechamentos.map((f) => {
+          const entradas =
+            Number(f.dinheiro || 0) +
+            Number(f.pix_cnpj || 0) +
+            Number(f.pix_qr || 0) +
+            Number(f.cartoes || 0);
+
+          const saidas =
+            Number(f.sangrias || 0) +
+            Number(f.despesas || 0) +
+            Number(f.boletos || 0) +
+            Number(f.compras || 0);
+
+          const saldo = entradas - saidas;
+
+          return (
+            <tr key={f.id} className="border hover:bg-gray-50">
+              <td className="p-2 border text-center">
+                {new Date(f.data).toLocaleDateString("pt-BR")}
+              </td>
+
+              <td className="p-2 border text-right">R$ {fmt(f.venda_total)}</td>
+
+              {/* 🟩 Entradas */}
+              <td className="p-2 border text-right font-semibold text-green-700">
+                R$ {fmt(entradas)}
+              </td>
+
+              <td className="p-2 border text-right">R$ {fmt(f.dinheiro)}</td>
+              <td className="p-2 border text-right">R$ {fmt(f.pix_cnpj)}</td>
+              <td className="p-2 border text-right">R$ {fmt(f.pix_qr)}</td>
+              <td className="p-2 border text-right">R$ {fmt(f.cartoes)}</td>
+
+              <td className="p-2 border text-right">R$ {fmt(f.sangrias)}</td>
+              <td className="p-2 border text-right">R$ {fmt(f.despesas)}</td>
+              <td className="p-2 border text-right">R$ {fmt(f.boletos)}</td>
+              <td className="p-2 border text-right">R$ {fmt(f.compras)}</td>
+
+              {/* 🔵 Saldo Final (Entradas − Saídas) */}
+              <td
+                className={
+                  "p-2 border text-right font-bold " +
+                  (saldo >= 0 ? "text-green-700" : "text-red-700")
+                }
+              >
+                R$ {fmt(saldo)}
+              </td>
+            </tr>
+          );
+        })}
+      </tbody>
+    </table>
+  </div>
+</div>
+
 
       {/* ========================================================== */}
       {/* RESUMO DE ENTRADAS */}
