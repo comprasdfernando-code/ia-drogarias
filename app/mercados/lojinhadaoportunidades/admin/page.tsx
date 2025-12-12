@@ -38,15 +38,16 @@ export default function AdminLojinha() {
     }
 
     const { error } = await supabase
-      .from("lojinha_produtos")
-      .insert({
-        nome,
-        preco: Number(preco),
-        preco_normal: Number(precoNormal || 0),
-        validade,
-        categoria,
-        foto: fotoURL,
-      });
+  .from("lojinha_produtos")
+  .insert({
+    nome,
+    preco: Number(preco.replace(",", ".")),
+    preco_normal: Number(precoNormal.replace(",", ".")) || 0,
+    validade,
+    categoria,
+    foto: fotoURL,
+  });
+
 
     if (error) {
       console.error(error);
