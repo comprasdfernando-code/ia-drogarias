@@ -26,7 +26,7 @@ export default function AdminLojinha() {
     }
 
     // URL pública
-    const url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/lojinha_imagens/${nomeArquivo}`;
+    const url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/files/buckets/lojinha_imagens${nomeArquivo}`;
 
     setFotoURL(url);
   }
