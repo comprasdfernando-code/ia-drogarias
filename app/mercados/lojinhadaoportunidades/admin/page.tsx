@@ -1,7 +1,20 @@
 "use client";
 
 import { useState } from "react";
-import { supabase } from "@/lib/supabaseClient";
+
+import { createClient } from "@supabase/supabase-js";
+
+// 🔌 Supabase
+const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
+const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+
+export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
+  db: {
+    schema: "public",
+  },
+});
+
+
 
 export default function AdminLojinha() {
   const [nome, setNome] = useState("");
@@ -26,7 +39,7 @@ export default function AdminLojinha() {
     }
 
     // URL pública
-    const url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/files/buckets/lojinha_imagens${nomeArquivo}`;
+    const url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/lojinha_imagens/${nomeArquivo}`;
 
     setFotoURL(url);
   }
