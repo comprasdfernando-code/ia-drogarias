@@ -30,6 +30,21 @@ function CardAcum({ titulo, valor, cor }: any) {
     </div>
   );
 }
+function mapDestinoEntrada(forma: string) {
+  if (forma === "Dinheiro") return "CAIXA_DINHEIRO";
+
+  if (
+    forma === "Pix" ||
+    forma === "Pix CNPJ" ||
+    forma === "Pix QR" ||
+    forma === "Cartão" ||
+    forma === "Boleto"
+  ) {
+    return "CONTA_BRADESCO";
+  }
+
+  return null; // Fiado ou não definido
+}
 
 // ======================================================
 // 🔵 COMPONENTE PRINCIPAL
@@ -76,6 +91,17 @@ export default function CaixaPage() {
   const [dataVencimento, setDataVencimento] = useState("");
   const [linhaDigitavel, setLinhaDigitavel] = useState("");
   const [mostrarTodos, setMostrarTodos] = useState(false);
+
+  // -----------------------------
+// 🟥 MODAL DE SAÍDA
+// -----------------------------
+const [modalSaidaAberto, setModalSaidaAberto] = useState(false);
+const [saidaDescricao, setSaidaDescricao] = useState("");
+const [saidaValor, setSaidaValor] = useState("");
+const [saidaDestino, setSaidaDestino] = useState<
+  "CAIXA_DINHEIRO" | "CONTA_BRADESCO" | ""
+>("");
+
 
 
   function fmt(n: number) {
@@ -244,14 +270,19 @@ async function filtrarAcumulado() {
     }
 
     await supabase.from("movimentacoes_caixa").insert({
-      tipo,
-      descricao,
-      valor: Number(valor),
-      forma_pagamento: formaPagamento,
-      data: new Date(),
-      loja: LOJA,
-      linha_digitavel: linhaDigitavelMov || null,
-    });
+  tipo,
+  descricao,
+  valor: Number(valor),
+  forma_pagamento: formaPagamento,
+  destino_financeiro:
+    tipo === "Entrada"
+      ? mapDestinoEntrada(formaPagamento)
+      : null,
+  data: new Date(),
+  loja: LOJA,
+  linha_digitavel: linhaDigitavelMov || null,
+});
+
 
     alert("Movimentação salva!");
     carregarDados();
@@ -310,12 +341,116 @@ async function filtrarAcumulado() {
     carregarDados();
   }
 
+  async function salvarSaidaModal() {
+  if (!saidaDescricao || !saidaValor || !saidaDestino) {
+    alert("Preencha descrição, valor e destino da saída");
+    return;
+  }
+
+  const { error } = await supabase.from("movimentacoes_caixa").insert({
+    tipo: "Saída",
+    descricao: saidaDescricao,
+    valor: Number(saidaValor),
+    destino_financeiro: saidaDestino,
+    forma_pagamento:
+      saidaDestino === "CAIXA_DINHEIRO" ? "Dinheiro" : "Conta Bancária",
+    data: new Date(),
+    loja: LOJA,
+  });
+
+  if (error) {
+    console.error(error);
+    alert("Erro ao salvar saída");
+    return;
+  }
+
+  // limpa modal
+  setSaidaDescricao("");
+  setSaidaValor("");
+  setSaidaDestino("");
+  setModalSaidaAberto(false);
+
+  carregarDados();
+}
+
+
   // ======================================================
   // 🔵 SALDO DO CAIXA ATUAL
   // ======================================================
   const totalEntradas = entradas.reduce((a, i) => a + i.valor, 0);
   const totalSaidas = saidas.reduce((a, i) => a + i.valor, 0);
   const saldo = totalEntradas - totalSaidas;
+
+  {modalSaidaAberto && (
+  <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+    <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
+
+      <h2 className="text-lg font-bold text-red-700 mb-4">
+        ➖ Lançar Saída
+      </h2>
+
+      <div className="space-y-3">
+        <input
+          type="text"
+          placeholder="Descrição da saída"
+          value={saidaDescricao}
+          onChange={(e) => setSaidaDescricao(e.target.value)}
+          className="border p-2 rounded w-full"
+        />
+
+        <input
+          type="number"
+          placeholder="Valor"
+          value={saidaValor}
+          onChange={(e) => setSaidaValor(e.target.value)}
+          className="border p-2 rounded w-full"
+        />
+
+        <div className="flex gap-4">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="radio"
+              name="destino"
+              value="CAIXA_DINHEIRO"
+              checked={saidaDestino === "CAIXA_DINHEIRO"}
+              onChange={() => setSaidaDestino("CAIXA_DINHEIRO")}
+            />
+            Caixa Dinheiro
+          </label>
+
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="radio"
+              name="destino"
+              value="CONTA_BRADESCO"
+              checked={saidaDestino === "CONTA_BRADESCO"}
+              onChange={() => setSaidaDestino("CONTA_BRADESCO")}
+            />
+            Conta Bancária
+          </label>
+        </div>
+      </div>
+
+      <div className="flex justify-end gap-3 mt-6">
+        <button
+          onClick={() => setModalSaidaAberto(false)}
+          className="px-4 py-2 rounded border"
+        >
+          Cancelar
+        </button>
+
+        <button
+          onClick={salvarSaidaModal}
+          className="px-4 py-2 rounded bg-red-600 text-white font-semibold"
+        >
+          Salvar Saída
+        </button>
+      </div>
+
+    </div>
+  </div>
+)}
+
 
   // ======================================================
   // 🔷 INTERFACE
@@ -327,6 +462,14 @@ async function filtrarAcumulado() {
       <h1 className="text-2xl font-bold text-blue-700 mb-6 text-center">
         💼 Caixa - Drogaria Rede Fabiano
       </h1>
+
+      <button
+  onClick={() => setModalSaidaAberto(true)}
+  className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded font-semibold mb-4"
+>
+  ➖ Lançar Saída (Modal)
+</button>
+
 
       {/* ========================================================== */}
 {/* FECHAMENTO DIÁRIO */}
