@@ -11,10 +11,6 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 const LOJA = "drogariaredefabiano";
-const [descSangrias, setDescSangrias] = useState("");
-const [descDespesas, setDescDespesas] = useState("");
-const [descBoletosPagos, setDescBoletosPagos] = useState("");
-const [descCompras, setDescCompras] = useState("");
 
 
 // ======================================================
@@ -44,9 +40,7 @@ export default function CaixaPage() {
   const [boletos, setBoletos] = useState<any[]>([]);
   const [carregando, setCarregando] = useState(true);
 
-  // -----------------------------
-  // 🟦 ESTADOS FECHAMENTO DIÁRIO
-  // -----------------------------
+  // --- Estados fechamento diário ---
   const [dataFechamento, setDataFechamento] = useState("");
   const [vendaTotal, setVendaTotal] = useState("");
   const [dinheiroDia, setDinheiroDia] = useState("");
@@ -58,34 +52,31 @@ export default function CaixaPage() {
   const [boletosDia, setBoletosDia] = useState("");
   const [comprasDia, setComprasDia] = useState("");
 
-  // Lista de fechamentos
-  const [fechamentos, setFechamentos] = useState<any[]>([]);
+  // --- ESTADOS NOVOS DAS DESCRIÇÕES (correto) ---
+  const [descSangrias, setDescSangrias] = useState("");
+  const [descDespesas, setDescDespesas] = useState("");
+  const [descBoletosPagos, setDescBoletosPagos] = useState("");
+  const [descCompras, setDescCompras] = useState("");
 
-  // -----------------------------
-  // 🟧 ESTADOS FILTRO ACUMULADO
-  // -----------------------------
+  // --- Outras states ---
+  const [fechamentos, setFechamentos] = useState<any[]>([]);
   const [dataInicio, setDataInicio] = useState("");
   const [dataFim, setDataFim] = useState("");
   const [acumulado, setAcumulado] = useState<any>(null);
 
-  // -----------------------------
-  // 🟩 ESTADOS MOVIMENTAÇÃO
-  // -----------------------------
   const [tipo, setTipo] = useState<"Entrada" | "Saída">("Entrada");
   const [descricao, setDescricao] = useState("");
   const [valor, setValor] = useState("");
   const [formaPagamento, setFormaPagamento] = useState("Dinheiro");
   const [linhaDigitavelMov, setLinhaDigitavelMov] = useState("");
 
-  // -----------------------------
-  // 🟨 ESTADOS BOLETO
-  // -----------------------------
   const [fornecedor, setFornecedor] = useState("");
   const [descricaoBoleto, setDescricaoBoleto] = useState("");
   const [valorBoleto, setValorBoleto] = useState("");
   const [dataVencimento, setDataVencimento] = useState("");
   const [linhaDigitavel, setLinhaDigitavel] = useState("");
   const [mostrarTodos, setMostrarTodos] = useState(false);
+
 
   function fmt(n: number) {
     return n?.toLocaleString("pt-BR", { minimumFractionDigits: 2 });
