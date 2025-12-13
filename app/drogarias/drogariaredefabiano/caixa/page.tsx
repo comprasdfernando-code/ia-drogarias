@@ -373,6 +373,28 @@ async function filtrarAcumulado() {
   carregarDados();
 }
 
+// ======================================================
+// 🔵 RESUMO FINANCEIRO POR DESTINO
+// ======================================================
+const entradasDinheiro = entradas
+  .filter(e => e.forma_pagamento === "Dinheiro")
+  .reduce((t, e) => t + e.valor, 0);
+
+const saidasDinheiro = saidas
+  .filter(s => s.destino_financeiro === "CAIXA_DINHEIRO")
+  .reduce((t, s) => t + s.valor, 0);
+
+const saldoDinheiro = entradasDinheiro - saidasDinheiro;
+
+const entradasBanco = entradas
+  .filter(e => e.destino_financeiro === "CONTA_BRADESCO")
+  .reduce((t, e) => t + e.valor, 0);
+
+const saidasBanco = saidas
+  .filter(s => s.destino_financeiro === "CONTA_BRADESCO")
+  .reduce((t, s) => t + s.valor, 0);
+
+const saldoBanco = entradasBanco - saidasBanco;
 
   // ======================================================
   // 🔵 SALDO DO CAIXA ATUAL
@@ -468,6 +490,48 @@ async function filtrarAcumulado() {
 >
   ➖ Lançar Saída (Modal)
 </button>
+{/* ====================================================== */}
+{/* 💰 RESUMO POR DESTINO FINANCEIRO */}
+{/* ====================================================== */}
+<div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+
+  {/* CAIXA DINHEIRO */}
+  <div className="bg-white rounded-lg shadow p-4">
+    <h3 className="font-bold text-lg text-green-700 mb-3">
+      💵 Caixa Dinheiro
+    </h3>
+
+    <div className="space-y-1 text-sm">
+      <p>Entradas: <strong>R$ {fmt(entradasDinheiro)}</strong></p>
+      <p>Saídas: <strong className="text-red-600">R$ {fmt(saidasDinheiro)}</strong></p>
+      <p className="border-t pt-2 font-bold">
+        Saldo:{" "}
+        <span className={saldoDinheiro >= 0 ? "text-green-700" : "text-red-700"}>
+          R$ {fmt(saldoDinheiro)}
+        </span>
+      </p>
+    </div>
+  </div>
+
+  {/* CONTA BANCÁRIA */}
+  <div className="bg-white rounded-lg shadow p-4">
+    <h3 className="font-bold text-lg text-blue-700 mb-3">
+      🏦 Conta Bancária
+    </h3>
+
+    <div className="space-y-1 text-sm">
+      <p>Entradas: <strong>R$ {fmt(entradasBanco)}</strong></p>
+      <p>Saídas: <strong className="text-red-600">R$ {fmt(saidasBanco)}</strong></p>
+      <p className="border-t pt-2 font-bold">
+        Saldo:{" "}
+        <span className={saldoBanco >= 0 ? "text-green-700" : "text-red-700"}>
+          R$ {fmt(saldoBanco)}
+        </span>
+      </p>
+    </div>
+  </div>
+
+</div>
 
 
       {/* ========================================================== */}
