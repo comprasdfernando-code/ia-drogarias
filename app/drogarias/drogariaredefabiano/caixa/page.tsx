@@ -385,76 +385,77 @@ async function filtrarAcumulado() {
     />
 
     {/* SANGRIAS */}
-    <input
-      type="number"
-      placeholder="Sangrias"
-      value={sangriasDia}
-      onChange={(e) => setSangriasDia(e.target.value)}
-      className="border p-2 rounded"
-    />
+<input
+  type="number"
+  placeholder="Sangrias"
+  value={sangriasDia}
+  onChange={(e) => setSangriasDia(e.target.value)}
+  className="border p-2 rounded"
+/>
 
-    {/* DESCRIÇÃO SANGRIAS */}
-    <input
-      type="text"
-      placeholder="Descrição das sangrias"
-      value={descSangrias}
-      onChange={(e) => setDescSangrias(e.target.value)}
-      className="border p-2 rounded col-span-2"
-    />
+{/* DESCRIÇÃO SANGRIAS */}
+<input
+  type="text"
+  placeholder="Descrição das sangrias"
+  value={descSangrias}
+  onChange={(e) => setDescSangrias(e.target.value)}
+  className="border p-2 rounded col-span-2"
+/>
 
-    {/* DESPESAS */}
-    <input
-      type="number"
-      placeholder="Despesas"
-      value={despesasDia}
-      onChange={(e) => setDespesasDia(e.target.value)}
-      className="border p-2 rounded"
-    />
+{/* DESPESAS */}
+<input
+  type="number"
+  placeholder="Despesas"
+  value={despesasDia}
+  onChange={(e) => setDespesasDia(e.target.value)}
+  className="border p-2 rounded"
+/>
 
-    {/* DESCRIÇÃO DESPESAS */}
-    <input
-      type="text"
-      placeholder="Descrição das despesas"
-      value={descDespesas}
-      onChange={(e) => setDescDespesas(e.target.value)}
-      className="border p-2 rounded col-span-2"
-    />
+{/* DESCRIÇÃO DESPESAS */}
+<input
+  type="text"
+  placeholder="Descrição das despesas"
+  value={descDespesas}
+  onChange={(e) => setDescDespesas(e.target.value)}
+  className="border p-2 rounded col-span-2"
+/>
 
-    {/* BOLETOS PAGOS */}
-    <input
-      type="number"
-      placeholder="Boletos pagos"
-      value={boletosDia}
-      onChange={(e) => setBoletosDia(e.target.value)}
-      className="border p-2 rounded"
-    />
+{/* BOLETOS PAGOS */}
+<input
+  type="number"
+  placeholder="Boletos pagos"
+  value={boletosDia}
+  onChange={(e) => setBoletosDia(e.target.value)}
+  className="border p-2 rounded"
+/>
 
-    {/* DESCRIÇÃO BOLETOS PAGOS */}
-    <input
-      type="text"
-      placeholder="Descrição dos boletos pagos"
-      value={descBoletosPagos}
-      onChange={(e) => setDescBoletosPagos(e.target.value)}
-      className="border p-2 rounded col-span-2"
-    />
+{/* DESCRIÇÃO BOLETOS PAGOS */}
+<input
+  type="text"
+  placeholder="Descrição dos boletos pagos"
+  value={descBoletosPagos}
+  onChange={(e) => setDescBoletosPagos(e.target.value)}
+  className="border p-2 rounded col-span-2"
+/>
 
-    {/* COMPRAS */}
-    <input
-      type="number"
-      placeholder="Compras"
-      value={comprasDia}
-      onChange={(e) => setComprasDia(e.target.value)}
-      className="border p-2 rounded"
-    />
+{/* COMPRAS */}
+<input
+  type="number"
+  placeholder="Compras"
+  value={comprasDia}
+  onChange={(e) => setComprasDia(e.target.value)}
+  className="border p-2 rounded"
+/>
 
-    {/* DESCRIÇÃO COMPRAS */}
-    <input
-      type="text"
-      placeholder="Descrição das compras"
-      value={descCompras}
-      onChange={(e) => setDescCompras(e.target.value)}
-      className="border p-2 rounded col-span-2"
-    />
+{/* DESCRIÇÃO COMPRAS */}
+<input
+  type="text"
+  placeholder="Descrição das compras"
+  value={descCompras}
+  onChange={(e) => setDescCompras(e.target.value)}
+  className="border p-2 rounded col-span-2"
+/>
+
 
   </div>
 
