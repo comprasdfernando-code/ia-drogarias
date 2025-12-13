@@ -136,7 +136,12 @@ async function salvarFechamento() {
     alert("Digite a data e o valor da venda total!");
     return;
   }
-
+   console.log({
+  descSangrias,
+  descDespesas,
+  descBoletosPagos,
+  descCompras,
+});
   const saldo =
     Number(vendaTotal) -
     (Number(sangriasDia) +
