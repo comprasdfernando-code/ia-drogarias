@@ -129,46 +129,55 @@ export default function CaixaPage() {
   }
 
   // ======================================================
-  // 🔵 SALVAR FECHAMENTO DIÁRIO
-  // ======================================================
-  async function salvarFechamento() {
-    if (!dataFechamento || !vendaTotal) {
-      alert("Digite a data e o valor da venda total!");
-      return;
-    }
-
-    const saldo =
-      Number(vendaTotal) -
-      (Number(sangriasDia) +
-        Number(despesasDia) +
-        Number(boletosDia) +
-        Number(comprasDia));
-
-    const { error } = await supabase.from("caixa_diario").insert({
-      loja: LOJA,
-      data: dataFechamento + "T12:00:00", // força meio-dia para não cair no dia anterior
-
-      venda_total: Number(vendaTotal),
-      dinheiro: Number(dinheiroDia),
-      pix_cnpj: Number(pixCNPJ),
-      pix_qr: Number(pixQR),
-      cartoes: Number(cartoesDia),
-      sangrias: Number(sangriasDia),
-      despesas: Number(despesasDia),
-      boletos: Number(boletosDia),
-      compras: Number(comprasDia),
-      saldo_dia: saldo,
-    });
-
-    if (error) {
-      console.error(error);
-      alert("Erro ao salvar fechamento");
-      return;
-    }
-
-    alert("Fechamento salvo com sucesso! ✔️");
-    carregarFechamentos();
+// 🔵 SALVAR FECHAMENTO DIÁRIO (AGORA COM DESCRIÇÕES)
+// ======================================================
+async function salvarFechamento() {
+  if (!dataFechamento || !vendaTotal) {
+    alert("Digite a data e o valor da venda total!");
+    return;
   }
+
+  const saldo =
+    Number(vendaTotal) -
+    (Number(sangriasDia) +
+      Number(despesasDia) +
+      Number(boletosDia) +
+      Number(comprasDia));
+
+  const { error } = await supabase.from("caixa_diario").insert({
+    loja: LOJA,
+    data: dataFechamento + "T12:00:00", // força meio-dia para não cair no dia anterior
+
+    venda_total: Number(vendaTotal),
+    dinheiro: Number(dinheiroDia),
+    pix_cnpj: Number(pixCNPJ),
+    pix_qr: Number(pixQR),
+    cartoes: Number(cartoesDia),
+
+    sangrias: Number(sangriasDia),
+    despesas: Number(despesasDia),
+    boletos: Number(boletosDia),
+    compras: Number(comprasDia),
+
+    // 🆕 DESCRIÇÕES INDO PRO BANCO
+    desc_sangrias: descSangrias || null,
+    desc_despesas: descDespesas || null,
+    desc_boletos: descBoletosPagos || null,
+    desc_compras: descCompras || null,
+
+    saldo_dia: saldo,
+  });
+
+  if (error) {
+    console.error(error);
+    alert("Erro ao salvar fechamento");
+    return;
+  }
+
+  alert("Fechamento salvo com sucesso! ✔️");
+  carregarFechamentos();
+}
+
 
   // ======================================================
 // 🔵 ACUMULADO POR PERÍODO (CORRIGIDO, À PROVA DE ERROS)
