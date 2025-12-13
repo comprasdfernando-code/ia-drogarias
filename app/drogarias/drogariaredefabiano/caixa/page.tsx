@@ -11,6 +11,11 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 const LOJA = "drogariaredefabiano";
+const [descSangrias, setDescSangrias] = useState("");
+const [descDespesas, setDescDespesas] = useState("");
+const [descBoletosPagos, setDescBoletosPagos] = useState("");
+const [descCompras, setDescCompras] = useState("");
+
 
 // ======================================================
 // 🔷 COMPONENTE CARD DE ACUMULADO
@@ -319,28 +324,148 @@ async function filtrarAcumulado() {
       </h1>
 
       {/* ========================================================== */}
-      {/* FECHAMENTO DIÁRIO */}
-      {/* ========================================================== */}
-      <div className="bg-white rounded-lg shadow p-4 mb-6">
-        <h2 className="font-bold text-lg text-blue-700 mb-3">📅 Fechamento Diário</h2>
+{/* FECHAMENTO DIÁRIO */}
+{/* ========================================================== */}
+<div className="bg-white rounded-lg shadow p-4 mb-6">
+  <h2 className="font-bold text-lg text-blue-700 mb-3">📅 Fechamento Diário</h2>
 
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <input type="date" value={dataFechamento} onChange={(e) => setDataFechamento(e.target.value)} className="border p-2 rounded" />
-          <input type="number" placeholder="Venda total" value={vendaTotal} onChange={(e) => setVendaTotal(e.target.value)} className="border p-2 rounded" />
-          <input type="number" placeholder="Dinheiro" value={dinheiroDia} onChange={(e) => setDinheiroDia(e.target.value)} className="border p-2 rounded" />
-          <input type="number" placeholder="Pix CNPJ" value={pixCNPJ} onChange={(e) => setPixCNPJ(e.target.value)} className="border p-2 rounded" />
-          <input type="number" placeholder="Pix QR" value={pixQR} onChange={(e) => setPixQR(e.target.value)} className="border p-2 rounded" />
-          <input type="number" placeholder="Cartões" value={cartoesDia} onChange={(e) => setCartoesDia(e.target.value)} className="border p-2 rounded" />
-          <input type="number" placeholder="Sangrias" value={sangriasDia} onChange={(e) => setSangriasDia(e.target.value)} className="border p-2 rounded" />
-          <input type="number" placeholder="Despesas" value={despesasDia} onChange={(e) => setDespesasDia(e.target.value)} className="border p-2 rounded" />
-          <input type="number" placeholder="Boletos pagos" value={boletosDia} onChange={(e) => setBoletosDia(e.target.value)} className="border p-2 rounded" />
-          <input type="number" placeholder="Compras" value={comprasDia} onChange={(e) => setComprasDia(e.target.value)} className="border p-2 rounded" />
-        </div>
+  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
 
-        <button onClick={salvarFechamento} className="mt-3 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded font-semibold">
-          Salvar Fechamento
-        </button>
-      </div>
+    {/* DATA */}
+    <input
+      type="date"
+      value={dataFechamento}
+      onChange={(e) => setDataFechamento(e.target.value)}
+      className="border p-2 rounded"
+    />
+
+    {/* VENDA TOTAL */}
+    <input
+      type="number"
+      placeholder="Venda total"
+      value={vendaTotal}
+      onChange={(e) => setVendaTotal(e.target.value)}
+      className="border p-2 rounded"
+    />
+
+    {/* DINHEIRO */}
+    <input
+      type="number"
+      placeholder="Dinheiro"
+      value={dinheiroDia}
+      onChange={(e) => setDinheiroDia(e.target.value)}
+      className="border p-2 rounded"
+    />
+
+    {/* PIX CNPJ */}
+    <input
+      type="number"
+      placeholder="Pix CNPJ"
+      value={pixCNPJ}
+      onChange={(e) => setPixCNPJ(e.target.value)}
+      className="border p-2 rounded"
+    />
+
+    {/* PIX QR */}
+    <input
+      type="number"
+      placeholder="Pix QR"
+      value={pixQR}
+      onChange={(e) => setPixQR(e.target.value)}
+      className="border p-2 rounded"
+    />
+
+    {/* CARTÕES */}
+    <input
+      type="number"
+      placeholder="Cartões"
+      value={cartoesDia}
+      onChange={(e) => setCartoesDia(e.target.value)}
+      className="border p-2 rounded"
+    />
+
+    {/* SANGRIAS */}
+    <input
+      type="number"
+      placeholder="Sangrias"
+      value={sangriasDia}
+      onChange={(e) => setSangriasDia(e.target.value)}
+      className="border p-2 rounded"
+    />
+
+    {/* DESCRIÇÃO SANGRIAS */}
+    <input
+      type="text"
+      placeholder="Descrição das sangrias"
+      value={descSangrias}
+      onChange={(e) => setDescSangrias(e.target.value)}
+      className="border p-2 rounded col-span-2"
+    />
+
+    {/* DESPESAS */}
+    <input
+      type="number"
+      placeholder="Despesas"
+      value={despesasDia}
+      onChange={(e) => setDespesasDia(e.target.value)}
+      className="border p-2 rounded"
+    />
+
+    {/* DESCRIÇÃO DESPESAS */}
+    <input
+      type="text"
+      placeholder="Descrição das despesas"
+      value={descDespesas}
+      onChange={(e) => setDescDespesas(e.target.value)}
+      className="border p-2 rounded col-span-2"
+    />
+
+    {/* BOLETOS PAGOS */}
+    <input
+      type="number"
+      placeholder="Boletos pagos"
+      value={boletosDia}
+      onChange={(e) => setBoletosDia(e.target.value)}
+      className="border p-2 rounded"
+    />
+
+    {/* DESCRIÇÃO BOLETOS PAGOS */}
+    <input
+      type="text"
+      placeholder="Descrição dos boletos pagos"
+      value={descBoletosPagos}
+      onChange={(e) => setDescBoletosPagos(e.target.value)}
+      className="border p-2 rounded col-span-2"
+    />
+
+    {/* COMPRAS */}
+    <input
+      type="number"
+      placeholder="Compras"
+      value={comprasDia}
+      onChange={(e) => setComprasDia(e.target.value)}
+      className="border p-2 rounded"
+    />
+
+    {/* DESCRIÇÃO COMPRAS */}
+    <input
+      type="text"
+      placeholder="Descrição das compras"
+      value={descCompras}
+      onChange={(e) => setDescCompras(e.target.value)}
+      className="border p-2 rounded col-span-2"
+    />
+
+  </div>
+
+  <button
+    onClick={salvarFechamento}
+    className="mt-3 bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded font-semibold"
+  >
+    Salvar Fechamento
+  </button>
+</div>
+
 
       {/* ========================================================== */}
       {/* ACUMULADO */}
