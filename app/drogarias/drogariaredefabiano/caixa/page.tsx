@@ -374,7 +374,7 @@ async function filtrarAcumulado() {
       </div>
 
       {/* ===================================================== */}
-{/* 🟦 TABELA DE FECHAMENTOS DIÁRIOS — ATUALIZADA */}
+{/* 🟦 TABELA DE FECHAMENTOS DIÁRIOS — MODO B COM TOOLTIP */}
 {/* ===================================================== */}
 
 <div className="bg-white rounded-lg shadow p-4 mb-6">
@@ -423,7 +423,7 @@ async function filtrarAcumulado() {
 
               <td className="p-2 border text-right">R$ {fmt(f.venda_total)}</td>
 
-              {/* 🟩 Entradas */}
+              {/* ENTRADAS */}
               <td className="p-2 border text-right font-semibold text-green-700">
                 R$ {fmt(entradas)}
               </td>
@@ -433,12 +433,47 @@ async function filtrarAcumulado() {
               <td className="p-2 border text-right">R$ {fmt(f.pix_qr)}</td>
               <td className="p-2 border text-right">R$ {fmt(f.cartoes)}</td>
 
-              <td className="p-2 border text-right">R$ {fmt(f.sangrias)}</td>
-              <td className="p-2 border text-right">R$ {fmt(f.despesas)}</td>
-              <td className="p-2 border text-right">R$ {fmt(f.boletos)}</td>
-              <td className="p-2 border text-right">R$ {fmt(f.compras)}</td>
+              {/* SANGRIAS + TOOLTIP */}
+              <td className="p-2 border text-right relative group cursor-pointer">
+                <span>R$ {fmt(f.sangrias)}</span>
+                {f.desc_sangrias && (
+                  <div className="absolute left-0 top-full mt-1 hidden group-hover:block bg-black text-white text-xs px-2 py-1 rounded shadow-lg whitespace-nowrap z-10">
+                    {f.desc_sangrias}
+                  </div>
+                )}
+              </td>
 
-              {/* 🔵 Saldo Final (Entradas − Saídas) */}
+              {/* DESPESAS + TOOLTIP */}
+              <td className="p-2 border text-right relative group cursor-pointer">
+                <span>R$ {fmt(f.despesas)}</span>
+                {f.desc_despesas && (
+                  <div className="absolute left-0 top-full mt-1 hidden group-hover:block bg-black text-white text-xs px-2 py-1 rounded shadow-lg whitespace-nowrap z-10">
+                    {f.desc_despesas}
+                  </div>
+                )}
+              </td>
+
+              {/* BOLETOS + TOOLTIP */}
+              <td className="p-2 border text-right relative group cursor-pointer">
+                <span>R$ {fmt(f.boletos)}</span>
+                {f.desc_boletos && (
+                  <div className="absolute left-0 top-full mt-1 hidden group-hover:block bg-black text-white text-xs px-2 py-1 rounded shadow-lg whitespace-nowrap z-10">
+                    {f.desc_boletos}
+                  </div>
+                )}
+              </td>
+
+              {/* COMPRAS + TOOLTIP */}
+              <td className="p-2 border text-right relative group cursor-pointer">
+                <span>R$ {fmt(f.compras)}</span>
+                {f.desc_compras && (
+                  <div className="absolute left-0 top-full mt-1 hidden group-hover:block bg-black text-white text-xs px-2 py-1 rounded shadow-lg whitespace-nowrap z-10">
+                    {f.desc_compras}
+                  </div>
+                )}
+              </td>
+
+              {/* SALDO FINAL */}
               <td
                 className={
                   "p-2 border text-right font-bold " +
@@ -454,6 +489,7 @@ async function filtrarAcumulado() {
     </table>
   </div>
 </div>
+
 
 
       {/* ========================================================== */}
