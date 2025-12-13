@@ -381,7 +381,13 @@ async function filtrarAcumulado() {
   const totalSaidas = saidas.reduce((a, i) => a + i.valor, 0);
   const saldo = totalEntradas - totalSaidas;
 
-  {modalSaidaAberto && (
+  // ======================================================
+  // 🔷 INTERFACE
+  // ======================================================
+  return (
+    <main className="min-h-screen bg-gray-100 p-6">
+
+      {modalSaidaAberto && (
   <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
     <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
 
@@ -450,13 +456,6 @@ async function filtrarAcumulado() {
     </div>
   </div>
 )}
-
-
-  // ======================================================
-  // 🔷 INTERFACE
-  // ======================================================
-  return (
-    <main className="min-h-screen bg-gray-100 p-6">
 
       {/* TÍTULO */}
       <h1 className="text-2xl font-bold text-blue-700 mb-6 text-center">
