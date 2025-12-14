@@ -1,5 +1,3 @@
-export const dynamic = "force-dynamic";
-
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -16,6 +14,7 @@ type Produto = {
   categoria?: string;
   foto?: string;
 };
+export const dynamic = "force-dynamic";
 
 export default function LojinhaPage() {
   const [produtos, setProdutos] = useState<Produto[]>([]);
