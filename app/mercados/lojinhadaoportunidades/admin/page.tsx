@@ -163,11 +163,13 @@ export default function AdminLojinha() {
 
         {/* Botão */}
         <button
-          className="w-full py-3 bg-yellow-400 text-black font-bold rounded hover:bg-yellow-300"
-          onClick={salvarProduto}
-        >
-          SALVAR PRODUTO
-        </button>
+  type="button"
+  className="w-full py-3 bg-yellow-400 text-black font-bold rounded hover:bg-yellow-300"
+  onClick={salvarProduto}
+>
+  SALVAR PRODUTO
+</button>
+
       </div>
     </div>
   );
