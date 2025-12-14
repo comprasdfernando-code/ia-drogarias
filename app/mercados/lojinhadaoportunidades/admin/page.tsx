@@ -45,7 +45,37 @@ export default function AdminLojinha() {
   }
 
   async function salvarProduto() {
-    if (!nome || !preco || !fotoURL) {
+    if (!nome || !preco || !fotoURL) {async function salvarProduto() {
+  console.log(">>> Executando salvarProduto()");
+
+  if (!nome || !preco || !fotoURL) {
+    alert("Preencha nome, preço e foto!");
+    return;
+  }
+
+  const precoConvertido = Number(preco.replace(",", "."));
+
+  const { data, error } = await supabase
+    .from("lojinha_produtos")
+    .insert({
+      nome,
+      preco: precoConvertido,
+      preco_normal: Number(precoNormal.replace(",", ".")) || 0,
+      validade,
+      categoria,
+      foto: fotoURL,
+    });
+
+  if (error) {
+    console.error("ERRO SUPABASE:", error);
+    alert("Erro ao salvar.");
+    return;
+  }
+
+  alert("Produto salvo com sucesso!");
+  limpar();
+}
+
       alert("Preencha o nome, preço e envie a foto!");
       return;
     }
