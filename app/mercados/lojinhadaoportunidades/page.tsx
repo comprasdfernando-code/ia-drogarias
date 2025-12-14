@@ -4,7 +4,7 @@ export const dynamic = "force-dynamic";
 
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
-import { Search, ShoppingCart, X, Trash2 } from "lucide-react";
+import { Search, ShoppingCart, X, Trash2, Plus, Minus } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 
 type Produto = {
@@ -17,11 +17,15 @@ type Produto = {
   foto?: string;
 };
 
+type ItemCarrinho = Produto & {
+  qtd: number;
+};
+
 export default function LojinhaPage() {
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [busca, setBusca] = useState("");
   const [produtoAtivo, setProdutoAtivo] = useState<Produto | null>(null);
-  const [carrinho, setCarrinho] = useState<Produto[]>([]);
+  const [carrinho, setCarrinho] = useState<ItemCarrinho[]>([]);
   const [carrinhoAberto, setCarrinhoAberto] = useState(false);
 
   useEffect(() => {
@@ -46,26 +50,64 @@ export default function LojinhaPage() {
     );
   }, [busca, produtos]);
 
+  /* =========================
+     🛒 CARRINHO COM QUANTIDADE
+     ========================= */
+
   function adicionarAoCarrinho(p: Produto) {
-    setCarrinho((prev) => [...prev, p]);
+    setCarrinho((prev) => {
+      const existe = prev.find((i) => i.id === p.id);
+
+      if (existe) {
+        return prev.map((i) =>
+          i.id === p.id ? { ...i, qtd: i.qtd + 1 } : i
+        );
+      }
+
+      return [...prev, { ...p, qtd: 1 }];
+    });
+
     setProdutoAtivo(null);
     setCarrinhoAberto(true);
   }
 
-  function removerItem(index: number) {
-    setCarrinho((prev) => prev.filter((_, i) => i !== index));
+  function aumentarQtd(id: number) {
+    setCarrinho((prev) =>
+      prev.map((i) => (i.id === id ? { ...i, qtd: i.qtd + 1 } : i))
+    );
   }
 
-  const total = carrinho.reduce((sum, p) => sum + p.preco, 0);
+  function diminuirQtd(id: number) {
+    setCarrinho((prev) =>
+      prev
+        .map((i) =>
+          i.id === id ? { ...i, qtd: i.qtd - 1 } : i
+        )
+        .filter((i) => i.qtd > 0)
+    );
+  }
 
-  // 🔥 FINALIZAR NO WHATSAPP
+  function removerItem(id: number) {
+    setCarrinho((prev) => prev.filter((i) => i.id !== id));
+  }
+
+  const total = carrinho.reduce(
+    (sum, i) => sum + i.preco * i.qtd,
+    0
+  );
+
+  /* =========================
+     📲 FINALIZAR WHATSAPP
+     ========================= */
+
   function finalizarWhatsApp() {
-    const numero = "5511982047548"; // 🔴 TROQUE PELO WHATSAPP DA LOJINHA
+    const numero = "5511952068432"; // 🔴 troque se quiser
 
     if (carrinho.length === 0) return;
 
     const itens = carrinho.map(
-      (p, i) => `${i + 1}. ${p.nome} - R$ ${p.preco.toFixed(2)}`
+      (i, idx) =>
+        `${idx + 1}. ${i.nome} (${i.qtd}x) - R$ ${(i.preco * i.qtd).toFixed(2)}`
     );
 
     const mensagem = `
@@ -78,8 +120,10 @@ ${itens.join("\n")}
 📍 Aguardo confirmação 🙂
     `;
 
-    const url = `https://wa.me/${numero}?text=${encodeURIComponent(mensagem)}`;
-    window.open(url, "_blank");
+    window.open(
+      `https://wa.me/${numero}?text=${encodeURIComponent(mensagem)}`,
+      "_blank"
+    );
   }
 
   return (
@@ -98,7 +142,7 @@ ${itens.join("\n")}
 
         <div className="relative z-10 w-full max-w-3xl px-6 text-center">
           <h1 className="text-4xl md:text-5xl font-extrabold text-yellow-500 mb-6">
-            Lojinha da Oportunidade 💛🖤
+            Lojinha da Oportunidade 
           </h1>
 
           <div className="relative">
@@ -188,7 +232,7 @@ ${itens.join("\n")}
           className="fixed bottom-5 right-5 z-40 bg-yellow-400 text-black rounded-full px-6 py-4 shadow-xl flex items-center gap-2 font-bold"
         >
           <ShoppingCart />
-          {carrinho.length}
+          {carrinho.reduce((sum, i) => sum + i.qtd, 0)}
         </button>
       )}
 
@@ -203,12 +247,12 @@ ${itens.join("\n")}
               </button>
             </div>
 
-            {carrinho.map((p, i) => (
-              <div key={i} className="flex items-center gap-3 border-b pb-2">
-                {p.foto && (
+            {carrinho.map((i) => (
+              <div key={i.id} className="flex items-center gap-3 border-b pb-2">
+                {i.foto && (
                   <Image
-                    src={p.foto}
-                    alt={p.nome}
+                    src={i.foto}
+                    alt={i.nome}
                     width={50}
                     height={50}
                     className="rounded"
@@ -216,13 +260,23 @@ ${itens.join("\n")}
                 )}
 
                 <div className="flex-1">
-                  <p className="text-sm font-semibold">{p.nome}</p>
+                  <p className="text-sm font-semibold">{i.nome}</p>
                   <p className="text-yellow-500 font-bold">
-                    R$ {p.preco.toFixed(2)}
+                    R$ {(i.preco * i.qtd).toFixed(2)}
                   </p>
                 </div>
 
-                <button onClick={() => removerItem(i)}>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => diminuirQtd(i.id)}>
+                    <Minus size={16} />
+                  </button>
+                  <span className="font-bold">{i.qtd}</span>
+                  <button onClick={() => aumentarQtd(i.id)}>
+                    <Plus size={16} />
+                  </button>
+                </div>
+
+                <button onClick={() => removerItem(i.id)}>
                   <Trash2 className="text-red-500" />
                 </button>
               </div>
