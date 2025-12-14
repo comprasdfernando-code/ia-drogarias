@@ -43,37 +43,41 @@ export default function LojinhaPage() {
   }, [busca, produtos]);
 
   return (
-    <div className="min-h-screen bg-black text-white">
+    <div className="min-h-screen bg-zinc-100 text-zinc-900">
+
       {/* HERO */}
-      <section className="relative h-[70vh] flex items-center justify-center">
-        {/* imagem de fundo */}
-        <Image
-          src="/lojinha-bg.png" // coloque a imagem aqui (public/lojinha-bg.png)
-          alt="Lojinha da Oportunidade"
-          fill
-          priority
-          className="object-contain opacity-20"
-        />
-        <div className="absolute inset-0 bg-black/70" />
+      <section className="relative min-h-screen flex items-center justify-center overflow-hidden">
+  {/* Fundo */}
+  <Image
+    src="/lojinha-bg.png"
+    alt="Lojinha da Oportunidade"
+    fill
+    priority
+    className="object-cover"
+  />
 
-        {/* conteúdo */}
-        <div className="relative z-10 max-w-3xl w-full px-6 text-center">
-          <h1 className="text-4xl md:text-5xl font-extrabold text-yellow-400 mb-6">
-            Lojinha da Oportunidade 💛🖤
-          </h1>
+  {/* Overlay leve (para leitura) */}
+  <div className="absolute inset-0 bg-white/70 backdrop-blur-sm" />
 
-          {/* BUSCA */}
-          <div className="relative">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" />
-            <input
-              value={busca}
-              onChange={(e) => setBusca(e.target.value)}
-              placeholder="Buscar produtos, categorias, ofertas..."
-              className="w-full pl-12 pr-4 py-4 rounded-full bg-zinc-900 border border-yellow-400 text-white focus:outline-none focus:ring-2 focus:ring-yellow-400"
-            />
-          </div>
-        </div>
-      </section>
+  {/* Conteúdo */}
+  <div className="relative z-10 max-w-3xl w-full px-6 text-center">
+    <h1 className="text-4xl md:text-5xl font-extrabold text-yellow-500 mb-6 drop-shadow">
+      Lojinha da Oportunidade 💛🖤
+    </h1>
+
+    {/* Busca (mantém a sua) */}
+    <div className="relative">
+      <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" />
+      <input
+        value={busca}
+        onChange={(e) => setBusca(e.target.value)}
+        placeholder="Buscar produtos, categorias, ofertas..."
+        className="w-full pl-12 pr-4 py-4 rounded-full bg-white border border-yellow-400 text-zinc-800 shadow-lg focus:outline-none focus:ring-2 focus:ring-yellow-400"
+      />
+    </div>
+  </div>
+</section>
+
 
       {/* LISTA */}
       <section className="px-6 py-10 max-w-7xl mx-auto">
@@ -82,7 +86,8 @@ export default function LojinhaPage() {
             Nenhum produto encontrado.
           </p>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-6">
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
+
             {filtrados.map((p) => (
               <div
                 key={p.id}
