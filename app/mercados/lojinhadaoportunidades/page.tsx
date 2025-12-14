@@ -19,6 +19,10 @@ export const dynamic = "force-dynamic";
 export default function LojinhaPage() {
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [busca, setBusca] = useState("");
+  const [produtoAtivo, setProdutoAtivo] = useState<Produto | null>(null);
+  const [carrinho, setCarrinho] = useState<Produto[]>([]);
+
+
 
   useEffect(() => {
     carregar();
@@ -32,6 +36,10 @@ export default function LojinhaPage() {
 
     setProdutos(data || []);
   }
+  function abrirProduto(p: Produto) {
+  setProdutoAtivo(p);
+}
+
 
   const filtrados = useMemo(() => {
     const q = busca.toLowerCase();
@@ -41,6 +49,17 @@ export default function LojinhaPage() {
         (p.categoria || "").toLowerCase().includes(q)
     );
   }, [busca, produtos]);
+
+  function adicionarAoCarrinho(p: Produto) {
+  setCarrinho((prev) => [...prev, p]);
+  setProdutoAtivo(null);
+}
+{carrinho.length > 0 && (
+  <button className="fixed bottom-4 right-4 z-40 bg-yellow-400 text-black rounded-full px-5 py-3 shadow-xl">
+    🛒 {carrinho.length}
+  </button>
+)}
+
 
   return (
     <div className="min-h-screen bg-zinc-100 text-zinc-900">
@@ -62,7 +81,7 @@ export default function LojinhaPage() {
   {/* Conteúdo */}
   <div className="relative z-10 max-w-3xl w-full px-6 text-center">
     <h1 className="text-4xl md:text-5xl font-extrabold text-yellow-500 mb-6 drop-shadow">
-      Lojinha da Oportunidade 💛🖤
+      Lojinha da Oportunidade 
     </h1>
 
     {/* Busca (mantém a sua) */}
@@ -126,6 +145,41 @@ export default function LojinhaPage() {
           </div>
         )}
       </section>
+{produtoAtivo && (
+  <div className="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center">
+    <div className="bg-white w-full sm:max-w-md sm:rounded-xl rounded-t-2xl p-4 animate-slide-up">
+      <button
+        className="text-zinc-500 mb-2"
+        onClick={() => setProdutoAtivo(null)}
+      >
+        Fechar ✕
+      </button>
+
+      <div className="relative h-48 mb-4">
+        <Image
+          src={produtoAtivo.foto!}
+          alt={produtoAtivo.nome}
+          fill
+          className="object-contain"
+        />
+      </div>
+
+      <h2 className="font-bold text-lg">{produtoAtivo.nome}</h2>
+
+      <p className="text-yellow-500 text-xl font-extrabold mt-2">
+        R$ {produtoAtivo.preco.toFixed(2)}
+      </p>
+
+      <button
+        className="mt-4 w-full bg-yellow-400 text-black py-3 rounded-xl font-bold"
+        onClick={() => adicionarAoCarrinho(produtoAtivo)}
+      >
+        Adicionar ao carrinho
+      </button>
+    </div>
+  </div>
+)}
+
     </div>
   );
 }
