@@ -58,6 +58,30 @@ export default function LojinhaPage() {
 
   const total = carrinho.reduce((sum, p) => sum + p.preco, 0);
 
+  // 🔥 FINALIZAR NO WHATSAPP
+  function finalizarWhatsApp() {
+    const numero = "5511982047548"; // 🔴 TROQUE PELO WHATSAPP DA LOJINHA
+
+    if (carrinho.length === 0) return;
+
+    const itens = carrinho.map(
+      (p, i) => `${i + 1}. ${p.nome} - R$ ${p.preco.toFixed(2)}`
+    );
+
+    const mensagem = `
+🛒 *Pedido - Lojinha da Oportunidade*
+
+${itens.join("\n")}
+
+💰 *Total:* R$ ${total.toFixed(2)}
+
+📍 Aguardo confirmação 🙂
+    `;
+
+    const url = `https://wa.me/${numero}?text=${encodeURIComponent(mensagem)}`;
+    window.open(url, "_blank");
+  }
+
   return (
     <div className="min-h-screen bg-zinc-100 text-zinc-900 relative">
 
@@ -168,7 +192,7 @@ export default function LojinhaPage() {
         </button>
       )}
 
-      {/* BOTTOM SHEET CARRINHO */}
+      {/* BOTTOM SHEET */}
       {carrinhoAberto && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-end">
           <div className="bg-white w-full rounded-t-2xl p-4 max-h-[85vh] overflow-y-auto">
@@ -179,50 +203,42 @@ export default function LojinhaPage() {
               </button>
             </div>
 
-            {carrinho.length === 0 ? (
-              <p className="text-zinc-400 text-center">
-                Carrinho vazio
-              </p>
-            ) : (
-              <div className="space-y-3">
-                {carrinho.map((p, i) => (
-                  <div
-                    key={i}
-                    className="flex items-center gap-3 border-b pb-2"
-                  >
-                    {p.foto && (
-                      <Image
-                        src={p.foto}
-                        alt={p.nome}
-                        width={50}
-                        height={50}
-                        className="rounded"
-                      />
-                    )}
+            {carrinho.map((p, i) => (
+              <div key={i} className="flex items-center gap-3 border-b pb-2">
+                {p.foto && (
+                  <Image
+                    src={p.foto}
+                    alt={p.nome}
+                    width={50}
+                    height={50}
+                    className="rounded"
+                  />
+                )}
 
-                    <div className="flex-1">
-                      <p className="text-sm font-semibold">{p.nome}</p>
-                      <p className="text-yellow-500 font-bold">
-                        R$ {p.preco.toFixed(2)}
-                      </p>
-                    </div>
-
-                    <button onClick={() => removerItem(i)}>
-                      <Trash2 className="text-red-500" />
-                    </button>
-                  </div>
-                ))}
-
-                <div className="flex justify-between font-bold text-lg mt-4">
-                  <span>Total</span>
-                  <span>R$ {total.toFixed(2)}</span>
+                <div className="flex-1">
+                  <p className="text-sm font-semibold">{p.nome}</p>
+                  <p className="text-yellow-500 font-bold">
+                    R$ {p.preco.toFixed(2)}
+                  </p>
                 </div>
 
-                <button className="w-full mt-4 bg-green-500 text-white py-3 rounded-xl font-bold">
-                  Finalizar no WhatsApp
+                <button onClick={() => removerItem(i)}>
+                  <Trash2 className="text-red-500" />
                 </button>
               </div>
-            )}
+            ))}
+
+            <div className="flex justify-between font-bold text-lg mt-4">
+              <span>Total</span>
+              <span>R$ {total.toFixed(2)}</span>
+            </div>
+
+            <button
+              onClick={finalizarWhatsApp}
+              className="w-full mt-4 bg-green-500 text-white py-3 rounded-xl font-bold"
+            >
+              Finalizar no WhatsApp
+            </button>
           </div>
         </div>
       )}
