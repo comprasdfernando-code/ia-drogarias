@@ -1,9 +1,11 @@
 "use client";
 
+export const dynamic = "force-dynamic";
+
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
+import { Search, ShoppingCart } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
-import { Search } from "lucide-react";
 
 type Produto = {
   id: number;
@@ -14,7 +16,6 @@ type Produto = {
   categoria?: string;
   foto?: string;
 };
-export const dynamic = "force-dynamic";
 
 export default function LojinhaPage() {
   const [produtos, setProdutos] = useState<Produto[]>([]);
@@ -22,24 +23,20 @@ export default function LojinhaPage() {
   const [produtoAtivo, setProdutoAtivo] = useState<Produto | null>(null);
   const [carrinho, setCarrinho] = useState<Produto[]>([]);
 
-
-
   useEffect(() => {
-    carregar();
+    carregarProdutos();
   }, []);
 
-  async function carregar() {
-    const { data } = await supabase
+  async function carregarProdutos() {
+    const { data, error } = await supabase
       .from("lojinha_produtos")
       .select("*")
       .order("id", { ascending: false });
 
-    setProdutos(data || []);
+    if (!error && data) {
+      setProdutos(data);
+    }
   }
-  function abrirProduto(p: Produto) {
-  setProdutoAtivo(p);
-}
-
 
   const filtrados = useMemo(() => {
     const q = busca.toLowerCase();
@@ -50,67 +47,60 @@ export default function LojinhaPage() {
     );
   }, [busca, produtos]);
 
-  function adicionarAoCarrinho(p: Produto) {
-  setCarrinho((prev) => [...prev, p]);
-  setProdutoAtivo(null);
-}
-{carrinho.length > 0 && (
-  <button className="fixed bottom-4 right-4 z-40 bg-yellow-400 text-black rounded-full px-5 py-3 shadow-xl">
-    🛒 {carrinho.length}
-  </button>
-)}
+  function abrirProduto(p: Produto) {
+    setProdutoAtivo(p);
+  }
 
+  function adicionarAoCarrinho(p: Produto) {
+    setCarrinho((prev) => [...prev, p]);
+    setProdutoAtivo(null);
+  }
 
   return (
-    <div className="min-h-screen bg-zinc-100 text-zinc-900">
+    <div className="min-h-screen bg-zinc-100 text-zinc-900 relative">
 
       {/* HERO */}
-      <section className="relative min-h-screen flex items-center justify-center overflow-hidden">
-  {/* Fundo */}
-  <Image
-    src="/lojinha-bg.png"
-    alt="Lojinha da Oportunidade"
-    fill
-    priority
-    className="object-cover"
-  />
+      <section className="relative min-h-screen flex items-center justify-center">
+        <Image
+          src="/lojinha-bg.png"
+          alt="Lojinha da Oportunidade"
+          fill
+          priority
+          className="object-cover"
+        />
 
-  {/* Overlay leve (para leitura) */}
-  <div className="absolute inset-0 bg-white/70 backdrop-blur-sm" />
+        <div className="absolute inset-0 bg-white/75 backdrop-blur-sm" />
 
-  {/* Conteúdo */}
-  <div className="relative z-10 max-w-3xl w-full px-6 text-center">
-    <h1 className="text-4xl md:text-5xl font-extrabold text-yellow-500 mb-6 drop-shadow">
-      Lojinha da Oportunidade 
-    </h1>
+        <div className="relative z-10 w-full max-w-3xl px-6 text-center">
+          <h1 className="text-4xl md:text-5xl font-extrabold text-yellow-500 mb-6">
+            Lojinha da Oportunidade 💛🖤
+          </h1>
 
-    {/* Busca (mantém a sua) */}
-    <div className="relative">
-      <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" />
-      <input
-        value={busca}
-        onChange={(e) => setBusca(e.target.value)}
-        placeholder="Buscar produtos, categorias, ofertas..."
-        className="w-full pl-12 pr-4 py-4 rounded-full bg-white border border-yellow-400 text-zinc-800 shadow-lg focus:outline-none focus:ring-2 focus:ring-yellow-400"
-      />
-    </div>
-  </div>
-</section>
+          <div className="relative">
+            <Search className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400" />
+            <input
+              value={busca}
+              onChange={(e) => setBusca(e.target.value)}
+              placeholder="Buscar produtos, categorias, ofertas..."
+              className="w-full pl-12 pr-4 py-4 rounded-full bg-white border border-yellow-400 shadow-lg focus:outline-none focus:ring-2 focus:ring-yellow-400"
+            />
+          </div>
+        </div>
+      </section>
 
-
-      {/* LISTA */}
+      {/* LISTA DE PRODUTOS */}
       <section className="px-6 py-10 max-w-7xl mx-auto">
         {filtrados.length === 0 ? (
-          <p className="text-zinc-400 text-center">
+          <p className="text-center text-zinc-500">
             Nenhum produto encontrado.
           </p>
         ) : (
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
-
             {filtrados.map((p) => (
               <div
                 key={p.id}
-                className="bg-zinc-900 rounded-xl border border-zinc-800 hover:border-yellow-400 transition"
+                onClick={() => abrirProduto(p)}
+                className="bg-white rounded-xl border shadow-sm cursor-pointer active:scale-[0.98] transition"
               >
                 <div className="relative h-40">
                   {p.foto && (
@@ -122,21 +112,28 @@ export default function LojinhaPage() {
                     />
                   )}
                 </div>
-                <div className="p-4">
-                  <h3 className="font-semibold mb-1">{p.nome}</h3>
+
+                <div className="p-3">
+                  <h3 className="font-semibold text-sm mb-1 line-clamp-2">
+                    {p.nome}
+                  </h3>
+
                   <div className="flex items-center gap-2">
-                    <span className="text-yellow-400 font-bold">
+                    <span className="text-yellow-500 font-bold">
                       R$ {p.preco.toFixed(2)}
                     </span>
+
                     {p.preco_normal && p.preco_normal > 0 && (
-                      <span className="text-zinc-500 line-through text-sm">
+                      <span className="text-zinc-400 line-through text-xs">
                         R$ {p.preco_normal.toFixed(2)}
                       </span>
                     )}
                   </div>
+
                   {p.validade && (
-                    <p className="text-xs text-zinc-400 mt-1">
-                      Validade: {new Date(p.validade).toLocaleDateString("pt-BR")}
+                    <p className="text-[11px] text-zinc-400 mt-1">
+                      Validade:{" "}
+                      {new Date(p.validade).toLocaleDateString("pt-BR")}
                     </p>
                   )}
                 </div>
@@ -145,41 +142,50 @@ export default function LojinhaPage() {
           </div>
         )}
       </section>
-{produtoAtivo && (
-  <div className="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center">
-    <div className="bg-white w-full sm:max-w-md sm:rounded-xl rounded-t-2xl p-4 animate-slide-up">
-      <button
-        className="text-zinc-500 mb-2"
-        onClick={() => setProdutoAtivo(null)}
-      >
-        Fechar ✕
-      </button>
 
-      <div className="relative h-48 mb-4">
-        <Image
-          src={produtoAtivo.foto!}
-          alt={produtoAtivo.nome}
-          fill
-          className="object-contain"
-        />
-      </div>
+      {/* MODAL DO PRODUTO */}
+      {produtoAtivo && (
+        <div className="fixed inset-0 z-50 bg-black/50 flex items-end sm:items-center">
+          <div className="bg-white w-full sm:max-w-md sm:rounded-xl rounded-t-2xl p-4 animate-slide-up">
+            <button
+              className="text-zinc-500 mb-2"
+              onClick={() => setProdutoAtivo(null)}
+            >
+              Fechar ✕
+            </button>
 
-      <h2 className="font-bold text-lg">{produtoAtivo.nome}</h2>
+            <div className="relative h-48 mb-4">
+              <Image
+                src={produtoAtivo.foto!}
+                alt={produtoAtivo.nome}
+                fill
+                className="object-contain"
+              />
+            </div>
 
-      <p className="text-yellow-500 text-xl font-extrabold mt-2">
-        R$ {produtoAtivo.preco.toFixed(2)}
-      </p>
+            <h2 className="font-bold text-lg">{produtoAtivo.nome}</h2>
 
-      <button
-        className="mt-4 w-full bg-yellow-400 text-black py-3 rounded-xl font-bold"
-        onClick={() => adicionarAoCarrinho(produtoAtivo)}
-      >
-        Adicionar ao carrinho
-      </button>
-    </div>
-  </div>
-)}
+            <p className="text-yellow-500 text-xl font-extrabold mt-2">
+              R$ {produtoAtivo.preco.toFixed(2)}
+            </p>
 
+            <button
+              className="mt-4 w-full bg-yellow-400 text-black py-3 rounded-xl font-bold"
+              onClick={() => adicionarAoCarrinho(produtoAtivo)}
+            >
+              Adicionar ao carrinho
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* CARRINHO FLUTUANTE */}
+      {carrinho.length > 0 && (
+        <button className="fixed bottom-5 right-5 z-50 bg-yellow-400 text-black rounded-full px-6 py-4 shadow-2xl flex items-center gap-2 font-bold">
+          <ShoppingCart size={22} />
+          {carrinho.length}
+        </button>
+      )}
     </div>
   );
 }
