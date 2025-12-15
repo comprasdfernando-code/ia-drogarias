@@ -123,18 +123,17 @@ useEffect(() => {
         while (true) {
           // 🔹 Nova consulta principal (preferencial)
           const { data, error } = await supabase
-  .from("estoque_farmacia")
+  .from("produtos")
   .select(`
-    id,
-    quantidade,
-    preco_local,
-    produtos (
-      id,
-      nome,
-      slug,
-      imagem,
-      categoria,
-      preco_venda
+    nome,
+    pmc_18,
+    descricao,
+    imagem,
+    farmacia_slug,
+    ean
+  
+    
+      
     )
   `)
             .eq("farmacia_id", 1) // ID da Drogaria Rede Fabiano
