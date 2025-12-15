@@ -6,45 +6,50 @@ import { useRouter } from "next/navigation";
 
 export default function CompletarCadastro() {
   const router = useRouter();
+
   const [userId, setUserId] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [loadingAuth, setLoadingAuth] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [erro, setErro] = useState("");
 
   const [form, setForm] = useState({
     nome: "",
     telefone: "",
     endereco: "",
-    numero: "",
-    bairro: "",
-    complemento: "",
-    referencia: "",
   });
 
-  // 🔐 Verifica usuário logado
+  // 🔐 Controle correto da sessão
   useEffect(() => {
-    async function carregarUsuario() {
-      const { data } = await supabase.auth.getUser();
+    const carregarSessao = async () => {
+      const {
+        data: { session },
+      } = await supabase.auth.getSession();
 
-      if (!data.user) {
-        router.push("/gigante/login");
+      // ⏳ ainda carregando
+      if (!session?.user) {
+        setLoadingAuth(false);
+        router.replace("/gigante/login");
         return;
       }
 
-      setUserId(data.user.id);
+      setUserId(session.user.id);
 
-      // Verifica se já tem cadastro
+      // 🔎 verifica se já tem cadastro
       const { data: cliente } = await supabase
         .from("gigante_clientes")
         .select("id")
-        .eq("id", data.user.id)
-        .single();
+        .eq("id", session.user.id)
+        .maybeSingle();
 
       if (cliente) {
-        router.push("/gigante/pedido");
+        router.replace("/gigante/pedido");
+        return;
       }
-    }
 
-    carregarUsuario();
+      setLoadingAuth(false);
+    };
+
+    carregarSessao();
   }, [router]);
 
   function handleChange(e: any) {
@@ -54,7 +59,7 @@ export default function CompletarCadastro() {
   async function salvarCadastro(e: React.FormEvent) {
     e.preventDefault();
     setErro("");
-    setLoading(true);
+    setSaving(true);
 
     const { error } = await supabase.from("gigante_clientes").insert({
       id: userId,
@@ -62,14 +67,24 @@ export default function CompletarCadastro() {
     });
 
     if (error) {
-      setErro("Erro ao salvar cadastro. Tente novamente.");
-      setLoading(false);
+      setErro("Erro ao salvar cadastro");
+      setSaving(false);
       return;
     }
 
-    router.push("/gigante/pedido");
+    router.replace("/gigante/pedido");
   }
 
+  // ⏳ Aguarda sessão
+  if (loadingAuth) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <p className="text-gray-500">Carregando...</p>
+      </div>
+    );
+  }
+
+  // 🧾 FORMULÁRIO
   return (
     <div className="min-h-screen flex items-center justify-center bg-red-50 p-4">
       <form
@@ -98,52 +113,20 @@ export default function CompletarCadastro() {
 
         <input
           name="endereco"
-          placeholder="Rua / Avenida"
-          onChange={handleChange}
-          className="w-full border p-2 rounded mb-2"
-          required
-        />
-
-        <div className="flex gap-2">
-          <input
-            name="numero"
-            placeholder="Número"
-            onChange={handleChange}
-            className="w-full border p-2 rounded mb-2"
-            required
-          />
-
-          <input
-            name="bairro"
-            placeholder="Bairro"
-            onChange={handleChange}
-            className="w-full border p-2 rounded mb-2"
-            required
-          />
-        </div>
-
-        <input
-          name="complemento"
-          placeholder="Complemento (opcional)"
-          onChange={handleChange}
-          className="w-full border p-2 rounded mb-2"
-        />
-
-        <input
-          name="referencia"
-          placeholder="Ponto de referência (opcional)"
+          placeholder="Endereço"
           onChange={handleChange}
           className="w-full border p-2 rounded mb-3"
+          required
         />
 
         {erro && <p className="text-red-600 text-sm mb-2">{erro}</p>}
 
         <button
           type="submit"
-          disabled={loading}
+          disabled={saving}
           className="w-full bg-red-600 text-white py-2 rounded"
         >
-          {loading ? "Salvando..." : "Salvar e continuar"}
+          {saving ? "Salvando..." : "Salvar e continuar"}
         </button>
       </form>
     </div>
