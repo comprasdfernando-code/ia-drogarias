@@ -12,10 +12,10 @@ export default function LoginGigante() {
   const [erro, setErro] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // 🔐 Escuta autenticação (ESSENCIAL)
+  // 🔐 Listener de autenticação (seguro)
   useEffect(() => {
     const { data: listener } = supabase.auth.onAuthStateChange(
-      async (_event, session) => {
+      (_event, session) => {
         if (session?.user) {
           router.replace("/gigante/completar-cadastro");
         }
@@ -27,6 +27,7 @@ export default function LoginGigante() {
     };
   }, [router]);
 
+  // 🔑 LOGIN
   async function entrar(e: React.FormEvent) {
     e.preventDefault();
     setErro("");
@@ -43,6 +44,7 @@ export default function LoginGigante() {
     }
   }
 
+  // 🆕 CRIAR CONTA
   async function criarConta() {
     setErro("");
     setLoading(true);
@@ -71,6 +73,7 @@ export default function LoginGigante() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           className="w-full border p-2 rounded mb-2"
+          required
         />
 
         <input
@@ -79,11 +82,14 @@ export default function LoginGigante() {
           value={senha}
           onChange={(e) => setSenha(e.target.value)}
           className="w-full border p-2 rounded mb-3"
+          required
         />
 
         {erro && <p className="text-red-600 text-sm mb-2">{erro}</p>}
 
+        {/* ✅ SUBMIT DE LOGIN */}
         <button
+          type="submit"
           onClick={entrar}
           disabled={loading}
           className="w-full bg-red-600 text-white py-2 rounded"
@@ -91,9 +97,11 @@ export default function LoginGigante() {
           Entrar
         </button>
 
+        {/* ✅ BOTÃO NORMAL (SEM SUBMIT) */}
         <button
           type="button"
           onClick={criarConta}
+          disabled={loading}
           className="w-full mt-2 border border-red-600 text-red-600 py-2 rounded"
         >
           Criar conta
