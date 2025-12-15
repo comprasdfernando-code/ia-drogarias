@@ -123,7 +123,7 @@ useEffect(() => {
         while (true) {
           // 🔹 Nova consulta principal (preferencial)
           const { data, error } = await supabase
-  .from("produtos")
+  .from("vw_disponibilidade_geral")
   .select(`
     nome,
     pmc_18,
