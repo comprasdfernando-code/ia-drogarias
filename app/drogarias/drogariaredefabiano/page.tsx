@@ -3,8 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 import Image from "next/image";
-import Link from "next/link";
 import ModalFinalizar from "../../../components/ModalFinalizar";
+import Slider from "react-slick";
+
+import "slick-carousel/slick/slick.css";
+import "slick-carousel/slick/slick-theme.css";
 
 // 🔌 Supabase
 const supabase = createClient(
@@ -25,7 +28,6 @@ type Produto = {
   estoque: number;
   imagem?: string;
   categoria?: string;
-  slug?: string;
 };
 
 type ItemCarrinho = Produto & { quantidade: number };
@@ -38,7 +40,7 @@ type Cliente = {
   complemento?: string;
 };
 
-// 📸 Imagem
+// 📸 Imagem helper
 function imgUrl(src?: string) {
   if (!src) return "/produtos/caixa-padrao.png";
   return src.startsWith("http")
@@ -46,19 +48,27 @@ function imgUrl(src?: string) {
     : `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public${src}`;
 }
 
-// 💾 Registrar venda SITE
-async function gravarVendaSite(venda: any) {
-  await supabase.from("vendas").insert([
-    {
-      cliente_nome: venda.cliente.nome || "Cliente Site",
-      total: venda.total,
-      produtos: venda.produtos,
-      origem: "SITE",
-      data_venda: new Date().toISOString(),
-      atendente_nome: "Venda Online",
-    },
-  ]);
-}
+// 🔥 Promoções fixas (depois ligamos no Supabase)
+const promocoes = [
+  {
+    id: 1,
+    nome: "Amoxicilina 500mg",
+    preco: "R$ 9,99",
+    imagem: "/promocoes/amoxicilina.png",
+  },
+  {
+    id: 2,
+    nome: "Dipirona 500mg",
+    preco: "R$ 4,99",
+    imagem: "/promocoes/dipirona.png",
+  },
+  {
+    id: 3,
+    nome: "Vitamina C",
+    preco: "R$ 12,90",
+    imagem: "/promocoes/vitamina-c.png",
+  },
+];
 
 export default function DrogariaRedeFabianoPage() {
   const [produtos, setProdutos] = useState<Produto[]>([]);
@@ -69,12 +79,12 @@ export default function DrogariaRedeFabianoPage() {
   const [carrinhoAberto, setCarrinhoAberto] = useState(false);
   const [modalAberto, setModalAberto] = useState(false);
 
-  // 🔄 Produtos
+  // 🔄 Carregar produtos
   useEffect(() => {
     async function carregarProdutos() {
       const { data } = await supabase
         .from("produtos")
-        .select("id,nome,preco_venda,estoque,imagem,categoria,slug")
+        .select("id,nome,preco_venda,estoque,imagem,categoria")
         .eq("loja", LOJA)
         .eq("disponivel", true)
         .gt("estoque", 0)
@@ -96,7 +106,7 @@ export default function DrogariaRedeFabianoPage() {
     localStorage.setItem("carrinho-rede-fabiano", JSON.stringify(carrinho));
   }, [carrinho]);
 
-  // 🛒 Ações
+  // 🛒 Ações carrinho
   function adicionarAoCarrinho(produto: Produto) {
     setCarrinho((prev) => {
       const existe = prev.find((i) => i.id === produto.id);
@@ -121,7 +131,16 @@ export default function DrogariaRedeFabianoPage() {
       );
   }
 
-  // 🧮 Total
+  // 🔍 Filtro
+  const produtosFiltrados = useMemo(
+    () =>
+      produtos.filter((p) =>
+        p.nome.toLowerCase().includes(busca.toLowerCase())
+      ),
+    [produtos, busca]
+  );
+
+  // 💰 Total
   const total = useMemo(
     () =>
       carrinho.reduce(
@@ -131,45 +150,23 @@ export default function DrogariaRedeFabianoPage() {
     [carrinho]
   );
 
-  const produtosFiltrados = useMemo(
-    () =>
-      produtos.filter((p) =>
-        p.nome.toLowerCase().includes(busca.toLowerCase())
-      ),
-    [produtos, busca]
-  );
-
   function fmt(n: number) {
     return n.toLocaleString("pt-BR", { minimumFractionDigits: 2 });
   }
 
-  // 🧾 Finalizar
+  // 🧾 Finalizar pedido
   async function finalizarPedido(cliente: Cliente, pagamento: any) {
-    const { data } = await supabase
-      .from("pedidos")
-      .insert({
-        loja: LOJA,
-        cliente,
-        itens: carrinho,
-        total,
-        pagamento,
-        status: "pendente",
-      })
-      .select("id")
-      .single();
-
-    await gravarVendaSite({
+    await supabase.from("pedidos").insert({
+      loja: LOJA,
       cliente,
+      itens: carrinho,
       total,
-      produtos: carrinho.map((i) => ({
-        nome: i.nome,
-        qtd: i.quantidade,
-        preco_venda: i.preco_venda,
-      })),
+      pagamento,
+      status: "pendente",
     });
 
     const texto = `
-🛒 Pedido Drogaria Rede Fabiano
+🛒 Pedido - Drogaria Rede Fabiano
 
 ${carrinho
   .map(
@@ -187,8 +184,6 @@ Cliente:
 ${cliente.nome}
 ${cliente.telefone}
 ${cliente.endereco}
-
-Pedido #${data?.id}
 `;
 
     window.open(
@@ -201,24 +196,77 @@ Pedido #${data?.id}
   }
 
   return (
-    <main className="min-h-screen bg-gray-100 pb-20">
-      {/* Topo */}
-      <div className="bg-blue-700 text-white p-4 flex gap-3">
-        <input
-          placeholder="Buscar produtos..."
-          className="flex-1 px-3 py-2 rounded text-gray-700"
-          value={busca}
-          onChange={(e) => setBusca(e.target.value)}
+    <main className="min-h-screen bg-gray-100 pb-24">
+      {/* 🟦 HERO */}
+      <section className="relative h-[320px]">
+        <div
+          className="absolute inset-0 bg-cover bg-center"
+          style={{
+            backgroundImage:
+              "url('/banners/hero-drogaria-rede-fabiano.png')",
+          }}
         />
-        <button onClick={() => setCarrinhoAberto(true)}>🛒 {carrinho.length}</button>
+        <div className="absolute inset-0 bg-white/80 backdrop-blur-sm" />
+        <div className="relative z-10 h-full flex flex-col items-center justify-center text-center px-4">
+          <h1 className="text-4xl font-extrabold text-blue-700">
+            Drogaria Rede Fabiano
+          </h1>
+          <p className="text-gray-600 mt-2">
+            Saúde, confiança e economia perto de você
+          </p>
+        </div>
+      </section>
+
+      {/* 🔍 BUSCA FLUTUANTE */}
+      <div className="sticky top-2 z-50 px-4 -mt-8">
+        <div className="max-w-4xl mx-auto bg-white rounded-full shadow-lg flex items-center px-4 py-3">
+          <input
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            placeholder="Buscar medicamentos, marcas ou categorias..."
+            className="flex-1 outline-none text-gray-700"
+          />
+          <span className="text-blue-600 font-bold">🔍</span>
+        </div>
       </div>
 
-      {/* Produtos */}
-      <div className="max-w-6xl mx-auto p-4 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-4">
+      {/* 🎠 PROMOÇÕES */}
+      <section className="max-w-6xl mx-auto px-4 mt-10">
+        <h2 className="font-semibold text-lg mb-3">
+          🔥 Promoções da Semana
+        </h2>
+        <Slider
+          infinite
+          speed={500}
+          slidesToShow={3}
+          slidesToScroll={1}
+          responsive={[
+            { breakpoint: 1024, settings: { slidesToShow: 3 } },
+            { breakpoint: 768, settings: { slidesToShow: 2 } },
+            { breakpoint: 480, settings: { slidesToShow: 1 } },
+          ]}
+        >
+          {promocoes.map((p) => (
+            <div key={p.id} className="px-2">
+              <div className="bg-white rounded shadow p-4 text-center">
+                <img
+                  src={p.imagem}
+                  className="h-32 mx-auto object-contain mb-2"
+                />
+                <div className="text-sm font-medium">{p.nome}</div>
+                <div className="text-green-600 font-bold">{p.preco}</div>
+              </div>
+            </div>
+          ))}
+        </Slider>
+      </section>
+
+      {/* 📦 PRODUTOS */}
+      <section className="max-w-6xl mx-auto px-4 py-10 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-4">
         {carregando
           ? "Carregando..."
           : produtosFiltrados.map((p) => (
-              <div key={p.id} className="bg-white p-3 rounded shadow">
+              <div key={p.id} className="bg-white rounded shadow p-3">
                 <Image
                   src={imgUrl(p.imagem)}
                   alt={p.nome}
@@ -226,10 +274,10 @@ Pedido #${data?.id}
                   height={150}
                   className="mx-auto h-32 object-contain"
                 />
-                <h2 className="text-sm font-semibold mt-2">{p.nome}</h2>
-                <p className="text-green-600 font-bold">
+                <div className="text-sm font-medium mt-2">{p.nome}</div>
+                <div className="text-green-600 font-bold">
                   R$ {fmt(p.preco_venda)}
-                </p>
+                </div>
                 <button
                   onClick={() => adicionarAoCarrinho(p)}
                   className="w-full mt-2 bg-blue-600 text-white py-1 rounded"
@@ -238,45 +286,20 @@ Pedido #${data?.id}
                 </button>
               </div>
             ))}
-      </div>
+      </section>
 
-      {/* Carrinho lateral */}
-      {carrinhoAberto && (
-        <div className="fixed inset-0 bg-black/50 z-50">
-          <div className="absolute right-0 top-0 h-full w-80 bg-white p-4">
-            <h2 className="font-bold mb-3">Carrinho</h2>
-
-            {carrinho.map((i) => (
-              <div key={i.id} className="border-b pb-2 mb-2">
-                <div className="text-sm">{i.nome}</div>
-                <div className="flex gap-2 items-center">
-                  <button onClick={() => alterarQtd(i.id, i.quantidade - 1)}>
-                    −
-                  </button>
-                  <span>{i.quantidade}</span>
-                  <button onClick={() => alterarQtd(i.id, i.quantidade + 1)}>
-                    +
-                  </button>
-                </div>
-              </div>
-            ))}
-
-            <div className="font-bold mt-3">Total: R$ {fmt(total)}</div>
-
-            <button
-              onClick={() => setModalAberto(true)}
-              className="w-full bg-green-600 text-white py-2 mt-3 rounded"
-            >
-              Finalizar Pedido
-            </button>
-
-            <button
-              onClick={() => setCarrinhoAberto(false)}
-              className="w-full mt-2 text-sm text-gray-500"
-            >
-              Fechar
-            </button>
+      {/* 🛒 BOTÃO CARRINHO */}
+      {carrinho.length > 0 && (
+        <div className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg p-4 flex justify-between items-center">
+          <div>
+            {carrinho.length} item(s) — <b>R$ {fmt(total)}</b>
           </div>
+          <button
+            onClick={() => setModalAberto(true)}
+            className="bg-green-600 text-white px-6 py-2 rounded"
+          >
+            Finalizar Pedido
+          </button>
         </div>
       )}
 
