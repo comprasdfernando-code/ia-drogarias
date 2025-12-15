@@ -40,7 +40,7 @@ type Cliente = {
   complemento?: string;
 };
 
-// 📸 Imagem helper
+// 📸 Helper imagem
 function imgUrl(src?: string) {
   if (!src) return "/produtos/caixa-padrao.png";
   return src.startsWith("http")
@@ -48,7 +48,7 @@ function imgUrl(src?: string) {
     : `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public${src}`;
 }
 
-// 🔥 Promoções fixas (depois ligamos no Supabase)
+// 🔥 Promoções (mock – depois liga no Supabase)
 const promocoes = [
   {
     id: 1,
@@ -76,7 +76,6 @@ export default function DrogariaRedeFabianoPage() {
   const [busca, setBusca] = useState("");
 
   const [carrinho, setCarrinho] = useState<ItemCarrinho[]>([]);
-  const [carrinhoAberto, setCarrinhoAberto] = useState(false);
   const [modalAberto, setModalAberto] = useState(false);
 
   // 🔄 Carregar produtos
@@ -119,7 +118,6 @@ export default function DrogariaRedeFabianoPage() {
       }
       return [...prev, { ...produto, quantidade: 1 }];
     });
-    setCarrinhoAberto(true);
   }
 
   function alterarQtd(id: string, qtd: number) {
@@ -154,7 +152,7 @@ export default function DrogariaRedeFabianoPage() {
     return n.toLocaleString("pt-BR", { minimumFractionDigits: 2 });
   }
 
-  // 🧾 Finalizar pedido
+  // 🧾 Finalizar
   async function finalizarPedido(cliente: Cliente, pagamento: any) {
     await supabase.from("pedidos").insert({
       loja: LOJA,
@@ -196,7 +194,7 @@ ${cliente.endereco}
   }
 
   return (
-    <main className="min-h-screen bg-gray-100 pb-24">
+    <main className="min-h-screen bg-gray-100 pb-28">
       {/* 🟦 HERO */}
       <section className="relative h-[320px]">
         <div
@@ -218,15 +216,17 @@ ${cliente.endereco}
       </section>
 
       {/* 🔍 BUSCA FLUTUANTE */}
-      <div className="sticky top-2 z-50 px-4 -mt-8">
-        <div className="max-w-4xl mx-auto bg-white rounded-full shadow-lg flex items-center px-4 py-3">
+      <div className="sticky top-3 z-50 px-4 -mt-8">
+        <div className="max-w-4xl mx-auto bg-white rounded-full shadow-xl flex items-center px-4 py-3 border border-blue-200">
           <input
             value={busca}
             onChange={(e) => setBusca(e.target.value)}
             placeholder="Buscar medicamentos, marcas ou categorias..."
             className="flex-1 outline-none text-gray-700"
           />
-          <span className="text-blue-600 font-bold">🔍</span>
+          <button className="ml-2 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-full font-semibold">
+            Buscar
+          </button>
         </div>
       </div>
 
@@ -248,7 +248,7 @@ ${cliente.endereco}
         >
           {promocoes.map((p) => (
             <div key={p.id} className="px-2">
-              <div className="bg-white rounded shadow p-4 text-center">
+              <div className="bg-white rounded-lg shadow p-4 text-center">
                 <img
                   src={p.imagem}
                   className="h-32 mx-auto object-contain mb-2"
@@ -288,7 +288,18 @@ ${cliente.endereco}
             ))}
       </section>
 
-      {/* 🛒 BOTÃO CARRINHO */}
+      {/* 🛒 BOTÃO CARRINHO FLUTUANTE */}
+      {carrinho.length > 0 && (
+        <button
+          onClick={() => setModalAberto(true)}
+          className="fixed bottom-20 right-4 z-50 bg-green-600 hover:bg-green-700 text-white rounded-full shadow-xl px-5 py-4 flex items-center gap-2"
+        >
+          <span className="text-xl">🛒</span>
+          <span className="font-semibold">{carrinho.length}</span>
+        </button>
+      )}
+
+      {/* 🧾 BARRA INFERIOR */}
       {carrinho.length > 0 && (
         <div className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg p-4 flex justify-between items-center">
           <div>
@@ -296,7 +307,7 @@ ${cliente.endereco}
           </div>
           <button
             onClick={() => setModalAberto(true)}
-            className="bg-green-600 text-white px-6 py-2 rounded"
+            className="bg-green-600 text-white px-6 py-2 rounded font-semibold"
           >
             Finalizar Pedido
           </button>
