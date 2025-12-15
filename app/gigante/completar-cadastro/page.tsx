@@ -8,8 +8,7 @@ export default function CompletarCadastro() {
   const router = useRouter();
 
   const [userId, setUserId] = useState<string | null>(null);
-  const [loadingAuth, setLoadingAuth] = useState(true);
-  const [saving, setSaving] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [erro, setErro] = useState("");
 
   const [form, setForm] = useState({
@@ -18,23 +17,19 @@ export default function CompletarCadastro() {
     endereco: "",
   });
 
-  // 🔐 Controle correto da sessão
   useEffect(() => {
-    const carregarSessao = async () => {
+    const carregar = async () => {
       const {
         data: { session },
       } = await supabase.auth.getSession();
 
-      // ⏳ ainda carregando
       if (!session?.user) {
-        setLoadingAuth(false);
         router.replace("/gigante/login");
         return;
       }
 
       setUserId(session.user.id);
 
-      // 🔎 verifica se já tem cadastro
       const { data: cliente } = await supabase
         .from("gigante_clientes")
         .select("id")
@@ -46,20 +41,14 @@ export default function CompletarCadastro() {
         return;
       }
 
-      setLoadingAuth(false);
+      setLoading(false);
     };
 
-    carregarSessao();
+    carregar();
   }, [router]);
 
-  function handleChange(e: any) {
-    setForm({ ...form, [e.target.name]: e.target.value });
-  }
-
-  async function salvarCadastro(e: React.FormEvent) {
+  async function salvar(e: React.FormEvent) {
     e.preventDefault();
-    setErro("");
-    setSaving(true);
 
     const { error } = await supabase.from("gigante_clientes").insert({
       id: userId,
@@ -68,27 +57,24 @@ export default function CompletarCadastro() {
 
     if (error) {
       setErro("Erro ao salvar cadastro");
-      setSaving(false);
       return;
     }
 
     router.replace("/gigante/pedido");
   }
 
-  // ⏳ Aguarda sessão
-  if (loadingAuth) {
+  if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <p className="text-gray-500">Carregando...</p>
+        Carregando...
       </div>
     );
   }
 
-  // 🧾 FORMULÁRIO
   return (
-    <div className="min-h-screen flex items-center justify-center bg-red-50 p-4">
+    <div className="min-h-screen flex items-center justify-center bg-red-50">
       <form
-        onSubmit={salvarCadastro}
+        onSubmit={salvar}
         className="bg-white p-6 rounded-xl shadow w-full max-w-md"
       >
         <h1 className="text-xl font-bold text-center mb-4">
@@ -96,37 +82,27 @@ export default function CompletarCadastro() {
         </h1>
 
         <input
-          name="nome"
-          placeholder="Nome completo"
-          onChange={handleChange}
+          placeholder="Nome"
+          onChange={(e) => setForm({ ...form, nome: e.target.value })}
           className="w-full border p-2 rounded mb-2"
-          required
         />
 
         <input
-          name="telefone"
-          placeholder="WhatsApp"
-          onChange={handleChange}
+          placeholder="Telefone"
+          onChange={(e) => setForm({ ...form, telefone: e.target.value })}
           className="w-full border p-2 rounded mb-2"
-          required
         />
 
         <input
-          name="endereco"
           placeholder="Endereço"
-          onChange={handleChange}
+          onChange={(e) => setForm({ ...form, endereco: e.target.value })}
           className="w-full border p-2 rounded mb-3"
-          required
         />
 
-        {erro && <p className="text-red-600 text-sm mb-2">{erro}</p>}
+        {erro && <p className="text-red-600">{erro}</p>}
 
-        <button
-          type="submit"
-          disabled={saving}
-          className="w-full bg-red-600 text-white py-2 rounded"
-        >
-          {saving ? "Salvando..." : "Salvar e continuar"}
+        <button className="w-full bg-red-600 text-white py-2 rounded">
+          Salvar e continuar
         </button>
       </form>
     </div>

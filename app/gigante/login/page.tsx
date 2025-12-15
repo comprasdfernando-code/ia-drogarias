@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { useRouter } from "next/navigation";
 
@@ -9,10 +9,25 @@ export default function LoginGigante() {
 
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
-  const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState("");
+  const [loading, setLoading] = useState(false);
 
-  async function login(e: React.FormEvent) {
+  // 🔐 Escuta autenticação (ESSENCIAL)
+  useEffect(() => {
+    const { data: listener } = supabase.auth.onAuthStateChange(
+      async (_event, session) => {
+        if (session?.user) {
+          router.replace("/gigante/completar-cadastro");
+        }
+      }
+    );
+
+    return () => {
+      listener.subscription.unsubscribe();
+    };
+  }, [router]);
+
+  async function entrar(e: React.FormEvent) {
     e.preventDefault();
     setErro("");
     setLoading(true);
@@ -25,13 +40,10 @@ export default function LoginGigante() {
     if (error) {
       setErro("E-mail ou senha inválidos");
       setLoading(false);
-      return;
     }
-
-    router.push("/gigante/pedido");
   }
 
-  async function registrar() {
+  async function criarConta() {
     setErro("");
     setLoading(true);
 
@@ -43,29 +55,22 @@ export default function LoginGigante() {
     if (error) {
       setErro(error.message);
       setLoading(false);
-      return;
     }
-
-    router.push("/gigante/completar-cadastro");
   }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-red-50">
-      <form
-        onSubmit={login}
-        className="bg-white p-6 rounded-xl shadow w-full max-w-sm"
-      >
+      <form className="bg-white p-6 rounded-xl shadow w-full max-w-sm">
         <h1 className="text-2xl font-bold text-center mb-4">
           🍖 Gigante dos Assados
         </h1>
 
         <input
           type="email"
-          placeholder="Seu e-mail"
+          placeholder="E-mail"
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          className="w-full border rounded p-2 mb-2"
-          required
+          className="w-full border p-2 rounded mb-2"
         />
 
         <input
@@ -73,23 +78,22 @@ export default function LoginGigante() {
           placeholder="Senha"
           value={senha}
           onChange={(e) => setSenha(e.target.value)}
-          className="w-full border rounded p-2 mb-3"
-          required
+          className="w-full border p-2 rounded mb-3"
         />
 
         {erro && <p className="text-red-600 text-sm mb-2">{erro}</p>}
 
         <button
-          type="submit"
+          onClick={entrar}
           disabled={loading}
           className="w-full bg-red-600 text-white py-2 rounded"
         >
-          {loading ? "Entrando..." : "Entrar"}
+          Entrar
         </button>
 
         <button
           type="button"
-          onClick={registrar}
+          onClick={criarConta}
           className="w-full mt-2 border border-red-600 text-red-600 py-2 rounded"
         >
           Criar conta
