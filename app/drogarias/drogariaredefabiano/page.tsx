@@ -3,58 +3,29 @@
 import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 import Image from "next/image";
+import Link from "next/link";
 import ModalFinalizar from "../../../components/ModalFinalizar";
-import { useSearchParams } from "next/navigation";
-import Link from "next/link"
 
 // 🔌 Supabase
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
-const supabase = createClient(supabaseUrl, supabaseAnonKey);
-
-// 💾 Gravar venda no Supabase com origem SITE
-async function gravarVendaSite(venda: any) {
-  try {
-    const { data, error } = await supabase.from("vendas").insert([
-      {
-        cliente_nome: venda.cliente.nome || "Cliente Site",
-        total: venda.total,
-        produtos: venda.produtos,
-        origem: "SITE", // 🔥 O PDV vai reconhecer essa tag
-        data_venda: new Date().toISOString(),
-        atendente_nome: "Venda Online",
-      },
-    ]);
-
-    if (error) {
-      console.error("❌ Erro ao gravar venda no Supabase:", error);
-      return false;
-    }
-
-    console.log("✅ Venda registrada no Supabase:", data);
-    return true;
-  } catch (err) {
-    console.error("⚠️ Erro inesperado ao gravar venda:", err);
-    return false;
-  }
-}
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
 // ⚙️ Constantes
 const LOJA = "drogariaredefabiano";
-const WHATSAPP = "5511948343725"; // Drogaria Rede Fabiano
-const PIX_CHAVE = "CNPJ 62157257000109";
+const WHATSAPP = "5511948343725";
+const PIX_CHAVE = "62157257000109";
 
-// 🧩 Tipagens
+// 🧩 Tipos
 type Produto = {
   id: string;
   nome: string;
-  categoria?: string;
   preco_venda: number;
   estoque: number;
   imagem?: string;
-  disponivel?: boolean;
-  loja?: string;
-  slug?: string; 
+  categoria?: string;
+  slug?: string;
 };
 
 type ItemCarrinho = Produto & { quantidade: number };
@@ -67,133 +38,73 @@ type Cliente = {
   complemento?: string;
 };
 
-// 📸 Função auxiliar para imagem
+// 📸 Imagem
 function imgUrl(src?: string) {
-  if (!src || src.trim() === "") return "/produtos/caixa-padrao.png";
+  if (!src) return "/produtos/caixa-padrao.png";
   return src.startsWith("http")
     ? src
     : `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public${src}`;
+}
+
+// 💾 Registrar venda SITE
+async function gravarVendaSite(venda: any) {
+  await supabase.from("vendas").insert([
+    {
+      cliente_nome: venda.cliente.nome || "Cliente Site",
+      total: venda.total,
+      produtos: venda.produtos,
+      origem: "SITE",
+      data_venda: new Date().toISOString(),
+      atendente_nome: "Venda Online",
+    },
+  ]);
 }
 
 export default function DrogariaRedeFabianoPage() {
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [busca, setBusca] = useState("");
-  const [menuAberto, setMenuAberto] = useState(false);
+
+  const [carrinho, setCarrinho] = useState<ItemCarrinho[]>([]);
+  const [carrinhoAberto, setCarrinhoAberto] = useState(false);
   const [modalAberto, setModalAberto] = useState(false);
 
-  // 🛒 Carrinho
-  const [carrinhoAberto, setCarrinhoAberto] = useState(false);
-  const [carrinho, setCarrinho] = useState<ItemCarrinho[]>([]);
-  // 🧠 Carregar carrinho salvo
-useEffect(() => {
-  const salvo = localStorage.getItem("carrinho-rede-fabiano");
-  if (salvo) setCarrinho(JSON.parse(salvo));
-}, []);
-
-// 💾 Salvar carrinho sempre que mudar
-useEffect(() => {
-  localStorage.setItem("carrinho-rede-fabiano", JSON.stringify(carrinho));
-}, [carrinho]);
-
-  // 💳 Pagamento
-  const [pagamento, setPagamento] = useState<"Pix" | "Cartão" | "Dinheiro">("Pix");
-  const [tipoCartao, setTipoCartao] = useState<"Débito" | "Crédito">("Débito");
-  const [trocoNecessario, setTrocoNecessario] = useState(false);
-  const [trocoPara, setTrocoPara] = useState<string>("");
-
-  // 👤 Cadastro
-  const [cliente, setCliente] = useState<Cliente>({
-    nome: "",
-    telefone: "",
-    endereco: "",
-    bairro: "",
-    complemento: "",
-  });
-
-  // 🔄 Carregar produtos
+  // 🔄 Produtos
   useEffect(() => {
     async function carregarProdutos() {
-      setCarregando(true);
-      let pagina = 0;
-      const limite = 100;
-      let todos: Produto[] = [];
+      const { data } = await supabase
+        .from("produtos")
+        .select("id,nome,preco_venda,estoque,imagem,categoria,slug")
+        .eq("loja", LOJA)
+        .eq("disponivel", true)
+        .gt("estoque", 0)
+        .order("nome");
 
-      try {
-        while (true) {
-          // 🔹 Nova consulta principal (preferencial)
-          const { data, error } = await supabase
-  .from("vw_disponibilidade_geral")
-  .select(`
-    nome,
-    pmc_18,
-    descricao,
-    imagem,
-    farmacia_slug,
-    ean
-  
-    
-      
-    )
-  `)
-            .eq("farmacia_id", 1) // ID da Drogaria Rede Fabiano
-            .gt("quantidade", 0)
-            .order("produtos(nome)", { ascending: true })
-            .range(pagina * limite, (pagina + 1) * limite - 1);
-
-          // 🔹 Fallback de segurança
-          if (error) {
-            console.warn("⚠️ Erro ao buscar estoque_farmacia, revertendo para tabela produtos:", error);
-            const fallback = await supabase
-              .from("produtos")
-              .select("*")
-              .eq("loja", LOJA)
-              .eq("disponivel", true)
-              .gt("estoque", 0)
-              .order("nome", { ascending: true })
-              .range(pagina * limite, (pagina + 1) * limite - 1);
-
-            if (!fallback.error && fallback.data?.length) {
-              todos = [...todos, ...fallback.data];
-            }
-            break;
-          }
-
-          if (!data || data.length === 0) break;
-
-          // 🔹 Formatar estrutura
-          const formatados = data.map((item: any) => ({
-            ...item.produtos,
-            preco_venda: item.preco_local ?? item.produtos?.preco_venda ?? 0,
-            estoque: item.quantidade,
-          }));
-
-          todos = [...todos, ...formatados];
-
-          if (data.length < limite) break;
-          pagina++;
-        }
-
-        console.log("✅ Total de produtos carregados:", todos.length);
-        setProdutos(todos);
-      } catch (err) {
-        console.error("❌ Erro inesperado ao carregar produtos:", err);
-      } finally {
-        setCarregando(false);
-      }
+      setProdutos(data || []);
+      setCarregando(false);
     }
-
     carregarProdutos();
   }, []);
 
+  // 💾 Carrinho local
+  useEffect(() => {
+    const salvo = localStorage.getItem("carrinho-rede-fabiano");
+    if (salvo) setCarrinho(JSON.parse(salvo));
+  }, []);
 
-  // 🛒 Carrinho
+  useEffect(() => {
+    localStorage.setItem("carrinho-rede-fabiano", JSON.stringify(carrinho));
+  }, [carrinho]);
+
+  // 🛒 Ações
   function adicionarAoCarrinho(produto: Produto) {
     setCarrinho((prev) => {
       const existe = prev.find((i) => i.id === produto.id);
       if (existe) {
         return prev.map((i) =>
-          i.id === produto.id ? { ...i, quantidade: i.quantidade + 1 } : i
+          i.id === produto.id
+            ? { ...i, quantidade: i.quantidade + 1 }
+            : i
         );
       }
       return [...prev, { ...produto, quantidade: 1 }];
@@ -202,377 +113,184 @@ useEffect(() => {
   }
 
   function alterarQtd(id: string, qtd: number) {
-    if (qtd <= 0) return removerItem(id);
-    setCarrinho((prev) =>
-      prev.map((i) => (i.id === id ? { ...i, quantidade: qtd } : i))
-    );
+    if (qtd <= 0)
+      setCarrinho((prev) => prev.filter((i) => i.id !== id));
+    else
+      setCarrinho((prev) =>
+        prev.map((i) => (i.id === id ? { ...i, quantidade: qtd } : i))
+      );
   }
 
-  function removerItem(id: string) {
-    setCarrinho((prev) => prev.filter((i) => i.id !== id));
-  }
-
-  // 🧮 Filtros e total
-  const produtosFiltrados = useMemo(
-  () =>
-    produtos.filter((p) =>
-      p.nome?.toLowerCase().includes(busca.toLowerCase())
-    ),
-  [produtos, busca]
-);
-
+  // 🧮 Total
   const total = useMemo(
     () =>
       carrinho.reduce(
-        (acc, i) => acc + Number(i.preco_venda || 0) * Number(i.quantidade || 0),
+        (acc, i) => acc + i.preco_venda * i.quantidade,
         0
       ),
     [carrinho]
   );
 
-  function fmt(n: number) {
-    return n.toLocaleString("pt-BR", {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    });
-  }
-
-  // 🧾 WhatsApp
-  function montarTextoWhatsApp(pedidoId?: number, cliente?:Cliente, pagamento?: any ): string {
-    const linhas: string[] = [
-      "🛒 Novo Pedido - Drogaria Rede Fabiano",
-      "",
-      ...carrinho.map(
-        (i) =>
-          `• ${i.nome} — ${i.quantidade}x R$ ${fmt(Number(i.preco_venda))} = R$ ${fmt(
-            Number(i.preco_venda) * i.quantidade
-          )}`
+  const produtosFiltrados = useMemo(
+    () =>
+      produtos.filter((p) =>
+        p.nome.toLowerCase().includes(busca.toLowerCase())
       ),
-      ` *Total:* R$ ${fmt(total)}`,
-      ` *Pagamento:* ${pagamento}` +
-        (pagamento === "Cartão" ? ` (${tipoCartao})` : "") +
-        (pagamento === "Dinheiro" && trocoNecessario && trocoPara
-          ? ` — Troco para R$ ${fmt(Number(trocoPara))}`
-          : "") +
-        (pagamento === "Pix" ? ` — Chave: ${PIX_CHAVE}` : ""),
-      "",
-      "👤 Cliente",
-     ` Nome: ${cliente.nome}`,
-      ` Telefone: ${cliente.telefone}`,
-      ` Endereço: ${cliente.endereco}`,
-      cliente.bairro ? ` Bairro: ${cliente.bairro}` : "",
-      cliente.complemento ? ` Complemento: ${cliente.complemento}` : "",
-      pedidoId ? `Pedido #${pedidoId}` : "",
-    ].filter(Boolean);
+    [produtos, busca]
+  );
 
-    return linhas.join("\n");
+  function fmt(n: number) {
+    return n.toLocaleString("pt-BR", { minimumFractionDigits: 2 });
   }
 
-  // 💾 Finalizar pedido
+  // 🧾 Finalizar
   async function finalizarPedido(cliente: Cliente, pagamento: any) {
-    if (carrinho.length === 0) {
-      alert("Seu carrinho está vazio.");
-      return;
-    }
-
-    if (!cliente.nome || !cliente.telefone || !cliente.endereco) {
-      alert("Preencha os dados de entrega.");
-      return;
-    }
-
-    const payload = {
-      itens: carrinho,
-      total: total,
-      pagamento,
-      status: "pendente",
-      loja: LOJA,
-      cliente,
-    };
-
-    const { data, error } = await supabase
+    const { data } = await supabase
       .from("pedidos")
-      .insert(payload)
+      .insert({
+        loja: LOJA,
+        cliente,
+        itens: carrinho,
+        total,
+        pagamento,
+        status: "pendente",
+      })
       .select("id")
       .single();
 
-    if (error) {
-  console.error("Erro ao salvar pedido:", error);
-  alert("Erro ao salvar pedido.");
-  return;
-}
+    await gravarVendaSite({
+      cliente,
+      total,
+      produtos: carrinho.map((i) => ({
+        nome: i.nome,
+        qtd: i.quantidade,
+        preco_venda: i.preco_venda,
+      })),
+    });
 
-// 🔗 Grava também a venda no Supabase com origem SITE
-await gravarVendaSite({
-  cliente,
-  total,
-  produtos: carrinho.map((i) => ({
-    nome: i.nome,
-    qtd: i.quantidade,
-    preco_venda: i.preco_venda,
-  })),
-});
+    const texto = `
+🛒 Pedido Drogaria Rede Fabiano
 
-    const texto = montarTextoWhatsApp(data?.id, cliente, pagamento);
-    const url = `https://wa.me/${WHATSAPP}?text=${encodeURIComponent(texto)}`;
-    window.open(url, "_blank");
+${carrinho
+  .map(
+    (i) =>
+      `• ${i.nome} (${i.quantidade}x) - R$ ${fmt(
+        i.preco_venda * i.quantidade
+      )}`
+  )
+  .join("\n")}
+
+Total: R$ ${fmt(total)}
+Pagamento: ${pagamento}
+
+Cliente:
+${cliente.nome}
+${cliente.telefone}
+${cliente.endereco}
+
+Pedido #${data?.id}
+`;
+
+    window.open(
+      `https://wa.me/${WHATSAPP}?text=${encodeURIComponent(texto)}`,
+      "_blank"
+    );
 
     setCarrinho([]);
-    setCarrinhoAberto(false);
-    alert("Pedido enviado com sucesso! 🙌");
-  } //
+    setModalAberto(false);
+  }
 
-  //  Render
   return (
-    <main className="min-h-screen bg-gray-100 pb-16">
-      {/*  Faixa superior */}
-      <Link
-  href="/drogarias/drogariaredefabiano/pdv"
-  className="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-2 rounded-md shadow-md"
->
-  💻 Acessar PDV
-</Link>
-      <section className="w-full bg-blue-700 text-white">
-        {/* 🩵 Banner principal */}
-        
-<section className="relative w-full">
-  <img
-    src="/banners/banner-rede-fabiano-faixa.jpg"
-    alt="Drogaria Rede Fabiano"
-    className="w-full h-36 sm:h-48 md:h-56 object-cover shadow-md"
-  />
-  
-</section>
-        <div className="max-w-6xl mx-auto px-4 py-3">
-          <div className="flex items-center gap-3">
-            {/*  Busca */}
-            <div className="flex items-center bg-white rounded-lg px-3 py-2 w-full">
-              <input
-                type="text"
-                placeholder="Buscar produtos..."
-                value={busca}
-                onChange={(e) => setBusca(e.target.value)}
-                className="flex-1 text-gray-700 outline-none text-sm"
-              />
-              <span className="text-blue-700 font-bold">🔍</span>
-            </div>
+    <main className="min-h-screen bg-gray-100 pb-20">
+      {/* Topo */}
+      <div className="bg-blue-700 text-white p-4 flex gap-3">
+        <input
+          placeholder="Buscar produtos..."
+          className="flex-1 px-3 py-2 rounded text-gray-700"
+          value={busca}
+          onChange={(e) => setBusca(e.target.value)}
+        />
+        <button onClick={() => setCarrinhoAberto(true)}>🛒 {carrinho.length}</button>
+      </div>
 
-            {/*  Carrinho + menu */}
-            <div className="flex items-center gap-3">
-              <div
-                className="relative cursor-pointer"
-                onClick={() => setCarrinhoAberto(true)}
-              >
-                <span className="text-white text-2xl">🛒</span>
-                {carrinho.length > 0 && (
-                  <span className="absolute -top-2 -right-2 bg-red-500 text-white text-xs px-2 py-0.5 rounded-full">
-                    {carrinho.length}
-                  </span>
-                )}
-              </div>
-
-              <button
-                aria-label="Abrir menu"
-                className="text-white text-2xl leading-none px-2"
-                onClick={() => setMenuAberto(true)}
-              >
-                ⋮
-              </button>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* 📦 Lista de produtos */}
-      <div className="max-w-6xl mx-auto px-4 py-8">
-        {carregando ? (
-          <p className="text-center text-gray-500">Carregando produtos...</p>
-        ) : produtosFiltrados.length === 0 ? (
-          <p className="text-center text-gray-500">Nenhum produto encontrado.</p>
-        ) : (
-          <div className="grid grid-cols-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-6">
-            {produtosFiltrados.map((p) => (
-              <div
-                key={p.id}
-                className="bg-white rounded-lg shadow p-2 sm:p-3 text-center hover:shadow-lg transition flex flex-col justify-between"
-              >
-                <Link
-      href={`/drogarias/drogariaredefabiano/produtos/${encodeURIComponent(p.slug ?? p.id)}`}
-      className="flex flex-col flex-1"
-      prefetch={false}
-    >
+      {/* Produtos */}
+      <div className="max-w-6xl mx-auto p-4 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-4">
+        {carregando
+          ? "Carregando..."
+          : produtosFiltrados.map((p) => (
+              <div key={p.id} className="bg-white p-3 rounded shadow">
                 <Image
                   src={imgUrl(p.imagem)}
-                  alt={p.nome || "Produto"}
+                  alt={p.nome}
                   width={150}
                   height={150}
-                  className="mx-auto rounded shadow-sm object-contain h-24 sm:h-32"
+                  className="mx-auto h-32 object-contain"
                 />
-                <h2 className="font-medium text-blue-800 mt-2 text-[12px] sm:text-sm line-clamp-2">
-                  {p.nome}
-                </h2>
-                <p className="text-[11px] sm:text-xs text-gray-500">
-                  {p.categoria}
+                <h2 className="text-sm font-semibold mt-2">{p.nome}</h2>
+                <p className="text-green-600 font-bold">
+                  R$ {fmt(p.preco_venda)}
                 </p>
-                <p className="text-sm sm:text-base font-bold text-green-600 mt-1">
-                  R$ {fmt(Number(p.preco_venda))}
-                </p>
-                </Link>
                 <button
                   onClick={() => adicionarAoCarrinho(p)}
-                  className="mt-2 bg-blue-600 hover:bg-blue-700 text-white py-1 rounded-md text-xs sm:text-sm font-medium transition"
+                  className="w-full mt-2 bg-blue-600 text-white py-1 rounded"
                 >
                   Adicionar
                 </button>
               </div>
             ))}
-          </div>
-        )}
       </div>
 
-      {/* 🛒 Carrinho fixo no rodapé */}
-      {carrinho.length > 0 && (
-        <div className="fixed bottom-0 left-0 right-0 bg-white border-t shadow-lg z-50">
-          <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
-            <div className="text-sm">
-              <div className="font-semibold">
-                {carrinho.length} item{carrinho.length > 1 ? "s" : ""} no carrinho
+      {/* Carrinho lateral */}
+      {carrinhoAberto && (
+        <div className="fixed inset-0 bg-black/50 z-50">
+          <div className="absolute right-0 top-0 h-full w-80 bg-white p-4">
+            <h2 className="font-bold mb-3">Carrinho</h2>
+
+            {carrinho.map((i) => (
+              <div key={i.id} className="border-b pb-2 mb-2">
+                <div className="text-sm">{i.nome}</div>
+                <div className="flex gap-2 items-center">
+                  <button onClick={() => alterarQtd(i.id, i.quantidade - 1)}>
+                    −
+                  </button>
+                  <span>{i.quantidade}</span>
+                  <button onClick={() => alterarQtd(i.id, i.quantidade + 1)}>
+                    +
+                  </button>
+                </div>
               </div>
-              <div className="text-gray-600">
-                Total: <b>R$ {fmt(total)}</b>
-              </div>
-            </div>
+            ))}
+
+            <div className="font-bold mt-3">Total: R$ {fmt(total)}</div>
 
             <button
-              onClick={() =>finalizarPedido}
-              className="px-5 py-3 bg-green-600 hover:bg-green-700 text-white rounded font-semibold"
+              onClick={() => setModalAberto(true)}
+              className="w-full bg-green-600 text-white py-2 mt-3 rounded"
             >
-              Finalizar pedido
+              Finalizar Pedido
+            </button>
+
+            <button
+              onClick={() => setCarrinhoAberto(false)}
+              className="w-full mt-2 text-sm text-gray-500"
+            >
+              Fechar
             </button>
           </div>
         </div>
       )}
-      {/* 🧩 Produtos */}
-<div className="max-w-6xl mx-auto px-4 py-8">
-  {/* aqui vem os produtos etc... */}
-</div>
 
-{/* 🛒 Carrinho lateral */}
-<div
-  className={`fixed top-0 right-0 h-full w-[90%] sm:w-[420px] bg-white shadow-2xl border-l transform ${
-    carrinhoAberto ? "translate-x-0" : "translate-x-full"
-  } transition-transform duration-500 z-[60] flex flex-col`}
->
-  <div className="p-4 border-b flex justify-between items-center bg-blue-700 text-white">
-    <h3 className="font-semibold text-lg">Seu Carrinho</h3>
-    <button onClick={() => setCarrinhoAberto(false)}>✖</button>
-  </div>
-
-  <div className="p-4 flex-1 overflow-auto">
-    {carrinho.length === 0 ? (
-      <p className="text-gray-500">Seu carrinho está vazio.</p>
-    ) : (
-      carrinho.map((i) => (
-        <div key={i.id} className="flex items-start gap-3 border-b pb-3">
-  <div className="flex-1">
-    <div className="font-medium text-sm">{i.nome}</div>
-    <div className="text-xs text-gray-500">
-      R$ {fmt(Number(i.preco_venda))}
-    </div>
-
-    <div className="flex items-center gap-2 mt-2">
-      {/* Botão de diminuir */}
-      <button
-        onClick={() => alterarQtd(i.id, i.quantidade - 1)}
-        className="bg-gray-200 hover:bg-gray-300 text-gray-700 px-2 py-1 rounded text-sm font-bold"
-      >
-        −
-      </button>
-
-      {/* Quantidade atual */}
-      <span className="min-w-[24px] text-center font-semibold text-sm">
-        {i.quantidade}
-      </span>
-
-      {/* Botão de aumentar */}
-      <button
-        onClick={() => alterarQtd(i.id, i.quantidade + 1)}
-        className="bg-gray-200 hover:bg-gray-300 text-gray-700 px-2 py-1 rounded text-sm font-bold"
-      >
-        +
-      </button>
-
-      {/* Botão remover */}
-      <button
-        onClick={() => removerItem(i.id)}
-        className="text-red-600 text-xs ml-2 hover:underline"
-      >
-        Remover
-      </button>
-    </div>
-  </div>
-
-  <div className="text-sm font-semibold">
-    R$ {fmt(Number(i.preco_venda) * i.quantidade)}
-  </div>
-</div>
-      ))
-    )}
-  </div>
-
-  {carrinho.length > 0 && (
-    <div className="p-4 border-t">
-      <div className="flex justify-between font-semibold mb-3">
-        <span>Total</span>
-        <span>R$ {fmt(total)}</span>
-      </div>
-      <button
-  onClick={() => setModalAberto(true)}
-  disabled={!carrinho.length}
-  className={`w-full py-3 rounded text-white font-semibold ${
-    !carrinho.length
-      ? "bg-gray-400 cursor-not-allowed"
-      : "bg-green-600 hover:bg-green-700"
-  }`}
->
-  Finalizar Pedido
-</button>
-    </div>
-  )}
-</div>
-
-{/* 📋 Menu lateral */}
-<div
-  className={`fixed top-0 right-0 h-full w-64 bg-blue-700 text-white shadow-2xl transform ${
-    menuAberto ? "translate-x-0" : "translate-x-full"
-  } transition-transform duration-500 z-50`}
->
-  <div className="p-6 flex flex-col gap-4">
-    <div className="text-right text-2xl cursor-pointer" onClick={() => setMenuAberto(false)}>
-      ✖
-    </div>
-    <h2 className="text-lg font-semibold mb-4 border-b border-blue-400 pb-2">Menu</h2>
-    <button className="text-left hover:text-blue-200">🏠 Início</button>
-    <button className="text-left hover:text-blue-200">💊 Meus Pedidos</button>
-    <button className="text-left hover:text-blue-200">👤 Meu Perfil</button>
-    <button className="text-left hover:text-blue-200">📦 Entregas</button>
-    <button className="text-left hover:text-blue-200">📞 Contato</button>
-  </div>
-</div>
-{modalAberto && (
-  <ModalFinalizar
-    loja="Drogaria Rede Fabiano"
-    whatsapp="5511948343725"
-    pixChave=" 62157257000109"
-    total={total}
-    carrinho={carrinho}
-    onConfirm={(cliente, pagamento) => {
-      finalizarPedido(cliente, pagamento);
-      setModalAberto(false);
-    }}
-    onClose={() => setModalAberto(false)}
-  />
-)}
-
-</main>
-);
+      {modalAberto && (
+        <ModalFinalizar
+          loja="Drogaria Rede Fabiano"
+          whatsapp={WHATSAPP}
+          pixChave={PIX_CHAVE}
+          total={total}
+          carrinho={carrinho}
+          onConfirm={finalizarPedido}
+          onClose={() => setModalAberto(false)}
+        />
+      )}
+    </main>
+  );
 }
