@@ -113,19 +113,19 @@ export default function LojinhaPage() {
     0
   );
 /* =========================
-     WHATSAPP
-  ========================= */
-  function enviarWhatsApp(venda: any) {
-    const numero = "5511985771182"; // 📲 número da loja
+   WHATSAPP
+========================= */
+function enviarWhatsApp(venda: any) {
+  const numero = "5511985771182"; // 📲 número da loja
 
-    const itens = venda.produtos
-      .map(
-        (p: any, i: number) =>
-          `${i + 1}. ${p.nome} (${p.qtd}x) - R$ ${p.subtotal.toFixed(2)}`
-      )
-      .join("\n");
+  const itens = (venda.produtos || [])
+    .map(
+      (p: any, i: number) =>
+        `${i + 1}. ${p.nome} (${p.qtd}x) - R$ ${Number(p.subtotal).toFixed(2)}`
+    )
+    .join("\n");
 
-    const mensagem = `
+  const mensagem = `
 🛒 *Novo Pedido - Lojinha da Oportunidade*
 
 👤 Cliente: ${venda.cliente_nome || "Não informado"}
@@ -136,16 +136,25 @@ export default function LojinhaPage() {
 ${itens}
 
 💳 Pagamento: ${venda.forma_pagamento || "Não informado"}
-💰 Total: R$ ${venda.total.toFixed(2)}
+💰 Total: R$ ${Number(venda.total).toFixed(2)}
 
 🙏 Pedido enviado pelo site
 `;
 
-    window.open(
-      `https://wa.me/${numero}?text=${encodeURIComponent(mensagem)}`,
-      "_blank"
-    );
+  const url = `https://wa.me/${numero}?text=${encodeURIComponent(mensagem)}`;
+
+  // 📱 Mobile → abre app direto | 💻 Desktop → WhatsApp Web
+  if (typeof window !== "undefined") {
+    const isMobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
+    if (isMobile) {
+      window.location.href = url;
+    } else {
+      window.open(url, "_blank");
+    }
   }
+}
+
 
   
   /* =========================
