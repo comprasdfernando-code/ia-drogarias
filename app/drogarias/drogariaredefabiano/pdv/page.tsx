@@ -170,12 +170,11 @@ async function confirmarVenda(id: string) {
 
     // 🔢 BUSCA POR EAN (leitor ou números)
     if (somenteNumeros.length >= 6) {
-      query = query.ilike("ean", `%${somenteNumeros}%`);
-    } 
-    // 🔤 BUSCA POR NOME
-    else {
-      query = query.ilike("nome", `%${termo}%`);
-    }
+  query = query.ilike("ean_limpo", `%${somenteNumeros}%`);
+} else {
+  query = query.ilike("nome", `%${termo}%`);
+}
+
 
     const { data, error } = await query;
 
