@@ -7,6 +7,9 @@ import Image from "next/image";
 import { Search, ShoppingCart, X, Trash2, Plus, Minus } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 
+/* =========================
+   TIPOS
+========================= */
 type Produto = {
   id: number;
   nome: string;
@@ -21,6 +24,9 @@ type ItemCarrinho = Produto & {
   qtd: number;
 };
 
+/* =========================
+   COMPONENTE
+========================= */
 export default function LojinhaPage() {
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [busca, setBusca] = useState("");
@@ -28,6 +34,19 @@ export default function LojinhaPage() {
   const [carrinho, setCarrinho] = useState<ItemCarrinho[]>([]);
   const [carrinhoAberto, setCarrinhoAberto] = useState(false);
 
+  // 🔴 MODAL PDV
+  const [showPagamento, setShowPagamento] = useState(false);
+  const [pagamento, setPagamento] = useState<any>({
+    tipo: "Entrega",
+    forma: "",
+    nome: "",
+    telefone: "",
+    endereco: "",
+  });
+
+  /* =========================
+     CARREGAR PRODUTOS
+  ========================= */
   useEffect(() => {
     carregarProdutos();
   }, []);
@@ -51,22 +70,18 @@ export default function LojinhaPage() {
   }, [busca, produtos]);
 
   /* =========================
-     🛒 CARRINHO COM QUANTIDADE
-     ========================= */
-
+     CARRINHO
+  ========================= */
   function adicionarAoCarrinho(p: Produto) {
     setCarrinho((prev) => {
       const existe = prev.find((i) => i.id === p.id);
-
       if (existe) {
         return prev.map((i) =>
           i.id === p.id ? { ...i, qtd: i.qtd + 1 } : i
         );
       }
-
       return [...prev, { ...p, qtd: 1 }];
     });
-
     setProdutoAtivo(null);
     setCarrinhoAberto(true);
   }
@@ -97,35 +112,57 @@ export default function LojinhaPage() {
   );
 
   /* =========================
-     📲 FINALIZAR WHATSAPP
-     ========================= */
+     FINALIZAR VENDA (SITE)
+  ========================= */
+  async function finalizarVendaSite() {
+    try {
+      if (carrinho.length === 0) return;
 
-  function finalizarWhatsApp() {
-    const numero = "5511952068432"; // 🔴 troque se quiser
+      const produtosVenda = carrinho.map((i) => ({
+        nome: i.nome,
+        qtd: i.qtd,
+        preco_venda: i.preco,
+        subtotal: i.preco * i.qtd,
+      }));
 
-    if (carrinho.length === 0) return;
+      const vendaData = {
+        origem: "SITE",
+        atendente_nome: "Cliente Online",
+        produtos: produtosVenda,
+        total,
+        tipo_venda: pagamento.tipo,
+        forma_pagamento: pagamento.forma,
+        cliente_nome: pagamento.nome,
+        cliente_telefone: pagamento.telefone,
+        cliente_endereco: pagamento.endereco,
+        data_venda: new Date().toISOString(),
+      };
 
-    const itens = carrinho.map(
-      (i, idx) =>
-        `${idx + 1}. ${i.nome} (${i.qtd}x) - R$ ${(i.preco * i.qtd).toFixed(2)}`
-    );
+      const { error } = await supabase
+        .from("vendas")
+        .insert([vendaData]);
 
-    const mensagem = `
-🛒 *Pedido - Lojinha da Oportunidade*
+      if (error) {
+        console.error(error);
+        alert("Erro ao registrar pedido");
+        return;
+      }
 
-${itens.join("\n")}
+      alert("✅ Pedido enviado com sucesso!");
+      setCarrinho([]);
+      setCarrinhoAberto(false);
+      setShowPagamento(false);
+      setPagamento({ tipo: "Entrega", forma: "", nome: "", telefone: "", endereco: "" });
 
-💰 *Total:* R$ ${total.toFixed(2)}
-
-📍 Aguardo confirmação 🙂
-    `;
-
-    window.open(
-      `https://wa.me/${numero}?text=${encodeURIComponent(mensagem)}`,
-      "_blank"
-    );
+    } catch (err) {
+      console.error(err);
+      alert("Erro ao finalizar pedido");
+    }
   }
 
+  /* =========================
+     UI
+  ========================= */
   return (
     <div className="min-h-screen bg-zinc-100 text-zinc-900 relative">
 
@@ -142,7 +179,7 @@ ${itens.join("\n")}
 
         <div className="relative z-10 w-full max-w-3xl px-6 text-center">
           <h1 className="text-4xl md:text-5xl font-extrabold text-yellow-500 mb-6">
-            Lojinha da Oportunidade 
+            Lojinha da Oportunidade
           </h1>
 
           <div className="relative">
@@ -232,7 +269,7 @@ ${itens.join("\n")}
           className="fixed bottom-5 right-5 z-40 bg-yellow-400 text-black rounded-full px-6 py-4 shadow-xl flex items-center gap-2 font-bold"
         >
           <ShoppingCart />
-          {carrinho.reduce((sum, i) => sum + i.qtd, 0)}
+          {carrinho.reduce((s, i) => s + i.qtd, 0)}
         </button>
       )}
 
@@ -267,13 +304,9 @@ ${itens.join("\n")}
                 </div>
 
                 <div className="flex items-center gap-2">
-                  <button onClick={() => diminuirQtd(i.id)}>
-                    <Minus size={16} />
-                  </button>
+                  <button onClick={() => diminuirQtd(i.id)}><Minus size={16} /></button>
                   <span className="font-bold">{i.qtd}</span>
-                  <button onClick={() => aumentarQtd(i.id)}>
-                    <Plus size={16} />
-                  </button>
+                  <button onClick={() => aumentarQtd(i.id)}><Plus size={16} /></button>
                 </div>
 
                 <button onClick={() => removerItem(i.id)}>
@@ -288,10 +321,74 @@ ${itens.join("\n")}
             </div>
 
             <button
-              onClick={finalizarWhatsApp}
-              className="w-full mt-4 bg-green-500 text-white py-3 rounded-xl font-bold"
+              onClick={() => setShowPagamento(true)}
+              className="w-full mt-4 bg-green-600 text-white py-3 rounded-xl font-bold"
             >
-              Finalizar no WhatsApp
+              Finalizar Pedido
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL PDV */}
+      {showPagamento && (
+        <div className="fixed inset-0 z-[9999] bg-black/60 flex items-center justify-center">
+          <div className="bg-white w-[95%] max-w-md rounded-xl p-5">
+            <h2 className="text-xl font-bold text-yellow-500 text-center mb-4">
+              🧾 Finalizar Pedido
+            </h2>
+
+            <input
+              placeholder="Nome"
+              className="w-full border p-2 rounded mb-2"
+              value={pagamento.nome}
+              onChange={(e)=>setPagamento((p:any)=>({...p,nome:e.target.value}))}
+            />
+            <input
+              placeholder="WhatsApp"
+              className="w-full border p-2 rounded mb-2"
+              value={pagamento.telefone}
+              onChange={(e)=>setPagamento((p:any)=>({...p,telefone:e.target.value}))}
+            />
+            {pagamento.tipo === "Entrega" && (
+              <input
+                placeholder="Endereço"
+                className="w-full border p-2 rounded mb-2"
+                value={pagamento.endereco}
+                onChange={(e)=>setPagamento((p:any)=>({...p,endereco:e.target.value}))}
+              />
+            )}
+
+            <div className="flex gap-2 mb-3">
+              {["Pix","Cartão","Dinheiro"].map((f)=>(
+                <button
+                  key={f}
+                  onClick={()=>setPagamento((p:any)=>({...p,forma:f}))}
+                  className={`flex-1 py-2 rounded ${
+                    pagamento.forma===f ? "bg-green-600 text-white" : "bg-gray-100"
+                  }`}
+                >
+                  {f}
+                </button>
+              ))}
+            </div>
+
+            <div className="text-center text-xl font-bold text-green-600 mb-4">
+              Total: R$ {total.toFixed(2)}
+            </div>
+
+            <button
+              onClick={finalizarVendaSite}
+              className="w-full bg-green-600 text-white py-3 rounded-lg font-bold"
+            >
+              Confirmar Pedido
+            </button>
+
+            <button
+              onClick={()=>setShowPagamento(false)}
+              className="w-full mt-2 text-gray-500"
+            >
+              Cancelar
             </button>
           </div>
         </div>
