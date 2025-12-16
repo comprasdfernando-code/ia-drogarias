@@ -147,11 +147,13 @@ async function confirmarVenda(id: string) {
   async function buscarProduto(e: React.KeyboardEvent<HTMLInputElement>) {
   if (e.key !== "Enter") return;
 
-  const valorBusca = busca.trim();
-  if (!valorBusca) return;
+  const termo = busca.trim();
+  if (!termo) return;
+
+  const somenteNumeros = termo.replace(/\D/g, "");
 
   try {
-    const { data, error } = await supabase
+    let query = supabase
       .from("produtos")
       .select(`
         id,
@@ -160,16 +162,22 @@ async function confirmarVenda(id: string) {
         preco_venda,
         estoque,
         categoria,
-        imagem,
-        loja,
-        disponivel
+        imagem
       `)
       .eq("loja", "drogariaredefabiano")
       .eq("disponivel", true)
-      .or(
-        `nome.ilike.%${valorBusca}%,ean.ilike.%${valorBusca}%`
-      )
       .limit(12);
+
+    // 🔢 BUSCA POR EAN (leitor ou números)
+    if (somenteNumeros.length >= 6) {
+      query = query.ilike("ean", `%${somenteNumeros}%`);
+    } 
+    // 🔤 BUSCA POR NOME
+    else {
+      query = query.ilike("nome", `%${termo}%`);
+    }
+
+    const { data, error } = await query;
 
     if (error) {
       console.error("Erro ao buscar produto:", error);
@@ -183,12 +191,11 @@ async function confirmarVenda(id: string) {
       return;
     }
 
-    // Padroniza os dados pro PDV
     const produtosFormatados = data.map((p: any) => ({
       id: p.id,
       nome: p.nome,
       preco_venda: Number(p.preco_venda || 0),
-      preco_custo: 0, // pode ligar depois
+      preco_custo: 0,
       estoque: Number(p.estoque || 0),
       imagem: p.imagem || "/no-image.png",
       ean: p.ean,
@@ -204,6 +211,7 @@ async function confirmarVenda(id: string) {
     alert("Erro inesperado ao buscar produto!");
   }
 }
+
 
 
   // ➕ Adicionar produto
