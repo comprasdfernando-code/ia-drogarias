@@ -17,6 +17,7 @@ const supabase = createClient(
 
 // ⚙️ Constantes
 const LOJA = "drogariaredefabiano";
+const CARRINHO_KEY = "carrinhoFabiano";
 
 // 🧩 Tipos
 type Produto = {
@@ -64,10 +65,9 @@ export default function DrogariaRedeFabianoPage() {
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [carregando, setCarregando] = useState(true);
   const [busca, setBusca] = useState("");
-
   const [carrinho, setCarrinho] = useState<ItemCarrinho[]>([]);
 
-  // 🔄 Carregar produtos
+  // 🔄 Produtos
   useEffect(() => {
     async function carregarProdutos() {
       const { data } = await supabase
@@ -84,17 +84,17 @@ export default function DrogariaRedeFabianoPage() {
     carregarProdutos();
   }, []);
 
-  // 💾 Carrinho (localStorage compartilhado com página /carrinho)
+  // 🛒 Carrinho — leitura
   useEffect(() => {
-    const salvo = localStorage.getItem("carrinhofabiano");
+    const salvo = localStorage.getItem(CARRINHO_KEY);
     if (salvo) setCarrinho(JSON.parse(salvo));
   }, []);
 
+  // 🛒 Carrinho — gravação
   useEffect(() => {
-    localStorage.setItem("carrinhofabiano", JSON.stringify(carrinho));
+    localStorage.setItem(CARRINHO_KEY, JSON.stringify(carrinho));
   }, [carrinho]);
 
-  // 🛒 Adicionar ao carrinho
   function adicionarAoCarrinho(produto: Produto) {
     setCarrinho((prev) => {
       const existe = prev.find((i) => i.id === produto.id);
@@ -109,7 +109,6 @@ export default function DrogariaRedeFabianoPage() {
     });
   }
 
-  // 🔍 Filtro
   const produtosFiltrados = useMemo(
     () =>
       produtos.filter((p) =>
@@ -126,7 +125,7 @@ export default function DrogariaRedeFabianoPage() {
 
   return (
     <main className="min-h-screen bg-gray-100 pb-16">
-      {/* 🟦 HERO */}
+      {/* HERO */}
       <section className="relative h-[320px]">
         <div
           className="absolute inset-0 bg-cover bg-center"
@@ -146,10 +145,9 @@ export default function DrogariaRedeFabianoPage() {
         </div>
       </section>
 
-      {/* 🔝 HEADER FIXO COM BUSCA + CARRINHO */}
+      {/* HEADER BUSCA + CARRINHO */}
       <div className="sticky top-0 z-50 bg-white shadow-md">
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center gap-4">
-          {/* Busca */}
           <div className="flex-1 bg-gray-100 rounded-full px-4 py-2 flex items-center">
             <input
               value={busca}
@@ -160,10 +158,9 @@ export default function DrogariaRedeFabianoPage() {
             <span className="text-blue-600 font-bold">🔍</span>
           </div>
 
-          {/* Carrinho */}
           <Link
             href="/drogarias/drogariaredefabiano/carrinho"
-            className="relative flex items-center justify-center"
+            className="relative"
           >
             <span className="text-2xl">🛒</span>
             {totalItens > 0 && (
@@ -175,7 +172,7 @@ export default function DrogariaRedeFabianoPage() {
         </div>
       </div>
 
-      {/* 🎠 PROMOÇÕES */}
+      {/* PROMOÇÕES */}
       <section className="max-w-6xl mx-auto px-4 mt-8">
         <h2 className="font-semibold text-lg mb-3">
           🔥 Promoções da Semana
@@ -208,7 +205,7 @@ export default function DrogariaRedeFabianoPage() {
         </Slider>
       </section>
 
-      {/* 📦 PRODUTOS */}
+      {/* PRODUTOS */}
       <section className="max-w-6xl mx-auto px-4 py-10 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-4">
         {carregando
           ? "Carregando produtos..."
