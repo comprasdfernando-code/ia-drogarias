@@ -144,73 +144,67 @@ async function confirmarVenda(id: string) {
 
   // ... (restante do seu código continua aqui normalmente)
 
-  // 🔍 Buscar produto
   async function buscarProduto(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key !== "Enter") return;
+  if (e.key !== "Enter") return;
 
-    const valorBusca = busca.trim() || inputRef.current?.value.trim() || "";
-    if (!valorBusca) return;
+  const valorBusca = busca.trim();
+  if (!valorBusca) return;
 
-    try {
-      // 🧠 1️⃣ Busca primeiro no estoque_farmacia (ligando com produtos)
-      const { data, error } = await supabase
-        .from("estoque_farmacia")
-        .select(`
-          id,
-          quantidade,
-          preco_local,
-          produtos (
-            id,
-            nome,
-            slug,
-            codigo_barras,
-            categoria,
-            preco_venda,
-            preco_custo,
-            imagem
-          )
-        `)
-        .eq("farmacia_id", 1) // ID da Drogaria Rede Fabiano
-        .or(`produtos.nome.ilike.%${valorBusca}%,produtos.codigo_barras.ilike.%${valorBusca}%`)
-        .limit(10);
+  try {
+    const { data, error } = await supabase
+      .from("produtos")
+      .select(`
+        id,
+        nome,
+        ean,
+        preco_venda,
+        estoque,
+        categoria,
+        imagem,
+        loja,
+        disponivel
+      `)
+      .eq("loja", "drogariaredefabiano")
+      .eq("disponivel", true)
+      .or(
+        `nome.ilike.%${valorBusca}%,ean.ilike.%${valorBusca}%`
+      )
+      .limit(12);
 
-      // ⚠️ Fallback — caso a tabela estoque_farmacia não retorne nada
-      if (error || !data?.length) {
-        console.warn("⚠️ Falha ou sem resultados no estoque_farmacia. Tentando tabela produtos:", error);
-        const fallback = await supabase
-          .from("produtos")
-          .select("*")
-          .or(`nome.ilike.%${valorBusca}%,codigo_barras.ilike.%${valorBusca}%`)
-          .limit(10);
-
-        if (fallback.error) {
-          alert("Erro ao buscar produto!");
-          console.error(fallback.error);
-          return;
-        }
-
-        if (fallback.data && fallback.data.length > 0) {
-          setResultados(fallback.data);
-        } else {
-          alert("Produto não encontrado!");
-        }
-        return;
-      }
-
-      // 🔄 Monta os produtos encontrados a partir do estoque_farmacia
-      const formatados = data.map((item: any) => ({
-        ...item.produtos,
-        preco_venda: item.preco_local ?? item.produtos?.preco_venda ?? 0,
-        preco_custo: item.produtos?.preco_custo ?? 0,
-        estoque: item.quantidade ?? 0,
-      }));
-
-      setResultados(formatados);
-    } catch (err) {
-      console.error("❌ Erro inesperado ao buscar produto:", err);
-      alert("Erro inesperado ao buscar produto!");
+    if (error) {
+      console.error("Erro ao buscar produto:", error);
+      alert("Erro ao buscar produto!");
+      return;
     }
+
+    if (!data || data.length === 0) {
+      alert("Produto não encontrado!");
+      setResultados([]);
+      return;
+    }
+
+    // Padroniza os dados pro PDV
+    const produtosFormatados = data.map((p: any) => ({
+      id: p.id,
+      nome: p.nome,
+      preco_venda: Number(p.preco_venda || 0),
+      preco_custo: 0, // pode ligar depois
+      estoque: Number(p.estoque || 0),
+      imagem: p.imagem || "/no-image.png",
+      ean: p.ean,
+      categoria: p.categoria,
+    }));
+
+    setResultados(produtosFormatados);
+    setBusca("");
+    inputRef.current?.focus();
+
+  } catch (err) {
+    console.error("Erro inesperado:", err);
+    alert("Erro inesperado ao buscar produto!");
   }
+}
+
 
   // ➕ Adicionar produto
   function adicionarProduto(produto: any) {
