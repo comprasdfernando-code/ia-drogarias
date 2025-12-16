@@ -23,7 +23,7 @@ export default function CarrinhoPage() {
   const removerItem = (id: string) => {
     const atualizado = carrinho.filter((p) => p.id !== id);
     setCarrinho(atualizado);
-    localStorage.setItem("carrinho-rede-fabiano", JSON.stringify(atualizado));
+    localStorage.setItem("carrinhoFabiano", JSON.stringify(atualizado));
   };
 
   // ➕ Aumentar quantidade
@@ -34,7 +34,7 @@ export default function CarrinhoPage() {
         : p
     );
     setCarrinho(atualizado);
-    localStorage.setItem("carrinho-rede-fabiano", JSON.stringify(atualizado));
+    localStorage.setItem("carrinhoFabiano", JSON.stringify(atualizado));
   };
 
   return (
