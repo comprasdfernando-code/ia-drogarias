@@ -59,11 +59,11 @@ export default function HomePage() {
   const [modalAberto, setModalAberto] = useState(false);
 
   useEffect(() => {
-    const salvo = localStorage.getItem("carrinho-home");
+    const salvo = localStorage.getItem("carrinhoFabiano");
     if (salvo) setCarrinho(JSON.parse(salvo));
   }, []);
   useEffect(() => {
-    localStorage.setItem("carrinho-home", JSON.stringify(carrinho));
+    localStorage.setItem("carrinhoFabiano", JSON.stringify(carrinho));
   }, [carrinho]);
 
   // 🔵 Carregar produtos (da view unificada)
