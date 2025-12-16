@@ -137,8 +137,9 @@ export default function LojinhaPage() {
     };
 
     const { error } = await supabase
-      .from("vendas")
-      .insert([vendaData]);
+  .from("lojinha_vendas")
+  .insert([vendaData]);
+
 
     if (error) {
       console.error("❌ Supabase:", error);
