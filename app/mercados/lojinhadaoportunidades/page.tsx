@@ -116,7 +116,7 @@ export default function LojinhaPage() {
      WHATSAPP
   ========================= */
   function enviarWhatsApp(venda: any) {
-    const numero = "5511952068432"; // 📲 número da loja
+    const numero = "5511985771182"; // 📲 número da loja
 
     const itens = venda.produtos
       .map(
@@ -219,7 +219,7 @@ setShowPagamento(false);
 
         <div className="relative z-10 w-full max-w-3xl px-6 text-center">
           <h1 className="text-4xl md:text-5xl font-extrabold text-yellow-500 mb-6">
-            Lojinha da Oportunidade
+            Lojinha das Oportunidades
           </h1>
 
           <div className="relative">
