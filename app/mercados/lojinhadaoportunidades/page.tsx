@@ -34,7 +34,7 @@ export default function LojinhaPage() {
   const [carrinho, setCarrinho] = useState<ItemCarrinho[]>([]);
   const [carrinhoAberto, setCarrinhoAberto] = useState(false);
 
-  // 🔴 MODAL PDV
+  // 🔴 MODAL FINALIZAÇÃO (PDV STYLE)
   const [showPagamento, setShowPagamento] = useState(false);
   const [pagamento, setPagamento] = useState<any>({
     tipo: "Entrega",
@@ -42,6 +42,8 @@ export default function LojinhaPage() {
     nome: "",
     telefone: "",
     endereco: "",
+    dinheiro: "",
+    troco: "",
   });
 
   /* =========================
@@ -112,53 +114,97 @@ export default function LojinhaPage() {
   );
 
   /* =========================
+     WHATSAPP
+  ========================= */
+  function enviarWhatsApp(venda: any) {
+    const numero = "5511952068432"; // 📲 número da loja
+
+    const itens = venda.produtos
+      .map(
+        (p: any, i: number) =>
+          `${i + 1}. ${p.nome} (${p.qtd}x) - R$ ${p.subtotal.toFixed(2)}`
+      )
+      .join("\n");
+
+    const mensagem = `
+🛒 *Novo Pedido - Lojinha da Oportunidade*
+
+👤 Cliente: ${venda.cliente_nome || "Não informado"}
+📞 Telefone: ${venda.cliente_telefone || "Não informado"}
+🏠 Endereço: ${venda.endereco || "Retirada"}
+
+📦 Produtos:
+${itens}
+
+💳 Pagamento: ${venda.forma_pagamento || "Não informado"}
+💰 Total: R$ ${venda.total.toFixed(2)}
+
+🙏 Pedido enviado pelo site
+`;
+
+    window.open(
+      `https://wa.me/${numero}?text=${encodeURIComponent(mensagem)}`,
+      "_blank"
+    );
+  }
+
+  /* =========================
      FINALIZAR VENDA (SITE)
   ========================= */
   async function finalizarVendaSite() {
-  try {
-    if (carrinho.length === 0) return;
+    try {
+      if (carrinho.length === 0) return;
 
-    const produtosVenda = carrinho.map((i) => ({
-      nome: i.nome,
-      qtd: i.qtd,
-      preco_venda: Number(i.preco),
-      subtotal: Number(i.preco * i.qtd),
-    }));
+      const produtosVenda = carrinho.map((i) => ({
+        nome: i.nome,
+        qtd: i.qtd,
+        preco_venda: Number(i.preco),
+        subtotal: Number(i.preco * i.qtd),
+      }));
 
-    const vendaData = {
-      produtos: produtosVenda,
-      total: Number(total),
-      cliente_nome: pagamento.nome || null,
-      cliente_telefone: pagamento.telefone || null,
-      endereco: pagamento.endereco || null,
-      forma_pagamento: pagamento.forma || null,
-      dinheiro: pagamento.forma === "Dinheiro" ? Number(pagamento.dinheiro || 0) : 0,
-      troco: pagamento.forma === "Dinheiro" ? Number(pagamento.troco || 0) : 0,
-    };
+      const vendaData = {
+        produtos: produtosVenda,
+        total: Number(total),
+        cliente_nome: pagamento.nome || null,
+        cliente_telefone: pagamento.telefone || null,
+        endereco: pagamento.endereco || null,
+        forma_pagamento: pagamento.forma || null,
+        dinheiro:
+          pagamento.forma === "Dinheiro"
+            ? Number(pagamento.dinheiro || 0)
+            : 0,
+        troco:
+          pagamento.forma === "Dinheiro"
+            ? Number(pagamento.troco || 0)
+            : 0,
+        origem: "LOJINHA",
+        status: "PENDENTE",
+      };
 
-    const { error } = await supabase
-  .from("lojinha_vendas")
-  .insert([vendaData]);
+      const { error } = await supabase
+        .from("lojinha_vendas")
+        .insert([vendaData]);
 
+      if (error) {
+        console.error("❌ Supabase:", error);
+        alert("Erro ao registrar pedido");
+        return;
+      }
 
-    if (error) {
-      console.error("❌ Supabase:", error);
-      alert(error.message);
-      return;
+      alert("✅ Pedido enviado com sucesso!");
+
+      // 📲 WhatsApp (APÓS salvar)
+      enviarWhatsApp(vendaData);
+
+      setCarrinho([]);
+      setCarrinhoAberto(false);
+      setShowPagamento(false);
+
+    } catch (err) {
+      console.error(err);
+      alert("Erro inesperado ao finalizar pedido");
     }
-
-    alert("✅ Pedido enviado com sucesso!");
-    setCarrinho([]);
-    setCarrinhoAberto(false);
-    setShowPagamento(false);
-
-  } catch (err) {
-    console.error("Erro:", err);
-    alert("Erro ao registrar pedido");
   }
-}
-
-
 
   /* =========================
      UI
@@ -168,15 +214,8 @@ export default function LojinhaPage() {
 
       {/* HERO */}
       <section className="relative min-h-screen flex items-center justify-center">
-        <Image
-          src="/lojinha-bg.png"
-          alt="Lojinha da Oportunidade"
-          fill
-          priority
-          className="object-cover"
-        />
+        <Image src="/lojinha-bg.png" alt="Lojinha" fill priority className="object-cover" />
         <div className="absolute inset-0 bg-white/75 backdrop-blur-sm" />
-
         <div className="relative z-10 w-full max-w-3xl px-6 text-center">
           <h1 className="text-4xl md:text-5xl font-extrabold text-yellow-500 mb-6">
             Lojinha da Oportunidade
@@ -198,69 +237,18 @@ export default function LojinhaPage() {
       <section className="px-6 py-10 max-w-7xl mx-auto">
         <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4">
           {filtrados.map((p) => (
-            <div
-              key={p.id}
-              onClick={() => setProdutoAtivo(p)}
-              className="bg-white rounded-xl shadow cursor-pointer"
-            >
+            <div key={p.id} onClick={() => setProdutoAtivo(p)} className="bg-white rounded-xl shadow cursor-pointer">
               <div className="relative h-40">
-                {p.foto && (
-                  <Image
-                    src={p.foto}
-                    alt={p.nome}
-                    fill
-                    className="object-cover rounded-t-xl"
-                  />
-                )}
+                {p.foto && <Image src={p.foto} alt={p.nome} fill className="object-cover rounded-t-xl" />}
               </div>
-
               <div className="p-3">
-                <h3 className="text-sm font-semibold line-clamp-2">
-                  {p.nome}
-                </h3>
-                <p className="text-yellow-500 font-bold">
-                  R$ {p.preco.toFixed(2)}
-                </p>
+                <h3 className="text-sm font-semibold line-clamp-2">{p.nome}</h3>
+                <p className="text-yellow-500 font-bold">R$ {p.preco.toFixed(2)}</p>
               </div>
             </div>
           ))}
         </div>
       </section>
-
-      {/* MODAL PRODUTO */}
-      {produtoAtivo && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-end">
-          <div className="bg-white w-full rounded-t-2xl p-4">
-            <button
-              className="mb-2 text-zinc-500"
-              onClick={() => setProdutoAtivo(null)}
-            >
-              Fechar ✕
-            </button>
-
-            <div className="relative h-48 mb-4">
-              <Image
-                src={produtoAtivo.foto!}
-                alt={produtoAtivo.nome}
-                fill
-                className="object-contain"
-              />
-            </div>
-
-            <h2 className="font-bold">{produtoAtivo.nome}</h2>
-            <p className="text-yellow-500 text-xl font-extrabold mt-2">
-              R$ {produtoAtivo.preco.toFixed(2)}
-            </p>
-
-            <button
-              onClick={() => adicionarAoCarrinho(produtoAtivo)}
-              className="mt-4 w-full bg-yellow-400 text-black py-3 rounded-xl font-bold"
-            >
-              Adicionar ao carrinho
-            </button>
-          </div>
-        </div>
-      )}
 
       {/* BOTÃO CARRINHO */}
       {carrinho.length > 0 && (
@@ -273,64 +261,7 @@ export default function LojinhaPage() {
         </button>
       )}
 
-      {/* BOTTOM SHEET */}
-      {carrinhoAberto && (
-        <div className="fixed inset-0 z-50 bg-black/50 flex items-end">
-          <div className="bg-white w-full rounded-t-2xl p-4 max-h-[85vh] overflow-y-auto">
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="font-bold text-lg">Meu carrinho</h3>
-              <button onClick={() => setCarrinhoAberto(false)}>
-                <X />
-              </button>
-            </div>
-
-            {carrinho.map((i) => (
-              <div key={i.id} className="flex items-center gap-3 border-b pb-2">
-                {i.foto && (
-                  <Image
-                    src={i.foto}
-                    alt={i.nome}
-                    width={50}
-                    height={50}
-                    className="rounded"
-                  />
-                )}
-
-                <div className="flex-1">
-                  <p className="text-sm font-semibold">{i.nome}</p>
-                  <p className="text-yellow-500 font-bold">
-                    R$ {(i.preco * i.qtd).toFixed(2)}
-                  </p>
-                </div>
-
-                <div className="flex items-center gap-2">
-                  <button onClick={() => diminuirQtd(i.id)}><Minus size={16} /></button>
-                  <span className="font-bold">{i.qtd}</span>
-                  <button onClick={() => aumentarQtd(i.id)}><Plus size={16} /></button>
-                </div>
-
-                <button onClick={() => removerItem(i.id)}>
-                  <Trash2 className="text-red-500" />
-                </button>
-              </div>
-            ))}
-
-            <div className="flex justify-between font-bold text-lg mt-4">
-              <span>Total</span>
-              <span>R$ {total.toFixed(2)}</span>
-            </div>
-
-            <button
-              onClick={() => setShowPagamento(true)}
-              className="w-full mt-4 bg-green-600 text-white py-3 rounded-xl font-bold"
-            >
-              Finalizar Pedido
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL PDV */}
+      {/* MODAL FINALIZAÇÃO */}
       {showPagamento && (
         <div className="fixed inset-0 z-[9999] bg-black/60 flex items-center justify-center">
           <div className="bg-white w-[95%] max-w-md rounded-xl p-5">
@@ -338,35 +269,24 @@ export default function LojinhaPage() {
               🧾 Finalizar Pedido
             </h2>
 
-            <input
-              placeholder="Nome"
-              className="w-full border p-2 rounded mb-2"
+            <input placeholder="Nome" className="w-full border p-2 rounded mb-2"
               value={pagamento.nome}
-              onChange={(e)=>setPagamento((p:any)=>({...p,nome:e.target.value}))}
+              onChange={(e) => setPagamento((p:any)=>({...p,nome:e.target.value}))}
             />
-            <input
-              placeholder="WhatsApp"
-              className="w-full border p-2 rounded mb-2"
+            <input placeholder="WhatsApp" className="w-full border p-2 rounded mb-2"
               value={pagamento.telefone}
-              onChange={(e)=>setPagamento((p:any)=>({...p,telefone:e.target.value}))}
+              onChange={(e) => setPagamento((p:any)=>({...p,telefone:e.target.value}))}
             />
-            {pagamento.tipo === "Entrega" && (
-              <input
-                placeholder="Endereço"
-                className="w-full border p-2 rounded mb-2"
-                value={pagamento.endereco}
-                onChange={(e)=>setPagamento((p:any)=>({...p,endereco:e.target.value}))}
-              />
-            )}
+            <input placeholder="Endereço" className="w-full border p-2 rounded mb-2"
+              value={pagamento.endereco}
+              onChange={(e) => setPagamento((p:any)=>({...p,endereco:e.target.value}))}
+            />
 
             <div className="flex gap-2 mb-3">
               {["Pix","Cartão","Dinheiro"].map((f)=>(
-                <button
-                  key={f}
+                <button key={f}
                   onClick={()=>setPagamento((p:any)=>({...p,forma:f}))}
-                  className={`flex-1 py-2 rounded ${
-                    pagamento.forma===f ? "bg-green-600 text-white" : "bg-gray-100"
-                  }`}
+                  className={`flex-1 py-2 rounded ${pagamento.forma===f ? "bg-green-600 text-white" : "bg-gray-100"}`}
                 >
                   {f}
                 </button>
@@ -384,10 +304,7 @@ export default function LojinhaPage() {
               Confirmar Pedido
             </button>
 
-            <button
-              onClick={()=>setShowPagamento(false)}
-              className="w-full mt-2 text-gray-500"
-            >
+            <button onClick={()=>setShowPagamento(false)} className="w-full mt-2 text-gray-500">
               Cancelar
             </button>
           </div>
