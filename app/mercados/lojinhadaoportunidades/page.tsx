@@ -177,17 +177,20 @@ ${itens}
   .from("lojinha_vendas")
   .insert([vendaData]);
 
+if (error) {
+  console.error("❌ Supabase:", error);
+  alert(error.message);
+  return;
+}
 
-    if (error) {
-      console.error("❌ Supabase:", error);
-      alert(error.message);
-      return;
-    }
+// ✅ AQUI DISPARA O WHATSAPP
+enviarWhatsApp(vendaData);
 
-    alert("✅ Pedido enviado com sucesso!");
-    setCarrinho([]);
-    setCarrinhoAberto(false);
-    setShowPagamento(false);
+alert("✅ Pedido enviado com sucesso!");
+setCarrinho([]);
+setCarrinhoAberto(false);
+setShowPagamento(false);
+
 
   } catch (err) {
     console.error("Erro:", err);
