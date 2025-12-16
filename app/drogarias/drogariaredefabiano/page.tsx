@@ -86,12 +86,12 @@ export default function DrogariaRedeFabianoPage() {
 
   // 💾 Carrinho (localStorage compartilhado com página /carrinho)
   useEffect(() => {
-    const salvo = localStorage.getItem("carrinho-rede-fabiano");
+    const salvo = localStorage.getItem("carrinhofabiano");
     if (salvo) setCarrinho(JSON.parse(salvo));
   }, []);
 
   useEffect(() => {
-    localStorage.setItem("carrinho-rede-fabiano", JSON.stringify(carrinho));
+    localStorage.setItem("carrinhofabiano", JSON.stringify(carrinho));
   }, [carrinho]);
 
   // 🛒 Adicionar ao carrinho
