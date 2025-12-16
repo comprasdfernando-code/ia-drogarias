@@ -147,8 +147,10 @@ async function confirmarVenda(id: string) {
   async function buscarProduto(e: React.KeyboardEvent<HTMLInputElement>) {
   if (e.key !== "Enter") return;
 
-  const valorBusca = busca.trim();
-  if (!valorBusca) return;
+  const valorBusca = busca.replace(/\D/g, "").trim(); // 🔑 só números
+  const textoBusca = busca.trim();
+
+  if (!textoBusca && !valorBusca) return;
 
   try {
     const { data, error } = await supabase
@@ -160,15 +162,14 @@ async function confirmarVenda(id: string) {
         preco_venda,
         estoque,
         categoria,
-        imagem,
-        loja,
-        disponivel
+        imagem
       `)
       .eq("loja", "drogariaredefabiano")
       .eq("disponivel", true)
-      .or(
-        `nome.ilike.%${valorBusca}%,ean.ilike.%${valorBusca}%`
-      )
+      .or(`
+        nome.ilike.%${textoBusca}%,
+        regexp_replace(ean, '\\\\D', '', 'g').ilike.%${valorBusca}%
+      `)
       .limit(12);
 
     if (error) {
@@ -183,12 +184,11 @@ async function confirmarVenda(id: string) {
       return;
     }
 
-    // Padroniza os dados pro PDV
     const produtosFormatados = data.map((p: any) => ({
       id: p.id,
       nome: p.nome,
       preco_venda: Number(p.preco_venda || 0),
-      preco_custo: 0, // pode ligar depois
+      preco_custo: 0,
       estoque: Number(p.estoque || 0),
       imagem: p.imagem || "/no-image.png",
       ean: p.ean,
@@ -204,6 +204,7 @@ async function confirmarVenda(id: string) {
     alert("Erro inesperado ao buscar produto!");
   }
 }
+
 
 
   // ➕ Adicionar produto
