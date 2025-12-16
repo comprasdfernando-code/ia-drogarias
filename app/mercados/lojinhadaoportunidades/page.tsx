@@ -115,50 +115,49 @@ export default function LojinhaPage() {
      FINALIZAR VENDA (SITE)
   ========================= */
   async function finalizarVendaSite() {
-    try {
-      if (carrinho.length === 0) return;
+  try {
+    if (carrinho.length === 0) return;
 
-      const produtosVenda = carrinho.map((i) => ({
-        nome: i.nome,
-        qtd: i.qtd,
-        preco_venda: i.preco,
-        subtotal: i.preco * i.qtd,
-      }));
+    const produtosVenda = carrinho.map((i) => ({
+      nome: i.nome,
+      qtd: i.qtd,
+      preco_venda: Number(i.preco),
+      subtotal: Number(i.preco * i.qtd),
+    }));
 
-      const vendaData = {
-        origem: "SITE",
-        atendente_nome: "Cliente Online",
-        produtos: produtosVenda,
-        total,
-        tipo_venda: pagamento.tipo,
-        forma_pagamento: pagamento.forma,
-        cliente_nome: pagamento.nome,
-        cliente_telefone: pagamento.telefone,
-        cliente_endereco: pagamento.endereco,
-        data_venda: new Date().toISOString(),
-      };
+    const vendaData = {
+      produtos: produtosVenda,
+      total: Number(total),
+      cliente_nome: pagamento.nome || null,
+      cliente_telefone: pagamento.telefone || null,
+      endereco: pagamento.endereco || null,
+      forma_pagamento: pagamento.forma || null,
+      dinheiro: pagamento.forma === "Dinheiro" ? Number(pagamento.dinheiro || 0) : 0,
+      troco: pagamento.forma === "Dinheiro" ? Number(pagamento.troco || 0) : 0,
+    };
 
-      const { error } = await supabase
-        .from("vendas")
-        .insert([vendaData]);
+    const { error } = await supabase
+      .from("vendas")
+      .insert([vendaData]);
 
-      if (error) {
-        console.error(error);
-        alert("Erro ao registrar pedido");
-        return;
-      }
-
-      alert("✅ Pedido enviado com sucesso!");
-      setCarrinho([]);
-      setCarrinhoAberto(false);
-      setShowPagamento(false);
-      setPagamento({ tipo: "Entrega", forma: "", nome: "", telefone: "", endereco: "" });
-
-    } catch (err) {
-      console.error(err);
-      alert("Erro ao finalizar pedido");
+    if (error) {
+      console.error("❌ Supabase:", error);
+      alert(error.message);
+      return;
     }
+
+    alert("✅ Pedido enviado com sucesso!");
+    setCarrinho([]);
+    setCarrinhoAberto(false);
+    setShowPagamento(false);
+
+  } catch (err) {
+    console.error("Erro:", err);
+    alert("Erro ao registrar pedido");
   }
+}
+
+
 
   /* =========================
      UI
