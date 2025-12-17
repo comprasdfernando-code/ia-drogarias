@@ -58,7 +58,7 @@ export default function PedidoPage() {
       {/* HERO */}
       <div className="relative h-[280px]">
         <Image
-          src="/hero-assados.jpg" // coloque uma imagem bonita aqui
+          src="/assados.jpg" // coloque uma imagem bonita aqui
           alt="Gigante dos Assados"
           fill
           className="object-cover"
