@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import Image from "next/image";
 
+const VALOR_POR_KM = 2.5;
+
 type Produto = {
   id: string;
   nome: string;
@@ -22,6 +24,11 @@ export default function PedidoPage() {
   const [busca, setBusca] = useState("");
   const [carrinho, setCarrinho] = useState<ItemCarrinho[]>([]);
 
+  const [tipoEntrega, setTipoEntrega] = useState<"retirada" | "entrega">(
+    "retirada"
+  );
+  const [km, setKm] = useState<number>(0);
+
   useEffect(() => {
     carregarProdutos();
   }, []);
@@ -36,21 +43,18 @@ export default function PedidoPage() {
     setProdutos(data || []);
   }
 
-  // 🔍 Busca
   const produtosFiltrados = useMemo(() => {
     return produtos.filter((p) =>
       p.nome.toLowerCase().includes(busca.toLowerCase())
     );
   }, [busca, produtos]);
 
-  // 🎠 Destaques
   const destaques = produtos.filter((p) => p.destaque);
 
-  // ➕ Adicionar item
   function add(produto: Produto) {
     setCarrinho((prev) => {
-      const existente = prev.find((i) => i.id === produto.id);
-      if (existente) {
+      const existe = prev.find((i) => i.id === produto.id);
+      if (existe) {
         return prev.map((i) =>
           i.id === produto.id
             ? { ...i, quantidade: i.quantidade + 1 }
@@ -61,7 +65,6 @@ export default function PedidoPage() {
     });
   }
 
-  // ➖ Remover item
   function remove(produto: Produto) {
     setCarrinho((prev) =>
       prev
@@ -74,13 +77,18 @@ export default function PedidoPage() {
     );
   }
 
-  const total = carrinho.reduce(
+  const subtotal = carrinho.reduce(
     (s, i) => s + i.preco * i.quantidade,
     0
   );
 
+  const frete =
+    tipoEntrega === "entrega" ? km * VALOR_POR_KM : 0;
+
+  const total = subtotal + frete;
+
   return (
-    <div className="min-h-screen bg-gray-50 pb-24">
+    <div className="min-h-screen bg-gray-50 pb-28">
       {/* HEADER */}
       <header className="sticky top-0 bg-red-600 p-4 text-white z-10">
         <h1 className="font-bold text-lg">🍖 Gigante dos Assados</h1>
@@ -92,7 +100,7 @@ export default function PedidoPage() {
         />
       </header>
 
-      {/* 🎠 CARROSSEL DE OFERTAS */}
+      {/* CARROSSEL */}
       {destaques.length > 0 && (
         <div className="p-4">
           <h2 className="font-bold mb-2">🔥 Ofertas & Kits</h2>
@@ -111,7 +119,7 @@ export default function PedidoPage() {
                     className="rounded"
                   />
                 )}
-                <h3 className="font-bold text-sm mt-1">{p.nome}</h3>
+                <h3 className="font-bold text-sm">{p.nome}</h3>
                 <p className="text-red-600 font-bold">
                   R$ {p.preco.toFixed(2)}
                 </p>
@@ -127,7 +135,7 @@ export default function PedidoPage() {
         </div>
       )}
 
-      {/* 🍖 LISTA DE PRODUTOS */}
+      {/* PRODUTOS */}
       <div className="p-4 space-y-3">
         {produtosFiltrados.map((p) => {
           const item = carrinho.find((i) => i.id === p.id);
@@ -181,12 +189,49 @@ export default function PedidoPage() {
         })}
       </div>
 
-      {/* 🛒 CARRINHO FIXO */}
+      {/* CHECKOUT */}
       {carrinho.length > 0 && (
         <div className="fixed bottom-0 left-0 right-0 bg-white border-t p-4">
+          <div className="flex gap-2 mb-2">
+            <button
+              onClick={() => setTipoEntrega("retirada")}
+              className={`flex-1 py-1 rounded ${
+                tipoEntrega === "retirada"
+                  ? "bg-red-600 text-white"
+                  : "border"
+              }`}
+            >
+              Retirada
+            </button>
+
+            <button
+              onClick={() => setTipoEntrega("entrega")}
+              className={`flex-1 py-1 rounded ${
+                tipoEntrega === "entrega"
+                  ? "bg-red-600 text-white"
+                  : "border"
+              }`}
+            >
+              Entrega
+            </button>
+          </div>
+
+          {tipoEntrega === "entrega" && (
+            <input
+              type="number"
+              placeholder="Distância em KM"
+              value={km}
+              onChange={(e) => setKm(Number(e.target.value))}
+              className="w-full border p-2 rounded mb-2"
+            />
+          )}
+
+          <p>Subtotal: R$ {subtotal.toFixed(2)}</p>
+          <p>Frete: R$ {frete.toFixed(2)}</p>
           <p className="font-bold">
             Total: R$ {total.toFixed(2)}
           </p>
+
           <a
             href={`https://wa.me/55SEUNUMERO?text=${encodeURIComponent(
               carrinho
@@ -196,7 +241,11 @@ export default function PedidoPage() {
                       i.preco * i.quantidade
                     ).toFixed(2)}`
                 )
-                .join("\n") + `\n\nTotal: R$ ${total.toFixed(2)}`
+                .join("\n") +
+                `\n\nEntrega: ${tipoEntrega}` +
+                `\nKM: ${km}` +
+                `\nFrete: R$ ${frete.toFixed(2)}` +
+                `\nTotal: R$ ${total.toFixed(2)}`
             )}`}
             target="_blank"
             className="block mt-2 bg-green-600 text-white text-center py-2 rounded"
