@@ -1,9 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
-import ProdutoCard from "@/components/ProdutoCard";
-import Carrinho from "@/components/Carrinho";
+import Image from "next/image";
 
 type Produto = {
   id: string;
@@ -11,24 +10,17 @@ type Produto = {
   descricao?: string;
   preco: number;
   imagem_url?: string;
+  destaque?: boolean;
+};
+
+type ItemCarrinho = Produto & {
+  quantidade: number;
 };
 
 export default function PedidoPage() {
   const [produtos, setProdutos] = useState<Produto[]>([]);
-  const [carrinho, setCarrinho] = useState<Produto[]>([]);
-  const [aberto, setAberto] = useState(false);
-
-  // 🧾 Dados do cliente (temporário, sem login)
-  const [tipoEntrega, setTipoEntrega] = useState<"retirada" | "entrega">(
-    "retirada"
-  );
-  const [cliente, setCliente] = useState({
-    nome: "",
-    telefone: "",
-    endereco: "",
-  });
-
-  const frete = tipoEntrega === "entrega" ? 5 : 0;
+  const [busca, setBusca] = useState("");
+  const [carrinho, setCarrinho] = useState<ItemCarrinho[]>([]);
 
   useEffect(() => {
     carregarProdutos();
@@ -38,121 +30,181 @@ export default function PedidoPage() {
     const { data } = await supabase
       .from("gigante_produtos")
       .select("*")
-      .eq("ativo", true);
+      .eq("ativo", true)
+      .order("nome");
 
     setProdutos(data || []);
   }
 
-  function adicionar(produto: Produto) {
-    setCarrinho((prev) => [...prev, produto]);
-    setAberto(true);
+  // 🔍 Busca
+  const produtosFiltrados = useMemo(() => {
+    return produtos.filter((p) =>
+      p.nome.toLowerCase().includes(busca.toLowerCase())
+    );
+  }, [busca, produtos]);
+
+  // 🎠 Destaques
+  const destaques = produtos.filter((p) => p.destaque);
+
+  // ➕ Adicionar item
+  function add(produto: Produto) {
+    setCarrinho((prev) => {
+      const existente = prev.find((i) => i.id === produto.id);
+      if (existente) {
+        return prev.map((i) =>
+          i.id === produto.id
+            ? { ...i, quantidade: i.quantidade + 1 }
+            : i
+        );
+      }
+      return [...prev, { ...produto, quantidade: 1 }];
+    });
   }
 
+  // ➖ Remover item
+  function remove(produto: Produto) {
+    setCarrinho((prev) =>
+      prev
+        .map((i) =>
+          i.id === produto.id
+            ? { ...i, quantidade: i.quantidade - 1 }
+            : i
+        )
+        .filter((i) => i.quantidade > 0)
+    );
+  }
+
+  const total = carrinho.reduce(
+    (s, i) => s + i.preco * i.quantidade,
+    0
+  );
+
   return (
-    <div className="min-h-screen bg-gray-50">
-      <header className="p-4 bg-red-600 text-white text-xl font-bold">
-        🍖 Gigante dos Assados
+    <div className="min-h-screen bg-gray-50 pb-24">
+      {/* HEADER */}
+      <header className="sticky top-0 bg-red-600 p-4 text-white z-10">
+        <h1 className="font-bold text-lg">🍖 Gigante dos Assados</h1>
+        <input
+          placeholder="Buscar produto..."
+          value={busca}
+          onChange={(e) => setBusca(e.target.value)}
+          className="mt-2 w-full p-2 rounded text-black"
+        />
       </header>
 
-      {/* PRODUTOS */}
-      <div className="p-4 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-        {produtos.map((p) => (
-          <ProdutoCard key={p.id} produto={p} onAdd={adicionar} />
-        ))}
+      {/* 🎠 CARROSSEL DE OFERTAS */}
+      {destaques.length > 0 && (
+        <div className="p-4">
+          <h2 className="font-bold mb-2">🔥 Ofertas & Kits</h2>
+          <div className="flex gap-3 overflow-x-auto">
+            {destaques.map((p) => (
+              <div
+                key={p.id}
+                className="min-w-[200px] bg-white rounded shadow p-2"
+              >
+                {p.imagem_url && (
+                  <Image
+                    src={p.imagem_url}
+                    alt={p.nome}
+                    width={200}
+                    height={120}
+                    className="rounded"
+                  />
+                )}
+                <h3 className="font-bold text-sm mt-1">{p.nome}</h3>
+                <p className="text-red-600 font-bold">
+                  R$ {p.preco.toFixed(2)}
+                </p>
+                <button
+                  onClick={() => add(p)}
+                  className="mt-1 w-full bg-red-600 text-white rounded py-1"
+                >
+                  Adicionar
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 🍖 LISTA DE PRODUTOS */}
+      <div className="p-4 space-y-3">
+        {produtosFiltrados.map((p) => {
+          const item = carrinho.find((i) => i.id === p.id);
+
+          return (
+            <div
+              key={p.id}
+              className="bg-white rounded shadow p-3 flex gap-3 items-center"
+            >
+              {p.imagem_url && (
+                <Image
+                  src={p.imagem_url}
+                  alt={p.nome}
+                  width={80}
+                  height={80}
+                  className="rounded"
+                />
+              )}
+
+              <div className="flex-1">
+                <h3 className="font-bold">{p.nome}</h3>
+                <p className="text-sm text-gray-500">{p.descricao}</p>
+                <p className="font-bold text-red-600">
+                  R$ {p.preco.toFixed(2)}
+                </p>
+              </div>
+
+              <div className="flex items-center gap-2">
+                {item && (
+                  <button
+                    onClick={() => remove(p)}
+                    className="w-8 h-8 rounded-full border"
+                  >
+                    −
+                  </button>
+                )}
+
+                <span className="w-5 text-center">
+                  {item?.quantidade || 0}
+                </span>
+
+                <button
+                  onClick={() => add(p)}
+                  className="w-8 h-8 rounded-full bg-red-600 text-white"
+                >
+                  +
+                </button>
+              </div>
+            </div>
+          );
+        })}
       </div>
 
-      {/* CHECKOUT SIMPLES */}
+      {/* 🛒 CARRINHO FIXO */}
       {carrinho.length > 0 && (
-        <div className="p-4 bg-white shadow mt-4">
-          <h2 className="font-bold mb-2">Finalizar pedido</h2>
-
-          {/* ENTREGA OU RETIRADA */}
-          <div className="flex gap-4 mb-3">
-            <button
-              onClick={() => setTipoEntrega("retirada")}
-              className={`px-3 py-1 rounded ${
-                tipoEntrega === "retirada"
-                  ? "bg-red-600 text-white"
-                  : "border"
-              }`}
-            >
-              Retirada
-            </button>
-
-            <button
-              onClick={() => setTipoEntrega("entrega")}
-              className={`px-3 py-1 rounded ${
-                tipoEntrega === "entrega"
-                  ? "bg-red-600 text-white"
-                  : "border"
-              }`}
-            >
-              Entrega
-            </button>
-          </div>
-
-          {/* DADOS DO CLIENTE */}
-          {tipoEntrega === "entrega" && (
-            <div className="space-y-2 mb-3">
-              <input
-                placeholder="Nome"
-                className="w-full border p-2 rounded"
-                onChange={(e) =>
-                  setCliente({ ...cliente, nome: e.target.value })
-                }
-              />
-
-              <input
-                placeholder="WhatsApp"
-                className="w-full border p-2 rounded"
-                onChange={(e) =>
-                  setCliente({ ...cliente, telefone: e.target.value })
-                }
-              />
-
-              <input
-                placeholder="Endereço"
-                className="w-full border p-2 rounded"
-                onChange={(e) =>
-                  setCliente({ ...cliente, endereco: e.target.value })
-                }
-              />
-            </div>
-          )}
-
-          {/* TOTAL */}
+        <div className="fixed bottom-0 left-0 right-0 bg-white border-t p-4">
           <p className="font-bold">
-            Total: R$
-            {(
-              carrinho.reduce((s, i) => s + i.preco, 0) + frete
-            ).toFixed(2)}
+            Total: R$ {total.toFixed(2)}
           </p>
-
-          {/* FINALIZAR */}
           <a
             href={`https://wa.me/55SEUNUMERO?text=${encodeURIComponent(
-              `🛒 Pedido - Gigante dos Assados\n\n` +
-                carrinho.map((i) => `• ${i.nome}`).join("\n") +
-                `\n\nEntrega: ${tipoEntrega}` +
-                `\nFrete: R$ ${frete.toFixed(2)}` +
-                `\nTotal: R$ ${(
-                  carrinho.reduce((s, i) => s + i.preco, 0) + frete
-                ).toFixed(2)}`
+              carrinho
+                .map(
+                  (i) =>
+                    `${i.quantidade}x ${i.nome} - R$ ${(
+                      i.preco * i.quantidade
+                    ).toFixed(2)}`
+                )
+                .join("\n") + `\n\nTotal: R$ ${total.toFixed(2)}`
             )}`}
-            className="block mt-3 bg-green-600 text-white text-center py-2 rounded"
             target="_blank"
+            className="block mt-2 bg-green-600 text-white text-center py-2 rounded"
           >
             Finalizar no WhatsApp
           </a>
         </div>
       )}
-
-      {/* CARRINHO */}
-      <Carrinho
-        aberto={aberto}
-        setAberto={setAberto}
-        carrinho={carrinho}
-      />
     </div>
   );
 }
