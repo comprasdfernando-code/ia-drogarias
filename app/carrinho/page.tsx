@@ -14,7 +14,7 @@ export default function CarrinhoPage() {
 
   useEffect(() => {
     if (typeof window !== "undefined") {
-      const itensSalvos = JSON.parse(localStorage.getItem("carrinhoFabiano") || "[]");
+      const itensSalvos = JSON.parse(localStorage.getItem("carrinho") || "[]");
       setCarrinho(itensSalvos);
     }
   }, []);
@@ -22,7 +22,7 @@ export default function CarrinhoPage() {
   const removerItem = (id: string) => {
     const novoCarrinho = carrinho.filter((item) => item.id !== id);
     setCarrinho(novoCarrinho);
-    localStorage.setItem("carrinhoFabiano", JSON.stringify(novoCarrinho));
+    localStorage.setItem("carrinho", JSON.stringify(novoCarrinho));
   };
 
   const total = carrinho.reduce((acc, item) => acc + item.preco, 0);
@@ -34,7 +34,7 @@ export default function CarrinhoPage() {
       {carrinho.length === 0 ? (
         <div className="text-center text-gray-600">
           <p>Seu carrinho está vazio 😅</p>
-          <Link href="/drogarias/drogariaredefabiano" className="text-blue-600 underline mt-4 inline-block">
+          <Link href="/produtos" className="text-blue-600 underline mt-4 inline-block">
             Continuar comprando
           </Link>
         </div>
