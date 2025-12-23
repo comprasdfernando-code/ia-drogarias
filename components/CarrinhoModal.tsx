@@ -139,13 +139,7 @@ export default function CarrinhoModal({
               }
             />
 
-            <input
-              type="number"
-              placeholder="Distância em KM"
-              className="w-full border p-2 rounded"
-              value={km}
-              onChange={(e) => setKm(Number(e.target.value))}
-            />
+            
           </div>
         )}
 
