@@ -890,8 +890,6 @@ const saldoBanco = entradasBanco - saidasBanco;
 
           <input type="text" value={descricao} onChange={(e) => setDescricao(e.target.value)} placeholder="Descrição" className="border p-2 rounded" />
 
-          <input type="text" value={linhaDigitavelMov} onChange={(e) => setLinhaDigitavelMov(e.target.value)} placeholder="Linha digitável (opcional)" className="border p-2 rounded" />
-
           <input type="number" value={valor} onChange={(e) => setValor(e.target.value)} placeholder="Valor" className="border p-2 rounded" />
 
           <select value={formaPagamento} onChange={(e) => setFormaPagamento(e.target.value)} className="border p-2 rounded">
