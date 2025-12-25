@@ -829,51 +829,7 @@ const saldoBanco = entradasBanco - saidasBanco;
 
 
 
-      {/* ========================================================== */}
-      {/* RESUMO DE ENTRADAS */}
-      {/* ========================================================== */}
-      <div className="bg-white rounded-lg shadow p-4 mb-6">
-        <h2 className="font-semibold text-lg mb-3 text-blue-700">📊 Entradas</h2>
-
-        {entradas.length === 0 ? (
-          <p className="text-gray-500 text-sm">Nenhuma entrada registrada.</p>
-        ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
-            {["Dinheiro", "Pix", "Cartão", "Boleto", "Fiado"].map((forma) => {
-              const total = entradas
-                .filter((e) => e.forma_pagamento === forma)
-                .reduce((a, i) => a + i.valor, 0);
-
-              return (
-                <CardAcum key={forma} titulo={forma} valor={total} cor="green" />
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* ========================================================== */}
-      {/* RESUMO DE SAÍDAS */}
-      {/* ========================================================== */}
-      <div className="bg-white rounded-lg shadow p-4 mb-6">
-        <h2 className="font-semibold text-lg mb-3 text-red-700">💸 Saídas</h2>
-
-        {saidas.length === 0 ? (
-          <p className="text-gray-500 text-sm">Nenhuma saída registrada.</p>
-        ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
-            {["Despesas", "Compras", "Sangrias", "Boletos", "Outros"].map((tipo) => {
-              const total = saidas
-                .filter((s) => s.descricao?.toLowerCase().includes(tipo.toLowerCase()))
-                .reduce((a, i) => a + i.valor, 0);
-
-              return (
-                <CardAcum key={tipo} titulo={tipo} valor={total} cor="red" />
-              );
-            })}
-          </div>
-        )}
-      </div>
+      
 
       {/* ========================================================== */}
       {/* FORMULÁRIO MOVIMENTAÇÃO */}
