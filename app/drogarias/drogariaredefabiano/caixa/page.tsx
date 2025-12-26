@@ -559,6 +559,15 @@ const saldoBanco = entradasBanco - saidasBanco;
       className="border p-2 rounded"
     />
 
+    {/* CREDIARIO */}
+    <input
+      type="number"
+      placeholder="Crediario"
+      value={vendaTotal}
+      onChange={(e) => setVendaTotal(e.target.value)}
+      className="border p-2 rounded"
+    />
+
     {/* DINHEIRO */}
     <input
       type="number"
@@ -723,6 +732,7 @@ const saldoBanco = entradasBanco - saidasBanco;
         <tr>
           <th className="p-2 border">Data</th>
           <th className="p-2 border">Venda Total</th>
+          <th className="p-2 border">Crediario</th>
           <th className="p-2 border">Entradas</th>
           <th className="p-2 border">Dinheiro</th>
           <th className="p-2 border">Pix CNPJ</th>
