@@ -721,6 +721,7 @@ const saldoBanco = entradasBanco - saidasBanco;
     <table className="w-full text-sm border">
       <thead className="bg-blue-100 text-blue-700 font-semibold">
         <tr>
+          <th className="p-2 border">Fiado</th>
           <th className="p-2 border">Data</th>
           <th className="p-2 border">Venda Total</th>
           <th className="p-2 border">Entradas</th>
