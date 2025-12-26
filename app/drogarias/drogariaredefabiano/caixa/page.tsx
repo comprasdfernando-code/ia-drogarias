@@ -58,6 +58,7 @@ export default function CaixaPage() {
   // --- Estados fechamento diário ---
   const [dataFechamento, setDataFechamento] = useState("");
   const [vendaTotal, setVendaTotal] = useState("");
+  const [fiado, setFiado] = useState("");
   const [dinheiroDia, setDinheiroDia] = useState("");
   const [pixCNPJ, setPixCNPJ] = useState("");
   const [pixQR, setPixQR] = useState("");
@@ -180,6 +181,7 @@ async function salvarFechamento() {
     data: dataFechamento + "T12:00:00", // força meio-dia para não cair no dia anterior
 
     venda_total: Number(vendaTotal),
+    fiado: Number(fiado),
     dinheiro: Number(dinheiroDia),
     pix_cnpj: Number(pixCNPJ),
     pix_qr: Number(pixQR),
@@ -240,6 +242,7 @@ async function filtrarAcumulado() {
   // 🔥 Garante que nenhum campo nulo quebre o cálculo
   const calc = {
     venda_total: data.reduce((t, d) => t + (d.venda_total ?? 0), 0),
+    fiado: data.reduce((t, d) => t + (d.fiado ?? 0), 0),
     dinheiro: data.reduce((t, d) => t + (d.dinheiro ?? 0), 0),
     pix_cnpj: data.reduce((t, d) => t + (d.pix_cnpj ?? 0), 0),
     pix_qr: data.reduce((t, d) => t + (d.pix_qr ?? 0), 0),
@@ -565,6 +568,15 @@ const saldoBanco = entradasBanco - saidasBanco;
       placeholder="Dinheiro"
       value={dinheiroDia}
       onChange={(e) => setDinheiroDia(e.target.value)}
+      className="border p-2 rounded"
+    />
+
+    {/* FIADO */}
+    <input
+      type="number"
+      placeholder="Fiado"
+      value={fiado}
+      onChange={(e) => setFiado(e.target.value)}
       className="border p-2 rounded"
     />
 
