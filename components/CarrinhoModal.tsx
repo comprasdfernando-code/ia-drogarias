@@ -2,8 +2,6 @@
 
 import { useMemo, useState } from "react";
 
-const VALOR_POR_KM = 3.0; // R$ por km
-
 export default function CarrinhoModal({
   aberto,
   setAberto,
@@ -11,10 +9,9 @@ export default function CarrinhoModal({
 }: any) {
   if (!aberto) return null;
 
-  const [tipoEntrega, setTipoEntrega] = useState<"retirada" | "entrega">(
-    "retirada"
-  );
-  const [km, setKm] = useState<number>(0);
+  const [tipoEntrega, setTipoEntrega] = useState<
+    "retirada" | "entrega"
+  >("retirada");
 
   const [cliente, setCliente] = useState({
     nome: "",
@@ -22,6 +19,7 @@ export default function CarrinhoModal({
     endereco: "",
   });
 
+  // 🧮 Subtotal
   const subtotal = useMemo(
     () =>
       carrinho.reduce(
@@ -31,11 +29,12 @@ export default function CarrinhoModal({
     [carrinho]
   );
 
-  const frete =
-    tipoEntrega === "entrega" ? km * VALOR_POR_KM : 0;
+  // 🚚 Frete (por enquanto zerado / a calcular)
+  const frete = tipoEntrega === "entrega" ? 0 : 0;
 
   const total = subtotal + frete;
 
+  // 📲 Mensagem WhatsApp
   const mensagemWhatsApp = useMemo(() => {
     const itens = carrinho
       .map(
@@ -50,17 +49,17 @@ export default function CarrinhoModal({
       `🛒 *Pedido - Gigante dos Assados*\n\n` +
         `${itens}\n\n` +
         `Subtotal: R$ ${subtotal.toFixed(2)}\n` +
-        `Frete: R$ ${frete.toFixed(2)}\n` +
-        `*Total: R$ ${total.toFixed(2)}*\n\n` +
-        `Entrega: ${tipoEntrega}\n` +
+        `Frete: a calcular\n` +
+        `*Total parcial: R$ ${total.toFixed(2)}*\n\n` +
+        `Forma de recebimento: ${tipoEntrega}\n` +
         (tipoEntrega === "entrega"
-          ? `Cliente: ${cliente.nome}\n` +
+          ? `\n📍 *Dados para entrega*\n` +
+            `Cliente: ${cliente.nome}\n` +
             `WhatsApp: ${cliente.telefone}\n` +
-            `Endereço: ${cliente.endereco}\n` +
-            `Distância: ${km} km\n`
-          : `Retirada no local`)
+            `Endereço: ${cliente.endereco}\n`
+          : `\n🏠 Retirada no local`)
     );
-  }, [carrinho, subtotal, frete, total, tipoEntrega, cliente, km]);
+  }, [carrinho, subtotal, total, tipoEntrega, cliente]);
 
   return (
     <div className="fixed inset-0 bg-black/60 flex justify-end z-50">
@@ -69,7 +68,10 @@ export default function CarrinhoModal({
 
         {/* ITENS */}
         {carrinho.map((i: any) => (
-          <div key={i.id} className="flex justify-between mb-2 text-sm">
+          <div
+            key={i.id}
+            className="flex justify-between mb-2 text-sm"
+          >
             <span>
               {i.quantidade}x {i.nome}
             </span>
@@ -85,7 +87,7 @@ export default function CarrinhoModal({
         <div className="flex gap-2 mb-3">
           <button
             onClick={() => setTipoEntrega("retirada")}
-            className={`flex-1 py-1 rounded ${
+            className={`flex-1 py-2 rounded ${
               tipoEntrega === "retirada"
                 ? "bg-red-600 text-white"
                 : "border"
@@ -96,7 +98,7 @@ export default function CarrinhoModal({
 
           <button
             onClick={() => setTipoEntrega("entrega")}
-            className={`flex-1 py-1 rounded ${
+            className={`flex-1 py-2 rounded ${
               tipoEntrega === "entrega"
                 ? "bg-red-600 text-white"
                 : "border"
@@ -106,12 +108,13 @@ export default function CarrinhoModal({
           </button>
         </div>
 
-        {/* DADOS ENTREGA */}
+        {/* DADOS DE ENTREGA */}
         {tipoEntrega === "entrega" && (
           <div className="space-y-2 mb-3">
             <input
               placeholder="Nome"
               className="w-full border p-2 rounded"
+              value={cliente.nome}
               onChange={(e) =>
                 setCliente({ ...cliente, nome: e.target.value })
               }
@@ -120,6 +123,7 @@ export default function CarrinhoModal({
             <input
               placeholder="WhatsApp"
               className="w-full border p-2 rounded"
+              value={cliente.telefone}
               onChange={(e) =>
                 setCliente({
                   ...cliente,
@@ -131,6 +135,7 @@ export default function CarrinhoModal({
             <input
               placeholder="Endereço completo"
               className="w-full border p-2 rounded"
+              value={cliente.endereco}
               onChange={(e) =>
                 setCliente({
                   ...cliente,
@@ -138,18 +143,14 @@ export default function CarrinhoModal({
                 })
               }
             />
-
-            
           </div>
         )}
 
         {/* TOTAIS */}
         <div className="text-sm space-y-1">
           <p>Subtotal: R$ {subtotal.toFixed(2)}</p>
-          <p>Frete: R$ {frete.toFixed(2)}</p>
-          <p className="font-bold">
-            Total: R$ {total.toFixed(2)}
-          </p>
+          <p>Frete: a calcular</p>
+          <p className="font-bold">Total parcial: R$ {total.toFixed(2)}</p>
         </div>
 
         {/* FINALIZAR */}
@@ -160,6 +161,15 @@ export default function CarrinhoModal({
         >
           Finalizar pedido
         </a>
+
+        {/* 🖨️ IMPRIMIR CUPOM */}
+        <button
+          type="button"
+          onClick={() => window.open("/gigante/cupom", "_blank")}
+          className="block w-full mt-2 bg-gray-900 text-white text-center py-2 rounded"
+        >
+          Imprimir cupom
+        </button>
 
         <button
           onClick={() => setAberto(false)}
