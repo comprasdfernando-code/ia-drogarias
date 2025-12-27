@@ -1,31 +1,37 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
 function brl(v: number) {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
-export default function CupomPedido({ params }: { params: { id: string } }) {
+export default function CupomPedido() {
+  const params = useParams<{ id: string }>();
+  const id = params?.id;
+
   const [venda, setVenda] = useState<any>(null);
   const [itens, setItens] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    if (!id) return;
+
     async function carregar() {
       setLoading(true);
 
       const { data: v, error: ev } = await supabase
         .from("gigante_vendas")
         .select("*")
-        .eq("id", params.id)
+        .eq("id", id)
         .single();
 
       const { data: its, error: ei } = await supabase
         .from("gigante_venda_itens")
-        .select("nome,quantidade,preco,subtotal")
-        .eq("venda_id", params.id)
+        .select("nome,quantidade,preco,subtotal,criado_em")
+        .eq("venda_id", id)
         .order("criado_em", { ascending: true });
 
       if (!ev) setVenda(v);
@@ -38,10 +44,11 @@ export default function CupomPedido({ params }: { params: { id: string } }) {
     }
 
     carregar();
-  }, [params.id]);
+  }, [id]);
 
   const total = useMemo(() => Number(venda?.total || 0), [venda]);
 
+  if (!id) return <div className="p-4">Carregando rota...</div>;
   if (loading) return <div className="p-4">Carregando cupom...</div>;
   if (!venda) return <div className="p-4">Pedido não encontrado.</div>;
 
@@ -70,8 +77,12 @@ export default function CupomPedido({ params }: { params: { id: string } }) {
         <div className="center bold" style={{ fontSize: 14 }}>
           Gigante dos Assados
         </div>
-        <div className="center">Pedido {String(venda.id).slice(0, 6).toUpperCase()}</div>
-        <div className="center">{new Date(venda.data).toLocaleString("pt-BR")}</div>
+        <div className="center">
+          Pedido {String(venda.id).slice(0, 6).toUpperCase()}
+        </div>
+        <div className="center">
+          {new Date(venda.data).toLocaleString("pt-BR")}
+        </div>
 
         <div className="hr" />
 
