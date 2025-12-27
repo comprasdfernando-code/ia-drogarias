@@ -1,8 +1,10 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { supabase } from "@/lib/supabaseClient";
 
 type Pagamento = "pix" | "cartao" | "dinheiro" | "vr";
+type TipoEntrega = "retirada" | "entrega";
 
 export default function CarrinhoModal({
   aberto,
@@ -11,9 +13,7 @@ export default function CarrinhoModal({
 }: any) {
   if (!aberto) return null;
 
-  const [tipoEntrega, setTipoEntrega] = useState<
-    "retirada" | "entrega"
-  >("retirada");
+  const [tipoEntrega, setTipoEntrega] = useState<TipoEntrega>("retirada");
 
   const [cliente, setCliente] = useState({
     nome: "",
@@ -24,40 +24,41 @@ export default function CarrinhoModal({
   const [pagamento, setPagamento] = useState<Pagamento>("pix");
   const [trocoPara, setTrocoPara] = useState<string>("");
 
+  const [loading, setLoading] = useState(false);
+
   // 🧮 Subtotal
   const subtotal = useMemo(
     () =>
       carrinho.reduce(
-        (s: number, i: any) => s + i.preco * i.quantidade,
+        (s: number, i: any) => s + Number(i.preco) * Number(i.quantidade),
         0
       ),
     [carrinho]
   );
 
-  // 🚚 Frete (por enquanto a calcular)
-  const frete = tipoEntrega === "entrega" ? 0 : 0;
-
+  // 🚚 Frete (por enquanto: a calcular = 0)
+  const frete = 0;
   const total = subtotal + frete;
 
-  // 📲 Mensagem WhatsApp
+  const pagamentoTexto =
+    pagamento === "pix"
+      ? "Pix"
+      : pagamento === "cartao"
+      ? "Cartão"
+      : pagamento === "dinheiro"
+      ? `Dinheiro${trocoPara ? ` (troco para R$ ${trocoPara})` : ""}`
+      : "VR/VA";
+
+  // 📲 Mensagem WhatsApp (se quiser mandar)
   const mensagemWhatsApp = useMemo(() => {
     const itens = carrinho
       .map(
         (i: any) =>
           `${i.quantidade}x ${i.nome} - R$ ${(
-            i.preco * i.quantidade
+            Number(i.preco) * Number(i.quantidade)
           ).toFixed(2)}`
       )
       .join("\n");
-
-    const pagamentoTexto =
-      pagamento === "pix"
-        ? "Pix"
-        : pagamento === "cartao"
-        ? "Cartão"
-        : pagamento === "dinheiro"
-        ? `Dinheiro${trocoPara ? ` (troco para R$ ${trocoPara})` : ""}`
-        : "VR/VA";
 
     return encodeURIComponent(
       `🛒 *Pedido - Gigante dos Assados*\n\n` +
@@ -65,25 +66,91 @@ export default function CarrinhoModal({
         `Subtotal: R$ ${subtotal.toFixed(2)}\n` +
         `Frete: a calcular\n` +
         `*Total parcial: R$ ${total.toFixed(2)}*\n\n` +
-        `Forma de recebimento: ${tipoEntrega}\n` +
+        `Recebimento: ${tipoEntrega}\n` +
         (tipoEntrega === "entrega"
-          ? `\n📍 *Dados para entrega*\n` +
+          ? `\n📍 *Entrega*\n` +
             `Cliente: ${cliente.nome}\n` +
             `WhatsApp: ${cliente.telefone}\n` +
             `Endereço: ${cliente.endereco}\n`
           : `\n🏠 Retirada no local\n`) +
         `\n💳 *Pagamento*: ${pagamentoTexto}\n`
     );
-  }, [carrinho, subtotal, total, tipoEntrega, cliente, pagamento, trocoPara]);
+  }, [carrinho, subtotal, total, tipoEntrega, cliente, pagamentoTexto]);
 
-  // ✅ validação simples (não deixa finalizar vazio)
   const podeFinalizar =
     carrinho.length > 0 &&
     (tipoEntrega === "retirada" ||
-      (cliente.nome.trim() &&
-        cliente.telefone.trim() &&
-        cliente.endereco.trim())) &&
-    (pagamento !== "dinheiro" || true);
+      (cliente.nome.trim() && cliente.telefone.trim() && cliente.endereco.trim()));
+
+  async function salvarPedido() {
+    if (!podeFinalizar) {
+      alert(
+        tipoEntrega === "entrega"
+          ? "Preencha Nome, WhatsApp e Endereço para entrega."
+          : "Adicione itens no carrinho."
+      );
+      return;
+    }
+
+    try {
+      setLoading(true);
+
+      // 1) cria venda
+      const { data: venda, error: errVenda } = await supabase
+        .from("gigante_vendas")
+        .insert({
+          data: new Date().toISOString(),
+          total: total,
+          subtotal: subtotal,
+          frete: frete,
+          metodo_pagamento: pagamentoTexto, // mantém seu campo atual
+          pagamento_detalhe: pagamento, // extra (se você criou a coluna)
+          tipo_entrega: tipoEntrega,
+          status: "novo",
+          cliente_nome: tipoEntrega === "entrega" ? cliente.nome : null,
+          cliente_telefone: tipoEntrega === "entrega" ? cliente.telefone : null,
+          cliente_endereco: tipoEntrega === "entrega" ? cliente.endereco : null,
+          origem: "SITE",
+          observacoes:
+            pagamento === "dinheiro" && trocoPara
+              ? `Troco para R$ ${trocoPara}`
+              : null,
+        })
+        .select("id")
+        .single();
+
+      if (errVenda) throw errVenda;
+
+      // 2) cria itens
+      const itens = carrinho.map((i: any) => ({
+        venda_id: venda.id,
+        produto_id: i.id,
+        nome: i.nome,
+        quantidade: Number(i.quantidade),
+        preco: Number(i.preco),
+        subtotal: Number(i.preco) * Number(i.quantidade),
+      }));
+
+      const { error: errItens } = await supabase
+        .from("gigante_venda_itens")
+        .insert(itens);
+
+      if (errItens) throw errItens;
+
+      // ✅ (opcional) abre WhatsApp
+      window.open(`https://wa.me/5511948163211?text=${mensagemWhatsApp}`, "_blank");
+
+      alert("Pedido enviado! ✅");
+
+      // fecha modal
+      setAberto(false);
+    } catch (e: any) {
+      console.error(e);
+      alert("Erro ao salvar pedido. Confira Supabase/RLS.");
+    } finally {
+      setLoading(false);
+    }
+  }
 
   return (
     <div className="fixed inset-0 bg-black/60 flex justify-end z-50">
@@ -96,7 +163,7 @@ export default function CarrinhoModal({
             <span>
               {i.quantidade}x {i.nome}
             </span>
-            <span>R$ {(i.preco * i.quantidade).toFixed(2)}</span>
+            <span>R$ {(Number(i.preco) * Number(i.quantidade)).toFixed(2)}</span>
           </div>
         ))}
 
@@ -107,9 +174,7 @@ export default function CarrinhoModal({
           <button
             onClick={() => setTipoEntrega("retirada")}
             className={`flex-1 py-2 rounded ${
-              tipoEntrega === "retirada"
-                ? "bg-red-600 text-white"
-                : "border"
+              tipoEntrega === "retirada" ? "bg-red-600 text-white" : "border"
             }`}
           >
             Retirada
@@ -118,27 +183,22 @@ export default function CarrinhoModal({
           <button
             onClick={() => setTipoEntrega("entrega")}
             className={`flex-1 py-2 rounded ${
-              tipoEntrega === "entrega"
-                ? "bg-red-600 text-white"
-                : "border"
+              tipoEntrega === "entrega" ? "bg-red-600 text-white" : "border"
             }`}
           >
             Entrega
           </button>
         </div>
 
-        {/* DADOS DE ENTREGA */}
+        {/* DADOS ENTREGA */}
         {tipoEntrega === "entrega" && (
           <div className="space-y-2 mb-3">
             <input
               placeholder="Nome"
               className="w-full border p-2 rounded"
               value={cliente.nome}
-              onChange={(e) =>
-                setCliente({ ...cliente, nome: e.target.value })
-              }
+              onChange={(e) => setCliente({ ...cliente, nome: e.target.value })}
             />
-
             <input
               placeholder="WhatsApp"
               className="w-full border p-2 rounded"
@@ -147,7 +207,6 @@ export default function CarrinhoModal({
                 setCliente({ ...cliente, telefone: e.target.value })
               }
             />
-
             <input
               placeholder="Endereço completo"
               className="w-full border p-2 rounded"
@@ -201,7 +260,6 @@ export default function CarrinhoModal({
             </button>
           </div>
 
-          {/* TROCO */}
           {pagamento === "dinheiro" && (
             <input
               placeholder="Troco para quanto? (opcional)"
@@ -219,38 +277,15 @@ export default function CarrinhoModal({
           <p className="font-bold">Total parcial: R$ {total.toFixed(2)}</p>
         </div>
 
-        {/* FINALIZAR */}
-        <a
-          href={
-            podeFinalizar
-              ? `https://wa.me/5511948163211?text=${mensagemWhatsApp}`
-              : undefined
-          }
-          target="_blank"
-          className={`block mt-4 text-white text-center py-2 rounded ${
-            podeFinalizar ? "bg-green-600" : "bg-gray-400 cursor-not-allowed"
-          }`}
-          onClick={(e) => {
-            if (!podeFinalizar) {
-              e.preventDefault();
-              alert(
-                tipoEntrega === "entrega"
-                  ? "Preencha Nome, WhatsApp e Endereço para entrega."
-                  : "Adicione itens no carrinho."
-              );
-            }
-          }}
-        >
-          Finalizar pedido
-        </a>
-
-        {/* 🖨️ IMPRIMIR CUPOM */}
+        {/* FINALIZAR (salva no banco) */}
         <button
-          type="button"
-          onClick={() => window.open("/gigante/cupom", "_blank")}
-          className="block w-full mt-2 bg-gray-900 text-white text-center py-2 rounded"
+          onClick={salvarPedido}
+          disabled={loading}
+          className={`block w-full mt-4 text-white text-center py-2 rounded ${
+            loading ? "bg-gray-400" : "bg-green-600"
+          }`}
         >
-          Imprimir cupom
+          {loading ? "Salvando..." : "Finalizar pedido"}
         </button>
 
         <button
