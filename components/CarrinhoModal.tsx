@@ -26,7 +26,6 @@ export default function CarrinhoModal({
 
   const [loading, setLoading] = useState(false);
 
-  // 🧮 Subtotal
   const subtotal = useMemo(
     () =>
       carrinho.reduce(
@@ -36,7 +35,7 @@ export default function CarrinhoModal({
     [carrinho]
   );
 
-  // 🚚 Frete (por enquanto: a calcular = 0)
+  // Amanhã: frete fica 0 no sistema e "a calcular" no texto quando for entrega
   const frete = 0;
   const total = subtotal + frete;
 
@@ -49,38 +48,52 @@ export default function CarrinhoModal({
       ? `Dinheiro${trocoPara ? ` (troco para R$ ${trocoPara})` : ""}`
       : "VR/VA";
 
-  // 📲 Mensagem WhatsApp (se quiser mandar)
-  const mensagemWhatsApp = useMemo(() => {
-    const itens = carrinho
-      .map(
-        (i: any) =>
-          `${i.quantidade}x ${i.nome} - R$ ${(
-            Number(i.preco) * Number(i.quantidade)
-          ).toFixed(2)}`
-      )
-      .join("\n");
-
-    return encodeURIComponent(
-      `🛒 *Pedido - Gigante dos Assados*\n\n` +
-        `${itens}\n\n` +
-        `Subtotal: R$ ${subtotal.toFixed(2)}\n` +
-        `Frete: a calcular\n` +
-        `*Total parcial: R$ ${total.toFixed(2)}*\n\n` +
-        `Recebimento: ${tipoEntrega}\n` +
-        (tipoEntrega === "entrega"
-          ? `\n📍 *Entrega*\n` +
-            `Cliente: ${cliente.nome}\n` +
-            `WhatsApp: ${cliente.telefone}\n` +
-            `Endereço: ${cliente.endereco}\n`
-          : `\n🏠 Retirada no local\n`) +
-        `\n💳 *Pagamento*: ${pagamentoTexto}\n`
-    );
-  }, [carrinho, subtotal, total, tipoEntrega, cliente, pagamentoTexto]);
-
   const podeFinalizar =
     carrinho.length > 0 &&
     (tipoEntrega === "retirada" ||
       (cliente.nome.trim() && cliente.telefone.trim() && cliente.endereco.trim()));
+
+  function montarMensagemWhatsApp(pedidoId?: string) {
+    const itens = carrinho
+      .map((i: any) => {
+        const sub = Number(i.preco) * Number(i.quantidade);
+        return `${i.quantidade}x ${i.nome} - R$ ${sub.toFixed(2)}`;
+      })
+      .join("\n");
+
+    const cabecalhoId = pedidoId
+      ? `🧾 *Pedido:* ${pedidoId.slice(0, 6).toUpperCase()}\n\n`
+      : "";
+
+    if (tipoEntrega === "entrega") {
+      // ✅ entrega: avisa que frete será calculado depois
+      return encodeURIComponent(
+        `🛒 *Pedido - Gigante dos Assados*\n` +
+          cabecalhoId +
+          `${itens}\n\n` +
+          `Subtotal: R$ ${subtotal.toFixed(2)}\n` +
+          `🚚 Frete: *a calcular*\n` +
+          `✅ *Vamos calcular o frete e te enviar o valor total do pedido.*\n\n` +
+          `📍 *Entrega*\n` +
+          `Cliente: ${cliente.nome}\n` +
+          `WhatsApp: ${cliente.telefone}\n` +
+          `Endereço: ${cliente.endereco}\n\n` +
+          `💳 Pagamento: ${pagamentoTexto}\n` +
+          (pagamento === "dinheiro" && trocoPara ? `🪙 Troco: R$ ${trocoPara}\n` : "")
+      );
+    }
+
+    // ✅ retirada: total já fechado
+    return encodeURIComponent(
+      `🛒 *Pedido - Gigante dos Assados*\n` +
+        cabecalhoId +
+        `${itens}\n\n` +
+        `Total: R$ ${total.toFixed(2)}\n\n` +
+        `🏠 *Retirada no local*\n` +
+        `💳 Pagamento: ${pagamentoTexto}\n` +
+        (pagamento === "dinheiro" && trocoPara ? `🪙 Troco: R$ ${trocoPara}\n` : "")
+    );
+  }
 
   async function salvarPedido() {
     if (!podeFinalizar) {
@@ -95,16 +108,16 @@ export default function CarrinhoModal({
     try {
       setLoading(true);
 
-      // 1) cria venda
+      // Salva venda
       const { data: venda, error: errVenda } = await supabase
         .from("gigante_vendas")
         .insert({
           data: new Date().toISOString(),
-          total: total,
-          subtotal: subtotal,
-          frete: frete,
-          metodo_pagamento: pagamentoTexto, // mantém seu campo atual
-          pagamento_detalhe: pagamento, // extra (se você criou a coluna)
+          subtotal,
+          frete, // amanhã: 0
+          total, // amanhã: subtotal (entrega será atualizado depois manualmente se quiser)
+          metodo_pagamento: pagamentoTexto,
+          pagamento_detalhe: pagamento,
           tipo_entrega: tipoEntrega,
           status: "novo",
           cliente_nome: tipoEntrega === "entrega" ? cliente.nome : null,
@@ -112,8 +125,12 @@ export default function CarrinhoModal({
           cliente_endereco: tipoEntrega === "entrega" ? cliente.endereco : null,
           origem: "SITE",
           observacoes:
-            pagamento === "dinheiro" && trocoPara
-              ? `Troco para R$ ${trocoPara}`
+            tipoEntrega === "entrega"
+              ? `FRETE A CALCULAR (amanhã MVP)${
+                  pagamento === "dinheiro" && trocoPara ? ` | Troco: R$ ${trocoPara}` : ""
+                }`
+              : pagamento === "dinheiro" && trocoPara
+              ? `Troco: R$ ${trocoPara}`
               : null,
         })
         .select("id")
@@ -121,7 +138,7 @@ export default function CarrinhoModal({
 
       if (errVenda) throw errVenda;
 
-      // 2) cria itens
+      // Salva itens
       const itens = carrinho.map((i: any) => ({
         venda_id: venda.id,
         produto_id: i.id,
@@ -137,16 +154,15 @@ export default function CarrinhoModal({
 
       if (errItens) throw errItens;
 
-      // ✅ (opcional) abre WhatsApp
-      window.open(`https://wa.me/5511948163211?text=${mensagemWhatsApp}`, "_blank");
+      // Abre WhatsApp com mensagem certa (entrega/retirada)
+      const msg = montarMensagemWhatsApp(venda.id);
+      window.open(`https://wa.me/5511948163211?text=${msg}`, "_blank");
 
       alert("Pedido enviado! ✅");
-
-      // fecha modal
       setAberto(false);
     } catch (e: any) {
       console.error(e);
-      alert("Erro ao salvar pedido. Confira Supabase/RLS.");
+      alert("Erro ao salvar pedido. (RLS/colunas) — me manda o erro do console.");
     } finally {
       setLoading(false);
     }
@@ -203,18 +219,18 @@ export default function CarrinhoModal({
               placeholder="WhatsApp"
               className="w-full border p-2 rounded"
               value={cliente.telefone}
-              onChange={(e) =>
-                setCliente({ ...cliente, telefone: e.target.value })
-              }
+              onChange={(e) => setCliente({ ...cliente, telefone: e.target.value })}
             />
             <input
               placeholder="Endereço completo"
               className="w-full border p-2 rounded"
               value={cliente.endereco}
-              onChange={(e) =>
-                setCliente({ ...cliente, endereco: e.target.value })
-              }
+              onChange={(e) => setCliente({ ...cliente, endereco: e.target.value })}
             />
+
+            <div className="text-xs text-gray-600 bg-yellow-50 border border-yellow-200 rounded p-2">
+              🚚 O frete será calculado após o pedido. Vamos te enviar o valor total no WhatsApp.
+            </div>
           </div>
         )}
 
@@ -231,7 +247,6 @@ export default function CarrinhoModal({
             >
               Pix
             </button>
-
             <button
               onClick={() => setPagamento("cartao")}
               className={`py-2 rounded ${
@@ -240,7 +255,6 @@ export default function CarrinhoModal({
             >
               Cartão
             </button>
-
             <button
               onClick={() => setPagamento("dinheiro")}
               className={`py-2 rounded ${
@@ -249,8 +263,14 @@ export default function CarrinhoModal({
             >
               Dinheiro
             </button>
-
-            
+            <button
+              onClick={() => setPagamento("vr")}
+              className={`py-2 rounded ${
+                pagamento === "vr" ? "bg-black text-white" : "border"
+              }`}
+            >
+              VR/VA
+            </button>
           </div>
 
           {pagamento === "dinheiro" && (
@@ -266,11 +286,17 @@ export default function CarrinhoModal({
         {/* TOTAIS */}
         <div className="text-sm space-y-1">
           <p>Subtotal: R$ {subtotal.toFixed(2)}</p>
-          <p>Frete: a calcular</p>
-          <p className="font-bold">Total parcial: R$ {total.toFixed(2)}</p>
+          {tipoEntrega === "entrega" ? (
+            <p>Frete: <b>a calcular</b></p>
+          ) : (
+            <p>Frete: R$ 0,00</p>
+          )}
+          <p className="font-bold">
+            {tipoEntrega === "entrega" ? "Total parcial" : "Total"}: R$ {total.toFixed(2)}
+          </p>
         </div>
 
-        {/* FINALIZAR (salva no banco) */}
+        {/* FINALIZAR */}
         <button
           onClick={salvarPedido}
           disabled={loading}
@@ -278,7 +304,7 @@ export default function CarrinhoModal({
             loading ? "bg-gray-400" : "bg-green-600"
           }`}
         >
-          {loading ? "Salvando..." : "Finalizar pedido"}
+          {loading ? "Enviando..." : "Finalizar pedido"}
         </button>
 
         <button
