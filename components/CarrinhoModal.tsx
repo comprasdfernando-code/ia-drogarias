@@ -2,6 +2,8 @@
 
 import { useMemo, useState } from "react";
 
+type Pagamento = "pix" | "cartao" | "dinheiro" | "vr";
+
 export default function CarrinhoModal({
   aberto,
   setAberto,
@@ -19,6 +21,9 @@ export default function CarrinhoModal({
     endereco: "",
   });
 
+  const [pagamento, setPagamento] = useState<Pagamento>("pix");
+  const [trocoPara, setTrocoPara] = useState<string>("");
+
   // 🧮 Subtotal
   const subtotal = useMemo(
     () =>
@@ -29,7 +34,7 @@ export default function CarrinhoModal({
     [carrinho]
   );
 
-  // 🚚 Frete (por enquanto zerado / a calcular)
+  // 🚚 Frete (por enquanto a calcular)
   const frete = tipoEntrega === "entrega" ? 0 : 0;
 
   const total = subtotal + frete;
@@ -45,6 +50,15 @@ export default function CarrinhoModal({
       )
       .join("\n");
 
+    const pagamentoTexto =
+      pagamento === "pix"
+        ? "Pix"
+        : pagamento === "cartao"
+        ? "Cartão"
+        : pagamento === "dinheiro"
+        ? `Dinheiro${trocoPara ? ` (troco para R$ ${trocoPara})` : ""}`
+        : "VR/VA";
+
     return encodeURIComponent(
       `🛒 *Pedido - Gigante dos Assados*\n\n` +
         `${itens}\n\n` +
@@ -57,9 +71,19 @@ export default function CarrinhoModal({
             `Cliente: ${cliente.nome}\n` +
             `WhatsApp: ${cliente.telefone}\n` +
             `Endereço: ${cliente.endereco}\n`
-          : `\n🏠 Retirada no local`)
+          : `\n🏠 Retirada no local\n`) +
+        `\n💳 *Pagamento*: ${pagamentoTexto}\n`
     );
-  }, [carrinho, subtotal, total, tipoEntrega, cliente]);
+  }, [carrinho, subtotal, total, tipoEntrega, cliente, pagamento, trocoPara]);
+
+  // ✅ validação simples (não deixa finalizar vazio)
+  const podeFinalizar =
+    carrinho.length > 0 &&
+    (tipoEntrega === "retirada" ||
+      (cliente.nome.trim() &&
+        cliente.telefone.trim() &&
+        cliente.endereco.trim())) &&
+    (pagamento !== "dinheiro" || true);
 
   return (
     <div className="fixed inset-0 bg-black/60 flex justify-end z-50">
@@ -68,16 +92,11 @@ export default function CarrinhoModal({
 
         {/* ITENS */}
         {carrinho.map((i: any) => (
-          <div
-            key={i.id}
-            className="flex justify-between mb-2 text-sm"
-          >
+          <div key={i.id} className="flex justify-between mb-2 text-sm">
             <span>
               {i.quantidade}x {i.nome}
             </span>
-            <span>
-              R$ {(i.preco * i.quantidade).toFixed(2)}
-            </span>
+            <span>R$ {(i.preco * i.quantidade).toFixed(2)}</span>
           </div>
         ))}
 
@@ -125,10 +144,7 @@ export default function CarrinhoModal({
               className="w-full border p-2 rounded"
               value={cliente.telefone}
               onChange={(e) =>
-                setCliente({
-                  ...cliente,
-                  telefone: e.target.value,
-                })
+                setCliente({ ...cliente, telefone: e.target.value })
               }
             />
 
@@ -137,14 +153,64 @@ export default function CarrinhoModal({
               className="w-full border p-2 rounded"
               value={cliente.endereco}
               onChange={(e) =>
-                setCliente({
-                  ...cliente,
-                  endereco: e.target.value,
-                })
+                setCliente({ ...cliente, endereco: e.target.value })
               }
             />
           </div>
         )}
+
+        {/* PAGAMENTO */}
+        <div className="mb-3">
+          <p className="font-bold text-sm mb-2">💳 Forma de pagamento</p>
+
+          <div className="grid grid-cols-2 gap-2">
+            <button
+              onClick={() => setPagamento("pix")}
+              className={`py-2 rounded ${
+                pagamento === "pix" ? "bg-black text-white" : "border"
+              }`}
+            >
+              Pix
+            </button>
+
+            <button
+              onClick={() => setPagamento("cartao")}
+              className={`py-2 rounded ${
+                pagamento === "cartao" ? "bg-black text-white" : "border"
+              }`}
+            >
+              Cartão
+            </button>
+
+            <button
+              onClick={() => setPagamento("dinheiro")}
+              className={`py-2 rounded ${
+                pagamento === "dinheiro" ? "bg-black text-white" : "border"
+              }`}
+            >
+              Dinheiro
+            </button>
+
+            <button
+              onClick={() => setPagamento("vr")}
+              className={`py-2 rounded ${
+                pagamento === "vr" ? "bg-black text-white" : "border"
+              }`}
+            >
+              VR/VA
+            </button>
+          </div>
+
+          {/* TROCO */}
+          {pagamento === "dinheiro" && (
+            <input
+              placeholder="Troco para quanto? (opcional)"
+              className="w-full border p-2 rounded mt-2"
+              value={trocoPara}
+              onChange={(e) => setTrocoPara(e.target.value)}
+            />
+          )}
+        </div>
 
         {/* TOTAIS */}
         <div className="text-sm space-y-1">
@@ -155,9 +221,25 @@ export default function CarrinhoModal({
 
         {/* FINALIZAR */}
         <a
-          href={`https://wa.me/5511948163211?text=${mensagemWhatsApp}`}
+          href={
+            podeFinalizar
+              ? `https://wa.me/5511948163211?text=${mensagemWhatsApp}`
+              : undefined
+          }
           target="_blank"
-          className="block mt-4 bg-green-600 text-white text-center py-2 rounded"
+          className={`block mt-4 text-white text-center py-2 rounded ${
+            podeFinalizar ? "bg-green-600" : "bg-gray-400 cursor-not-allowed"
+          }`}
+          onClick={(e) => {
+            if (!podeFinalizar) {
+              e.preventDefault();
+              alert(
+                tipoEntrega === "entrega"
+                  ? "Preencha Nome, WhatsApp e Endereço para entrega."
+                  : "Adicione itens no carrinho."
+              );
+            }
+          }}
         >
           Finalizar pedido
         </a>
