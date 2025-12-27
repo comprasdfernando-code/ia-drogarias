@@ -4,6 +4,9 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 
+// ✅ WhatsApp OFICIAL do Gigante (com DDI Brasil)
+const WHATSAPP_GIGANTE = "5511948163211"; // 11 94816-3211
+
 type Venda = {
   id: string;
   data: string;
@@ -58,7 +61,10 @@ function onlyDigits(v?: string | null) {
 }
 
 function formatMoney(n: number) {
-  return n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return n.toLocaleString("pt-BR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 }
 
 export default function PainelPedidos() {
@@ -109,16 +115,17 @@ export default function PainelPedidos() {
     );
   }
 
-  // ✅ Botão "Enviar total" (MVP amanhã)
+  // ✅ Envia para o WhatsApp DO GIGANTE (não do cliente e não do seu)
   function enviarTotalWhatsApp(p: Venda) {
     if (p.tipo_entrega !== "entrega") {
       alert("Esse botão é só para pedidos de entrega.");
       return;
     }
 
-    const tel = onlyDigits(p.cliente_telefone);
-    if (!tel) {
-      alert("Pedido sem WhatsApp do cliente.");
+    // (Opcional) se quiser validar que tem telefone do cliente no pedido:
+    const telCliente = onlyDigits(p.cliente_telefone);
+    if (!telCliente) {
+      alert("Pedido sem WhatsApp do cliente (campo vazio).");
       return;
     }
 
@@ -140,15 +147,15 @@ export default function PainelPedidos() {
         `Subtotal: R$ ${formatMoney(subtotal)}\n` +
         `Frete: R$ ${formatMoney(frete)}\n` +
         `*Total: R$ ${formatMoney(totalFinal)}*\n\n` +
+        `📍 *Cliente*\n` +
+        `Nome: ${p.cliente_nome || "-"}\n` +
+        `WhatsApp: ${p.cliente_telefone || "-"}\n` +
+        `Endereço: ${p.cliente_endereco || "-"}\n\n` +
         `💳 Pagamento: ${p.metodo_pagamento}\n\n` +
-        `Pode confirmar o pedido, por favor? 🙏`
+        `➡️ *Responder o cliente e confirmar o pedido*`
     );
 
-    // se o telefone já veio com DDI/DDD, usa como está.
-    // Se vier "119..." também funciona com 55 + numero.
-    const numero = tel.startsWith("55") ? tel : `55${tel}`;
-
-    window.open(`https://wa.me/${numero}?text=${mensagem}`, "_blank");
+    window.open(`https://wa.me/${WHATSAPP_GIGANTE}?text=${mensagem}`, "_blank");
   }
 
   useEffect(() => {
@@ -280,12 +287,12 @@ export default function PainelPedidos() {
                     🖨️ Imprimir
                   </Link>
 
-                  {/* ✅ Botão novo: Enviar total (somente entrega e não entregue) */}
+                  {/* ✅ Enviar total SEMPRE para o WhatsApp do Gigante */}
                   {p.tipo_entrega === "entrega" && p.status !== "entregue" && (
                     <button
                       onClick={() => enviarTotalWhatsApp(p)}
                       className="px-3 py-2 rounded bg-green-600 text-white hover:bg-green-700"
-                      title="Enviar total com frete para o cliente no WhatsApp"
+                      title="Abrir WhatsApp do Gigante com o total + dados do cliente"
                     >
                       📲 Enviar total
                     </button>

@@ -95,10 +95,10 @@ export default function Home() {
     {/* RODAPÉ */}
 
     <a
-  href="/gigante/pdv"
+  href="/gigante/pedido"
   className="fixed bottom-6 left-6 bg-blue-600 text-white font-bold px-6 py-3 rounded-full shadow-lg neon"
 >
-  PDV
+  PEDIDO
 </a>
 
     <footer className="bg-yellow-500 text-center py-4 mt-10 shadow-inner">
@@ -110,7 +110,7 @@ export default function Home() {
         href="https://wa.me/5511948163211"
         className="fixed bottom-6 right-6 bg-green-600 text-white font-bold px-6 py-3 rounded-full shadow-lg neon"
       >
-        FAÇA SEU PEDIDO
+        FALE COM GIGANTE
       </a>
     </footer>
   </main>
