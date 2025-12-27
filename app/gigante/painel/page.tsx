@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -20,6 +20,9 @@ export default function PainelPedidos() {
   const [pedidos, setPedidos] = useState<Venda[]>([]);
   const [loading, setLoading] = useState(true);
 
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const ultimosIdsRef = useRef<Set<string>>(new Set());
+
   async function carregar() {
     setLoading(true);
     const { data, error } = await supabase
@@ -29,27 +32,66 @@ export default function PainelPedidos() {
       )
       .order("data", { ascending: false });
 
-    if (!error) setPedidos((data as any) || []);
+    if (!error && data) {
+      setPedidos(data as any);
+      // marca ids já existentes pra não bipar tudo ao abrir
+      ultimosIdsRef.current = new Set((data as any).map((p: any) => p.id));
+    }
     setLoading(false);
   }
 
   async function mudarStatus(id: string, status: string) {
     await supabase.from("gigante_vendas").update({ status }).eq("id", id);
-    carregar();
   }
 
   useEffect(() => {
     carregar();
 
-    // Recarrega a cada 5s (MVP). Depois fazemos realtime.
-    const t = setInterval(carregar, 5000);
-    return () => clearInterval(t);
+    // 🔔 realtime
+    const channel = supabase
+      .channel("gigante-painel-pedidos")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "gigante_vendas" },
+        async (payload) => {
+          // Atualiza lista rapidamente
+          const { data } = await supabase
+            .from("gigante_vendas")
+            .select(
+              "id,data,total,status,tipo_entrega,metodo_pagamento,cliente_nome,cliente_telefone,cliente_endereco"
+            )
+            .order("data", { ascending: false });
+
+          if (data) setPedidos(data as any);
+
+          // 🔔 Som somente quando chegar INSERT novo
+          if (payload.eventType === "INSERT") {
+            const novoId = (payload.new as any)?.id;
+            if (novoId && !ultimosIdsRef.current.has(novoId)) {
+              ultimosIdsRef.current.add(novoId);
+
+              // Tenta tocar som (pode precisar 1 clique no painel pra liberar áudio)
+              try {
+                await audioRef.current?.play();
+              } catch {}
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   return (
     <div className="min-h-screen bg-gray-50 p-4">
+      {/* áudio do “bip” */}
+      <audio ref={audioRef} src="/sounds/new-order.mp3" preload="auto" />
+
       <div className="flex items-center justify-between mb-4">
-        <h1 className="text-xl font-bold">📥 Painel de Pedidos</h1>
+        <h1 className="text-xl font-bold">📥 Painel de Pedidos (Realtime)</h1>
         <button onClick={carregar} className="px-3 py-2 rounded border">
           Atualizar
         </button>
@@ -60,7 +102,7 @@ export default function PainelPedidos() {
       <div className="space-y-3">
         {pedidos.map((p) => (
           <div key={p.id} className="bg-white rounded-xl shadow p-3">
-            <div className="flex items-center justify-between">
+            <div className="flex items-start justify-between gap-3">
               <div>
                 <p className="font-bold">
                   Pedido {p.id.slice(0, 6).toUpperCase()} •{" "}
@@ -92,7 +134,7 @@ export default function PainelPedidos() {
               </Link>
             </div>
 
-            <div className="flex gap-2 mt-3">
+            <div className="flex flex-wrap gap-2 mt-3">
               <button
                 onClick={() => mudarStatus(p.id, "novo")}
                 className="px-3 py-2 rounded border"
@@ -118,6 +160,11 @@ export default function PainelPedidos() {
                 Entregue
               </button>
             </div>
+
+            <p className="text-xs text-gray-500 mt-2">
+              Dica: se o som não tocar, clique 1 vez em qualquer lugar do painel
+              (o navegador libera áudio).
+            </p>
           </div>
         ))}
       </div>

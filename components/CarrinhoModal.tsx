@@ -250,14 +250,7 @@ export default function CarrinhoModal({
               Dinheiro
             </button>
 
-            <button
-              onClick={() => setPagamento("vr")}
-              className={`py-2 rounded ${
-                pagamento === "vr" ? "bg-black text-white" : "border"
-              }`}
-            >
-              VR/VA
-            </button>
+            
           </div>
 
           {pagamento === "dinheiro" && (
