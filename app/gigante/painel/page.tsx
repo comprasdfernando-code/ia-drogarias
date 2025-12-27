@@ -53,6 +53,14 @@ function proximoStatus(status: string) {
   return "entregue";
 }
 
+function onlyDigits(v?: string | null) {
+  return (v || "").replace(/\D/g, "");
+}
+
+function formatMoney(n: number) {
+  return n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+}
+
 export default function PainelPedidos() {
   const [pedidos, setPedidos] = useState<Venda[]>([]);
   const [loading, setLoading] = useState(true);
@@ -96,10 +104,51 @@ export default function PainelPedidos() {
       return;
     }
 
-    // atualiza rápido sem esperar realtime
     setPedidos((prev) =>
       prev.map((p) => (p.id === id ? { ...p, status } : p))
     );
+  }
+
+  // ✅ Botão "Enviar total" (MVP amanhã)
+  function enviarTotalWhatsApp(p: Venda) {
+    if (p.tipo_entrega !== "entrega") {
+      alert("Esse botão é só para pedidos de entrega.");
+      return;
+    }
+
+    const tel = onlyDigits(p.cliente_telefone);
+    if (!tel) {
+      alert("Pedido sem WhatsApp do cliente.");
+      return;
+    }
+
+    const freteStr = prompt("Valor do frete (ex: 8,50):");
+    if (!freteStr) return;
+
+    const frete = Number(freteStr.replace(",", "."));
+    if (isNaN(frete) || frete < 0) {
+      alert("Valor de frete inválido.");
+      return;
+    }
+
+    const subtotal = Number(p.total) || 0;
+    const totalFinal = subtotal + frete;
+
+    const mensagem = encodeURIComponent(
+      `🛵 *Gigante dos Assados*\n\n` +
+        `🧾 Pedido *${p.id.slice(0, 6).toUpperCase()}*\n\n` +
+        `Subtotal: R$ ${formatMoney(subtotal)}\n` +
+        `Frete: R$ ${formatMoney(frete)}\n` +
+        `*Total: R$ ${formatMoney(totalFinal)}*\n\n` +
+        `💳 Pagamento: ${p.metodo_pagamento}\n\n` +
+        `Pode confirmar o pedido, por favor? 🙏`
+    );
+
+    // se o telefone já veio com DDI/DDD, usa como está.
+    // Se vier "119..." também funciona com 55 + numero.
+    const numero = tel.startsWith("55") ? tel : `55${tel}`;
+
+    window.open(`https://wa.me/${numero}?text=${mensagem}`, "_blank");
   }
 
   useEffect(() => {
@@ -111,7 +160,6 @@ export default function PainelPedidos() {
         "postgres_changes",
         { event: "*", schema: "public", table: "gigante_vendas" },
         async (payload) => {
-          // Recarrega lista
           const { data } = await supabase
             .from("gigante_vendas")
             .select(
@@ -121,7 +169,6 @@ export default function PainelPedidos() {
 
           if (data) setPedidos(data as any);
 
-          // 🔔 Som somente quando chegar INSERT novo
           if (payload.eventType === "INSERT") {
             const novoId = (payload.new as any)?.id;
             if (novoId && !ultimosIdsRef.current.has(novoId)) {
@@ -144,7 +191,6 @@ export default function PainelPedidos() {
 
   return (
     <div className="min-h-screen bg-gray-50 p-4">
-      {/* áudio do “bip” */}
       <audio ref={audioRef} src="/sounds/new-order.mp3" preload="auto" />
 
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-4">
@@ -168,7 +214,10 @@ export default function PainelPedidos() {
             <option value="entregue">Entregue</option>
           </select>
 
-          <button onClick={carregar} className="px-3 py-2 rounded border bg-white">
+          <button
+            onClick={carregar}
+            className="px-3 py-2 rounded border bg-white"
+          >
             Atualizar
           </button>
         </div>
@@ -204,7 +253,9 @@ export default function PainelPedidos() {
                   </div>
 
                   <p className="text-sm text-gray-700 mt-1">
-                    <span className="font-semibold">R$ {Number(p.total).toFixed(2)}</span>{" "}
+                    <span className="font-semibold">
+                      R$ {Number(p.total).toFixed(2)}
+                    </span>{" "}
                     • {p.tipo_entrega} • {p.metodo_pagamento}
                   </p>
 
@@ -228,6 +279,17 @@ export default function PainelPedidos() {
                   >
                     🖨️ Imprimir
                   </Link>
+
+                  {/* ✅ Botão novo: Enviar total (somente entrega e não entregue) */}
+                  {p.tipo_entrega === "entrega" && p.status !== "entregue" && (
+                    <button
+                      onClick={() => enviarTotalWhatsApp(p)}
+                      className="px-3 py-2 rounded bg-green-600 text-white hover:bg-green-700"
+                      title="Enviar total com frete para o cliente no WhatsApp"
+                    >
+                      📲 Enviar total
+                    </button>
+                  )}
 
                   <button
                     onClick={() => mudarStatus(p.id, proximoStatus(p.status))}
@@ -267,7 +329,8 @@ export default function PainelPedidos() {
               </div>
 
               <p className="text-xs text-gray-500 mt-2">
-                Dica: se o som não tocar, clique 1 vez no painel (o navegador libera áudio).
+                Dica: se o som não tocar, clique 1 vez no painel (o navegador
+                libera áudio).
               </p>
             </div>
           );
