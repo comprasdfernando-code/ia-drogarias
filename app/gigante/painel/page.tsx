@@ -7,6 +7,14 @@ import { supabase } from "@/lib/supabaseClient";
 // ✅ WhatsApp OFICIAL do Gigante (com DDI Brasil)
 const WHATSAPP_GIGANTE = "5511948163211"; // 11 94816-3211
 
+type ItemVenda = {
+  id?: string;
+  nome: string;
+  quantidade: number;
+  preco: number;
+  subtotal?: number | null;
+};
+
 type Venda = {
   id: string;
   data: string;
@@ -17,6 +25,9 @@ type Venda = {
   cliente_nome?: string | null;
   cliente_telefone?: string | null;
   cliente_endereco?: string | null;
+
+  // ✅ Itens do pedido (relacionamento com gigante_venda_itens)
+  itens?: ItemVenda[];
 };
 
 const STATUS_STYLE: Record<
@@ -71,6 +82,7 @@ export default function PainelPedidos() {
   const [pedidos, setPedidos] = useState<Venda[]>([]);
   const [loading, setLoading] = useState(true);
   const [filtro, setFiltro] = useState<string>("todos");
+  const [abertoItens, setAbertoItens] = useState<Record<string, boolean>>({});
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const ultimosIdsRef = useRef<Set<string>>(new Set());
@@ -80,12 +92,36 @@ export default function PainelPedidos() {
     return pedidos.filter((p) => p.status === filtro);
   }, [pedidos, filtro]);
 
+  function toggleItens(id: string) {
+    setAbertoItens((prev) => ({ ...prev, [id]: !prev[id] }));
+  }
+
   async function carregar() {
     setLoading(true);
+
+    // ✅ Puxa venda + itens (relacionamento via venda_id)
+    // Se o relacionamento não estiver reconhecido pelo Supabase, veja OBS abaixo.
     const { data, error } = await supabase
       .from("gigante_vendas")
       .select(
-        "id,data,total,status,tipo_entrega,metodo_pagamento,cliente_nome,cliente_telefone,cliente_endereco"
+        `
+        id,
+        data,
+        total,
+        status,
+        tipo_entrega,
+        metodo_pagamento,
+        cliente_nome,
+        cliente_telefone,
+        cliente_endereco,
+        itens:gigante_venda_itens (
+          id,
+          nome,
+          quantidade,
+          preco,
+          subtotal
+        )
+      `
       )
       .order("data", { ascending: false });
 
@@ -95,6 +131,7 @@ export default function PainelPedidos() {
     } else {
       console.error(error);
     }
+
     setLoading(false);
   }
 
@@ -110,19 +147,17 @@ export default function PainelPedidos() {
       return;
     }
 
-    setPedidos((prev) =>
-      prev.map((p) => (p.id === id ? { ...p, status } : p))
-    );
+    // atualiza rápido sem esperar realtime
+    setPedidos((prev) => prev.map((p) => (p.id === id ? { ...p, status } : p)));
   }
 
-  // ✅ Envia para o WhatsApp DO GIGANTE (não do cliente e não do seu)
+  // ✅ Envia para o WhatsApp DO GIGANTE
   function enviarTotalWhatsApp(p: Venda) {
     if (p.tipo_entrega !== "entrega") {
       alert("Esse botão é só para pedidos de entrega.");
       return;
     }
 
-    // (Opcional) se quiser validar que tem telefone do cliente no pedido:
     const telCliente = onlyDigits(p.cliente_telefone);
     if (!telCliente) {
       alert("Pedido sem WhatsApp do cliente (campo vazio).");
@@ -141,9 +176,20 @@ export default function PainelPedidos() {
     const subtotal = Number(p.total) || 0;
     const totalFinal = subtotal + frete;
 
+    const itensTexto =
+      p.itens && p.itens.length
+        ? p.itens
+            .map((i) => {
+              const sub = (Number(i.preco) || 0) * (Number(i.quantidade) || 0);
+              return `• ${i.quantidade}x ${i.nome} - R$ ${formatMoney(sub)}`;
+            })
+            .join("\n")
+        : "(Itens não carregados)";
+
     const mensagem = encodeURIComponent(
       `🛵 *Gigante dos Assados*\n\n` +
         `🧾 Pedido *${p.id.slice(0, 6).toUpperCase()}*\n\n` +
+        `🍖 Itens:\n${itensTexto}\n\n` +
         `Subtotal: R$ ${formatMoney(subtotal)}\n` +
         `Frete: R$ ${formatMoney(frete)}\n` +
         `*Total: R$ ${formatMoney(totalFinal)}*\n\n` +
@@ -155,27 +201,26 @@ export default function PainelPedidos() {
         `➡️ *Responder o cliente e confirmar o pedido*`
     );
 
-    window.open(`https://wa.me/${WHATSAPP_GIGANTE}?text=${mensagem}`, "_blank");
+    window.open(
+      `https://wa.me/${WHATSAPP_GIGANTE}?text=${mensagem}`,
+      "_blank"
+    );
   }
 
   useEffect(() => {
     carregar();
 
+    // 🔔 realtime
     const channel = supabase
       .channel("gigante-painel-pedidos")
       .on(
         "postgres_changes",
         { event: "*", schema: "public", table: "gigante_vendas" },
         async (payload) => {
-          const { data } = await supabase
-            .from("gigante_vendas")
-            .select(
-              "id,data,total,status,tipo_entrega,metodo_pagamento,cliente_nome,cliente_telefone,cliente_endereco"
-            )
-            .order("data", { ascending: false });
+          // Recarrega lista (inclui itens)
+          await carregar();
 
-          if (data) setPedidos(data as any);
-
+          // bip só no INSERT novo
           if (payload.eventType === "INSERT") {
             const novoId = (payload.new as any)?.id;
             if (novoId && !ultimosIdsRef.current.has(novoId)) {
@@ -194,6 +239,7 @@ export default function PainelPedidos() {
     return () => {
       supabase.removeChannel(channel);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (
@@ -204,7 +250,7 @@ export default function PainelPedidos() {
         <div>
           <h1 className="text-2xl font-bold">📥 Painel de Pedidos</h1>
           <p className="text-sm text-gray-600">
-            Realtime + etapas por cor (igual KDS).
+            Realtime + etapas por cor + itens do pedido.
           </p>
         </div>
 
@@ -235,6 +281,11 @@ export default function PainelPedidos() {
       <div className="space-y-3">
         {filtrados.map((p) => {
           const st = STATUS_STYLE[p.status] || STATUS_STYLE["novo"];
+          const itens = p.itens || [];
+          const qtdItens = itens.reduce(
+            (s, i) => s + Number(i.quantidade || 0),
+            0
+          );
 
           return (
             <div
@@ -264,16 +315,75 @@ export default function PainelPedidos() {
                       R$ {Number(p.total).toFixed(2)}
                     </span>{" "}
                     • {p.tipo_entrega} • {p.metodo_pagamento}
+                    {itens.length > 0 && (
+                      <>
+                        {" "}
+                        • <span className="font-semibold">{qtdItens}</span>{" "}
+                        itens
+                      </>
+                    )}
                   </p>
 
+                  {/* ✅ ITENS DO PEDIDO */}
+                  <div className="mt-2">
+                    <button
+                      onClick={() => toggleItens(p.id)}
+                      className="text-sm px-3 py-2 rounded border bg-white hover:bg-gray-50"
+                    >
+                      {abertoItens[p.id] ? "▾ Ocultar itens" : "▸ Ver itens"}
+                    </button>
+
+                    {abertoItens[p.id] && (
+                      <div className="mt-2 bg-gray-50 border rounded-lg p-2">
+                        {itens.length === 0 ? (
+                          <p className="text-sm text-gray-600">
+                            Itens não carregados (verifique relacionamento /
+                            select).
+                          </p>
+                        ) : (
+                          <div className="space-y-1">
+                            {itens.map((i, idx) => {
+                              const sub =
+                                (Number(i.preco) || 0) *
+                                (Number(i.quantidade) || 0);
+                              return (
+                                <div
+                                  key={i.id || `${p.id}-${idx}`}
+                                  className="flex justify-between text-sm"
+                                >
+                                  <span className="truncate">
+                                    {i.quantidade}x {i.nome}
+                                  </span>
+                                  <span className="font-semibold">
+                                    R$ {formatMoney(sub)}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* ✅ Dados de entrega (quando entrega) */}
                   {p.tipo_entrega === "entrega" && (
-                    <div className="text-sm text-gray-700 mt-2 bg-gray-50 border rounded-lg p-2">
+                    <div className="text-sm text-gray-700 mt-3 bg-gray-50 border rounded-lg p-2">
                       <div className="font-semibold">📍 Entrega</div>
                       <div className="truncate">{p.cliente_nome}</div>
                       <div className="truncate">{p.cliente_telefone}</div>
                       <div className="text-xs text-gray-600 mt-1">
                         {p.cliente_endereco}
                       </div>
+                    </div>
+                  )}
+
+                  {/* ✅ Dados do cliente (retirada também) */}
+                  {p.tipo_entrega === "retirada" && (
+                    <div className="text-sm text-gray-700 mt-3 bg-gray-50 border rounded-lg p-2">
+                      <div className="font-semibold">🏠 Retirada</div>
+                      <div className="truncate">{p.cliente_nome || "-"}</div>
+                      <div className="truncate">{p.cliente_telefone || "-"}</div>
                     </div>
                   )}
                 </div>
@@ -287,7 +397,7 @@ export default function PainelPedidos() {
                     🖨️ Imprimir
                   </Link>
 
-                  {/* ✅ Enviar total SEMPRE para o WhatsApp do Gigante */}
+                  {/* ✅ Enviar total (somente entrega e não entregue) */}
                   {p.tipo_entrega === "entrega" && p.status !== "entregue" && (
                     <button
                       onClick={() => enviarTotalWhatsApp(p)}
@@ -343,6 +453,13 @@ export default function PainelPedidos() {
           );
         })}
       </div>
+
+      {/* ✅ OBS IMPORTANTE:
+          Se os itens NÃO aparecerem, geralmente é porque o Supabase não reconheceu o relacionamento.
+          Garanta que existe FK:
+            gigante_venda_itens.venda_id -> gigante_vendas.id
+          (você já tem), e no Supabase: Database > Table Editor > Relationships (ver se aparece).
+      */}
     </div>
   );
 }
