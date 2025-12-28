@@ -6,16 +6,33 @@ import { supabase } from "@/lib/supabaseClient";
 type Pagamento = "pix" | "cartao" | "dinheiro" | "vr";
 type TipoEntrega = "retirada" | "entrega";
 
+type Cliente = {
+  nome: string;
+  telefone: string;
+  endereco: string;
+};
+
+type ItemCarrinho = {
+  id: string;
+  nome: string;
+  preco: number;
+  quantidade: number;
+};
+
 export default function CarrinhoModal({
   aberto,
   setAberto,
   carrinho,
-}: any) {
+}: {
+  aberto: boolean;
+  setAberto: (v: boolean) => void;
+  carrinho: ItemCarrinho[];
+}) {
   if (!aberto) return null;
 
   const [tipoEntrega, setTipoEntrega] = useState<TipoEntrega>("retirada");
 
-  const [cliente, setCliente] = useState({
+  const [cliente, setCliente] = useState<Cliente>({
     nome: "",
     telefone: "",
     endereco: "",
@@ -23,19 +40,21 @@ export default function CarrinhoModal({
 
   const [pagamento, setPagamento] = useState<Pagamento>("pix");
   const [trocoPara, setTrocoPara] = useState<string>("");
-
   const [loading, setLoading] = useState(false);
 
-  const subtotal = useMemo(
-    () =>
-      carrinho.reduce(
-        (s: number, i: any) => s + Number(i.preco) * Number(i.quantidade),
-        0
-      ),
+  const subtotal = useMemo(() => {
+    return carrinho.reduce(
+      (s, i) => s + Number(i.preco || 0) * Number(i.quantidade || 0),
+      0
+    );
+  }, [carrinho]);
+
+  const qtdItens = useMemo(
+    () => carrinho.reduce((s, i) => s + Number(i.quantidade || 0), 0),
     [carrinho]
   );
 
-  // Amanhã: frete fica 0 no sistema e "a calcular" no texto quando for entrega
+  // ✅ MVP: frete fica 0 no sistema e "a calcular" no texto quando entrega
   const frete = 0;
   const total = subtotal + frete;
 
@@ -48,14 +67,17 @@ export default function CarrinhoModal({
       ? `Dinheiro${trocoPara ? ` (troco para R$ ${trocoPara})` : ""}`
       : "VR/VA";
 
-  const podeFinalizar =
-    carrinho.length > 0 &&
-    (tipoEntrega === "retirada" ||
-      (cliente.nome.trim() && cliente.telefone.trim() && cliente.endereco.trim()));
+  // ✅ Agora: Nome e WhatsApp são obrigatórios em qualquer tipo (retirada/entrega)
+  const clienteOk = cliente.nome.trim() && cliente.telefone.trim();
+
+  // ✅ Endereço obrigatório só na entrega
+  const entregaOk = tipoEntrega === "retirada" || cliente.endereco.trim();
+
+  const podeFinalizar = carrinho.length > 0 && !!clienteOk && !!entregaOk;
 
   function montarMensagemWhatsApp(pedidoId?: string) {
     const itens = carrinho
-      .map((i: any) => {
+      .map((i) => {
         const sub = Number(i.preco) * Number(i.quantidade);
         return `${i.quantidade}x ${i.nome} - R$ ${sub.toFixed(2)}`;
       })
@@ -66,7 +88,6 @@ export default function CarrinhoModal({
       : "";
 
     if (tipoEntrega === "entrega") {
-      // ✅ entrega: avisa que frete será calculado depois
       return encodeURIComponent(
         `🛒 *Pedido - Gigante dos Assados*\n` +
           cabecalhoId +
@@ -83,13 +104,15 @@ export default function CarrinhoModal({
       );
     }
 
-    // ✅ retirada: total já fechado
+    // ✅ Retirada agora também manda Nome + WhatsApp
     return encodeURIComponent(
       `🛒 *Pedido - Gigante dos Assados*\n` +
         cabecalhoId +
         `${itens}\n\n` +
         `Total: R$ ${total.toFixed(2)}\n\n` +
         `🏠 *Retirada no local*\n` +
+        `Cliente: ${cliente.nome}\n` +
+        `WhatsApp: ${cliente.telefone}\n\n` +
         `💳 Pagamento: ${pagamentoTexto}\n` +
         (pagamento === "dinheiro" && trocoPara ? `🪙 Troco: R$ ${trocoPara}\n` : "")
     );
@@ -100,7 +123,7 @@ export default function CarrinhoModal({
       alert(
         tipoEntrega === "entrega"
           ? "Preencha Nome, WhatsApp e Endereço para entrega."
-          : "Adicione itens no carrinho."
+          : "Preencha Nome e WhatsApp para retirada."
       );
       return;
     }
@@ -108,25 +131,25 @@ export default function CarrinhoModal({
     try {
       setLoading(true);
 
-      // Salva venda
+      // ✅ Salva venda (agora guarda nome/whats também para retirada)
       const { data: venda, error: errVenda } = await supabase
         .from("gigante_vendas")
         .insert({
           data: new Date().toISOString(),
           subtotal,
-          frete, // amanhã: 0
-          total, // amanhã: subtotal (entrega será atualizado depois manualmente se quiser)
+          frete,
+          total,
           metodo_pagamento: pagamentoTexto,
           pagamento_detalhe: pagamento,
           tipo_entrega: tipoEntrega,
           status: "novo",
-          cliente_nome: tipoEntrega === "entrega" ? cliente.nome : null,
-          cliente_telefone: tipoEntrega === "entrega" ? cliente.telefone : null,
+          cliente_nome: cliente.nome,
+          cliente_telefone: cliente.telefone,
           cliente_endereco: tipoEntrega === "entrega" ? cliente.endereco : null,
           origem: "SITE",
           observacoes:
             tipoEntrega === "entrega"
-              ? `FRETE A CALCULAR (amanhã MVP)${
+              ? `FRETE A CALCULAR (MVP)${
                   pagamento === "dinheiro" && trocoPara ? ` | Troco: R$ ${trocoPara}` : ""
                 }`
               : pagamento === "dinheiro" && trocoPara
@@ -138,8 +161,8 @@ export default function CarrinhoModal({
 
       if (errVenda) throw errVenda;
 
-      // Salva itens
-      const itens = carrinho.map((i: any) => ({
+      // ✅ Salva itens
+      const itens = carrinho.map((i) => ({
         venda_id: venda.id,
         produto_id: i.id,
         nome: i.nome,
@@ -154,7 +177,7 @@ export default function CarrinhoModal({
 
       if (errItens) throw errItens;
 
-      // Abre WhatsApp com mensagem certa (entrega/retirada)
+      // ✅ Abre WhatsApp (mensagem correta)
       const msg = montarMensagemWhatsApp(venda.id);
       window.open(`https://wa.me/5511948163211?text=${msg}`, "_blank");
 
@@ -162,7 +185,7 @@ export default function CarrinhoModal({
       setAberto(false);
     } catch (e: any) {
       console.error(e);
-      alert("Erro ao salvar pedido. (RLS/colunas) — me manda o erro do console.");
+      alert("Erro ao salvar pedido. Veja o console (F12).");
     } finally {
       setLoading(false);
     }
@@ -171,148 +194,176 @@ export default function CarrinhoModal({
   return (
     <div className="fixed inset-0 bg-black/60 flex justify-end z-50">
       <div className="bg-white w-full max-w-sm h-full p-4 overflow-y-auto">
-        <h2 className="font-bold text-lg mb-4">🛒 Seu carrinho</h2>
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="font-bold text-lg">🛒 Seu carrinho</h2>
+          <button onClick={() => setAberto(false)} className="text-gray-500 text-sm">
+            Fechar ✕
+          </button>
+        </div>
 
         {/* ITENS */}
-        {carrinho.map((i: any) => (
-          <div key={i.id} className="flex justify-between mb-2 text-sm">
-            <span>
-              {i.quantidade}x {i.nome}
-            </span>
-            <span>R$ {(Number(i.preco) * Number(i.quantidade)).toFixed(2)}</span>
-          </div>
-        ))}
+        {carrinho.length === 0 ? (
+          <div className="text-center text-gray-500 py-10">Seu carrinho está vazio.</div>
+        ) : (
+          <>
+            {carrinho.map((i) => (
+              <div key={i.id} className="flex justify-between mb-2 text-sm">
+                <span>
+                  {i.quantidade}x {i.nome}
+                </span>
+                <span>R$ {(Number(i.preco) * Number(i.quantidade)).toFixed(2)}</span>
+              </div>
+            ))}
 
-        <hr className="my-3" />
+            <hr className="my-3" />
 
-        {/* ENTREGA / RETIRADA */}
-        <div className="flex gap-2 mb-3">
-          <button
-            onClick={() => setTipoEntrega("retirada")}
-            className={`flex-1 py-2 rounded ${
-              tipoEntrega === "retirada" ? "bg-red-600 text-white" : "border"
-            }`}
-          >
-            Retirada
-          </button>
+            {/* ENTREGA / RETIRADA */}
+            <div className="flex gap-2 mb-3">
+              <button
+                onClick={() => setTipoEntrega("retirada")}
+                className={`flex-1 py-2 rounded ${
+                  tipoEntrega === "retirada" ? "bg-red-600 text-white" : "border"
+                }`}
+              >
+                Retirada
+              </button>
 
-          <button
-            onClick={() => setTipoEntrega("entrega")}
-            className={`flex-1 py-2 rounded ${
-              tipoEntrega === "entrega" ? "bg-red-600 text-white" : "border"
-            }`}
-          >
-            Entrega
-          </button>
-        </div>
-
-        {/* DADOS ENTREGA */}
-        {tipoEntrega === "entrega" && (
-          <div className="space-y-2 mb-3">
-            <input
-              placeholder="Nome"
-              className="w-full border p-2 rounded"
-              value={cliente.nome}
-              onChange={(e) => setCliente({ ...cliente, nome: e.target.value })}
-            />
-            <input
-              placeholder="WhatsApp"
-              className="w-full border p-2 rounded"
-              value={cliente.telefone}
-              onChange={(e) => setCliente({ ...cliente, telefone: e.target.value })}
-            />
-            <input
-              placeholder="Endereço completo"
-              className="w-full border p-2 rounded"
-              value={cliente.endereco}
-              onChange={(e) => setCliente({ ...cliente, endereco: e.target.value })}
-            />
-
-            <div className="text-xs text-gray-600 bg-yellow-50 border border-yellow-200 rounded p-2">
-              🚚 O frete será calculado após o pedido. Vamos te enviar o valor total no WhatsApp.
+              <button
+                onClick={() => setTipoEntrega("entrega")}
+                className={`flex-1 py-2 rounded ${
+                  tipoEntrega === "entrega" ? "bg-red-600 text-white" : "border"
+                }`}
+              >
+                Entrega
+              </button>
             </div>
-          </div>
+
+            {/* ✅ DADOS DO CLIENTE (AGORA SEMPRE) */}
+            <div className="space-y-2 mb-3">
+              <p className="font-bold text-sm">👤 Seus dados</p>
+
+              <input
+                placeholder="Nome (obrigatório)"
+                className="w-full border p-2 rounded"
+                value={cliente.nome}
+                onChange={(e) => setCliente({ ...cliente, nome: e.target.value })}
+              />
+
+              <input
+                placeholder="WhatsApp (obrigatório)"
+                className="w-full border p-2 rounded"
+                value={cliente.telefone}
+                onChange={(e) => setCliente({ ...cliente, telefone: e.target.value })}
+              />
+
+              {/* Endereço só na entrega */}
+              {tipoEntrega === "entrega" && (
+                <>
+                  <input
+                    placeholder="Endereço completo (obrigatório)"
+                    className="w-full border p-2 rounded"
+                    value={cliente.endereco}
+                    onChange={(e) => setCliente({ ...cliente, endereco: e.target.value })}
+                  />
+
+                  <div className="text-xs text-gray-700 bg-yellow-50 border border-yellow-200 rounded p-2">
+                    🚚 O frete será calculado após o pedido. Vamos te enviar o valor total no WhatsApp.
+                  </div>
+                </>
+              )}
+
+              {tipoEntrega === "retirada" && (
+                <div className="text-xs text-gray-700 bg-gray-50 border rounded p-2">
+                  🏠 Retirada no local — usaremos seu WhatsApp para confirmar quando estiver pronto.
+                </div>
+              )}
+            </div>
+
+            {/* PAGAMENTO */}
+            <div className="mb-3">
+              <p className="font-bold text-sm mb-2">💳 Forma de pagamento</p>
+
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => setPagamento("pix")}
+                  className={`py-2 rounded ${pagamento === "pix" ? "bg-black text-white" : "border"}`}
+                >
+                  Pix
+                </button>
+                <button
+                  onClick={() => setPagamento("cartao")}
+                  className={`py-2 rounded ${pagamento === "cartao" ? "bg-black text-white" : "border"}`}
+                >
+                  Cartão
+                </button>
+                <button
+                  onClick={() => setPagamento("dinheiro")}
+                  className={`py-2 rounded ${pagamento === "dinheiro" ? "bg-black text-white" : "border"}`}
+                >
+                  Dinheiro
+                </button>
+                <button
+                  onClick={() => setPagamento("vr")}
+                  className={`py-2 rounded ${pagamento === "vr" ? "bg-black text-white" : "border"}`}
+                >
+                  VR/VA
+                </button>
+              </div>
+
+              {pagamento === "dinheiro" && (
+                <input
+                  placeholder="Troco para quanto? (opcional)"
+                  className="w-full border p-2 rounded mt-2"
+                  value={trocoPara}
+                  onChange={(e) => setTrocoPara(e.target.value)}
+                />
+              )}
+            </div>
+
+            {/* TOTAIS */}
+            <div className="text-sm space-y-1">
+              <p>Itens: {qtdItens}</p>
+              <p>Subtotal: R$ {subtotal.toFixed(2)}</p>
+              {tipoEntrega === "entrega" ? (
+                <p>
+                  Frete: <b>a calcular</b>
+                </p>
+              ) : (
+                <p>Frete: R$ 0,00</p>
+              )}
+              <p className="font-bold">
+                {tipoEntrega === "entrega" ? "Total parcial" : "Total"}: R$ {total.toFixed(2)}
+              </p>
+            </div>
+
+            {/* ✅ CONTINUAR COMPRANDO */}
+            <button
+              onClick={() => setAberto(false)}
+              className="block w-full mt-4 border text-center py-2 rounded"
+            >
+              🛍️ Continuar comprando
+            </button>
+
+            {/* FINALIZAR */}
+            <button
+              onClick={salvarPedido}
+              disabled={loading || !podeFinalizar}
+              className={`block w-full mt-2 text-white text-center py-2 rounded ${
+                loading || !podeFinalizar ? "bg-gray-400" : "bg-green-600"
+              }`}
+            >
+              {loading ? "Enviando..." : "Finalizar pedido"}
+            </button>
+
+            {!podeFinalizar && (
+              <p className="text-xs text-red-600 mt-2">
+                {tipoEntrega === "entrega"
+                  ? "Preencha Nome, WhatsApp e Endereço para entrega."
+                  : "Preencha Nome e WhatsApp para retirada."}
+              </p>
+            )}
+          </>
         )}
-
-        {/* PAGAMENTO */}
-        <div className="mb-3">
-          <p className="font-bold text-sm mb-2">💳 Forma de pagamento</p>
-
-          <div className="grid grid-cols-2 gap-2">
-            <button
-              onClick={() => setPagamento("pix")}
-              className={`py-2 rounded ${
-                pagamento === "pix" ? "bg-black text-white" : "border"
-              }`}
-            >
-              Pix
-            </button>
-            <button
-              onClick={() => setPagamento("cartao")}
-              className={`py-2 rounded ${
-                pagamento === "cartao" ? "bg-black text-white" : "border"
-              }`}
-            >
-              Cartão
-            </button>
-            <button
-              onClick={() => setPagamento("dinheiro")}
-              className={`py-2 rounded ${
-                pagamento === "dinheiro" ? "bg-black text-white" : "border"
-              }`}
-            >
-              Dinheiro
-            </button>
-            <button
-              onClick={() => setPagamento("vr")}
-              className={`py-2 rounded ${
-                pagamento === "vr" ? "bg-black text-white" : "border"
-              }`}
-            >
-              VR/VA
-            </button>
-          </div>
-
-          {pagamento === "dinheiro" && (
-            <input
-              placeholder="Troco para quanto? (opcional)"
-              className="w-full border p-2 rounded mt-2"
-              value={trocoPara}
-              onChange={(e) => setTrocoPara(e.target.value)}
-            />
-          )}
-        </div>
-
-        {/* TOTAIS */}
-        <div className="text-sm space-y-1">
-          <p>Subtotal: R$ {subtotal.toFixed(2)}</p>
-          {tipoEntrega === "entrega" ? (
-            <p>Frete: <b>a calcular</b></p>
-          ) : (
-            <p>Frete: R$ 0,00</p>
-          )}
-          <p className="font-bold">
-            {tipoEntrega === "entrega" ? "Total parcial" : "Total"}: R$ {total.toFixed(2)}
-          </p>
-        </div>
-
-        {/* FINALIZAR */}
-        <button
-          onClick={salvarPedido}
-          disabled={loading}
-          className={`block w-full mt-4 text-white text-center py-2 rounded ${
-            loading ? "bg-gray-400" : "bg-green-600"
-          }`}
-        >
-          {loading ? "Enviando..." : "Finalizar pedido"}
-        </button>
-
-        <button
-          onClick={() => setAberto(false)}
-          className="mt-2 w-full text-sm text-gray-500"
-        >
-          Fechar
-        </button>
       </div>
     </div>
   );
