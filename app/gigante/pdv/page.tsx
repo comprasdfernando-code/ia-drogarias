@@ -22,9 +22,13 @@ type ItemCarrinho = {
 };
 
 type Pagamento = "pix" | "dinheiro" | "debito" | "credito";
+type Modo = "venda" | "pre_venda";
 
 function money(n: number) {
-  return n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return n.toLocaleString("pt-BR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 }
 
 export default function PDV() {
@@ -35,6 +39,7 @@ export default function PDV() {
   const [carrinho, setCarrinho] = useState<ItemCarrinho[]>([]);
   const [drawer, setDrawer] = useState(false);
 
+  const [modo, setModo] = useState<Modo>("venda"); // ✅ NOVO: venda | pre_venda
   const [pagamento, setPagamento] = useState<Pagamento>("pix");
   const [loading, setLoading] = useState(false);
 
@@ -67,7 +72,8 @@ export default function PDV() {
     const b = busca.trim().toLowerCase();
     return produtos.filter((p) => {
       const okBusca = !b || p.nome.toLowerCase().includes(b);
-      const okCat = categoria === "todas" || (p.categoria || "").trim() === categoria;
+      const okCat =
+        categoria === "todas" || (p.categoria || "").trim() === categoria;
       return okBusca && okCat;
     });
   }, [produtos, busca, categoria]);
@@ -77,7 +83,11 @@ export default function PDV() {
     setCarrinho((prev) => {
       const existe = prev.find((i) => i.id === produto.id);
       if (existe) {
-        return prev.map((i) => (i.id === produto.id ? { ...i, quantidade: i.quantidade + qtd } : i));
+        return prev.map((i) =>
+          i.id === produto.id
+            ? { ...i, quantidade: i.quantidade + qtd }
+            : i
+        );
       }
       return [
         ...prev,
@@ -98,13 +108,17 @@ export default function PDV() {
       const item = prev.find((i) => i.id === id);
       if (!item) return prev;
       if (item.quantidade <= 1) return prev.filter((i) => i.id !== id);
-      return prev.map((i) => (i.id === id ? { ...i, quantidade: i.quantidade - 1 } : i));
+      return prev.map((i) =>
+        i.id === id ? { ...i, quantidade: i.quantidade - 1 } : i
+      );
     });
   }
 
   function inc(id: string) {
     setCarrinho((prev) =>
-      prev.map((i) => (i.id === id ? { ...i, quantidade: i.quantidade + 1 } : i))
+      prev.map((i) =>
+        i.id === id ? { ...i, quantidade: i.quantidade + 1 } : i
+      )
     );
   }
 
@@ -122,17 +136,23 @@ export default function PDV() {
   );
 
   const total = useMemo(
-    () => carrinho.reduce((s, i) => s + Number(i.preco) * Number(i.quantidade), 0),
+    () =>
+      carrinho.reduce(
+        (s, i) => s + Number(i.preco) * Number(i.quantidade),
+        0
+      ),
     [carrinho]
   );
 
-  async function finalizarVenda() {
+  async function finalizar() {
     if (carrinho.length === 0) return;
 
     try {
       setLoading(true);
 
-      // ✅ Cria venda (PDV)
+      const isPrevenda = modo === "pre_venda";
+
+      // ✅ Cria venda
       const { data: venda, error: erroVenda } = await supabase
         .from("gigante_vendas")
         .insert({
@@ -140,11 +160,21 @@ export default function PDV() {
           subtotal: total,
           frete: 0,
           total: total,
-          metodo_pagamento: pagamento.toUpperCase(),
-          pagamento_detalhe: pagamento,
+
+          // ✅ Se for pré-venda, pagamento fica "A DEFINIR" (ou mantém o escolhido, você decide)
+          metodo_pagamento: isPrevenda ? "A DEFINIR" : pagamento.toUpperCase(),
+          pagamento_detalhe: isPrevenda ? "pendente" : pagamento,
+
+          // PDV é retirada normalmente
           tipo_entrega: "retirada",
-          status: "entregue", // PDV normalmente já sai como entregue/pago
-          origem: "PDV",
+
+          // ✅ Pré-venda entra como NOVO, venda normal entra como ENTREGUE
+          status: isPrevenda ? "novo" : "entregue",
+
+          // ✅ Diferencia no painel
+          origem: isPrevenda ? "PDV-PREV" : "PDV",
+
+          observacoes: isPrevenda ? "PRÉ-VENDA (PDV)" : null,
         })
         .select("id")
         .single();
@@ -161,17 +191,25 @@ export default function PDV() {
         subtotal: Number(i.preco) * Number(i.quantidade),
       }));
 
-      const { error: erroItens } = await supabase.from("gigante_venda_itens").insert(itens);
+      const { error: erroItens } = await supabase
+        .from("gigante_venda_itens")
+        .insert(itens);
+
       if (erroItens) throw erroItens;
 
-      alert("Venda concluída com sucesso! ✅");
+      alert(
+        isPrevenda
+          ? "Pré-venda salva! ✅ (vai aparecer como NOVO no painel)"
+          : "Venda concluída com sucesso! ✅"
+      );
+
       setCarrinho([]);
       setDrawer(false);
       setBusca("");
       setCategoria("todas");
     } catch (e: any) {
       console.error(e);
-      alert("Erro ao finalizar venda. Veja o console (F12).");
+      alert("Erro ao salvar. Veja o console (F12).");
     } finally {
       setLoading(false);
     }
@@ -193,7 +231,10 @@ export default function PDV() {
         </div>
 
         <div className="absolute inset-0 flex flex-col items-center justify-center px-4 text-white">
-          <div className="text-3xl font-extrabold text-center">🧾 PDV — Gigante dos Assados</div>
+          <div className="text-3xl font-extrabold text-center">
+            🧾 PDV — Gigante dos Assados
+          </div>
+
           <div className="text-sm opacity-90 mt-1 text-center">
             Toque no produto para adicionar • {qtdItens} itens no carrinho
           </div>
@@ -226,7 +267,9 @@ export default function PDV() {
               key={c}
               onClick={() => setCategoria(c)}
               className={`px-4 py-2 rounded-full border whitespace-nowrap ${
-                categoria === c ? "bg-red-600 text-white border-red-600" : "bg-white"
+                categoria === c
+                  ? "bg-red-600 text-white border-red-600"
+                  : "bg-white"
               }`}
             >
               {c === "todas" ? "Todas" : c}
@@ -235,7 +278,7 @@ export default function PDV() {
         </div>
       </div>
 
-      {/* Produtos (cards com imagem) */}
+      {/* Produtos */}
       <div className="p-4 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
         {filtrados.map((p) => (
           <button
@@ -254,8 +297,12 @@ export default function PDV() {
             </div>
 
             <div className="p-3">
-              <div className="font-bold text-sm text-gray-800 line-clamp-2">{p.nome}</div>
-              <div className="mt-1 text-red-600 font-extrabold">R$ {money(Number(p.preco || 0))}</div>
+              <div className="font-bold text-sm text-gray-800 line-clamp-2">
+                {p.nome}
+              </div>
+              <div className="mt-1 text-red-600 font-extrabold">
+                R$ {money(Number(p.preco || 0))}
+              </div>
 
               <div className="mt-2 flex items-center justify-between">
                 <span className="text-xs text-gray-600">
@@ -270,16 +317,45 @@ export default function PDV() {
         ))}
       </div>
 
-      {/* Drawer / Carrinho lateral */}
+      {/* Drawer / Carrinho */}
       {drawer && (
         <div className="fixed inset-0 bg-black/60 z-50 flex justify-end">
           <div className="bg-white w-full max-w-sm h-full p-4 overflow-y-auto">
             <div className="flex items-center justify-between">
               <div className="text-lg font-bold">🛒 Carrinho</div>
-              <button onClick={() => setDrawer(false)} className="text-gray-500">
+              <button
+                onClick={() => setDrawer(false)}
+                className="text-gray-500"
+              >
                 Fechar ✕
               </button>
             </div>
+
+            {/* ✅ NOVO: MODO VENDA / PRÉ-VENDA */}
+            <div className="mt-3 grid grid-cols-2 gap-2">
+              <button
+                onClick={() => setModo("venda")}
+                className={`py-2 rounded font-bold ${
+                  modo === "venda" ? "bg-green-600 text-white" : "border"
+                }`}
+              >
+                ✅ Venda
+              </button>
+              <button
+                onClick={() => setModo("pre_venda")}
+                className={`py-2 rounded font-bold ${
+                  modo === "pre_venda" ? "bg-yellow-500 text-white" : "border"
+                }`}
+              >
+                🕓 Pré-venda
+              </button>
+            </div>
+
+            {modo === "pre_venda" && (
+              <div className="mt-2 text-xs text-gray-700 bg-yellow-50 border border-yellow-200 rounded p-2">
+                Pré-venda salva como <b>NOVO</b> no painel para finalizar depois.
+              </div>
+            )}
 
             {carrinho.length === 0 ? (
               <div className="text-center text-gray-500 py-10">
@@ -322,7 +398,9 @@ export default function PDV() {
                             >
                               −
                             </button>
-                            <span className="font-bold w-6 text-center">{i.quantidade}</span>
+                            <span className="font-bold w-6 text-center">
+                              {i.quantidade}
+                            </span>
                             <button
                               onClick={() => inc(i.id)}
                               className="w-8 h-8 rounded-full border"
@@ -352,31 +430,40 @@ export default function PDV() {
                   </div>
                   <div className="flex justify-between text-base">
                     <span className="font-bold">Total</span>
-                    <span className="font-extrabold">R$ {money(total)}</span>
+                    <span className="font-extrabold">
+                      R$ {money(total)}
+                    </span>
                   </div>
 
-                  <div className="mt-3">
-                    <p className="font-bold text-sm mb-2">💳 Pagamento</p>
-                    <div className="grid grid-cols-2 gap-2">
-                      {(["pix", "dinheiro", "debito", "credito"] as Pagamento[]).map((p) => (
-                        <button
-                          key={p}
-                          onClick={() => setPagamento(p)}
-                          className={`py-2 rounded ${
-                            pagamento === p ? "bg-black text-white" : "border"
-                          }`}
-                        >
-                          {p === "pix"
-                            ? "Pix"
-                            : p === "dinheiro"
-                            ? "Dinheiro"
-                            : p === "debito"
-                            ? "Débito"
-                            : "Crédito"}
-                        </button>
-                      ))}
+                  {/* Pagamento só faz sentido na VENDA normal */}
+                  {modo === "venda" && (
+                    <div className="mt-3">
+                      <p className="font-bold text-sm mb-2">💳 Pagamento</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        {(["pix", "dinheiro", "debito", "credito"] as Pagamento[]).map(
+                          (p) => (
+                            <button
+                              key={p}
+                              onClick={() => setPagamento(p)}
+                              className={`py-2 rounded ${
+                                pagamento === p
+                                  ? "bg-black text-white"
+                                  : "border"
+                              }`}
+                            >
+                              {p === "pix"
+                                ? "Pix"
+                                : p === "dinheiro"
+                                ? "Dinheiro"
+                                : p === "debito"
+                                ? "Débito"
+                                : "Crédito"}
+                            </button>
+                          )
+                        )}
+                      </div>
                     </div>
-                  </div>
+                  )}
 
                   <div className="flex gap-2 mt-4">
                     <button
@@ -388,13 +475,21 @@ export default function PDV() {
                     </button>
 
                     <button
-                      onClick={finalizarVenda}
+                      onClick={finalizar}
                       className={`flex-1 py-3 rounded font-extrabold text-white ${
-                        loading ? "bg-gray-400" : "bg-green-600 hover:bg-green-700"
+                        loading
+                          ? "bg-gray-400"
+                          : modo === "pre_venda"
+                          ? "bg-yellow-500 hover:bg-yellow-600"
+                          : "bg-green-600 hover:bg-green-700"
                       }`}
                       disabled={loading}
                     >
-                      {loading ? "Salvando..." : "Finalizar"}
+                      {loading
+                        ? "Salvando..."
+                        : modo === "pre_venda"
+                        ? "Salvar Pré-venda"
+                        : "Finalizar Venda"}
                     </button>
                   </div>
 
@@ -403,7 +498,7 @@ export default function PDV() {
                     className="w-full mt-2 py-2 rounded border"
                     disabled={loading}
                   >
-                    🛍️ Continuar vendendo
+                    🛍️ Continuar
                   </button>
                 </div>
               </>
