@@ -17,6 +17,9 @@ export default function RootClientLayout({ children }: { children: React.ReactNo
   if (typeof window !== "undefined" && window.location.pathname.startsWith("/drogarias/drogariaredefabiano/caixa")) {
     return <>{children}</>;
   }
+  if (typeof window !== "undefined" && window.location.pathname.startsWith("/achadinhos")) {
+    return <>{children}</>;
+  }
   if (typeof window !== "undefined" && window.location.pathname.startsWith("/drogarias/drogariaredefabiano")) {
     return <>{children}</>;
   }
