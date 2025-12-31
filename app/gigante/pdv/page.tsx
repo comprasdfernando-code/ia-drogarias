@@ -28,10 +28,14 @@ type VendaPre = {
   total: number;
   metodo_pagamento: string;
   status: string;
+  comanda?: string | null; // ✅ NOVO
 };
 
 function brl(n: number) {
-  return n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  return n.toLocaleString("pt-BR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 }
 
 function PDVInner() {
@@ -44,7 +48,9 @@ function PDVInner() {
   const [loadingProdutos, setLoadingProdutos] = useState(true);
 
   const [carrinho, setCarrinho] = useState<ItemCarrinho[]>([]);
-  const [pagamento, setPagamento] = useState<"pix" | "dinheiro" | "debito" | "credito">("pix");
+  const [pagamento, setPagamento] = useState<
+    "pix" | "dinheiro" | "debito" | "credito"
+  >("pix");
 
   const [preVendas, setPreVendas] = useState<VendaPre[]>([]);
   const [loadingPre, setLoadingPre] = useState(true);
@@ -71,9 +77,10 @@ function PDVInner() {
   // 🔄 carregar lista de pré-vendas
   async function carregarPreVendas() {
     setLoadingPre(true);
+
     const { data, error } = await supabase
       .from("gigante_vendas")
-      .select("id,data,total,metodo_pagamento,status")
+      .select("id,data,total,metodo_pagamento,status,comanda") // ✅ NOVO
       .eq("origem", "PDV")
       .eq("status", "pre_venda")
       .order("data", { ascending: false })
@@ -104,7 +111,10 @@ function PDVInner() {
   }, [busca, produtos]);
 
   const total = useMemo(() => {
-    return carrinho.reduce((acc, i) => acc + Number(i.preco) * Number(i.quantidade), 0);
+    return carrinho.reduce(
+      (acc, i) => acc + Number(i.preco) * Number(i.quantidade),
+      0
+    );
   }, [carrinho]);
 
   function addProduto(p: Produto) {
@@ -131,7 +141,11 @@ function PDVInner() {
 
   function inc(produto_id: string) {
     setCarrinho((prev) =>
-      prev.map((x) => (x.produto_id === produto_id ? { ...x, quantidade: x.quantidade + 1 } : x))
+      prev.map((x) =>
+        x.produto_id === produto_id
+          ? { ...x, quantidade: x.quantidade + 1 }
+          : x
+      )
     );
   }
 
@@ -139,7 +153,9 @@ function PDVInner() {
     setCarrinho((prev) =>
       prev
         .map((x) =>
-          x.produto_id === produto_id ? { ...x, quantidade: Math.max(1, x.quantidade - 1) } : x
+          x.produto_id === produto_id
+            ? { ...x, quantidade: Math.max(1, x.quantidade - 1) }
+            : x
         )
         .filter((x) => x.quantidade > 0)
     );
@@ -149,20 +165,22 @@ function PDVInner() {
     setCarrinho((prev) => prev.filter((x) => x.produto_id !== produto_id));
   }
 
+  // ✅ limpa e volta “nova pré-venda”
   function limpar() {
     setCarrinho([]);
     setPreVendaId("");
+    setBusca("");
     router.replace("/gigante/pdv");
   }
 
-  // ✅ abrir pré-venda (carregar itens pro carrinho)
+  // ✅ abrir pré-venda (carregar itens pro carrinho) — somente itens desse id
   async function abrirPreVenda(id: string) {
     try {
       setSalvando(true);
 
       const { data: v, error: ev } = await supabase
         .from("gigante_vendas")
-        .select("id,metodo_pagamento,status,total")
+        .select("id,metodo_pagamento,status,total,comanda")
         .eq("id", id)
         .single();
 
@@ -176,8 +194,12 @@ function PDVInner() {
 
       if (ei) throw ei;
 
-      // ✅ agrupa por produto_id pra não “duplicar” visualmente se tiver duplicado no banco
-      const mapa = new Map<string, { produto_id: string; nome: string; preco: number; quantidade: number }>();
+      // ✅ agrupa por produto_id pra evitar duplicação visual
+      const mapa = new Map<
+        string,
+        { produto_id: string; nome: string; preco: number; quantidade: number }
+      >();
+
       for (const it of its || []) {
         const key = it.produto_id;
         const atual = mapa.get(key);
@@ -230,10 +252,17 @@ function PDVInner() {
     return "CRÉDITO";
   }
 
-  // ✅ salvar pré-venda (cria ou atualiza) — SEM finalizar aqui
+  // ✅ salvar pré-venda (cria/atualiza) + pede comanda + zera itens ao salvar
   async function salvarPreVenda() {
     if (carrinho.length === 0) {
       alert("Carrinho vazio.");
+      return;
+    }
+
+    // ✅ pede comanda
+    const comanda = prompt("Número da comanda (ex: 12):")?.trim();
+    if (!comanda) {
+      alert("Informe o número da comanda.");
       return;
     }
 
@@ -247,6 +276,7 @@ function PDVInner() {
         origem: "PDV",
         status: "pre_venda",
         tipo_entrega: "retirada",
+        comanda, // ✅ NOVO
       };
 
       let id = preVendaId;
@@ -294,11 +324,15 @@ function PDVInner() {
 
       if (ei) throw ei;
 
-      setPreVendaId(id);
-      router.replace(`/gigante/pdv?id=${id}`);
       await carregarPreVendas();
 
-      alert(`Pré-venda salva! (#${String(id).slice(0, 6).toUpperCase()}) ✅`);
+      alert(`Pré-venda salva! Comanda ${comanda} ✅`);
+
+      // ✅ ZERA TELA ao salvar
+      setCarrinho([]);
+      setPreVendaId("");
+      setBusca("");
+      router.replace("/gigante/pdv");
     } catch (e) {
       console.error(e);
       alert("Erro ao salvar pré-venda. (RLS/colunas) — veja o console.");
@@ -313,11 +347,14 @@ function PDVInner() {
       <div className="bg-gradient-to-r from-red-700 to-orange-600 text-white p-4">
         <div className="max-w-6xl mx-auto flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <div className="text-xl font-extrabold">🧾 PDV — Gigante dos Assados</div>
+            <div className="text-xl font-extrabold">
+              🧾 PDV — Gigante dos Assados
+            </div>
             <div className="text-xs opacity-90">
               {preVendaId ? (
                 <>
-                  Pré-venda aberta: <b>{preVendaId.slice(0, 6).toUpperCase()}</b>
+                  Pré-venda aberta:{" "}
+                  <b>{preVendaId.slice(0, 6).toUpperCase()}</b>
                 </>
               ) : (
                 <>Nova pré-venda</>
@@ -371,7 +408,9 @@ function PDVInner() {
         <div>
           <div className="flex items-center justify-between mb-3">
             <h2 className="font-bold text-lg">🍖 Produtos</h2>
-            {loadingProdutos && <span className="text-sm text-gray-500">Carregando...</span>}
+            {loadingProdutos && (
+              <span className="text-sm text-gray-500">Carregando...</span>
+            )}
           </div>
 
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
@@ -384,15 +423,23 @@ function PDVInner() {
               >
                 <div className="h-20 bg-gray-100 flex items-center justify-center text-xs text-gray-400">
                   {p.imagem_url ? (
-                    <img src={p.imagem_url} alt={p.nome} className="w-full h-full object-cover" />
+                    <img
+                      src={p.imagem_url}
+                      alt={p.nome}
+                      className="w-full h-full object-cover"
+                    />
                   ) : (
                     <span>SEM FOTO</span>
                   )}
                 </div>
 
                 <div className="p-2">
-                  <div className="font-bold text-sm line-clamp-2">{p.nome}</div>
-                  <div className="text-red-600 font-extrabold">R$ {brl(Number(p.preco))}</div>
+                  <div className="font-bold text-sm line-clamp-2">
+                    {p.nome}
+                  </div>
+                  <div className="text-red-600 font-extrabold">
+                    R$ {brl(Number(p.preco))}
+                  </div>
                 </div>
               </button>
             ))}
@@ -403,7 +450,9 @@ function PDVInner() {
         <div className="bg-white rounded-2xl shadow p-3 h-fit sticky top-3">
           <div className="flex items-center justify-between">
             <h2 className="font-bold text-lg">🛒 Pré-venda</h2>
-            <span className="text-xs text-gray-500">{carrinho.length} itens</span>
+            <span className="text-xs text-gray-500">
+              {carrinho.length} itens
+            </span>
           </div>
 
           <div className="mt-2 space-y-2">
@@ -417,9 +466,12 @@ function PDVInner() {
               <div key={i.id} className="border rounded-xl p-2">
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <div className="font-semibold text-sm truncate">{i.nome}</div>
+                    <div className="font-semibold text-sm truncate">
+                      {i.nome}
+                    </div>
                     <div className="text-xs text-gray-600">
-                      R$ {brl(Number(i.preco))} • Sub: R$ {brl(Number(i.preco) * Number(i.quantidade))}
+                      R$ {brl(Number(i.preco))} • Sub: R${" "}
+                      {brl(Number(i.preco) * Number(i.quantidade))}
                     </div>
                   </div>
 
@@ -439,7 +491,9 @@ function PDVInner() {
                   >
                     −
                   </button>
-                  <div className="font-bold w-10 text-center">{i.quantidade}</div>
+                  <div className="font-bold w-10 text-center">
+                    {i.quantidade}
+                  </div>
                   <button
                     onClick={() => inc(i.produto_id)}
                     className="px-3 py-1 rounded bg-gray-100 hover:bg-gray-200"
@@ -454,7 +508,9 @@ function PDVInner() {
           <div className="mt-3 border-t pt-3">
             <div className="text-3xl font-extrabold">R$ {brl(total)}</div>
 
-            <label className="block text-sm font-bold mt-3 mb-2">💳 Forma sugerida</label>
+            <label className="block text-sm font-bold mt-3 mb-2">
+              💳 Forma sugerida
+            </label>
             <select
               value={pagamento}
               onChange={(e) => setPagamento(e.target.value as any)}
@@ -477,7 +533,8 @@ function PDVInner() {
             </button>
 
             <div className="mt-2 text-xs text-gray-500">
-              * Baixa (pago) e impressão final serão feitas na página <b>Caixa</b>.
+              * Baixa (pago) e impressão final serão feitas na página{" "}
+              <b>Caixa</b>.
             </div>
           </div>
 
@@ -493,10 +550,14 @@ function PDVInner() {
               </button>
             </div>
 
-            {loadingPre && <div className="text-xs text-gray-500 mt-2">Carregando...</div>}
+            {loadingPre && (
+              <div className="text-xs text-gray-500 mt-2">Carregando...</div>
+            )}
 
             {!loadingPre && preVendas.length === 0 && (
-              <div className="text-xs text-gray-500 mt-2">Nenhuma pré-venda aberta.</div>
+              <div className="text-xs text-gray-500 mt-2">
+                Nenhuma pré-venda aberta.
+              </div>
             )}
 
             <div className="mt-2 space-y-2 max-h-72 overflow-y-auto">
@@ -508,11 +569,17 @@ function PDVInner() {
                   title="Abrir pré-venda"
                 >
                   <div className="flex items-center justify-between">
-                    <div className="font-bold text-sm">#{v.id.slice(0, 6).toUpperCase()}</div>
-                    <div className="text-sm font-extrabold text-red-600">R$ {brl(Number(v.total || 0))}</div>
+                    <div className="font-bold text-sm">
+                      Comanda {String(v.comanda || "-")} • #
+                      {v.id.slice(0, 6).toUpperCase()}
+                    </div>
+                    <div className="text-sm font-extrabold text-red-600">
+                      R$ {brl(Number(v.total || 0))}
+                    </div>
                   </div>
                   <div className="text-xs text-gray-600">
-                    {new Date(v.data).toLocaleString("pt-BR")} • {String(v.metodo_pagamento || "").toUpperCase()}
+                    {new Date(v.data).toLocaleString("pt-BR")} •{" "}
+                    {String(v.metodo_pagamento || "").toUpperCase()}
                   </div>
                 </button>
               ))}
