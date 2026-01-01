@@ -22,24 +22,60 @@ export default function AchadinhosPage() {
   const insta = "https://www.instagram.com/achadinhosuteisdagisa";
   const shopee = "https://shpe.site/achadinhosuteisdagisa";
 
+  const mercadolivre =
+    "https://www.mercadolivre.com.br/social/pegi4889488";
+
+  const boticario =
+    "https://minhaloja.grupoboticario.com.br/loja-giseledossantospereira-1409721?utm_source=app_divulgar_marca&utm_medium=divulgar_loja_multimarca";
+
   const whatsapp = buildWhatsAppLink(
     "5511983273348",
     "Oi Gisa! Vim pelo site dos achadinhos 💖 Pode me ajudar?"
   );
 
   const destaques: Destaque[] = [
-    { titulo: "Organização para casa", desc: "Deixe tudo lindo e no lugar ✨", link: shopee, tag: "Casa" },
-    { titulo: "Cozinha prática", desc: "Facilidades que fazem diferença 🍳", link: shopee, tag: "Cozinha" },
-    { titulo: "Beleza & autocuidado", desc: "Cuidados que você merece 💄", link: shopee, tag: "Beleza" },
-    { titulo: "Eletrônicos úteis", desc: "Gadgets que salvam o dia 🔌", link: shopee, tag: "Tech" },
-    { titulo: "Infantil", desc: "Praticidade para a família 👶", link: shopee, tag: "Família" },
-    { titulo: "Reviews & novidades", desc: "Veja tudo nos stories 📸", link: insta, tag: "Instagram" },
+    {
+      titulo: "Organização para casa",
+      desc: "Deixe tudo lindo e no lugar ✨",
+      link: shopee,
+      tag: "Casa",
+    },
+    {
+      titulo: "Cozinha prática",
+      desc: "Facilidades que fazem diferença 🍳",
+      link: shopee,
+      tag: "Cozinha",
+    },
+    {
+      titulo: "Beleza & autocuidado",
+      desc: "Cuidados que você merece 💄",
+      link: boticario,
+      tag: "Beleza",
+    },
+    {
+      titulo: "Eletrônicos úteis",
+      desc: "Gadgets que salvam o dia 🔌",
+      link: mercadolivre,
+      tag: "Ofertas",
+    },
+    {
+      titulo: "Infantil",
+      desc: "Praticidade para a família 👶",
+      link: shopee,
+      tag: "Família",
+    },
+    {
+      titulo: "Reviews & novidades",
+      desc: "Veja tudo nos stories 📸",
+      link: insta,
+      tag: "Instagram",
+    },
   ];
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-pink-50 to-white text-gray-900">
       <div className="mx-auto max-w-3xl px-4 py-10">
-        {/* TOPO COM IMAGEM */}
+        {/* TOPO */}
         <header className="text-center">
           <div className="mx-auto w-40 h-40 rounded-full overflow-hidden shadow-lg border-4 border-pink-300">
             <img
@@ -57,7 +93,7 @@ export default function AchadinhosPage() {
             Achados lindos, úteis e que valem a pena 💖
           </p>
 
-          {/* BOTÕES */}
+          {/* BOTÕES PRINCIPAIS */}
           <div className="mt-6 grid gap-3">
             <a
               href={shopee}
@@ -65,7 +101,25 @@ export default function AchadinhosPage() {
               rel="noreferrer"
               className="w-full rounded-2xl bg-gradient-to-r from-pink-500 to-pink-600 px-5 py-4 text-white font-bold shadow-md hover:scale-[1.02] transition"
             >
-              🛍️ Ver achadinhos na Shopee
+              🛍️ Shopee – Ver achadinhos
+            </a>
+
+            <a
+              href={mercadolivre}
+              target="_blank"
+              rel="noreferrer"
+              className="w-full rounded-2xl bg-yellow-200 text-yellow-900 px-5 py-4 font-bold shadow-sm hover:bg-yellow-300 transition"
+            >
+              🟡 Mercado Livre – Ofertas
+            </a>
+
+            <a
+              href={boticario}
+              target="_blank"
+              rel="noreferrer"
+              className="w-full rounded-2xl bg-emerald-100 text-emerald-800 px-5 py-4 font-bold shadow-sm hover:bg-emerald-200 transition"
+            >
+              🌿 O Boticário – Beleza & presentes
             </a>
 
             <a
@@ -90,7 +144,9 @@ export default function AchadinhosPage() {
 
         {/* DESTAQUES */}
         <section className="mt-12">
-          <h2 className="text-xl font-bold text-pink-600">✨ Destaques da Gisa</h2>
+          <h2 className="text-xl font-bold text-pink-600">
+            ✨ Destaques da Gisa
+          </h2>
 
           <div className="mt-4 grid gap-4 sm:grid-cols-2">
             {destaques.map((d) => (
@@ -102,14 +158,18 @@ export default function AchadinhosPage() {
                 className="rounded-2xl bg-white border border-pink-100 p-5 shadow-sm hover:shadow-md transition"
               >
                 <div className="flex justify-between items-start gap-2">
-                  <h3 className="text-lg font-semibold text-pink-700">{d.titulo}</h3>
+                  <h3 className="text-lg font-semibold text-pink-700">
+                    {d.titulo}
+                  </h3>
                   <span className="text-xs bg-pink-100 text-pink-600 px-3 py-1 rounded-full font-semibold">
                     {d.tag}
                   </span>
                 </div>
 
                 <p className="mt-2 text-gray-600">{d.desc}</p>
-                <div className="mt-4 font-bold text-pink-600">Ver agora →</div>
+                <div className="mt-4 font-bold text-pink-600">
+                  Ver agora →
+                </div>
               </a>
             ))}
           </div>
@@ -117,15 +177,22 @@ export default function AchadinhosPage() {
 
         {/* COMO FUNCIONA */}
         <section className="mt-12 bg-pink-50 rounded-2xl p-6">
-          <h2 className="text-xl font-bold text-pink-600">💕 Como funciona</h2>
+          <h2 className="text-xl font-bold text-pink-600">
+            💕 Como funciona
+          </h2>
 
           <div className="mt-4 grid gap-4 sm:grid-cols-3">
-            {["Escolha seu achadinho", "Compre com segurança", "Receba em casa"].map((t, i) => (
-              <div key={i} className="bg-white rounded-xl p-4 border border-pink-100 text-center">
-                <div className="text-pink-600 font-bold mb-1">{i + 1}</div>
-                <div className="font-semibold">{t}</div>
-              </div>
-            ))}
+            {["Escolha seu achadinho", "Compre com segurança", "Receba em casa"].map(
+              (t, i) => (
+                <div
+                  key={i}
+                  className="bg-white rounded-xl p-4 border border-pink-100 text-center"
+                >
+                  <div className="text-pink-600 font-bold mb-1">{i + 1}</div>
+                  <div className="font-semibold">{t}</div>
+                </div>
+              )
+            )}
           </div>
         </section>
 
