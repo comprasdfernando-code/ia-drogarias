@@ -66,7 +66,7 @@ export default function AchadinhosPage() {
       nome: "O Boticário",
       subtitulo: "Beleza & presentes",
       link: boticario,
-      iconUrl: favicon("grupoboticario.com.br"),
+      iconUrl: favicon("boticario.com.br"),
       className:
         "bg-emerald-100 text-emerald-800 hover:bg-emerald-200 border border-emerald-200",
     },
