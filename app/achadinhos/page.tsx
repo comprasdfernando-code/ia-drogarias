@@ -11,6 +11,13 @@ function buildWhatsAppLink(numberE164: string, msg: string) {
   return `https://wa.me/${clean}?text=${text}`;
 }
 
+function favicon(domain: string, size = 64) {
+  // ícones reais (favicon) por domínio
+  return `https://www.google.com/s2/favicons?domain=${encodeURIComponent(
+    domain
+  )}&sz=${size}`;
+}
+
 type Destaque = {
   titulo: string;
   desc: string;
@@ -18,13 +25,18 @@ type Destaque = {
   tag: string;
 };
 
+type LojaBtn = {
+  nome: string;
+  subtitulo: string;
+  link: string;
+  iconUrl: string;
+  className: string;
+};
+
 export default function AchadinhosPage() {
   const insta = "https://www.instagram.com/achadinhosuteisdagisa";
   const shopee = "https://shpe.site/achadinhosuteisdagisa";
-
-  const mercadolivre =
-    "https://www.mercadolivre.com.br/social/pegi4889488";
-
+  const mercadolivre = "https://www.mercadolivre.com.br/social/pegi4889488";
   const boticario =
     "https://minhaloja.grupoboticario.com.br/loja-giseledossantospereira-1409721?utm_source=app_divulgar_marca&utm_medium=divulgar_loja_multimarca";
 
@@ -32,6 +44,49 @@ export default function AchadinhosPage() {
     "5511983273348",
     "Oi Gisa! Vim pelo site dos achadinhos 💖 Pode me ajudar?"
   );
+
+  const lojas: LojaBtn[] = [
+    {
+      nome: "Shopee",
+      subtitulo: "Ver achadinhos",
+      link: shopee,
+      iconUrl: favicon("shopee.com.br"),
+      className:
+        "bg-gradient-to-r from-pink-500 to-pink-600 text-white hover:opacity-95",
+    },
+    {
+      nome: "Mercado Livre",
+      subtitulo: "Ofertas e achados",
+      link: mercadolivre,
+      iconUrl: favicon("mercadolivre.com.br"),
+      className:
+        "bg-yellow-200 text-yellow-900 hover:bg-yellow-300 border border-yellow-300",
+    },
+    {
+      nome: "O Boticário",
+      subtitulo: "Beleza & presentes",
+      link: boticario,
+      iconUrl: favicon("grupoboticario.com.br"),
+      className:
+        "bg-emerald-100 text-emerald-800 hover:bg-emerald-200 border border-emerald-200",
+    },
+    {
+      nome: "WhatsApp",
+      subtitulo: "Falar com a Gisa",
+      link: whatsapp,
+      iconUrl: favicon("whatsapp.com"),
+      className:
+        "bg-pink-100 text-pink-700 hover:bg-pink-200 border border-pink-100",
+    },
+    {
+      nome: "Instagram",
+      subtitulo: "Novidades & reviews",
+      link: insta,
+      iconUrl: favicon("instagram.com"),
+      className:
+        "bg-pink-100 text-pink-700 hover:bg-pink-200 border border-pink-100",
+    },
+  ];
 
   const destaques: Destaque[] = [
     {
@@ -93,52 +148,37 @@ export default function AchadinhosPage() {
             Achados lindos, úteis e que valem a pena 💖
           </p>
 
-          {/* BOTÕES PRINCIPAIS */}
+          {/* BOTÕES COM LOGOS REAIS */}
           <div className="mt-6 grid gap-3">
-            <a
-              href={shopee}
-              target="_blank"
-              rel="noreferrer"
-              className="w-full rounded-2xl bg-gradient-to-r from-pink-500 to-pink-600 px-5 py-4 text-white font-bold shadow-md hover:scale-[1.02] transition"
-            >
-              🛍️ Shopee – Ver achadinhos
-            </a>
+            {lojas.map((l) => (
+              <a
+                key={l.nome}
+                href={l.link}
+                target="_blank"
+                rel="noreferrer"
+                className={`w-full rounded-2xl px-5 py-4 font-bold shadow-sm hover:shadow-md transition flex items-center justify-between gap-3 ${l.className}`}
+              >
+                <span className="flex items-center gap-3">
+                  <span className="inline-flex items-center justify-center rounded-2xl bg-white/70 p-2 shadow-sm">
+                    <img
+                      src={l.iconUrl}
+                      alt={`${l.nome} logo`}
+                      className="h-7 w-7"
+                      loading="lazy"
+                    />
+                  </span>
 
-            <a
-              href={mercadolivre}
-              target="_blank"
-              rel="noreferrer"
-              className="w-full rounded-2xl bg-yellow-200 text-yellow-900 px-5 py-4 font-bold shadow-sm hover:bg-yellow-300 transition"
-            >
-              🟡 Mercado Livre – Ofertas
-            </a>
+                  <span className="text-left leading-tight">
+                    <span className="block">{l.nome}</span>
+                    <span className="block text-xs font-semibold opacity-90">
+                      {l.subtitulo}
+                    </span>
+                  </span>
+                </span>
 
-            <a
-              href={boticario}
-              target="_blank"
-              rel="noreferrer"
-              className="w-full rounded-2xl bg-emerald-100 text-emerald-800 px-5 py-4 font-bold shadow-sm hover:bg-emerald-200 transition"
-            >
-              🌿 O Boticário – Beleza & presentes
-            </a>
-
-            <a
-              href={whatsapp}
-              target="_blank"
-              rel="noreferrer"
-              className="w-full rounded-2xl bg-pink-100 px-5 py-4 font-semibold text-pink-700 hover:bg-pink-200 transition"
-            >
-              💬 Falar com a Gisa no WhatsApp
-            </a>
-
-            <a
-              href={insta}
-              target="_blank"
-              rel="noreferrer"
-              className="w-full rounded-2xl bg-pink-100 px-5 py-4 font-semibold text-pink-700 hover:bg-pink-200 transition"
-            >
-              📸 Instagram (novidades e reviews)
-            </a>
+                <span className="text-sm font-extrabold opacity-90">→</span>
+              </a>
+            ))}
           </div>
         </header>
 
@@ -167,9 +207,7 @@ export default function AchadinhosPage() {
                 </div>
 
                 <p className="mt-2 text-gray-600">{d.desc}</p>
-                <div className="mt-4 font-bold text-pink-600">
-                  Ver agora →
-                </div>
+                <div className="mt-4 font-bold text-pink-600">Ver agora →</div>
               </a>
             ))}
           </div>
@@ -177,9 +215,7 @@ export default function AchadinhosPage() {
 
         {/* COMO FUNCIONA */}
         <section className="mt-12 bg-pink-50 rounded-2xl p-6">
-          <h2 className="text-xl font-bold text-pink-600">
-            💕 Como funciona
-          </h2>
+          <h2 className="text-xl font-bold text-pink-600">💕 Como funciona</h2>
 
           <div className="mt-4 grid gap-4 sm:grid-cols-3">
             {["Escolha seu achadinho", "Compre com segurança", "Receba em casa"].map(
@@ -201,14 +237,20 @@ export default function AchadinhosPage() {
           <p>© {new Date().getFullYear()} Achadinhos Úteis da Gisa</p>
         </footer>
 
-        {/* WHATSAPP FLUTUANTE */}
+        {/* WHATSAPP FLUTUANTE COM LOGO REAL */}
         <a
           href={whatsapp}
           target="_blank"
           rel="noreferrer"
-          className="fixed bottom-5 right-5 z-50 bg-gradient-to-r from-pink-500 to-pink-600 text-white px-5 py-3 rounded-full shadow-xl font-bold hover:scale-105 transition"
+          className="fixed bottom-5 right-5 z-50 bg-gradient-to-r from-pink-500 to-pink-600 text-white px-5 py-3 rounded-full shadow-xl font-bold hover:scale-105 transition flex items-center gap-2"
         >
-          💬 WhatsApp
+          <img
+            src={favicon("whatsapp.com")}
+            alt="WhatsApp"
+            className="h-5 w-5"
+            loading="lazy"
+          />
+          WhatsApp
         </a>
       </div>
     </main>
