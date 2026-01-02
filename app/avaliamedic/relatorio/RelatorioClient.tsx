@@ -1,93 +1,141 @@
 "use client";
 
-import { useSearchParams } from "next/navigation";
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
+
+type Prescricao = {
+  setor: string;
+  idade: number;
+  peso: number;
+  status: string;
+};
+
+type Item = {
+  id: string;
+  medicamento: string;
+  dose: string;
+  via: string;
+  frequencia: string;
+  risco: string;
+};
+
+function riscoLabel(risco: string) {
+  const map: Record<string, { texto: string; cor: string }> = {
+    ok: { texto: "Adequado", cor: "bg-green-100 text-green-800" },
+    dose_alta: { texto: "Dose alta", cor: "bg-red-100 text-red-800" },
+    dose_baixa: { texto: "Dose baixa", cor: "bg-yellow-100 text-yellow-800" },
+    frequencia_inadequada: {
+      texto: "Frequência inadequada",
+      cor: "bg-orange-100 text-orange-800",
+    },
+    via_inadequada: {
+      texto: "Via inadequada",
+      cor: "bg-purple-100 text-purple-800",
+    },
+    monitoramento: {
+      texto: "Precisa de monitoramento",
+      cor: "bg-blue-100 text-blue-800",
+    },
+    risco_aumentado: {
+      texto: "Risco aumentado",
+      cor: "bg-red-200 text-red-900",
+    },
+  };
+
+  return (
+    map[risco] || {
+      texto: risco || "Não classificado",
+      cor: "bg-gray-100 text-gray-700",
+    }
+  );
+}
 
 export default function RelatorioClient() {
   const params = useSearchParams();
-  const prescricao_id = params.get("prescricao_id");
+  const prescricaoId = params.get("prescricao_id");
 
-  const [relatorio, setRelatorio] = useState<any[]>([]);
-  const [prescricao, setPrescricao] = useState<any>(null);
+  const [prescricao, setPrescricao] = useState<Prescricao | null>(null);
+  const [itens, setItens] = useState<Item[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!prescricao_id) return;
+    if (!prescricaoId) return;
 
     async function carregar() {
-      try {
-        const resp = await fetch(
-  `/avaliamedic/api/get-prescricao?prescricao_id=${prescricao_id}`,
-  { cache: "no-store" }
-);
+      const res = await fetch(
+        `/avaliamedic/api/relatorio?prescricao_id=${prescricaoId}`
+      );
+      const json = await res.json();
 
-
-        const json = await resp.json();
-
-        if (json.error) {
-          console.error(json.error);
-          setLoading(false);
-          return;
-        }
-
-        // 🔥 AQUI: LENDO EXATAMENTE O QUE O BACKEND RETORNA
-        setRelatorio(json.relatorio || []);
-        setPrescricao(json.prescricao || {});
-      } catch (e) {
-        console.error("Falha ao carregar relatório", e);
-      }
-
+      setPrescricao(json.prescricao);
+      setItens(json.relatorio || []);
       setLoading(false);
     }
 
     carregar();
-  }, [prescricao_id]);
+  }, [prescricaoId]);
 
   if (loading) {
-    return (
-      <main className="p-6">
-        <h1 className="text-xl font-semibold">Carregando relatório...</h1>
-      </main>
-    );
+    return <p className="p-6">Carregando relatório...</p>;
+  }
+
+  if (!prescricao) {
+    return <p className="p-6">Prescrição não encontrada.</p>;
   }
 
   return (
-    <main className="p-6">
-      <h1 className="text-2xl font-bold mb-6">Relatório Clínico</h1>
+    <main className="min-h-screen bg-gray-50 p-6">
+      <h1 className="text-2xl font-semibold mb-6">Relatório Clínico</h1>
 
-      {/* DADOS RESUMIDOS DA PRESCRIÇÃO */}
-      {prescricao && (
-        <div className="mb-6 p-4 border rounded shadow-sm bg-white">
-          <p><b>Setor:</b> {prescricao.setor}</p>
-          <p><b>Idade:</b> {prescricao.idade}</p>
-          <p><b>Peso:</b> {prescricao.peso}</p>
-          <p><b>Status final:</b> {prescricao.status}</p>
-        </div>
-      )}
+      {/* DADOS GERAIS */}
+      <div className="bg-white border rounded-xl p-6 mb-6">
+        <p>
+          <strong>Setor:</strong> {prescricao.setor}
+        </p>
+        <p>
+          <strong>Idade:</strong> {prescricao.idade}
+        </p>
+        <p>
+          <strong>Peso:</strong> {prescricao.peso}
+        </p>
+        <p>
+          <strong>Status final:</strong> {prescricao.status}
+        </p>
+      </div>
 
-      {/* LISTA DOS ITENS */}
-      {relatorio.length === 0 ? (
+      {/* ITENS */}
+      {itens.length === 0 && (
         <p>Nenhum item encontrado para esta prescrição.</p>
-      ) : (
-        relatorio.map((item: any, index: number) => (
-          <div key={index} className="border rounded p-4 mb-4 shadow-sm bg-white">
-            <p><b>Medicamento:</b> {item.medicamento}</p>
-            <p><b>Dose:</b> {item.dose}</p>
-            <p><b>Via:</b> {item.via}</p>
-            <p><b>Frequência:</b> {item.frequencia}</p>
-
-            <p className="mt-2">
-              <b>Status:</b>{" "}
-              <span className="text-emerald-700">{item.status || "—"}</span>
-            </p>
-
-            <p>
-              <b>Motivo:</b>{" "}
-              <span className="text-gray-700">{item.motivo || "—"}</span>
-            </p>
-          </div>
-        ))
       )}
+
+      {itens.map((item) => {
+        const risco = riscoLabel(item.risco);
+
+        return (
+          <div key={item.id} className="bg-white border rounded-xl p-6 mb-4">
+            <p>
+              <strong>Medicamento:</strong> {item.medicamento}
+            </p>
+            <p>
+              <strong>Dose:</strong> {item.dose || "-"}
+            </p>
+            <p>
+              <strong>Via:</strong> {item.via || "-"}
+            </p>
+            <p>
+              <strong>Frequência:</strong> {item.frequencia || "-"}
+            </p>
+
+            <div className="mt-3">
+              <span
+                className={`inline-block px-3 py-1 rounded-full text-sm font-medium ${risco.cor}`}
+              >
+                {risco.texto}
+              </span>
+            </div>
+          </div>
+        );
+      })}
     </main>
   );
 }

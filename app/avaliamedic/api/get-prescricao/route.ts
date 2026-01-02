@@ -18,7 +18,6 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "ID não enviado" }, { status: 400 });
     }
 
-    // 1) Buscar prescrição
     const { data: prescricao, error: erroPresc } = await supabase
       .from("prescricoes")
       .select("*")
@@ -29,8 +28,6 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: erroPresc.message }, { status: 500 });
     }
 
-    // 2) Buscar itens vinculados à prescrição
-    // ⚠️ Sem order pra não quebrar se a coluna não existir
     const { data: itens, error: erroItens } = await supabase
       .from("itens_prescricao")
       .select("*")
@@ -52,4 +49,3 @@ export async function GET(req: Request) {
     );
   }
 }
-
