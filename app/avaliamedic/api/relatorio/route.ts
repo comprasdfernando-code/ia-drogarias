@@ -15,38 +15,26 @@ export async function GET(req: Request) {
     const prescricao_id = searchParams.get("prescricao_id");
 
     if (!prescricao_id) {
-      return NextResponse.json(
-        { error: "prescricao_id não informado" },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: "ID não enviado" }, { status: 400 });
     }
 
-    // 🔹 Prescrição
     const { data: prescricao, error: erroPresc } = await supabase
       .from("prescricoes")
-      .select("id,setor,idade,peso,status,criado_em")
+      .select("*")
       .eq("id", prescricao_id)
       .single();
 
-    if (erroPresc || !prescricao) {
-      return NextResponse.json(
-        { error: "Prescrição não encontrada" },
-        { status: 404 }
-      );
+    if (erroPresc) {
+      return NextResponse.json({ error: erroPresc.message }, { status: 500 });
     }
 
-    // 🔹 Itens
     const { data: itens, error: erroItens } = await supabase
       .from("itens_prescricao")
-      .select("id,medicamento,dose,via,frequencia,risco")
-      .eq("prescricao_id", prescricao_id)
-      .order("id", { ascending: true });
+      .select("*")
+      .eq("prescricao_id", prescricao_id);
 
     if (erroItens) {
-      return NextResponse.json(
-        { error: erroItens.message },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: erroItens.message }, { status: 500 });
     }
 
     return NextResponse.json({
