@@ -6,16 +6,13 @@ import { createClient } from "@supabase/supabase-js";
 import OpenAI from "openai";
 
 // ===============================
-// CONFIG SUPABASE
+// CONFIG
 // ===============================
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_KEY!
 );
 
-// ===============================
-// CONFIG OPENAI
-// ===============================
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY!,
 });
@@ -28,38 +25,33 @@ function limparJSON(texto: string): string {
   return texto.replace(/json/gi, "").replace(/```/g, "").trim();
 }
 
-function parseJSONSeguro(texto: string): any {
+function parseJSONSeguro(texto: string): any[] | null {
   try {
-    return JSON.parse(texto);
+    const json = JSON.parse(texto);
+    return Array.isArray(json) ? json : null;
   } catch {
     return null;
   }
 }
 
-// ==========================================================
-// 🔥 Função que gera status + motivo automaticamente
-// ==========================================================
+// ===============================
+// GERAR PARECER
+// ===============================
 async function gerarParecer(item: any) {
   try {
-    const resposta = await openai.chat.completions.create({
+    const resp = await openai.chat.completions.create({
       model: "gpt-4o-mini",
       messages: [
         {
           role: "system",
           content: `
-Você é um farmacêutico clínico. 
-Analise o item a seguir e responda SOMENTE JSON:
+Você é um farmacêutico clínico hospitalar.
+Responda SOMENTE JSON:
 
 {
- "status": "",
- "motivo": ""
+  "status": "",
+  "motivo": ""
 }
-
-Status pode ser: "Adequado", "Dose alta", "Dose baixa", 
-"Frequência inadequada", "Via inadequada",
-"Precisa de monitoramento", "Risco aumentado", etc.
-
-Motivo deve ser curto, objetivo e técnico.
 `
         },
         {
@@ -74,71 +66,49 @@ Frequência: ${item.frequencia}
       ]
     });
 
-    let bruto = resposta.choices[0].message.content || "";
-    bruto = limparJSON(bruto);
-
-    const json = parseJSONSeguro(bruto);
-
-    if (json && json.status)
-      return json;
-
-    return {
-      status: "Indefinido",
-      motivo: "Não foi possível interpretar."
-    };
+    const bruto = limparJSON(resp.choices[0].message.content || "");
+    return JSON.parse(bruto);
 
   } catch {
     return {
       status: "Indefinido",
-      motivo: "Erro ao gerar parecer."
+      motivo: "Falha na análise automática."
     };
   }
 }
 
-// ==========================================================
-// 🔥 ROTA PRINCIPAL
-// ==========================================================
+// ===============================
+// POST
+// ===============================
 export async function POST(req: Request) {
   try {
     const form = await req.formData();
-
     const setor = form.get("setor") as string;
     const idade = form.get("idade") as string;
     const peso = form.get("peso") as string;
-    const arquivo: File = form.get("arquivo") as any;
+    const arquivo = form.get("arquivo") as File;
 
     if (!arquivo) {
-      return NextResponse.json({ error: "Arquivo não enviado" }, { status: 400 });
+      return NextResponse.json({ error: "Arquivo ausente" }, { status: 400 });
     }
 
     // ===============================
-    // 1) Upload da imagem no Storage
+    // UPLOAD
     // ===============================
-    const bytes = await arquivo.arrayBuffer();
-    const buffer = Buffer.from(bytes);
-
+    const buffer = Buffer.from(await arquivo.arrayBuffer());
     const fileName = `prescricoes/${Date.now()}-${arquivo.name}`;
 
-    const { error: uploadError } = await supabase.storage
+    await supabase.storage
       .from("avaliamedic")
-      .upload(fileName, buffer, {
-        contentType: arquivo.type || "image/jpeg",
-      });
-
-    if (uploadError) {
-      return NextResponse.json(
-        { error: "Erro ao enviar arquivo" },
-        { status: 500 }
-      );
-    }
+      .upload(fileName, buffer, { contentType: arquivo.type });
 
     const arquivo_url =
       `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/avaliamedic/${fileName}`;
 
     // ===============================
-    // 2) Criar registro inicial
+    // REGISTRO
     // ===============================
-    const { data: prescricao, error: prescError } = await supabase
+    const { data: prescricao } = await supabase
       .from("prescricoes")
       .insert({
         setor,
@@ -150,135 +120,92 @@ export async function POST(req: Request) {
       .select()
       .single();
 
-    if (prescError) {
-      return NextResponse.json(
-        { error: "Erro ao registrar prescrição" },
-        { status: 500 }
-      );
-    }
-
     const prescricaoId = prescricao.id;
 
     // ===============================
-    // 3) OCR - Ler texto da imagem
+    // OCR TURBO
     // ===============================
-    let textoPrescricao = "";
+    const ocr = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content: `
+Você é um OCR médico avançado.
+Leia receitas manuscritas, borradas ou escaneadas.
+Retorne TODO o texto legível, sem interpretar.
+`
+        },
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "Leia a prescrição médica:" },
+            { type: "image_url", image_url: { url: arquivo_url } }
+          ]
+        }
+      ]
+    });
 
-    try {
-      const ocr = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
-        messages: [
-          {
-            role: "system",
-            content:
-              "Extraia todo o texto legível contido na prescrição. Retorne somente o texto."
-          },
-          {
-            role: "user",
-            content: [
-              { type: "text", text: "Leia a prescrição:" },
-              { type: "image_url", image_url: { url: arquivo_url } }
-            ]
-          }
-        ]
-      });
+    const textoOCR = ocr.choices[0].message.content || "";
 
-      textoPrescricao = ocr.choices[0].message.content || "";
-
-      // 🔥 SALVAR O TEXTO DO OCR !!!
-      await supabase
-        .from("prescricoes")
-        .update({ texto_ocr: textoPrescricao })
-        .eq("id", prescricaoId);
-
-    } catch (err) {
-      await supabase
-        .from("prescricoes")
-        .update({ status: "erro_ocr" })
-        .eq("id", prescricaoId);
-
-      return NextResponse.json(
-        { error: "Falha ao processar OCR" },
-        { status: 500 }
-      );
-    }
+    await supabase
+      .from("prescricoes")
+      .update({ texto_ocr: textoOCR })
+      .eq("id", prescricaoId);
 
     // ===============================
-    // 4) Extrair os itens
+    // EXTRAÇÃO
     // ===============================
-    let itens: any[] = [];
+    const extracao = await openai.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        {
+          role: "system",
+          content: `
+Extraia medicamentos de OCR ruim.
+Mesmo abreviações, texto quebrado ou incompleto.
 
-    try {
-      const extracao = await openai.chat.completions.create({
-  model: "gpt-4o-mini",
-  messages: [
-    {
-      role: "system",
-      content: `
-Você é uma IA especialista em farmacologia hospitalar.
-Seu trabalho é extrair MEDICAMENTOS mesmo quando o texto está incompleto, confuso,
-misturado ou mal formatado (como OCR de receita médica).
-
-REGRAS IMPORTANTES:
-- Identifique medicamento mesmo com texto parcial (ex: "Amox 500" → Amoxicilina 500mg)
-- Identifique dose mesmo se vier sem unidade (ex: "1" → "1 comprimido")
-- Identifique frequência mesmo se vier truncada (ex: "8 e" → "8/8h")
-- Se a via não aparecer, coloque via = "não informada"
-- Formate tudo de forma coerente e clínica.
-- Ignore frases como "Tipo de uso", "Interno", "Hospital", "Uso contínuo", etc.
-
-RETORNE APENAS JSON NO FORMATO:
+RETORNE APENAS JSON:
 
 [
-  {
-    "medicamento": "",
-    "dose": "",
-    "via": "",
-    "frequencia": ""
-  }
+  { "medicamento": "", "dose": "", "via": "", "frequencia": "" }
 ]
-
-NÃO escreva explicações.
-NÃO escreva nada fora do JSON.
 `
-    },
-    {
-      role: "user",
-      content: `Texto da receita (OCR): ${textoPrescricao}`
-    }
-  ]
-});
+        },
+        {
+          role: "user",
+          content: textoOCR
+        }
+      ]
+    });
 
-let bruto = extracao.choices[0].message.content || "";
-bruto = limparJSON(bruto);
+    const bruto = limparJSON(extracao.choices[0].message.content || "");
+    const itens = parseJSONSeguro(bruto);
 
-itens = parseJSONSeguro(bruto) || [];
-
-
-    } catch {
+    // 🚨 VALIDAÇÃO CRÍTICA
+    if (!itens || itens.length === 0) {
       await supabase
         .from("prescricoes")
-        .update({ status: "erro_extracao" })
+        .update({ status: "sem_itens" })
         .eq("id", prescricaoId);
 
       return NextResponse.json(
-        { error: "Falha ao extrair itens" },
-        { status: 500 }
+        { sucesso: false, motivo: "Nenhum medicamento identificado" },
+        { status: 200 }
       );
     }
 
     // ===============================
-    // 5) Gerar parecer e salvar os itens
+    // SALVAR ITENS
     // ===============================
     for (const item of itens) {
-      const medicamento = item.medicamento || "";
-      if (!medicamento) continue;
+      if (!item.medicamento) continue;
 
       const parecer = await gerarParecer(item);
 
       await supabase.from("itens_prescricao").insert({
         prescricao_id: prescricaoId,
-        medicamento,
+        medicamento: item.medicamento,
         dose: item.dose || "",
         via: item.via || "",
         frequencia: item.frequencia || "",
@@ -288,21 +215,18 @@ itens = parseJSONSeguro(bruto) || [];
     }
 
     // ===============================
-    // 6) Finalizar
+    // FINAL
     // ===============================
     await supabase
       .from("prescricoes")
       .update({ status: "parecer_concluido" })
       .eq("id", prescricaoId);
 
-    return NextResponse.json(
-      { sucesso: true, prescricao_id: prescricaoId },
-      { status: 200 }
-    );
+    return NextResponse.json({ sucesso: true }, { status: 200 });
 
   } catch (err: any) {
     return NextResponse.json(
-      { error: err?.message || "Erro desconhecido" },
+      { error: err.message || "Erro interno" },
       { status: 500 }
     );
   }
