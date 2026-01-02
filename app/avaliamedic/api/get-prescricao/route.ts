@@ -30,11 +30,11 @@ export async function GET(req: Request) {
     }
 
     // 2) Buscar itens vinculados à prescrição
+    // ⚠️ Sem order pra não quebrar se a coluna não existir
     const { data: itens, error: erroItens } = await supabase
       .from("itens_prescricao")
       .select("*")
-      .eq("prescricao_id", prescricao_id)
-      .order("criado_em", { ascending: true }); // se não existir criado_em, pode remover
+      .eq("prescricao_id", prescricao_id);
 
     if (erroItens) {
       return NextResponse.json({ error: erroItens.message }, { status: 500 });
@@ -52,3 +52,4 @@ export async function GET(req: Request) {
     );
   }
 }
+

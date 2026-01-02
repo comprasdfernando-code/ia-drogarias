@@ -17,8 +17,10 @@ export default function RelatorioClient() {
     async function carregar() {
       try {
         const resp = await fetch(
-          `/avaliamedic/api/get-prescricao?prescricao_id=${prescricao_id}`
-        );
+  `/avaliamedic/api/get-prescricao?prescricao_id=${prescricao_id}`,
+  { cache: "no-store" }
+);
+
 
         const json = await resp.json();
 
