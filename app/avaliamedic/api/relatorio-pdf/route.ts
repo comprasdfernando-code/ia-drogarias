@@ -33,9 +33,13 @@ export async function GET(req: Request) {
 
   if (e2) return NextResponse.json({ error: e2.message }, { status: 500 });
 
+  const A4: [number, number] = [595.28, 841.89];
+
   const pdfDoc = await PDFDocument.create();
-  const page = pdfDoc.addPage([595.28, 841.89]); // A4
   const font = await pdfDoc.embedFont(StandardFonts.Helvetica);
+
+  // ✅ precisa ser LET (vamos trocar quando criar nova página)
+  let page = pdfDoc.addPage(A4);
 
   let y = 800;
 
@@ -62,10 +66,11 @@ export async function GET(req: Request) {
 
     for (const line of bloco) {
       if (y < 60) {
-        // nova página
+        // ✅ cria nova página E passa a desenhar nela
+        page = pdfDoc.addPage(A4);
         y = 800;
-        pdfDoc.addPage([595.28, 841.89]);
       }
+
       page.drawText(line, { x: 50, y, size: 10, font });
       y -= 14;
     }
@@ -73,10 +78,14 @@ export async function GET(req: Request) {
 
   const bytes = await pdfDoc.save();
 
-  return new NextResponse(bytes, {
+  // ✅ Uint8Array -> Buffer (evita erro no NextResponse em produção)
+  const buffer = Buffer.from(bytes);
+
+  return new NextResponse(buffer, {
     headers: {
       "Content-Type": "application/pdf",
       "Content-Disposition": `inline; filename="relatorio-${prescricao_id}.pdf"`,
+      "Cache-Control": "no-store",
     },
   });
 }
