@@ -1,126 +1,112 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
+import Link from "next/link";
 
-type Caixa = {
-  id: string;
-  data_abertura: string;
-  data_fechamento?: string | null;
-  valor_abertura: number;
-  status: "aberto" | "fechado" | string;
-  operador?: string | null;
-};
+export const dynamic = "force-dynamic";
 
-type Venda = {
-  id: string;
-  data: string;
-  total: number;
-  subtotal?: number | null;
-  frete?: number | null;
-  origem?: string | null;
-  status?: string | null;
-  tipo_entrega?: string | null;
-  metodo_pagamento?: string | null;
-  cliente_nome?: string | null;
-  cliente_telefone?: string | null;
-  cliente_endereco?: string | null;
-};
-
-function money(n: number) {
+function brl(n: number) {
   return n.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
 
-function parseMoney(v: string) {
-  const n = Number(String(v || "").replace(".", "").replace(",", "."));
-  return isNaN(n) ? 0 : n;
-}
+type Venda = any;
+
+type Item = {
+  id?: string;
+  nome: string;
+  quantidade: number;
+  preco: number;
+  subtotal?: number;
+};
 
 export default function CaixaGigante() {
-  const [caixa, setCaixa] = useState<Caixa | null>(null);
+  const [tab, setTab] = useState<"pendentes" | "pagas">("pendentes");
+
+  const [caixa, setCaixa] = useState<any>(null);
   const [valorAbertura, setValorAbertura] = useState("");
   const [carregando, setCarregando] = useState(true);
 
-  const [pendentesPDV, setPendentesPDV] = useState<Venda[]>([]);
-  const [pendentesSITE, setPendentesSITE] = useState<Venda[]>([]);
-  const [vendasPagas, setVendasPagas] = useState<Venda[]>([]);
+  const [preVendasPDV, setPreVendasPDV] = useState<Venda[]>([]);
+  const [pedidosSite, setPedidosSite] = useState<Venda[]>([]);
+  const [pagas, setPagas] = useState<Venda[]>([]);
 
-  const [aba, setAba] = useState<"pendentes" | "pagas">("pendentes");
-
-  // modal baixa
+  // modal itens
+  const [modalOpen, setModalOpen] = useState(false);
   const [modalVenda, setModalVenda] = useState<Venda | null>(null);
-  const [mp, setMp] = useState<"PIX" | "DINHEIRO" | "DÉBITO" | "CRÉDITO">("PIX");
-  const [frete, setFrete] = useState<string>("0");
-  const [processing, setProcessing] = useState(false);
+  const [modalItens, setModalItens] = useState<Item[]>([]);
+  const [modalLoading, setModalLoading] = useState(false);
 
-  async function carregarCaixa() {
-    setCarregando(true);
-
-    const { data } = await supabase
+  async function carregarCaixaAberto() {
+    const { data, error } = await supabase
       .from("gigante_caixa")
       .select("*")
       .eq("status", "aberto")
       .single();
 
-    setCaixa((data as any) || null);
-    setCarregando(false);
-
-    if (data?.data_abertura) {
-      await carregarMovimento(data.data_abertura);
+    if (error) {
+      setCaixa(null);
     } else {
-      // se não tem caixa aberto, ainda assim carrega pendentes (útil)
-      await carregarPendentes();
+      setCaixa(data || null);
     }
   }
 
-  async function carregarPendentes() {
-    // ✅ PDV pendente = pre_venda
-    const pdv = await supabase
+  async function carregarPendencias() {
+    // Pré-vendas PDV pendentes (status pre_venda)
+    const { data: pdv } = await supabase
       .from("gigante_vendas")
-      .select("id,data,total,subtotal,frete,origem,status,tipo_entrega,metodo_pagamento,cliente_nome,cliente_telefone,cliente_endereco")
+      .select("*")
       .eq("origem", "PDV")
       .eq("status", "pre_venda")
-      .order("data", { ascending: false })
-      .limit(200);
+      .order("data", { ascending: false });
 
-    if (!pdv.error) setPendentesPDV((pdv.data as any) || []);
-    else console.error(pdv.error);
+    setPreVendasPDV(pdv || []);
 
-    // ✅ SITE pendente = tudo que não está pago (você pode refinar depois)
-    const site = await supabase
+    // Pedidos do site pendentes (status != entregue)
+    const { data: site } = await supabase
       .from("gigante_vendas")
-      .select("id,data,total,subtotal,frete,origem,status,tipo_entrega,metodo_pagamento,cliente_nome,cliente_telefone,cliente_endereco")
+      .select("*")
       .eq("origem", "SITE")
-      .neq("status", "pago")
-      .order("data", { ascending: false })
-      .limit(200);
+      .neq("status", "entregue")
+      .order("data", { ascending: false });
 
-    if (!site.error) setPendentesSITE((site.data as any) || []);
-    else console.error(site.error);
+    setPedidosSite(site || []);
   }
 
-  // Carrega vendas pagas no período do caixa
-  async function carregarMovimento(inicio: string) {
-    await carregarPendentes();
-
-    const pagas = await supabase
+  async function carregarPagas() {
+    // Tenta usar status_caixa se existir. Se não existir, usa status='pago'
+    const { data, error } = await supabase
       .from("gigante_vendas")
-      .select("id,data,total,subtotal,frete,origem,status,tipo_entrega,metodo_pagamento")
-      .gte("data", inicio)
-      .eq("status", "pago")
-      .order("data", { ascending: true })
-      .limit(500);
+      .select("*")
+      .eq("status_caixa", "pago")
+      .order("data", { ascending: false });
 
-    if (!pagas.error) setVendasPagas((pagas.data as any) || []);
-    else console.error(pagas.error);
+    if (!error) {
+      setPagas(data || []);
+      return;
+    }
+
+    const { data: alt } = await supabase
+      .from("gigante_vendas")
+      .select("*")
+      .eq("status", "pago")
+      .order("data", { ascending: false });
+
+    setPagas(alt || []);
+  }
+
+  async function carregarTudo() {
+    setCarregando(true);
+    await carregarCaixaAberto();
+    await carregarPendencias();
+    await carregarPagas();
+    setCarregando(false);
   }
 
   useEffect(() => {
-    carregarCaixa();
+    carregarTudo();
   }, []);
 
-  // Abrir caixa
   async function abrirCaixa() {
     if (!valorAbertura) {
       alert("Digite o valor de abertura");
@@ -128,160 +114,178 @@ export default function CaixaGigante() {
     }
 
     const { error } = await supabase.from("gigante_caixa").insert({
-      valor_abertura: parseMoney(valorAbertura),
+      valor_abertura: parseFloat(valorAbertura),
       status: "aberto",
       operador: "Operador 1",
+      data_abertura: new Date().toISOString(),
     });
 
     if (error) {
       console.error(error);
-      alert("Erro ao abrir caixa.");
+      alert("Erro ao abrir caixa (RLS/colunas).");
       return;
     }
 
     setValorAbertura("");
-    carregarCaixa();
+    await carregarTudo();
   }
 
-  // Fechar caixa
   async function fecharCaixa() {
     if (!caixa) return;
     if (!confirm("Deseja realmente fechar o caixa?")) return;
 
-    const totalGeral = vendasPagas.reduce((s, v) => s + Number(v.total || 0), 0);
+    // pega vendas pagas desde abertura
+    const inicio = caixa.data_abertura;
 
-    // Totais por método (olha metodo_pagamento textual)
-    const totalPIX = vendasPagas
-      .filter((v) => String(v.metodo_pagamento || "").toUpperCase().includes("PIX"))
-      .reduce((s, v) => s + Number(v.total || 0), 0);
+    const { data: vend, error } = await supabase
+      .from("gigante_vendas")
+      .select("*")
+      .gte("data", inicio)
+      .order("data", { ascending: true });
 
-    const totalDIN = vendasPagas
-      .filter((v) => String(v.metodo_pagamento || "").toUpperCase().includes("DINHEIRO"))
-      .reduce((s, v) => s + Number(v.total || 0), 0);
+    if (error) {
+      console.error(error);
+      alert("Erro ao carregar vendas para fechar o caixa.");
+      return;
+    }
 
-    const totalDEB = vendasPagas
-      .filter((v) => String(v.metodo_pagamento || "").toUpperCase().includes("DÉBITO") || String(v.metodo_pagamento || "").toUpperCase().includes("DEBITO"))
-      .reduce((s, v) => s + Number(v.total || 0), 0);
+    const vendasPeriodo = vend || [];
 
-    const totalCRE = vendasPagas
-      .filter((v) => String(v.metodo_pagamento || "").toUpperCase().includes("CRÉDITO") || String(v.metodo_pagamento || "").toUpperCase().includes("CREDITO"))
-      .reduce((s, v) => s + Number(v.total || 0), 0);
+    const totalGeral = vendasPeriodo.reduce((s: number, v: any) => s + Number(v.total || 0), 0);
 
-    await supabase
+    const { error: upd } = await supabase
       .from("gigante_caixa")
       .update({
         data_fechamento: new Date().toISOString(),
-        total_pix: totalPIX,
-        total_dinheiro: totalDIN,
-        total_debito: totalDEB,
-        total_credito: totalCRE,
         total_vendido: totalGeral,
         valor_fechamento: totalGeral,
         status: "fechado",
       })
       .eq("id", caixa.id);
 
-    setCaixa(null);
-    setVendasPagas([]);
-    alert("Caixa fechado!");
-  }
-
-  function abrirBaixa(v: Venda) {
-    setModalVenda(v);
-
-    // sugere método salvo
-    const s = String(v.metodo_pagamento || "").toUpperCase();
-    if (s.includes("DIN")) setMp("DINHEIRO");
-    else if (s.includes("DEB")) setMp("DÉBITO");
-    else if (s.includes("CRE")) setMp("CRÉDITO");
-    else setMp("PIX");
-
-    setFrete(String(v.frete ?? 0));
-  }
-
-  async function confirmarBaixa() {
-    if (!modalVenda) return;
-
-    try {
-      setProcessing(true);
-
-      // calcula subtotal base: se existir subtotal usa, senão usa total atual
-      const subtotal = Number(modalVenda.subtotal ?? modalVenda.total ?? 0);
-      const freteNum = modalVenda.tipo_entrega === "entrega" ? parseMoney(frete) : 0;
-      const totalFinal = subtotal + freteNum;
-
-      const { error } = await supabase
-        .from("gigante_vendas")
-        .update({
-          subtotal,
-          frete: freteNum,
-          total: totalFinal,
-          metodo_pagamento: mp,
-          status: "pago",
-          data: new Date().toISOString(),
-        })
-        .eq("id", modalVenda.id);
-
-      if (error) throw error;
-
-      alert("Baixa realizada ✅");
-      setModalVenda(null);
-
-      // Atualiza listas
-      if (caixa?.data_abertura) await carregarMovimento(caixa.data_abertura);
-      else await carregarPendentes();
-
-      // imprime cupom final
-      window.open(`/gigante/cupom/${modalVenda.id}`, "_blank");
-    } catch (e) {
-      console.error(e);
-      alert("Erro ao dar baixa (RLS/colunas). Veja o console.");
-    } finally {
-      setProcessing(false);
+    if (upd) {
+      console.error(upd);
+      alert("Erro ao fechar caixa.");
+      return;
     }
+
+    alert("Caixa fechado!");
+    setCaixa(null);
+    await carregarTudo();
   }
 
-  const totalPago = useMemo(
-    () => vendasPagas.reduce((s, v) => s + Number(v.total || 0), 0),
-    [vendasPagas]
-  );
+  function tituloVenda(v: any) {
+    const comanda = (v?.comanda_numero || "").toString().trim();
+    if (comanda) return `Comanda ${comanda}`;
+    return `#${String(v.id).slice(0, 6).toUpperCase()}`;
+  }
 
-  if (carregando) return <p className="p-6">Carregando...</p>;
+  async function verItens(v: any) {
+    setModalOpen(true);
+    setModalVenda(v);
+    setModalItens([]);
+    setModalLoading(true);
+
+    const { data, error } = await supabase
+      .from("gigante_venda_itens")
+      .select("nome,quantidade,preco,subtotal")
+      .eq("venda_id", v.id)
+      .order("criado_em", { ascending: true });
+
+    if (error) {
+      console.error(error);
+      alert("Erro ao carregar itens.");
+      setModalLoading(false);
+      return;
+    }
+
+    setModalItens((data as any) || []);
+    setModalLoading(false);
+  }
+
+  async function excluirComanda(v: any) {
+    if (!confirm(`Excluir ${tituloVenda(v)}? Isso apaga itens também.`)) return;
+
+    // apaga itens primeiro
+    const { error: ed } = await supabase.from("gigante_venda_itens").delete().eq("venda_id", v.id);
+    if (ed) {
+      console.error(ed);
+      alert("Erro ao excluir itens (RLS?).");
+      return;
+    }
+
+    const { error: ev } = await supabase.from("gigante_vendas").delete().eq("id", v.id);
+    if (ev) {
+      console.error(ev);
+      alert("Erro ao excluir comanda (RLS?).");
+      return;
+    }
+
+    alert("Comanda excluída ✅");
+    await carregarTudo();
+  }
+
+  async function darBaixa(v: any) {
+    if (!confirm(`Dar baixa em ${tituloVenda(v)}?`)) return;
+
+    // tenta marcar status_caixa='pago' (se existir), senão status='pago'
+    const tenta1 = await supabase
+      .from("gigante_vendas")
+      .update({ status_caixa: "pago", pago_em: new Date().toISOString() })
+      .eq("id", v.id);
+
+    if (tenta1.error) {
+      const tenta2 = await supabase
+        .from("gigante_vendas")
+        .update({ status: "pago", pago_em: new Date().toISOString() })
+        .eq("id", v.id);
+
+      if (tenta2.error) {
+        console.error(tenta1.error, tenta2.error);
+        alert("Erro ao dar baixa (RLS/colunas).");
+        return;
+      }
+    }
+
+    alert("Baixa feita ✅");
+    await carregarTudo();
+  }
+
+  const totalPendencias = useMemo(() => {
+    return (
+      preVendasPDV.reduce((s, v) => s + Number(v.total || 0), 0) +
+      pedidosSite.reduce((s, v) => s + Number(v.total || 0), 0)
+    );
+  }, [preVendasPDV, pedidosSite]);
+
+  if (carregando) return <div className="p-6">Carregando...</div>;
 
   return (
-    <div className="min-h-screen bg-gray-100 p-6">
-      <div className="max-w-5xl mx-auto">
-
-        <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
-          <div>
-            <h1 className="text-3xl font-extrabold">💵 Caixa — Gigante dos Assados</h1>
-            <p className="text-sm text-gray-600">
-              Baixa de PDV (pré-venda) + SITE (pedidos).
-            </p>
-          </div>
-
-          <div className="flex gap-2">
-            <button
-              onClick={() => (caixa?.data_abertura ? carregarMovimento(caixa.data_abertura) : carregarPendentes())}
-              className="px-3 py-2 rounded border bg-white hover:bg-gray-50"
-            >
-              🔄 Atualizar
-            </button>
-
-            <Link
-              href="/gigante/pdv"
-              className="px-3 py-2 rounded bg-gray-900 text-white hover:bg-black"
-            >
-              🧾 Ir PDV
-            </Link>
-          </div>
+    <div className="p-6 max-w-6xl mx-auto">
+      {/* Header */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h1 className="text-3xl font-extrabold">💵 Caixa — Gigante dos Assados</h1>
+          <p className="text-sm text-gray-600">Baixa de PDV (pré-venda) + SITE (pedidos).</p>
         </div>
 
-        {/* Caixa fechado */}
-        {!caixa && (
-          <div className="bg-white shadow p-5 rounded-2xl">
-            <h2 className="text-xl font-semibold mb-2">Abertura de Caixa</h2>
+        <div className="flex gap-2">
+          <button onClick={carregarTudo} className="px-3 py-2 rounded border bg-white hover:bg-gray-50">
+            🔄 Atualizar
+          </button>
 
+          <Link href="/gigante/pdv" className="px-3 py-2 rounded bg-gray-900 text-white hover:bg-black">
+            🧾 Ir PDV
+          </Link>
+        </div>
+      </div>
+
+      {/* Abertura */}
+      <div className="mt-4 bg-white border rounded-2xl p-4 shadow-sm">
+        <h2 className="text-xl font-bold mb-2">Abertura de Caixa</h2>
+
+        {!caixa ? (
+          <>
             <input
               type="number"
               placeholder="Valor de abertura (troco)"
@@ -292,7 +296,7 @@ export default function CaixaGigante() {
 
             <button
               onClick={abrirCaixa}
-              className="bg-green-600 text-white w-full mt-3 p-3 rounded-xl font-bold"
+              className="bg-green-600 text-white w-full mt-3 p-3 rounded-xl font-bold hover:bg-green-700"
             >
               🧾 Abrir Caixa
             </button>
@@ -300,279 +304,279 @@ export default function CaixaGigante() {
             <div className="text-xs text-gray-500 mt-2">
               * Mesmo sem caixa aberto, você ainda pode dar baixa nas pendências (testes).
             </div>
-          </div>
+          </>
+        ) : (
+          <>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="text-sm text-gray-700">
+                Caixa aberto às{" "}
+                <b>{new Date(caixa.data_abertura).toLocaleString("pt-BR")}</b> • Troco:{" "}
+                <b>R$ {Number(caixa.valor_abertura || 0).toFixed(2)}</b>
+              </div>
+
+              <button
+                onClick={fecharCaixa}
+                className="px-4 py-2 rounded-xl bg-red-600 text-white font-bold hover:bg-red-700"
+              >
+                🔒 Fechar Caixa
+              </button>
+            </div>
+          </>
         )}
+      </div>
 
-        {/* Caixa aberto */}
-        {caixa && (
-          <div className="bg-white shadow p-5 rounded-2xl mb-4">
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-              <div>
-                <h2 className="text-xl font-semibold">
-                  Caixa aberto às {new Date(caixa.data_abertura).toLocaleTimeString("pt-BR")}
-                </h2>
-                <p className="text-sm text-gray-600">
-                  Abertura: <b>R$ {money(Number(caixa.valor_abertura || 0))}</b>
-                </p>
-              </div>
+      {/* Tabs */}
+      <div className="mt-4 flex gap-2">
+        <button
+          onClick={() => setTab("pendentes")}
+          className={`px-4 py-2 rounded-xl font-bold ${
+            tab === "pendentes" ? "bg-black text-white" : "bg-white border"
+          }`}
+        >
+          ⏳ Pendentes
+        </button>
 
-              <div className="text-right">
-                <div className="text-sm text-gray-600">Total pago no caixa</div>
-                <div className="text-3xl font-extrabold text-green-700">R$ {money(totalPago)}</div>
-              </div>
+        <button
+          onClick={() => setTab("pagas")}
+          className={`px-4 py-2 rounded-xl font-bold ${
+            tab === "pagas" ? "bg-black text-white" : "bg-white border"
+          }`}
+        >
+          ✅ Pagas (caixa)
+        </button>
+      </div>
+
+      {tab === "pendentes" && (
+        <div className="mt-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* Pré-vendas PDV */}
+          <div className="bg-white border rounded-2xl p-4 shadow-sm">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-extrabold">📌 Pré-vendas (PDV)</h3>
+              <div className="text-xs text-gray-500">{preVendasPDV.length}</div>
             </div>
 
-            <button
-              onClick={fecharCaixa}
-              className="bg-red-600 text-white w-full mt-4 p-3 rounded-xl font-bold"
-            >
-              🔒 Fechar Caixa
-            </button>
-          </div>
-        )}
-
-        {/* Abas */}
-        <div className="flex gap-2 mb-3">
-          <button
-            onClick={() => setAba("pendentes")}
-            className={`px-3 py-2 rounded-xl font-bold ${aba === "pendentes" ? "bg-black text-white" : "bg-white border"}`}
-          >
-            ⏳ Pendentes
-          </button>
-          <button
-            onClick={() => setAba("pagas")}
-            className={`px-3 py-2 rounded-xl font-bold ${aba === "pagas" ? "bg-black text-white" : "bg-white border"}`}
-          >
-            ✅ Pagas (caixa)
-          </button>
-        </div>
-
-        {aba === "pendentes" && (
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-3">
-            {/* PDV */}
-            <div className="bg-white rounded-2xl shadow p-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-extrabold">🧾 Pré-vendas (PDV)</h3>
-                <span className="text-sm text-gray-600">{pendentesPDV.length}</span>
-              </div>
-
-              <div className="mt-3 space-y-2">
-                {pendentesPDV.length === 0 && (
-                  <div className="text-sm text-gray-500">Nenhuma pré-venda pendente.</div>
-                )}
-
-                {pendentesPDV.map((v) => (
-                  <div key={v.id} className="border rounded-xl p-3 bg-gray-50">
+            {preVendasPDV.length === 0 ? (
+              <div className="text-sm text-gray-500 mt-3">Nenhuma pré-venda pendente.</div>
+            ) : (
+              <div className="mt-3 space-y-3">
+                {preVendasPDV.map((v) => (
+                  <div key={v.id} className="border rounded-2xl p-3">
                     <div className="flex items-center justify-between">
-                      <div className="font-bold">#{v.id.slice(0, 6).toUpperCase()}</div>
-                      <div className="font-extrabold text-red-600">R$ {money(Number(v.total || 0))}</div>
+                      <div className="font-bold">{tituloVenda(v)}</div>
+                      <div className="font-extrabold text-red-600">R$ {brl(Number(v.total || 0))}</div>
                     </div>
 
                     <div className="text-xs text-gray-600 mt-1">
-                      {new Date(v.data).toLocaleString("pt-BR")} • {String(v.metodo_pagamento || "—")}
+                      {new Date(v.data).toLocaleString("pt-BR")} • PRE_VENDA
                     </div>
 
-                    <div className="flex gap-2 mt-3">
+                    <div className="grid grid-cols-2 gap-2 mt-3">
+                      <button
+                        onClick={() => verItens(v)}
+                        className="py-2 rounded-xl border hover:bg-gray-50 font-bold"
+                      >
+                        📋 Ver itens
+                      </button>
+
+                      <button
+                        onClick={() => darBaixa(v)}
+                        className="py-2 rounded-xl bg-green-600 text-white hover:bg-green-700 font-bold"
+                      >
+                        💰 Dar baixa
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 mt-2">
                       <Link
                         href={`/gigante/pdv?id=${v.id}`}
-                        className="px-3 py-2 rounded border bg-white hover:bg-gray-100 text-sm"
+                        className="py-2 rounded-xl bg-gray-900 text-white hover:bg-black font-bold text-center"
                       >
-                        ✏️ Abrir no PDV
+                        ✍️ Abrir no PDV
                       </Link>
 
                       <button
-                        onClick={() => abrirBaixa(v)}
-                        className="px-3 py-2 rounded bg-green-600 text-white hover:bg-green-700 text-sm font-bold"
+                        onClick={() => excluirComanda(v)}
+                        className="py-2 rounded-xl border border-red-500 text-red-600 hover:bg-red-50 font-bold"
                       >
-                        💰 Dar baixa
+                        🗑️ Excluir
                       </button>
                     </div>
                   </div>
                 ))}
               </div>
+            )}
+          </div>
+
+          {/* Pedidos SITE */}
+          <div className="bg-white border rounded-2xl p-4 shadow-sm">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-extrabold">🛒 Pedidos (SITE)</h3>
+              <div className="text-xs text-gray-500">{pedidosSite.length}</div>
             </div>
 
-            {/* SITE */}
-            <div className="bg-white rounded-2xl shadow p-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-lg font-extrabold">📲 Pedidos (SITE)</h3>
-                <span className="text-sm text-gray-600">{pendentesSITE.length}</span>
-              </div>
-
-              <div className="mt-3 space-y-2">
-                {pendentesSITE.length === 0 && (
-                  <div className="text-sm text-gray-500">Nenhum pedido pendente.</div>
-                )}
-
-                {pendentesSITE.map((v) => (
-                  <div key={v.id} className="border rounded-xl p-3 bg-gray-50">
+            {pedidosSite.length === 0 ? (
+              <div className="text-sm text-gray-500 mt-3">Nenhum pedido pendente.</div>
+            ) : (
+              <div className="mt-3 space-y-3">
+                {pedidosSite.map((v) => (
+                  <div key={v.id} className="border rounded-2xl p-3">
                     <div className="flex items-center justify-between">
-                      <div className="font-bold">#{v.id.slice(0, 6).toUpperCase()}</div>
-                      <div className="font-extrabold text-red-600">R$ {money(Number(v.total || 0))}</div>
+                      <div className="font-bold">#{String(v.id).slice(0, 6).toUpperCase()}</div>
+                      <div className="font-extrabold text-red-600">R$ {brl(Number(v.total || 0))}</div>
                     </div>
 
                     <div className="text-xs text-gray-600 mt-1">
-                      {new Date(v.data).toLocaleString("pt-BR")} • Status: {String(v.status || "—")} • {String(v.tipo_entrega || "—")}
+                      {new Date(v.data).toLocaleString("pt-BR")} • Status: {v.status} • {v.tipo_entrega}
                     </div>
 
-                    {String(v.tipo_entrega || "") === "entrega" && (
-                      <div className="text-xs text-gray-700 mt-2 bg-white border rounded p-2">
-                        <div className="font-semibold">📍 Entrega</div>
+                    {(v.tipo_entrega === "entrega" || v.cliente_nome || v.cliente_telefone) && (
+                      <div className="mt-2 text-xs bg-gray-50 border rounded-xl p-2">
+                        <div className="font-bold">📍 {v.tipo_entrega === "entrega" ? "Entrega" : "Retirada"}</div>
                         <div>{v.cliente_nome}</div>
                         <div>{v.cliente_telefone}</div>
-                        <div className="text-gray-600">{v.cliente_endereco}</div>
+                        {v.tipo_entrega === "entrega" && <div>{v.cliente_endereco}</div>}
                       </div>
                     )}
 
-                    <div className="flex gap-2 mt-3">
+                    <div className="grid grid-cols-2 gap-2 mt-3">
+                      <button
+                        onClick={() => verItens(v)}
+                        className="py-2 rounded-xl border hover:bg-gray-50 font-bold"
+                      >
+                        📋 Ver itens
+                      </button>
+
+                      <button
+                        onClick={() => darBaixa(v)}
+                        className="py-2 rounded-xl bg-green-600 text-white hover:bg-green-700 font-bold"
+                      >
+                        💰 Dar baixa
+                      </button>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-2 mt-2">
                       <Link
                         href={`/gigante/cupom/${v.id}`}
                         target="_blank"
-                        className="px-3 py-2 rounded border bg-white hover:bg-gray-100 text-sm"
+                        className="py-2 rounded-xl bg-gray-900 text-white hover:bg-black font-bold text-center"
                       >
                         🧾 Ver cupom
                       </Link>
 
                       <button
-                        onClick={() => abrirBaixa(v)}
-                        className="px-3 py-2 rounded bg-green-600 text-white hover:bg-green-700 text-sm font-bold"
+                        onClick={() => excluirComanda(v)}
+                        className="py-2 rounded-xl border border-red-500 text-red-600 hover:bg-red-50 font-bold"
                       >
-                        💰 Dar baixa
+                        🗑️ Excluir
                       </button>
                     </div>
                   </div>
                 ))}
               </div>
-            </div>
+            )}
           </div>
-        )}
 
-        {aba === "pagas" && (
-          <div className="bg-white rounded-2xl shadow p-4">
-            <div className="flex items-center justify-between">
-              <h3 className="text-lg font-extrabold">✅ Vendas pagas no período do caixa</h3>
-              <span className="text-sm text-gray-600">{vendasPagas.length}</span>
-            </div>
+          <div className="lg:col-span-2 text-sm text-gray-600">
+            Total pendências: <b className="text-black">R$ {brl(totalPendencias)}</b>
+          </div>
+        </div>
+      )}
 
+      {tab === "pagas" && (
+        <div className="mt-4 bg-white border rounded-2xl p-4 shadow-sm">
+          <div className="flex items-center justify-between">
+            <h3 className="text-lg font-extrabold">✅ Pagas (caixa)</h3>
+            <div className="text-xs text-gray-500">{pagas.length}</div>
+          </div>
+
+          {pagas.length === 0 ? (
+            <div className="text-sm text-gray-500 mt-3">Nenhuma baixa registrada ainda.</div>
+          ) : (
             <div className="mt-3 space-y-2">
-              {vendasPagas.length === 0 && (
-                <div className="text-sm text-gray-500">Nenhuma venda paga ainda.</div>
-              )}
-
-              {vendasPagas.map((v) => (
-                <div key={v.id} className="border rounded-xl p-3 bg-gray-50">
-                  <div className="flex items-center justify-between">
-                    <div className="font-bold">
-                      #{v.id.slice(0, 6).toUpperCase()} • {String(v.origem || "-")}
-                    </div>
-                    <div className="font-extrabold text-green-700">R$ {money(Number(v.total || 0))}</div>
+              {pagas.map((v) => (
+                <div key={v.id} className="border rounded-xl p-2 flex items-center justify-between">
+                  <div className="text-sm">
+                    <b>{tituloVenda(v)}</b>{" "}
+                    <span className="text-gray-500">• {new Date(v.data).toLocaleString("pt-BR")}</span>
                   </div>
-
-                  <div className="text-xs text-gray-600 mt-1">
-                    {new Date(v.data).toLocaleString("pt-BR")} • {String(v.metodo_pagamento || "-")}
-                  </div>
-
-                  <div className="flex gap-2 mt-3">
-                    <Link
-                      href={`/gigante/cupom/${v.id}`}
-                      target="_blank"
-                      className="px-3 py-2 rounded bg-gray-900 text-white hover:bg-black text-sm"
-                    >
-                      🖨️ Imprimir
-                    </Link>
-                  </div>
+                  <div className="font-extrabold text-green-700">R$ {brl(Number(v.total || 0))}</div>
                 </div>
               ))}
             </div>
-          </div>
-        )}
+          )}
+        </div>
+      )}
 
-        {/* MODAL BAIXA */}
-        {modalVenda && (
-          <div className="fixed inset-0 bg-black/60 flex items-center justify-center p-4 z-50">
-            <div className="bg-white w-full max-w-md rounded-2xl shadow p-4">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="text-xl font-extrabold">💰 Dar baixa</div>
-                  <div className="text-sm text-gray-600">
-                    Pedido #{modalVenda.id.slice(0, 6).toUpperCase()} • {String(modalVenda.origem || "-")}
-                  </div>
+      {/* Modal de itens */}
+      {modalOpen && (
+        <div className="fixed inset-0 bg-black/60 z-50 flex items-end sm:items-center justify-center p-3">
+          <div className="bg-white w-full max-w-lg rounded-2xl p-4 shadow">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="font-extrabold text-lg">📋 Itens — {modalVenda ? tituloVenda(modalVenda) : ""}</div>
+                <div className="text-xs text-gray-600">
+                  {modalVenda?.origem ? `Origem: ${modalVenda.origem}` : ""}{" "}
+                  {modalVenda?.tipo_entrega ? `• ${modalVenda.tipo_entrega}` : ""}
                 </div>
-                <button
-                  onClick={() => setModalVenda(null)}
-                  className="px-3 py-1 rounded border"
-                >
-                  ✕
-                </button>
               </div>
 
-              <div className="mt-3 space-y-3">
-                <div>
-                  <label className="text-sm font-bold">Pagamento</label>
-                  <select
-                    value={mp}
-                    onChange={(e) => setMp(e.target.value as any)}
-                    className="w-full border p-3 rounded-xl mt-1"
-                  >
-                    <option value="PIX">PIX</option>
-                    <option value="DINHEIRO">DINHEIRO</option>
-                    <option value="DÉBITO">DÉBITO</option>
-                    <option value="CRÉDITO">CRÉDITO</option>
-                  </select>
-                </div>
+              <button
+                onClick={() => setModalOpen(false)}
+                className="text-gray-600 hover:text-black font-bold"
+              >
+                ✕
+              </button>
+            </div>
 
-                {String(modalVenda.tipo_entrega || "") === "entrega" && (
-                  <div>
-                    <label className="text-sm font-bold">Frete</label>
-                    <input
-                      value={frete}
-                      onChange={(e) => setFrete(e.target.value)}
-                      placeholder="ex: 8,50"
-                      className="w-full border p-3 rounded-xl mt-1"
-                    />
-                    <div className="text-xs text-gray-500 mt-1">
-                      Entrega: você pode ajustar o frete antes de fechar.
-                    </div>
-                  </div>
-                )}
-
-                <div className="bg-gray-50 border rounded-xl p-3 text-sm">
-                  <div className="flex justify-between">
-                    <span>Subtotal (base)</span>
-                    <b>R$ {money(Number(modalVenda.subtotal ?? modalVenda.total ?? 0))}</b>
-                  </div>
-                  <div className="flex justify-between">
-                    <span>Frete</span>
-                    <b>
-                      R$ {money(String(modalVenda.tipo_entrega || "") === "entrega" ? parseMoney(frete) : 0)}
-                    </b>
-                  </div>
-                  <div className="flex justify-between text-base mt-1">
-                    <span>Total</span>
-                    <b>
-                      R$ {money(
-                        Number(modalVenda.subtotal ?? modalVenda.total ?? 0) +
-                          (String(modalVenda.tipo_entrega || "") === "entrega" ? parseMoney(frete) : 0)
-                      )}
-                    </b>
-                  </div>
+            <div className="mt-3 border-t pt-3">
+              {modalLoading ? (
+                <div className="text-sm text-gray-600">Carregando itens...</div>
+              ) : modalItens.length === 0 ? (
+                <div className="text-sm text-gray-600">Sem itens.</div>
+              ) : (
+                <div className="space-y-2">
+                  {modalItens.map((it, idx) => {
+                    const sub = Number(it.subtotal ?? Number(it.preco) * Number(it.quantidade));
+                    return (
+                      <div key={idx} className="flex items-center justify-between text-sm border rounded-xl p-2">
+                        <div className="min-w-0">
+                          <div className="font-bold truncate">{it.quantidade}x {it.nome}</div>
+                          <div className="text-xs text-gray-600">
+                            R$ {brl(Number(it.preco))} • Sub: R$ {brl(sub)}
+                          </div>
+                        </div>
+                        <div className="font-extrabold">R$ {brl(sub)}</div>
+                      </div>
+                    );
+                  })}
                 </div>
+              )}
+            </div>
+
+            <div className="mt-4 border-t pt-3 flex items-center justify-between">
+              <div className="text-sm">
+                Total: <b className="text-lg">R$ {brl(Number(modalVenda?.total || 0))}</b>
+              </div>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={() => modalVenda && excluirComanda(modalVenda)}
+                  className="px-4 py-2 rounded-xl border border-red-500 text-red-600 hover:bg-red-50 font-bold"
+                >
+                  🗑️ Excluir
+                </button>
 
                 <button
-                  onClick={confirmarBaixa}
-                  disabled={processing}
-                  className={`w-full py-3 rounded-xl font-extrabold text-white ${
-                    processing ? "bg-gray-400" : "bg-green-600 hover:bg-green-700"
-                  }`}
+                  onClick={() => modalVenda && darBaixa(modalVenda)}
+                  className="px-4 py-2 rounded-xl bg-green-600 text-white hover:bg-green-700 font-bold"
                 >
-                  {processing ? "Processando..." : "✅ Confirmar baixa e imprimir"}
+                  💰 Dar baixa
                 </button>
               </div>
             </div>
           </div>
-        )}
-
-      </div>
+        </div>
+      )}
     </div>
   );
 }
