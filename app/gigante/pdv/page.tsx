@@ -3,7 +3,9 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
-import ProdutoModal from "@/components/ProdutoModal";
+import ProdutoModalPDV from "@/components/ProdutoModalPDV";
+
+
 
 // ✅ evita prerender quebrar no Vercel (App Router)
 export const dynamic = "force-dynamic";
@@ -748,7 +750,7 @@ function PDVInner() {
 
       {/* ✅ Modal de peso para itens por KG */}
       {produtoSelecionado && (
-        <ProdutoModal
+        <ProdutoModalPDV
           produto={produtoSelecionado as any}
           onClose={() => setProdutoSelecionado(null)}
           onAdd={(produto, quantidade) => {
