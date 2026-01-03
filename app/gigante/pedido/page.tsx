@@ -32,7 +32,7 @@ export default function PedidoPage() {
       setLoading(true);
       const { data, error } = await supabase
         .from("gigante_produtos")
-        .select("id, nome, descricao, preco, imagem_url, ativo")
+        .select("id, nome, descricao, preco, imagem_url, vendido_por, ativo")
         .eq("ativo", true)
         .order("nome");
 

@@ -16,8 +16,29 @@ type ItemCarrinho = {
   id: string;
   nome: string;
   preco: number;
-  quantidade: number;
+  quantidade: number; // unidade OU kg (ex: 0.850)
 };
+
+function brl(n: number) {
+  return n.toLocaleString("pt-BR", {
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+}
+
+// ✅ Se tiver decimal (0.850) tratamos como KG (MVP)
+// (para itens por unidade a quantidade normalmente é 1,2,3...)
+function isKgItem(qtd: number) {
+  return Math.abs(qtd - Math.round(qtd)) > 0.0001;
+}
+
+function formatQtd(qtd: number) {
+  if (isKgItem(qtd)) {
+    // 0.850 -> "0,850 kg"
+    return `${qtd.toFixed(3).replace(".", ",")} kg`;
+  }
+  return `${qtd}x`;
+}
 
 export default function CarrinhoModal({
   aberto,
@@ -49,12 +70,16 @@ export default function CarrinhoModal({
     );
   }, [carrinho]);
 
-  const qtdItens = useMemo(
-    () => carrinho.reduce((s, i) => s + Number(i.quantidade || 0), 0),
-    [carrinho]
-  );
+  // ✅ contagem “de itens” do jeito humano:
+  // unidade soma quantidade inteira, kg conta como 1 item
+  const qtdItens = useMemo(() => {
+    return carrinho.reduce((s, i) => {
+      const q = Number(i.quantidade || 0);
+      return s + (isKgItem(q) ? 1 : q);
+    }, 0);
+  }, [carrinho]);
 
-  // ✅ MVP: frete fica 0 no sistema e "a calcular" no texto quando entrega
+  // ✅ MVP: frete 0 no sistema e "a calcular" no texto quando entrega
   const frete = 0;
   const total = subtotal + frete;
 
@@ -67,7 +92,7 @@ export default function CarrinhoModal({
       ? `Dinheiro${trocoPara ? ` (troco para R$ ${trocoPara})` : ""}`
       : "VR/VA";
 
-  // ✅ Agora: Nome e WhatsApp são obrigatórios em qualquer tipo (retirada/entrega)
+  // ✅ Nome e WhatsApp obrigatórios em qualquer tipo (retirada/entrega)
   const clienteOk = cliente.nome.trim() && cliente.telefone.trim();
 
   // ✅ Endereço obrigatório só na entrega
@@ -78,8 +103,13 @@ export default function CarrinhoModal({
   function montarMensagemWhatsApp(pedidoId?: string) {
     const itens = carrinho
       .map((i) => {
-        const sub = Number(i.preco) * Number(i.quantidade);
-        return `${i.quantidade}x ${i.nome} - R$ ${sub.toFixed(2)}`;
+        const qtd = Number(i.quantidade);
+        const sub = Number(i.preco) * qtd;
+
+        // ✅ exibe kg bonitinho
+        const qtdTxt = formatQtd(qtd);
+
+        return `${qtdTxt} ${i.nome} - R$ ${brl(sub)}`;
       })
       .join("\n");
 
@@ -92,7 +122,7 @@ export default function CarrinhoModal({
         `🛒 *Pedido - Gigante dos Assados*\n` +
           cabecalhoId +
           `${itens}\n\n` +
-          `Subtotal: R$ ${subtotal.toFixed(2)}\n` +
+          `Subtotal: R$ ${brl(subtotal)}\n` +
           `🚚 Frete: *a calcular*\n` +
           `✅ *Vamos calcular o frete e te enviar o valor total do pedido.*\n\n` +
           `📍 *Entrega*\n` +
@@ -100,16 +130,18 @@ export default function CarrinhoModal({
           `WhatsApp: ${cliente.telefone}\n` +
           `Endereço: ${cliente.endereco}\n\n` +
           `💳 Pagamento: ${pagamentoTexto}\n` +
-          (pagamento === "dinheiro" && trocoPara ? `🪙 Troco: R$ ${trocoPara}\n` : "")
+          (pagamento === "dinheiro" && trocoPara
+            ? `🪙 Troco: R$ ${trocoPara}\n`
+            : "")
       );
     }
 
-    // ✅ Retirada agora também manda Nome + WhatsApp
+    // ✅ Retirada com Nome + WhatsApp
     return encodeURIComponent(
       `🛒 *Pedido - Gigante dos Assados*\n` +
         cabecalhoId +
         `${itens}\n\n` +
-        `Total: R$ ${total.toFixed(2)}\n\n` +
+        `Total: R$ ${brl(total)}\n\n` +
         `🏠 *Retirada no local*\n` +
         `Cliente: ${cliente.nome}\n` +
         `WhatsApp: ${cliente.telefone}\n\n` +
@@ -131,7 +163,6 @@ export default function CarrinhoModal({
     try {
       setLoading(true);
 
-      // ✅ Salva venda (agora guarda nome/whats também para retirada)
       const { data: venda, error: errVenda } = await supabase
         .from("gigante_vendas")
         .insert({
@@ -150,7 +181,9 @@ export default function CarrinhoModal({
           observacoes:
             tipoEntrega === "entrega"
               ? `FRETE A CALCULAR (MVP)${
-                  pagamento === "dinheiro" && trocoPara ? ` | Troco: R$ ${trocoPara}` : ""
+                  pagamento === "dinheiro" && trocoPara
+                    ? ` | Troco: R$ ${trocoPara}`
+                    : ""
                 }`
               : pagamento === "dinheiro" && trocoPara
               ? `Troco: R$ ${trocoPara}`
@@ -161,13 +194,13 @@ export default function CarrinhoModal({
 
       if (errVenda) throw errVenda;
 
-      // ✅ Salva itens
+      // ✅ Itens (quantidade pode ser decimal para KG)
       const itens = carrinho.map((i) => ({
         venda_id: venda.id,
         produto_id: i.id,
         nome: i.nome,
-        quantidade: Number(i.quantidade),
-        preco: Number(i.preco),
+        quantidade: Number(i.quantidade), // unidade OU kg
+        preco: Number(i.preco), // se kg, é preço por kg
         subtotal: Number(i.preco) * Number(i.quantidade),
       }));
 
@@ -177,7 +210,6 @@ export default function CarrinhoModal({
 
       if (errItens) throw errItens;
 
-      // ✅ Abre WhatsApp (mensagem correta)
       const msg = montarMensagemWhatsApp(venda.id);
       window.open(`https://wa.me/5511948163211?text=${msg}`, "_blank");
 
@@ -206,14 +238,23 @@ export default function CarrinhoModal({
           <div className="text-center text-gray-500 py-10">Seu carrinho está vazio.</div>
         ) : (
           <>
-            {carrinho.map((i) => (
-              <div key={i.id} className="flex justify-between mb-2 text-sm">
-                <span>
-                  {i.quantidade}x {i.nome}
-                </span>
-                <span>R$ {(Number(i.preco) * Number(i.quantidade)).toFixed(2)}</span>
-              </div>
-            ))}
+            {carrinho.map((i) => {
+              const qtd = Number(i.quantidade);
+              const sub = Number(i.preco) * qtd;
+              return (
+                <div key={i.id} className="flex justify-between mb-2 text-sm">
+                  <span className="min-w-0 pr-2">
+                    <b>{formatQtd(qtd)}</b> {i.nome}
+                    {isKgItem(qtd) && (
+                      <span className="text-[11px] text-gray-500 block">
+                        ({brl(Number(i.preco))}/kg)
+                      </span>
+                    )}
+                  </span>
+                  <span className="whitespace-nowrap">R$ {brl(sub)}</span>
+                </div>
+              );
+            })}
 
             <hr className="my-3" />
 
@@ -238,7 +279,7 @@ export default function CarrinhoModal({
               </button>
             </div>
 
-            {/* ✅ DADOS DO CLIENTE (AGORA SEMPRE) */}
+            {/* DADOS DO CLIENTE (SEMPRE) */}
             <div className="space-y-2 mb-3">
               <p className="font-bold text-sm">👤 Seus dados</p>
 
@@ -253,17 +294,20 @@ export default function CarrinhoModal({
                 placeholder="WhatsApp (obrigatório)"
                 className="w-full border p-2 rounded"
                 value={cliente.telefone}
-                onChange={(e) => setCliente({ ...cliente, telefone: e.target.value })}
+                onChange={(e) =>
+                  setCliente({ ...cliente, telefone: e.target.value })
+                }
               />
 
-              {/* Endereço só na entrega */}
               {tipoEntrega === "entrega" && (
                 <>
                   <input
                     placeholder="Endereço completo (obrigatório)"
                     className="w-full border p-2 rounded"
                     value={cliente.endereco}
-                    onChange={(e) => setCliente({ ...cliente, endereco: e.target.value })}
+                    onChange={(e) =>
+                      setCliente({ ...cliente, endereco: e.target.value })
+                    }
                   />
 
                   <div className="text-xs text-gray-700 bg-yellow-50 border border-yellow-200 rounded p-2">
@@ -286,25 +330,33 @@ export default function CarrinhoModal({
               <div className="grid grid-cols-2 gap-2">
                 <button
                   onClick={() => setPagamento("pix")}
-                  className={`py-2 rounded ${pagamento === "pix" ? "bg-black text-white" : "border"}`}
+                  className={`py-2 rounded ${
+                    pagamento === "pix" ? "bg-black text-white" : "border"
+                  }`}
                 >
                   Pix
                 </button>
                 <button
                   onClick={() => setPagamento("cartao")}
-                  className={`py-2 rounded ${pagamento === "cartao" ? "bg-black text-white" : "border"}`}
+                  className={`py-2 rounded ${
+                    pagamento === "cartao" ? "bg-black text-white" : "border"
+                  }`}
                 >
                   Cartão
                 </button>
                 <button
                   onClick={() => setPagamento("dinheiro")}
-                  className={`py-2 rounded ${pagamento === "dinheiro" ? "bg-black text-white" : "border"}`}
+                  className={`py-2 rounded ${
+                    pagamento === "dinheiro" ? "bg-black text-white" : "border"
+                  }`}
                 >
                   Dinheiro
                 </button>
                 <button
                   onClick={() => setPagamento("vr")}
-                  className={`py-2 rounded ${pagamento === "vr" ? "bg-black text-white" : "border"}`}
+                  className={`py-2 rounded ${
+                    pagamento === "vr" ? "bg-black text-white" : "border"
+                  }`}
                 >
                   VR/VA
                 </button>
@@ -323,7 +375,7 @@ export default function CarrinhoModal({
             {/* TOTAIS */}
             <div className="text-sm space-y-1">
               <p>Itens: {qtdItens}</p>
-              <p>Subtotal: R$ {subtotal.toFixed(2)}</p>
+              <p>Subtotal: R$ {brl(subtotal)}</p>
               {tipoEntrega === "entrega" ? (
                 <p>
                   Frete: <b>a calcular</b>
@@ -332,11 +384,12 @@ export default function CarrinhoModal({
                 <p>Frete: R$ 0,00</p>
               )}
               <p className="font-bold">
-                {tipoEntrega === "entrega" ? "Total parcial" : "Total"}: R$ {total.toFixed(2)}
+                {tipoEntrega === "entrega" ? "Total parcial" : "Total"}: R${" "}
+                {brl(total)}
               </p>
             </div>
 
-            {/* ✅ CONTINUAR COMPRANDO */}
+            {/* CONTINUAR COMPRANDO */}
             <button
               onClick={() => setAberto(false)}
               className="block w-full mt-4 border text-center py-2 rounded"
