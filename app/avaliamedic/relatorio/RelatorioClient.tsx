@@ -12,15 +12,14 @@ type Prescricao = {
 
 type Item = {
   id: string;
-  medicamento: string;
+  medicamento: string | null;
   dose: string | null;
   via: string | null;
   frequencia: string | null;
   risco: string | null;
-  motivo: string | null;
 };
 
-function riscoLabel(risco?: string | null) {
+function riscoLabel(risco: string) {
   const map: Record<string, { texto: string; cor: string }> = {
     ok: { texto: "Adequado", cor: "bg-green-100 text-green-800" },
     dose_alta: { texto: "Dose alta", cor: "bg-red-100 text-red-800" },
@@ -43,10 +42,12 @@ function riscoLabel(risco?: string | null) {
     },
   };
 
-  return map[String(risco || "")] || {
-    texto: risco || "Não classificado",
-    cor: "bg-gray-100 text-gray-700",
-  };
+  return (
+    map[risco] || {
+      texto: risco || "Não classificado",
+      cor: "bg-gray-100 text-gray-700",
+    }
+  );
 }
 
 export default function RelatorioClient() {
@@ -84,10 +85,18 @@ export default function RelatorioClient() {
       <h1 className="text-2xl font-semibold mb-6">Relatório Clínico</h1>
 
       <div className="bg-white border rounded-xl p-6 mb-6">
-        <p><strong>Setor:</strong> {prescricao.setor}</p>
-        <p><strong>Idade:</strong> {prescricao.idade ?? "-"}</p>
-        <p><strong>Peso:</strong> {prescricao.peso ?? "-"}</p>
-        <p><strong>Status final:</strong> {prescricao.status}</p>
+        <p>
+          <strong>Setor:</strong> {prescricao.setor}
+        </p>
+        <p>
+          <strong>Idade:</strong> {prescricao.idade ?? "-"}
+        </p>
+        <p>
+          <strong>Peso:</strong> {prescricao.peso ?? "-"}
+        </p>
+        <p>
+          <strong>Status final:</strong> {prescricao.status}
+        </p>
       </div>
 
       {itens.length === 0 && (
@@ -95,14 +104,22 @@ export default function RelatorioClient() {
       )}
 
       {itens.map((item) => {
-        const risco = riscoLabel(item.risco);
+        const risco = riscoLabel((item.risco || "").trim());
 
         return (
           <div key={item.id} className="bg-white border rounded-xl p-6 mb-4">
-            <p><strong>Medicamento:</strong> {item.medicamento}</p>
-            <p><strong>Dose:</strong> {item.dose || "-"}</p>
-            <p><strong>Via:</strong> {item.via || "-"}</p>
-            <p><strong>Frequência:</strong> {item.frequencia || "-"}</p>
+            <p>
+              <strong>Medicamento:</strong> {item.medicamento || "-"}
+            </p>
+            <p>
+              <strong>Dose:</strong> {item.dose || "-"}
+            </p>
+            <p>
+              <strong>Via:</strong> {item.via || "-"}
+            </p>
+            <p>
+              <strong>Frequência:</strong> {item.frequencia || "-"}
+            </p>
 
             <div className="mt-3">
               <span
@@ -110,10 +127,6 @@ export default function RelatorioClient() {
               >
                 {risco.texto}
               </span>
-            </div>
-
-            <div className="mt-3 text-sm text-gray-700">
-              <strong>Motivo:</strong> {item.motivo || "-"}
             </div>
           </div>
         );

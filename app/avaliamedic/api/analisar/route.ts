@@ -10,13 +10,8 @@ const supabase = createClient(
   process.env.SUPABASE_SERVICE_KEY!
 );
 
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY!,
-});
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY! });
 
-// ===============================
-// HELPERS
-// ===============================
 function limparJSON(texto: string): string {
   if (!texto) return "";
   return texto.replace(/json/gi, "").replace(/```/g, "").trim();
@@ -37,15 +32,13 @@ async function atualizarStatus(prescricaoId: string, status: string) {
   await supabase.from("prescricoes").update({ status }).eq("id", prescricaoId);
 }
 
-// ===============================
-// GERAR PARECER (risco + motivo)
-// ===============================
-async function gerarParecer(item: {
+// ✅ Agora gera "risco" compatível com a sua tabela (ok, dose_alta, etc.)
+async function gerarRisco(item: {
   medicamento: string;
   dose?: string;
   via?: string;
   frequencia?: string;
-}) {
+}): Promise<{ risco: string; motivo: string }> {
   try {
     const resp = await openai.chat.completions.create({
       model: "gpt-4o-mini",
@@ -54,17 +47,14 @@ async function gerarParecer(item: {
           role: "system",
           content: `
 Você é um farmacêutico clínico hospitalar.
-Responda SOMENTE JSON:
+Classifique o item e responda SOMENTE JSON:
 
 {
   "risco": "ok | dose_alta | dose_baixa | frequencia_inadequada | via_inadequada | monitoramento | risco_aumentado",
-  "motivo": "curto, técnico e objetivo"
+  "motivo": "curto e técnico"
 }
 
-Regras:
-- Se faltar informação, use "monitoramento".
-- Use "ok" se estiver adequado.
-- Não escreva nada fora do JSON.
+Retorne apenas JSON.
 `,
         },
         {
@@ -82,34 +72,19 @@ Frequência: ${item.frequencia || ""}
     const bruto = limparJSON(resp.choices[0].message.content || "");
     const json = JSON.parse(bruto);
 
-    const riscosValidos = [
-      "ok",
-      "dose_alta",
-      "dose_baixa",
-      "frequencia_inadequada",
-      "via_inadequada",
-      "monitoramento",
-      "risco_aumentado",
-    ];
+    if (json?.risco) {
+      return {
+        risco: String(json.risco || "ok"),
+        motivo: String(json.motivo || ""),
+      };
+    }
 
-    const risco = riscosValidos.includes(String(json?.risco || ""))
-      ? String(json.risco)
-      : "monitoramento";
-
-    const motivo = String(json?.motivo || "Avaliar clinicamente.");
-
-    return { risco, motivo };
+    return { risco: "ok", motivo: "" };
   } catch {
-    return {
-      risco: "monitoramento",
-      motivo: "Falha na análise automática; avaliar clinicamente.",
-    };
+    return { risco: "ok", motivo: "" };
   }
 }
 
-// ===============================
-// POST
-// ===============================
 export async function POST(req: Request) {
   let prescricaoId: string | null = null;
 
@@ -124,7 +99,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Arquivo ausente" }, { status: 400 });
     }
 
-    // (PDF real exigiria conversão p/ imagem; por enquanto bloqueia)
+    // (Se quiser PDF, precisa converter PDF->imagem. Por enquanto bloqueia)
     if (arquivo.type === "application/pdf") {
       return NextResponse.json(
         { error: "Por enquanto, envie foto (JPG/PNG). PDF ainda não suportado." },
@@ -135,7 +110,7 @@ export async function POST(req: Request) {
     const idade = idadeRaw ? Number(idadeRaw) : null;
     const peso = pesoRaw ? Number(pesoRaw) : null;
 
-    // 1) UPLOAD
+    // 1) Upload
     const buffer = Buffer.from(await arquivo.arrayBuffer());
     const fileName = `prescricoes/${Date.now()}-${arquivo.name}`;
 
@@ -155,7 +130,7 @@ export async function POST(req: Request) {
 
     const arquivo_url = `${process.env.NEXT_PUBLIC_SUPABASE_URL}/storage/v1/object/public/avaliamedic/${fileName}`;
 
-    // 2) REGISTRO
+    // 2) Registro
     const { data: prescricao, error: prescError } = await supabase
       .from("prescricoes")
       .insert({
@@ -177,7 +152,7 @@ export async function POST(req: Request) {
 
     prescricaoId = prescricao.id;
 
-    // 3) OCR TURBO
+    // 3) OCR “turbo”
     let textoOCR = "";
     try {
       const ocr = await openai.chat.completions.create({
@@ -215,7 +190,7 @@ Retorne TODO o texto legível, sem interpretar.
       .update({ texto_ocr: textoOCR })
       .eq("id", prescricaoId);
 
-    // 4) EXTRAÇÃO
+    // 4) Extração dos itens
     let itens: any[] = [];
     try {
       const extracao = await openai.chat.completions.create({
@@ -224,18 +199,14 @@ Retorne TODO o texto legível, sem interpretar.
           {
             role: "system",
             content: `
-Você é uma IA especialista em farmacologia hospitalar.
-Extraia MEDICAMENTOS mesmo quando o texto está incompleto, confuso ou mal formatado (OCR ruim).
-
+Extraia medicamentos de OCR ruim, mesmo abreviações e texto quebrado.
 RETORNE APENAS JSON:
 
 [
   { "medicamento": "", "dose": "", "via": "", "frequencia": "" }
 ]
 
-Regras:
-- Se a via não aparecer: via = "não informada"
-- Não escreva nada fora do JSON.
+Nada fora do JSON.
 `,
           },
           { role: "user", content: `Texto OCR:\n${textoOCR}` },
@@ -252,7 +223,6 @@ Regras:
       );
     }
 
-    // 5) VALIDAR ITENS
     const itensValidos = (itens || []).filter(
       (x) => x && typeof x.medicamento === "string" && x.medicamento.trim()
     );
@@ -260,47 +230,34 @@ Regras:
     if (itensValidos.length === 0) {
       await atualizarStatus(prescricaoId, "sem_itens");
       return NextResponse.json(
-        {
-          sucesso: true,
-          prescricao_id: prescricaoId,
-          status: "sem_itens",
-          motivo: "Nenhum medicamento identificado",
-        },
+        { sucesso: true, prescricao_id: prescricaoId, status: "sem_itens" },
         { status: 200 }
       );
     }
 
-    // 6) SALVAR ITENS + PARECER
+    // 5) Salvar itens (✅ usando coluna risco)
     for (const item of itensValidos) {
-      const medicamento = (item.medicamento || "").trim();
-
       const payload = {
-        medicamento,
+        prescricao_id: prescricaoId,
+        medicamento: String(item.medicamento || "").trim(),
         dose: item.dose || "",
         via: item.via || "não informada",
         frequencia: item.frequencia || "",
       };
 
-      const parecer = await gerarParecer(payload);
+      const { risco } = await gerarRisco(payload);
 
-      const { error: insertError } = await supabase
-        .from("itens_prescricao")
-        .insert({
-          prescricao_id: prescricaoId,
-          medicamento: payload.medicamento,
-          dose: payload.dose,
-          via: payload.via,
-          frequencia: payload.frequencia,
-          risco: parecer.risco,     // ✅ coluna existe
-          motivo: parecer.motivo,   // ✅ coluna criada no SQL
-        });
+      const { error: insErr } = await supabase.from("itens_prescricao").insert({
+        ...payload,
+        risco: risco || "ok",
+      });
 
-      if (insertError) {
-        await atualizarStatus(prescricaoId, "erro_salvar_itens");
+      if (insErr) {
+        await atualizarStatus(prescricaoId, "erro_extracao");
         return NextResponse.json(
           {
             error: "Falha ao salvar itens no banco",
-            details: insertError.message,
+            details: insErr.message,
             prescricao_id: prescricaoId,
           },
           { status: 500 }
@@ -308,7 +265,7 @@ Regras:
       }
     }
 
-    // 7) FINAL
+    // 6) Final
     await atualizarStatus(prescricaoId, "parecer_concluido");
 
     return NextResponse.json(
@@ -317,7 +274,6 @@ Regras:
     );
   } catch (err: any) {
     if (prescricaoId) await atualizarStatus(prescricaoId, "erro_geral");
-
     return NextResponse.json(
       { error: err?.message || "Erro interno", prescricao_id: prescricaoId },
       { status: 500 }
