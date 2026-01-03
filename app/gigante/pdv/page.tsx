@@ -3,22 +3,27 @@
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
+import ProdutoModal from "@/components/ProdutoModal";
 
+// ✅ evita prerender quebrar no Vercel (App Router)
 export const dynamic = "force-dynamic";
 
 type Produto = {
   id: string;
   nome: string;
-  preco: number;
+  preco: number; // se vendido_por="kg", é PREÇO POR KG
   imagem_url?: string | null;
+  vendido_por?: "unidade" | "kg" | string;
+  descricao?: string | null;
 };
 
 type ItemCarrinho = {
   id: string;
-  nome: string;
-  preco: number;
-  quantidade: number;
   produto_id: string;
+  nome: string;
+  preco: number; // preço unitário ou preço/kg
+  quantidade: number; // unidade (int) ou kg (decimal)
+  vendido_por: "unidade" | "kg";
 };
 
 type VendaPre = {
@@ -26,7 +31,7 @@ type VendaPre = {
   data: string;
   total: number;
   status: string;
-  comanda?: string | null;
+  observacoes?: string | null;
 };
 
 function brl(n: number) {
@@ -34,6 +39,25 @@ function brl(n: number) {
     minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   });
+}
+
+function isKg(p: Produto) {
+  return String(p.vendido_por || "unidade").toLowerCase() === "kg";
+}
+
+function parseComandaFromObs(obs?: string | null) {
+  if (!obs) return null;
+  // aceita "COMANDA: 100" ou "COMANDA 100"
+  const m = obs.match(/COMANDA\s*:?\s*([A-Za-z0-9_-]+)/i);
+  return m?.[1] || null;
+}
+
+function upsertComandaObs(obs: string | null | undefined, comanda: string) {
+  const base = (obs || "").trim();
+  // remove comanda antiga se existir
+  const sem = base.replace(/COMANDA\s*:?\s*[A-Za-z0-9_-]+/gi, "").trim();
+  const nova = `COMANDA: ${comanda}`;
+  return sem ? `${nova} | ${sem}` : nova;
 }
 
 function PDVInner() {
@@ -51,12 +75,13 @@ function PDVInner() {
   const [loadingPre, setLoadingPre] = useState(true);
 
   const [preVendaId, setPreVendaId] = useState<string>(preIdFromUrl);
-  const [comandaAtual, setComandaAtual] = useState<string>("");
-
   const [salvando, setSalvando] = useState(false);
 
-  // ✅ evita abrir 2x e dobrar itens
-  const lastOpenedRef = useRef<string>("");
+  // ✅ modal para produto por KG
+  const [produtoSelecionado, setProdutoSelecionado] = useState<Produto | null>(null);
+
+  // ✅ evita abrir a mesma comanda 2x (isso causava “dobrar” em alguns fluxos)
+  const abrindoRef = useRef<string | null>(null);
 
   // 🔄 carregar produtos
   useEffect(() => {
@@ -64,7 +89,7 @@ function PDVInner() {
       setLoadingProdutos(true);
       const { data, error } = await supabase
         .from("gigante_produtos")
-        .select("id,nome,preco,imagem_url")
+        .select("id,nome,preco,imagem_url,vendido_por,descricao")
         .eq("ativo", true)
         .order("nome", { ascending: true });
 
@@ -74,12 +99,12 @@ function PDVInner() {
     })();
   }, []);
 
-  // 🔄 carregar lista de pré-vendas
+  // 🔄 carregar lista de pré-vendas (comandas abertas)
   async function carregarPreVendas() {
     setLoadingPre(true);
     const { data, error } = await supabase
       .from("gigante_vendas")
-      .select("id,data,total,status,comanda")
+      .select("id,data,total,status,observacoes")
       .eq("origem", "PDV")
       .eq("status", "pre_venda")
       .order("data", { ascending: false })
@@ -94,13 +119,10 @@ function PDVInner() {
     carregarPreVendas();
   }, []);
 
-  // 🔄 se vier ?id=... na URL, abre a pré-venda automaticamente (1 vez)
+  // 🔄 se vier ?id=... na URL, abre a pré-venda automaticamente
   useEffect(() => {
     if (!preIdFromUrl) return;
-    if (lastOpenedRef.current === preIdFromUrl) return;
-
-    lastOpenedRef.current = preIdFromUrl;
-    setPreVendaId(preIdFromUrl);
+    if (preIdFromUrl === preVendaId) return;
     abrirPreVenda(preIdFromUrl);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [preIdFromUrl]);
@@ -118,12 +140,25 @@ function PDVInner() {
     );
   }, [carrinho]);
 
-  function addProduto(p: Produto) {
+  // ✅ clique no card: se for KG abre modal, se for unidade adiciona direto
+  function onClickProduto(p: Produto) {
+    if (isKg(p)) {
+      setProdutoSelecionado(p);
+      return;
+    }
+    addProdutoUnidade(p);
+  }
+
+  function addProdutoUnidade(p: Produto) {
     setCarrinho((prev) => {
-      const ex = prev.find((x) => x.produto_id === p.id);
+      const ex = prev.find(
+        (x) => x.produto_id === p.id && x.vendido_por === "unidade"
+      );
       if (ex) {
         return prev.map((x) =>
-          x.produto_id === p.id ? { ...x, quantidade: x.quantidade + 1 } : x
+          x.produto_id === p.id && x.vendido_por === "unidade"
+            ? { ...x, quantidade: x.quantidade + 1 }
+            : x
         );
       }
       return [
@@ -134,27 +169,57 @@ function PDVInner() {
           nome: p.nome,
           preco: Number(p.preco),
           quantidade: 1,
+          vendido_por: "unidade",
         },
       ];
     });
     setBusca("");
   }
 
-  function inc(produto_id: string) {
+  // ✅ adiciona item por KG (quantidade = kg decimal)
+  function addProdutoKg(p: Produto, kg: number) {
+    setCarrinho((prev) => {
+      const ex = prev.find(
+        (x) => x.produto_id === p.id && x.vendido_por === "kg"
+      );
+      if (ex) {
+        // soma peso (você pode trocar por "substituir" se preferir)
+        return prev.map((x) =>
+          x.produto_id === p.id && x.vendido_por === "kg"
+            ? { ...x, quantidade: Number((x.quantidade + kg).toFixed(3)) }
+            : x
+        );
+      }
+      return [
+        ...prev,
+        {
+          id: crypto.randomUUID(),
+          produto_id: p.id,
+          nome: p.nome,
+          preco: Number(p.preco), // preço por KG
+          quantidade: Number(kg.toFixed(3)),
+          vendido_por: "kg",
+        },
+      ];
+    });
+    setBusca("");
+  }
+
+  function incUn(produto_id: string) {
     setCarrinho((prev) =>
       prev.map((x) =>
-        x.produto_id === produto_id
+        x.produto_id === produto_id && x.vendido_por === "unidade"
           ? { ...x, quantidade: x.quantidade + 1 }
           : x
       )
     );
   }
 
-  function dec(produto_id: string) {
+  function decUn(produto_id: string) {
     setCarrinho((prev) =>
       prev
         .map((x) =>
-          x.produto_id === produto_id
+          x.produto_id === produto_id && x.vendido_por === "unidade"
             ? { ...x, quantidade: Math.max(1, x.quantidade - 1) }
             : x
         )
@@ -162,132 +227,154 @@ function PDVInner() {
     );
   }
 
-  function remover(produto_id: string) {
-    setCarrinho((prev) => prev.filter((x) => x.produto_id !== produto_id));
+  function setKg(produto_id: string, kg: number) {
+    setCarrinho((prev) =>
+      prev.map((x) =>
+        x.produto_id === produto_id && x.vendido_por === "kg"
+          ? { ...x, quantidade: Number(Math.max(0.001, kg).toFixed(3)) }
+          : x
+      )
+    );
   }
 
-  function limparTudo() {
+  function removerItem(idItem: string) {
+    setCarrinho((prev) => prev.filter((x) => x.id !== idItem));
+  }
+
+  function limpar() {
     setCarrinho([]);
     setPreVendaId("");
-    setComandaAtual("");
-    setBusca("");
-    lastOpenedRef.current = "";
     router.replace("/gigante/pdv");
   }
 
-  // ✅ abrir pré-venda (carregar itens pro carrinho SEM duplicar)
+  // ✅ abrir pré-venda (carregar itens no carrinho)
   async function abrirPreVenda(id: string) {
+    if (!id) return;
+
+    // evita dupla abertura
+    if (abrindoRef.current === id) return;
+    abrindoRef.current = id;
+
     try {
       setSalvando(true);
 
       const { data: v, error: ev } = await supabase
         .from("gigante_vendas")
-        .select("id,status,total,comanda")
+        .select("id,status,observacoes")
         .eq("id", id)
         .single();
 
       if (ev || !v) throw ev || new Error("Pré-venda não encontrada");
 
-      setComandaAtual(String(v.comanda || ""));
-      setPreVendaId(id);
-
       const { data: its, error: ei } = await supabase
         .from("gigante_venda_itens")
-        .select("produto_id,nome,preco,quantidade,criado_em")
-        .eq("venda_id", id)
+        .select("produto_id,nome,preco,quantidade,subtotal,criado_em")
+        .eq("venda_id", id) // ✅ garante que vem SÓ dessa comanda
         .order("criado_em", { ascending: true });
 
       if (ei) throw ei;
 
-      // ✅ agrupa por produto_id (caso tenha repetição no banco)
-      const mapa = new Map<
-        string,
-        { produto_id: string; nome: string; preco: number; quantidade: number }
-      >();
+      // ✅ substitui o carrinho inteiro (não concatena)
+      // ✅ agrupa por produto_id + preço (pra evitar duplicado no banco)
+      const mapa = new Map<string, ItemCarrinho>();
 
       for (const it of its || []) {
-        const key = it.produto_id;
+        const quantidade = Number(it.quantidade || 0);
+        const preco = Number(it.preco || 0);
+
+        // heurística: se quantidade tiver decimal -> é KG
+        const vendido_por: "kg" | "unidade" =
+          String(quantidade).includes(".") ? "kg" : "unidade";
+
+        const key = `${it.produto_id}::${vendido_por}::${preco}`;
         const atual = mapa.get(key);
+
         if (!atual) {
           mapa.set(key, {
+            id: crypto.randomUUID(),
             produto_id: it.produto_id,
             nome: it.nome,
-            preco: Number(it.preco),
-            quantidade: Number(it.quantidade),
+            preco,
+            quantidade,
+            vendido_por,
           });
         } else {
           mapa.set(key, {
             ...atual,
-            quantidade: Number(atual.quantidade) + Number(it.quantidade),
+            quantidade:
+              vendido_por === "kg"
+                ? Number((atual.quantidade + quantidade).toFixed(3))
+                : atual.quantidade + quantidade,
           });
         }
       }
 
-      setCarrinho(
-        Array.from(mapa.values()).map((it) => ({
-          id: crypto.randomUUID(),
-          produto_id: it.produto_id,
-          nome: it.nome,
-          preco: Number(it.preco),
-          quantidade: Number(it.quantidade),
-        }))
-      );
-
+      setCarrinho(Array.from(mapa.values()));
+      setPreVendaId(id);
       router.replace(`/gigante/pdv?id=${id}`);
     } catch (e) {
       console.error(e);
-      alert("Erro ao abrir pré-venda.");
+      alert("Erro ao abrir comanda.");
     } finally {
+      abrindoRef.current = null;
       setSalvando(false);
     }
   }
 
-  // ✅ salvar pré-venda (cria ou atualiza) e ZERA itens ao salvar
+  // ✅ salvar pré-venda (cria ou atualiza)
+  // ✅ se for NOVA, pede número da comanda e depois limpa (zera itens)
   async function salvarPreVenda() {
-    if (salvando) return;
-
     if (carrinho.length === 0) {
       alert("Carrinho vazio.");
       return;
     }
 
-    // ✅ comanda só pede quando for NOVA
-    let comanda = comandaAtual?.trim();
-    if (!preVendaId) {
-      comanda = prompt("Número da comanda (ex: 12):")?.trim() || "";
-      if (!comanda) {
-        alert("Informe o número da comanda.");
-        return;
-      }
-      setComandaAtual(comanda);
-    } else {
-      // reabrindo: mantém comanda. se estiver vazio por algum motivo, pede.
-      if (!comanda) {
-        comanda = prompt("Número da comanda:")?.trim() || "";
-        if (!comanda) {
-          alert("Informe o número da comanda.");
-          return;
-        }
-        setComandaAtual(comanda);
-      }
-    }
-
     try {
       setSalvando(true);
 
+      let id = preVendaId;
+
+      // pega observacoes atual se for update
+      let obsAtual: string | null = null;
+      if (id) {
+        const { data: vv } = await supabase
+          .from("gigante_vendas")
+          .select("observacoes")
+          .eq("id", id)
+          .single();
+        obsAtual = (vv as any)?.observacoes ?? null;
+      }
+
+      // ✅ se for nova comanda, pede número e salva em observacoes
+      let comandaNumero = parseComandaFromObs(obsAtual);
+      if (!id) {
+        const resp = prompt("Número da comanda (ex: 100):");
+        if (!resp) {
+          setSalvando(false);
+          return;
+        }
+        comandaNumero = resp.trim();
+        if (!comandaNumero) {
+          setSalvando(false);
+          return;
+        }
+      }
+
       const payloadVenda: any = {
         data: new Date().toISOString(),
-        total,
+        subtotal: total,
+        frete: 0,
+        total: total,
         origem: "PDV",
         status: "pre_venda",
         tipo_entrega: "retirada",
-        comanda,
+        metodo_pagamento: null,
+        pagamento_detalhe: null,
+        // guarda comanda nas observações
+        observacoes: comandaNumero ? upsertComandaObs(obsAtual, comandaNumero) : obsAtual,
       };
 
-      let id = preVendaId;
-
       if (!id) {
-        // cria
         const { data: venda, error: ev } = await supabase
           .from("gigante_vendas")
           .insert(payloadVenda)
@@ -297,7 +384,6 @@ function PDVInner() {
         if (ev) throw ev;
         id = venda.id;
       } else {
-        // atualiza venda
         const { error: eu } = await supabase
           .from("gigante_vendas")
           .update(payloadVenda)
@@ -305,7 +391,7 @@ function PDVInner() {
 
         if (eu) throw eu;
 
-        // apaga itens antigos pra não duplicar
+        // limpa itens antigos (pra não duplicar no banco)
         const { error: ed } = await supabase
           .from("gigante_venda_itens")
           .delete()
@@ -314,7 +400,7 @@ function PDVInner() {
         if (ed) throw ed;
       }
 
-      // salva itens
+      // insere itens
       const itens = carrinho.map((i) => ({
         venda_id: id,
         produto_id: i.produto_id,
@@ -332,52 +418,63 @@ function PDVInner() {
 
       await carregarPreVendas();
 
-      alert(`Pré-venda salva! Comanda ${comanda} ✅`);
+      // ✅ se era nova: limpa tudo e volta pra nova comanda
+      if (!preVendaId) {
+        alert(`Comanda ${String(comandaNumero)} salva ✅`);
+        limpar();
+        return;
+      }
 
-      // ✅ zera itens ao salvar
-      limparTudo();
+      alert(`Comanda atualizada ✅`);
     } catch (e) {
       console.error(e);
-      alert("Erro ao salvar pré-venda. (RLS/colunas) — veja o console.");
+      alert("Erro ao salvar comanda. Veja o console.");
     } finally {
       setSalvando(false);
     }
   }
 
   // ✅ excluir pré-venda
-  async function excluirPreVenda(v: VendaPre) {
-    if (salvando) return;
-
-    const ok = confirm(
-      `Excluir a pré-venda da comanda ${v.comanda || "-"} (#${v.id
-        .slice(0, 6)
-        .toUpperCase()})?`
-    );
-    if (!ok) return;
+  async function excluirPreVenda(vendaId: string) {
+    if (!confirm("Excluir esta comanda?")) return;
 
     try {
       setSalvando(true);
 
-      // se seu FK estiver ON DELETE CASCADE, só isso já apaga os itens
-      const { error } = await supabase.from("gigante_vendas").delete().eq("id", v.id);
-      if (error) throw error;
+      const { error: ed } = await supabase
+        .from("gigante_venda_itens")
+        .delete()
+        .eq("venda_id", vendaId);
+      if (ed) throw ed;
 
-      // se você NÃO tiver cascade, descomenta isso:
-      // await supabase.from("gigante_venda_itens").delete().eq("venda_id", v.id);
+      const { error: ev } = await supabase
+        .from("gigante_vendas")
+        .delete()
+        .eq("id", vendaId);
+      if (ev) throw ev;
 
       await carregarPreVendas();
 
-      // se estava aberta na tela, limpa
-      if (preVendaId === v.id) limparTudo();
+      if (preVendaId === vendaId) {
+        limpar();
+      }
 
-      alert("Pré-venda excluída ✅");
+      alert("Comanda excluída ✅");
     } catch (e) {
       console.error(e);
-      alert("Erro ao excluir pré-venda.");
+      alert("Erro ao excluir comanda.");
     } finally {
       setSalvando(false);
     }
   }
+
+  // header label comanda
+  const comandaAtualLabel = useMemo(() => {
+    if (!preVendaId) return "Nova comanda";
+    const venda = preVendas.find((x) => x.id === preVendaId);
+    const c = parseComandaFromObs(venda?.observacoes);
+    return c ? `Comanda ${c}` : `Comanda #${preVendaId.slice(0, 6).toUpperCase()}`;
+  }, [preVendaId, preVendas]);
 
   return (
     <div className="min-h-screen bg-gray-100">
@@ -386,33 +483,25 @@ function PDVInner() {
         <div className="max-w-6xl mx-auto flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <div className="text-xl font-extrabold">🧾 PDV — Pré-venda</div>
-            <div className="text-xs opacity-90">
-              {preVendaId ? (
-                <>
-                  Comanda: <b>{comandaAtual || "-"}</b> • #{preVendaId.slice(0, 6).toUpperCase()}
-                </>
-              ) : (
-                <>Nova comanda</>
-              )}
-            </div>
+            <div className="text-xs opacity-90">{comandaAtualLabel}</div>
           </div>
 
           <div className="flex flex-wrap gap-2">
             <button
               onClick={salvarPreVenda}
               disabled={salvando}
-              className={`px-3 py-2 rounded bg-yellow-400 text-black font-bold hover:bg-yellow-300 ${
+              className={`px-4 py-2 rounded bg-yellow-400 text-black font-extrabold hover:bg-yellow-300 ${
                 salvando ? "opacity-70" : ""
               }`}
-              title="Salvar pré-venda e limpar a tela"
+              title="Salvar comanda"
             >
-              🧷 Salvar Pré-venda
+              🔗 Salvar Pré-venda
             </button>
 
             <button
-              onClick={limparTudo}
-              className="px-3 py-2 rounded bg-white/15 hover:bg-white/25 border border-white/30"
-              title="Limpar tela"
+              onClick={limpar}
+              className="px-4 py-2 rounded bg-white/15 hover:bg-white/25 border border-white/30"
+              title="Nova comanda"
             >
               🧹 Limpar
             </button>
@@ -430,7 +519,7 @@ function PDVInner() {
         </div>
       </div>
 
-      <div className="max-w-6xl mx-auto p-4 grid grid-cols-1 lg:grid-cols-[1fr_380px] gap-4">
+      <div className="max-w-6xl mx-auto p-4 grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-4">
         {/* Produtos */}
         <div>
           <div className="flex items-center justify-between mb-3">
@@ -444,7 +533,7 @@ function PDVInner() {
             {filtrados.map((p) => (
               <button
                 key={p.id}
-                onClick={() => addProduto(p)}
+                onClick={() => onClickProduto(p)}
                 className="bg-white rounded-2xl shadow hover:scale-[1.01] transition overflow-hidden text-left"
                 title="Adicionar"
               >
@@ -463,43 +552,58 @@ function PDVInner() {
                 <div className="p-2">
                   <div className="font-bold text-sm line-clamp-2">{p.nome}</div>
                   <div className="text-red-600 font-extrabold">
-                    R$ {brl(Number(p.preco))}
+                    {isKg(p) ? `R$ ${brl(Number(p.preco))} / kg` : `R$ ${brl(Number(p.preco))}`}
                   </div>
+                  {isKg(p) && (
+                    <div className="text-[11px] text-gray-500 mt-1">
+                      ⚖️ por peso (abre balança)
+                    </div>
+                  )}
                 </div>
               </button>
             ))}
           </div>
         </div>
 
-        {/* Carrinho + Lista de Comandas */}
-        <div className="space-y-4">
-          {/* Carrinho */}
-          <div className="bg-white rounded-2xl shadow p-3 h-fit sticky top-3">
-            <div className="flex items-center justify-between">
-              <h2 className="font-bold text-lg">🛒 Itens da Comanda</h2>
-              <span className="text-xs text-gray-500">{carrinho.length} itens</span>
-            </div>
+        {/* Carrinho */}
+        <div className="bg-white rounded-2xl shadow p-3 h-fit sticky top-3">
+          <div className="flex items-center justify-between">
+            <h2 className="font-bold text-lg">🛒 Itens da Comanda</h2>
+            <span className="text-xs text-gray-500">{carrinho.length} itens</span>
+          </div>
 
-            <div className="mt-2 space-y-2">
-              {carrinho.length === 0 && (
-                <div className="text-sm text-gray-500 bg-gray-50 border rounded p-3">
-                  Adicione produtos para começar.
-                </div>
-              )}
+          <div className="mt-2 space-y-2">
+            {carrinho.length === 0 && (
+              <div className="text-sm text-gray-500 bg-gray-50 border rounded p-3">
+                Adicione produtos para começar.
+              </div>
+            )}
 
-              {carrinho.map((i) => (
+            {carrinho.map((i) => {
+              const sub = Number(i.preco) * Number(i.quantidade);
+
+              return (
                 <div key={i.id} className="border rounded-xl p-2">
                   <div className="flex items-start justify-between gap-2">
                     <div className="min-w-0">
                       <div className="font-semibold text-sm truncate">{i.nome}</div>
                       <div className="text-xs text-gray-600">
-                        R$ {brl(Number(i.preco))} • Sub: R${" "}
-                        {brl(Number(i.preco) * Number(i.quantidade))}
+                        {i.vendido_por === "kg" ? (
+                          <>
+                            R$ {brl(Number(i.preco))} / kg •{" "}
+                            <b>{Number(i.quantidade).toFixed(3)} kg</b>
+                          </>
+                        ) : (
+                          <>
+                            R$ {brl(Number(i.preco))} • <b>{i.quantidade} un</b>
+                          </>
+                        )}
+                        {" "}• Sub: <b>R$ {brl(sub)}</b>
                       </div>
                     </div>
 
                     <button
-                      onClick={() => remover(i.produto_id)}
+                      onClick={() => removerItem(i.id)}
                       className="text-red-600 text-sm font-bold px-2"
                       title="Remover"
                     >
@@ -507,46 +611,68 @@ function PDVInner() {
                     </button>
                   </div>
 
-                  <div className="flex items-center gap-2 mt-2">
-                    <button
-                      onClick={() => dec(i.produto_id)}
-                      className="px-3 py-1 rounded bg-gray-100 hover:bg-gray-200"
-                    >
-                      −
-                    </button>
-                    <div className="font-bold w-10 text-center">{i.quantidade}</div>
-                    <button
-                      onClick={() => inc(i.produto_id)}
-                      className="px-3 py-1 rounded bg-gray-100 hover:bg-gray-200"
-                    >
-                      +
-                    </button>
-                  </div>
+                  {/* Controles */}
+                  {i.vendido_por === "unidade" ? (
+                    <div className="flex items-center gap-2 mt-2">
+                      <button
+                        onClick={() => decUn(i.produto_id)}
+                        className="px-3 py-1 rounded bg-gray-100 hover:bg-gray-200"
+                      >
+                        −
+                      </button>
+                      <div className="font-bold w-10 text-center">{i.quantidade}</div>
+                      <button
+                        onClick={() => incUn(i.produto_id)}
+                        className="px-3 py-1 rounded bg-gray-100 hover:bg-gray-200"
+                      >
+                        +
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="mt-2">
+                      <div className="text-xs text-gray-600 mb-1">
+                        Peso (kg) — edite e confirme:
+                      </div>
+                      <input
+                        value={String(i.quantidade).replace(".", ",")}
+                        onChange={(e) => {
+                          const v = e.target.value.replace(",", ".");
+                          const n = Number(v);
+                          if (!Number.isNaN(n)) setKg(i.produto_id, n);
+                        }}
+                        className="w-full border p-2 rounded"
+                        placeholder="Ex: 0,850"
+                      />
+                      <div className="text-[11px] text-gray-500 mt-1">
+                        Dica: 850g = 0,850kg
+                      </div>
+                    </div>
+                  )}
                 </div>
-              ))}
-            </div>
+              );
+            })}
+          </div>
 
-            <div className="mt-3 border-t pt-3">
-              <div className="text-3xl font-extrabold">R$ {brl(total)}</div>
+          <div className="mt-3 border-t pt-3">
+            <div className="text-3xl font-extrabold">R$ {brl(total)}</div>
 
-              <button
-                onClick={salvarPreVenda}
-                disabled={salvando}
-                className={`w-full mt-3 py-3 rounded-xl font-bold bg-yellow-400 text-black hover:bg-yellow-300 ${
-                  salvando ? "opacity-70" : ""
-                }`}
-              >
-                🧷 Salvar Pré-venda
-              </button>
+            <button
+              onClick={salvarPreVenda}
+              disabled={salvando || carrinho.length === 0}
+              className={`w-full mt-3 py-3 rounded-xl font-extrabold bg-yellow-400 text-black hover:bg-yellow-300 ${
+                salvando || carrinho.length === 0 ? "opacity-70" : ""
+              }`}
+            >
+              🔗 Salvar Pré-venda
+            </button>
 
-              <div className="mt-2 text-xs text-gray-500">
-                * Este PDV só salva comanda (pré-venda). Baixa/pagamento fica no Caixa.
-              </div>
+            <div className="mt-2 text-xs text-gray-500">
+              * Este PDV só salva comanda (pré-venda). Baixa/pagamento fica no Caixa.
             </div>
           </div>
 
-          {/* Lista de Pré-vendas */}
-          <div className="bg-white rounded-2xl shadow p-3">
+          {/* Comandas abertas */}
+          <div className="mt-4 border-t pt-3">
             <div className="flex items-center justify-between">
               <div className="font-bold text-sm">📌 Comandas abertas</div>
               <button
@@ -568,52 +694,70 @@ function PDVInner() {
             )}
 
             <div className="mt-2 space-y-2 max-h-72 overflow-y-auto">
-              {preVendas.map((v) => (
-                <div key={v.id} className="border rounded-xl p-2">
-                  <button
-                    onClick={() => abrirPreVenda(v.id)}
-                    className="w-full text-left hover:bg-gray-50 rounded-lg p-1"
-                    title="Abrir comanda"
+              {preVendas.map((v) => {
+                const com = parseComandaFromObs(v.observacoes);
+                const label = com ? `Comanda ${com}` : `#${v.id.slice(0, 6).toUpperCase()}`;
+
+                return (
+                  <div
+                    key={v.id}
+                    className={`w-full border rounded-xl p-2 bg-white ${
+                      preVendaId === v.id ? "ring-2 ring-orange-400" : ""
+                    }`}
                   >
-                    <div className="flex items-center justify-between">
-                      <div className="font-extrabold text-base">
-                        Comanda {String(v.comanda || "-")}
-                      </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="font-extrabold text-sm">{label}</div>
                       <div className="text-sm font-extrabold text-red-600">
                         R$ {brl(Number(v.total || 0))}
                       </div>
                     </div>
-                    <div className="text-xs text-gray-600">
-                      #{v.id.slice(0, 6).toUpperCase()} •{" "}
+
+                    <div className="text-xs text-gray-600 mt-1">
                       {new Date(v.data).toLocaleString("pt-BR")}
                     </div>
-                  </button>
 
-                  <div className="mt-2 flex gap-2">
-                    <button
-                      onClick={() => abrirPreVenda(v.id)}
-                      className="flex-1 px-3 py-2 rounded-lg bg-gray-900 text-white hover:bg-black"
-                    >
-                      Abrir
-                    </button>
-                    <button
-                      onClick={() => excluirPreVenda(v)}
-                      className="px-3 py-2 rounded-lg border border-red-300 text-red-700 hover:bg-red-50"
-                      title="Excluir pré-venda"
-                    >
-                      Excluir
-                    </button>
+                    <div className="mt-2 grid grid-cols-2 gap-2">
+                      <button
+                        onClick={() => abrirPreVenda(v.id)}
+                        className="py-2 rounded-lg bg-gray-900 text-white font-bold hover:bg-black"
+                        title="Abrir comanda"
+                      >
+                        Abrir
+                      </button>
+
+                      <button
+                        onClick={() => excluirPreVenda(v.id)}
+                        disabled={salvando}
+                        className="py-2 rounded-lg border border-red-300 text-red-600 font-bold hover:bg-red-50"
+                        title="Excluir comanda"
+                      >
+                        Excluir
+                      </button>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
 
-            <div className="mt-3 text-[11px] text-gray-500">
+            <div className="mt-2 text-[11px] text-gray-500">
               Dica: abrir direto por URL: <b>/gigante/pdv?id=XXXX</b>
             </div>
           </div>
         </div>
       </div>
+
+      {/* ✅ Modal de peso para itens por KG */}
+      {produtoSelecionado && (
+        <ProdutoModal
+          produto={produtoSelecionado as any}
+          onClose={() => setProdutoSelecionado(null)}
+          onAdd={(produto, quantidade) => {
+            // quantidade = kg (decimal) vindo do modal
+            addProdutoKg(produto as any, Number(quantidade));
+            setProdutoSelecionado(null);
+          }}
+        />
+      )}
     </div>
   );
 }
