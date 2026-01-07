@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
+import RelatorioDiario from "../components/RelatorioDiario";
+
 
 // ================= SUPABASE =================
 const supabase = createClient(
@@ -149,6 +151,10 @@ export default function PosicaoFinanceiraPage() {
             </div>
           </div>
         )}
+
+        {/* ================= RELATÓRIO DIÁRIO ================= */}
+<RelatorioDiario />
+
 
         <div className="mt-10 text-right text-sm">
           <p className="font-semibold">Fernando dos Santos Pereira</p>
