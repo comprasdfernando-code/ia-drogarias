@@ -6,6 +6,12 @@ import Image from "next/image";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 
+// ✅ Carrinho (modal)
+import CarrinhoModal, {
+  type FVProdutoMini,
+  type ItemCarrinho,
+} from "@/components/fv/CarrinhoModal";
+
 const WHATSAPP = "5511948343725";
 const TAXA_ENTREGA = 10;
 
@@ -47,6 +53,17 @@ function buildWhatsAppLink(numeroE164: string, msg: string) {
   return `https://wa.me/${clean}?text=${text}`;
 }
 
+// ✅ Carrinho: preço final do item
+function precoFinalCarrinho(p: FVProdutoMini) {
+  const promo = Number(p.preco_promocional || 0);
+  const pmc = Number(p.pmc || 0);
+  if (p.em_promocao && promo > 0 && (!pmc || promo < pmc)) return promo;
+  return pmc;
+}
+
+// ✅ Carrinho: persistência
+const CART_KEY = "fv_carrinho_v1";
+
 export default function FVProdutoPage() {
   const params = useParams<{ ean: string }>();
 
@@ -56,6 +73,57 @@ export default function FVProdutoPage() {
 
   const [loading, setLoading] = useState(true);
   const [p, setP] = useState<FVProduto | null>(null);
+
+  // ✅ Carrinho
+  const [carrinhoAberto, setCarrinhoAberto] = useState(false);
+  const [itens, setItens] = useState<ItemCarrinho[]>([]);
+
+  // carregar carrinho
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(CART_KEY);
+      if (raw) setItens(JSON.parse(raw));
+    } catch {}
+  }, []);
+
+  // salvar carrinho
+  useEffect(() => {
+    try {
+      localStorage.setItem(CART_KEY, JSON.stringify(itens));
+    } catch {}
+  }, [itens]);
+
+  const carrinhoCount = useMemo(
+    () => itens.reduce((acc, i) => acc + Number(i.quantidade || 0), 0),
+    [itens]
+  );
+
+  function addCarrinho(prod: FVProduto) {
+    const mini: FVProdutoMini = {
+      id: prod.id,
+      ean: prod.ean,
+      nome: prod.nome,
+      laboratorio: prod.laboratorio,
+      apresentacao: prod.apresentacao,
+      pmc: prod.pmc,
+      em_promocao: prod.em_promocao,
+      preco_promocional: prod.preco_promocional,
+      percentual_off: prod.percentual_off,
+      imagens: prod.imagens,
+    };
+
+    setItens((prev) => {
+      const existe = prev.find((i) => i.ean === mini.ean);
+      if (existe) {
+        return prev.map((i) =>
+          i.ean === mini.ean ? { ...i, quantidade: i.quantidade + 1 } : i
+        );
+      }
+      return [...prev, { ...mini, quantidade: 1 }];
+    });
+
+    setCarrinhoAberto(true);
+  }
 
   useEffect(() => {
     async function load() {
@@ -129,9 +197,21 @@ Pode confirmar a disponibilidade?`;
   return (
     <main className="bg-gray-50 min-h-screen pb-24">
       <div className="max-w-6xl mx-auto px-4 pt-6">
-        <Link href="/fv" className="text-sm text-blue-700 underline">
-          ← Voltar
-        </Link>
+        {/* Top bar: voltar + carrinho */}
+        <div className="flex items-center justify-between">
+          <Link href="/fv" className="text-sm text-blue-700 underline">
+            ← Voltar
+          </Link>
+
+          <button
+            type="button"
+            onClick={() => setCarrinhoAberto(true)}
+            className="bg-blue-700 text-white px-4 py-2 rounded-full shadow-sm hover:bg-blue-800"
+            title="Abrir carrinho"
+          >
+            🛒 {carrinhoCount ? `(${carrinhoCount})` : ""}
+          </button>
+        </div>
 
         <div className="grid md:grid-cols-2 gap-6 mt-4">
           {/* Imagem */}
@@ -213,16 +293,37 @@ Pode confirmar a disponibilidade?`;
                 {brl(TAXA_ENTREGA)}.
               </div>
 
-              <a
-                href={buildWhatsAppLink(WHATSAPP, msg)}
-                className="mt-4 block text-center bg-green-600 hover:bg-green-700 text-white py-3 rounded-xl font-semibold"
-              >
-                Finalizar pedido
-              </a>
+              {/* ✅ Ações: adicionar carrinho + finalizar */}
+              <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => addCarrinho(p)}
+                  className="block text-center bg-blue-700 hover:bg-blue-800 text-white py-3 rounded-xl font-semibold"
+                >
+                  Adicionar ao carrinho
+                </button>
+
+                <a
+                  href={buildWhatsAppLink(WHATSAPP, msg)}
+                  className="block text-center bg-green-600 hover:bg-green-700 text-white py-3 rounded-xl font-semibold"
+                >
+                  Finalizar pedido
+                </a>
+              </div>
             </div>
           </div>
         </div>
       </div>
+
+      {/* ✅ Modal Carrinho */}
+      <CarrinhoModal
+        open={carrinhoAberto}
+        onClose={() => setCarrinhoAberto(false)}
+        itens={itens}
+        setItens={setItens}
+        whatsapp={WHATSAPP}
+        taxaEntrega={TAXA_ENTREGA}
+      />
     </main>
   );
 }
