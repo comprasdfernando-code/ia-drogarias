@@ -273,7 +273,7 @@ function ProdutoCard({ p }: { p: FVProduto }) {
         )}
 
         <Link
-          href={`/fv/produto/${p.ean}`}
+          href={`/fv/produtos/${p.ean}`}
           className="mt-3 block text-center bg-blue-700 hover:bg-blue-800 text-white py-2 rounded-md text-xs sm:text-sm font-semibold"
         >
           Ver produto
