@@ -129,7 +129,7 @@ export default function CarrinhoModal({
             onClick={onClose}
             className="px-3 py-2 rounded-lg bg-gray-100 hover:bg-gray-200 text-sm"
           >
-            Fechar
+            Continuar Comprando
           </button>
         </div>
 
