@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
-import RelatorioDiario from "../components/RelatorioDiario";
+import RelatorioDiarioCompleto from "../components/RelatorioDiarioCompleto";
+
 
 
 // ================= SUPABASE =================
@@ -153,7 +154,8 @@ export default function PosicaoFinanceiraPage() {
         )}
 
         {/* ================= RELATÓRIO DIÁRIO ================= */}
-<RelatorioDiario />
+<RelatorioDiarioCompleto />
+
 
 
         <div className="mt-10 text-right text-sm">
