@@ -26,12 +26,21 @@ type FVProduto = {
 
 function brl(v: number | null | undefined) {
   if (v === null || v === undefined || Number.isNaN(v)) return "—";
-  return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  return Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
+
 function firstImg(imagens?: string[] | null) {
   if (Array.isArray(imagens) && imagens.length > 0) return imagens[0];
   return "/produtos/caixa-padrao.png";
 }
+
+function calcOff(pmc?: number | null, promo?: number | null) {
+  const a = Number(pmc || 0);
+  const b = Number(promo || 0);
+  if (!a || !b || b >= a) return 0;
+  return Math.round(((a - b) / a) * 100);
+}
+
 function buildWhatsAppLink(numeroE164: string, msg: string) {
   const clean = numeroE164.replace(/\D/g, "");
   const text = encodeURIComponent(msg);
@@ -40,18 +49,29 @@ function buildWhatsAppLink(numeroE164: string, msg: string) {
 
 export default function FVProdutoPage() {
   const params = useParams<{ ean: string }>();
-  const ean = decodeURIComponent(params.ean || "");
+
+  // ✅ no App Router, o param já vem decodado normalmente.
+  // Mas manter decode não atrapalha pra números, então ok:
+  const ean = decodeURIComponent(String(params?.ean || ""));
 
   const [loading, setLoading] = useState(true);
   const [p, setP] = useState<FVProduto | null>(null);
 
   useEffect(() => {
     async function load() {
+      if (!ean) {
+        setP(null);
+        setLoading(false);
+        return;
+      }
+
       setLoading(true);
       try {
         const { data, error } = await supabase
           .from("fv_produtos")
-          .select("id,ean,nome,laboratorio,categoria,apresentacao,pmc,em_promocao,preco_promocional,percentual_off,imagens,ativo")
+          .select(
+            "id,ean,nome,laboratorio,categoria,apresentacao,pmc,em_promocao,preco_promocional,percentual_off,imagens,ativo"
+          )
           .eq("ean", ean)
           .eq("ativo", true)
           .maybeSingle();
@@ -68,20 +88,31 @@ export default function FVProdutoPage() {
     load();
   }, [ean]);
 
-  const precoFinal = useMemo(() => {
+  const precos = useMemo(() => {
     if (!p) return null;
-    if (p.em_promocao && p.preco_promocional) return p.preco_promocional;
-    return p.pmc;
+
+    const pmc = Number(p.pmc || 0);
+    const promo = Number(p.preco_promocional || 0);
+    const emPromo = !!p.em_promocao && promo > 0 && (!pmc || promo < pmc);
+
+    const final = emPromo ? promo : pmc;
+
+    const offFromDb = Number(p.percentual_off || 0);
+    const off = emPromo ? (offFromDb > 0 ? offFromDb : calcOff(pmc, promo)) : 0;
+
+    return { pmc, promo, emPromo, final, off };
   }, [p]);
 
   if (loading) {
     return <div className="p-6 text-gray-600">Carregando…</div>;
   }
 
-  if (!p) {
+  if (!p || !precos) {
     return (
       <div className="p-6">
-        <Link href="/fv" className="text-blue-700 underline">← Voltar</Link>
+        <Link href="/fv" className="text-blue-700 underline">
+          ← Voltar
+        </Link>
         <p className="mt-4 text-gray-600">Produto não encontrado.</p>
       </div>
     );
@@ -90,7 +121,7 @@ export default function FVProdutoPage() {
   const msg = `Olá! Quero finalizar este pedido:
 • Produto: ${p.nome}
 • EAN: ${p.ean}
-• Preço: ${brl(precoFinal)}
+• Preço: ${brl(precos.final)}
 • Entrega: taxa fixa ${brl(TAXA_ENTREGA)}
 
 Pode confirmar a disponibilidade?`;
@@ -98,7 +129,9 @@ Pode confirmar a disponibilidade?`;
   return (
     <main className="bg-gray-50 min-h-screen pb-24">
       <div className="max-w-6xl mx-auto px-4 pt-6">
-        <Link href="/fv" className="text-sm text-blue-700 underline">← Voltar</Link>
+        <Link href="/fv" className="text-sm text-blue-700 underline">
+          ← Voltar
+        </Link>
 
         <div className="grid md:grid-cols-2 gap-6 mt-4">
           {/* Imagem */}
@@ -111,9 +144,10 @@ Pode confirmar a disponibilidade?`;
                 height={520}
                 className="w-full h-[280px] md:h-[420px] object-contain"
               />
-              {p.em_promocao && p.percentual_off != null && p.percentual_off > 0 && (
+
+              {precos.emPromo && precos.off > 0 && (
                 <span className="absolute top-3 right-3 bg-red-600 text-white text-sm px-3 py-1 rounded-full">
-                  {p.percentual_off}% OFF
+                  {precos.off}% OFF
                 </span>
               )}
             </div>
@@ -122,45 +156,61 @@ Pode confirmar a disponibilidade?`;
           {/* Info */}
           <div className="bg-white rounded-2xl shadow p-4">
             <div className="text-sm text-gray-500">{p.laboratorio || "—"}</div>
+
             <h1 className="text-xl md:text-2xl font-bold text-blue-900 mt-1">
               {p.nome}
             </h1>
 
             <div className="mt-2 text-sm text-gray-600">
-              <div><b>EAN:</b> <span className="font-mono">{p.ean}</span></div>
-              {p.apresentacao && <div><b>Apresentação:</b> {p.apresentacao}</div>}
-              {p.categoria && <div><b>Categoria:</b> {p.categoria}</div>}
+              <div>
+                <b>EAN:</b> <span className="font-mono">{p.ean}</span>
+              </div>
+              {p.apresentacao && (
+                <div>
+                  <b>Apresentação:</b> {p.apresentacao}
+                </div>
+              )}
+              {p.categoria && (
+                <div>
+                  <b>Categoria:</b> {p.categoria}
+                </div>
+              )}
             </div>
 
             {/* Preço estilo Ultrafarma */}
             <div className="mt-5 border-t pt-4">
-              {p.em_promocao && p.preco_promocional ? (
+              {precos.emPromo ? (
                 <>
                   <div className="text-sm text-gray-500">
-                    De <span className="line-through">{brl(p.pmc)}</span>
+                    De <span className="line-through">{brl(precos.pmc)}</span>
                   </div>
+
                   <div className="flex items-center gap-2 mt-1">
                     <div className="text-2xl font-extrabold text-blue-900">
-                      Por {brl(p.preco_promocional)}
+                      Por {brl(precos.final)}
                     </div>
-                    {p.percentual_off != null && p.percentual_off > 0 && (
+
+                    {precos.off > 0 && (
                       <span className="bg-red-600 text-white text-xs px-2 py-1 rounded">
-                        {p.percentual_off}% off
+                        {precos.off}% off
                       </span>
                     )}
                   </div>
                 </>
               ) : (
                 <div className="text-2xl font-extrabold text-blue-900">
-                  {brl(p.pmc)}
+                  {brl(precos.final)}
                 </div>
               )}
 
               <div className="text-xs text-gray-500 mt-2">
-                Finalização do pedido: analisamos a disponibilidade e retornamos em poucos minutos para confirmar.
+                Finalização do pedido: analisamos a disponibilidade e retornamos
+                em poucos minutos para confirmar.
               </div>
+
               <div className="text-xs text-gray-500 mt-1">
-                Entrega São Paulo capital • prazo até 24h • taxa fixa {brl(TAXA_ENTREGA)}.
+                Entrega São Paulo capital • prazo até 24h • taxa fixa{" "}
+                {brl(TAXA_ENTREGA)}.
               </div>
 
               <a
