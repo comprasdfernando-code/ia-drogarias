@@ -6,6 +6,9 @@ import Image from "next/image";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 
+import CartDrawer from "../../_components/CartDrawer";
+import { CartProvider, useCart } from "../../_components/cart";
+
 const WHATSAPP = "5511948343725";
 const TAXA_ENTREGA = 10;
 
@@ -47,10 +50,21 @@ function buildWhatsAppLink(numeroE164: string, msg: string) {
   return `https://wa.me/${clean}?text=${text}`;
 }
 
-export default function FVProdutoPage() {
+export default function Page() {
+  return (
+    <CartProvider>
+      <FVProdutoPage />
+    </CartProvider>
+  );
+}
+
+function FVProdutoPage() {
   const params = useParams<{ ean: string }>();
   const ean = decodeURIComponent(String(params?.ean || ""));
 
+  const { addItem, countItems } = useCart();
+
+  const [cartOpen, setCartOpen] = useState(false);
   const [loading, setLoading] = useState(true);
   const [p, setP] = useState<FVProduto | null>(null);
 
@@ -103,20 +117,7 @@ export default function FVProdutoPage() {
   if (loading) {
     return (
       <main className="min-h-screen bg-gray-50">
-        <div className="max-w-6xl mx-auto px-4 pt-6">
-          <div className="h-4 w-24 bg-gray-200 rounded animate-pulse" />
-          <div className="mt-4 grid md:grid-cols-2 gap-6">
-            <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-4">
-              <div className="h-[320px] bg-gray-100 rounded-2xl animate-pulse" />
-            </div>
-            <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-4">
-              <div className="h-4 w-28 bg-gray-100 rounded animate-pulse" />
-              <div className="mt-3 h-7 w-80 bg-gray-100 rounded animate-pulse" />
-              <div className="mt-4 h-20 bg-gray-100 rounded animate-pulse" />
-              <div className="mt-4 h-12 bg-gray-100 rounded-xl animate-pulse" />
-            </div>
-          </div>
-        </div>
+        <div className="max-w-6xl mx-auto px-4 pt-6 text-gray-600">Carregando…</div>
       </main>
     );
   }
@@ -128,7 +129,6 @@ export default function FVProdutoPage() {
           <Link href="/fv" className="text-blue-700 hover:underline">
             ← Voltar
           </Link>
-
           <div className="mt-6 bg-white border rounded-2xl p-6 text-gray-600">
             Produto não encontrado.
           </div>
@@ -145,12 +145,41 @@ export default function FVProdutoPage() {
 
 Pode confirmar a disponibilidade?`;
 
+  function handleAdd() {
+    addItem(
+      {
+        ean: p.ean,
+        nome: p.nome,
+        laboratorio: p.laboratorio,
+        apresentacao: p.apresentacao,
+        imagem: firstImg(p.imagens),
+        preco: precos.final || 0,
+      },
+      1
+    );
+    setCartOpen(true);
+  }
+
   return (
     <main className="bg-gray-50 min-h-screen pb-24">
       <div className="max-w-6xl mx-auto px-4 pt-6">
-        <Link href="/fv" className="text-sm text-blue-700 hover:underline">
-          ← Voltar
-        </Link>
+        <div className="flex items-center justify-between">
+          <Link href="/fv" className="text-sm text-blue-700 hover:underline">
+            ← Voltar
+          </Link>
+
+          <button
+            onClick={() => setCartOpen(true)}
+            className="relative bg-white border rounded-2xl px-4 py-2 font-extrabold"
+          >
+            🛒 Carrinho
+            {countItems > 0 && (
+              <span className="absolute -top-2 -right-2 bg-green-500 text-white text-xs font-extrabold w-6 h-6 rounded-full flex items-center justify-center">
+                {countItems}
+              </span>
+            )}
+          </button>
+        </div>
 
         <div className="grid md:grid-cols-2 gap-6 mt-4">
           {/* Imagem */}
@@ -236,20 +265,37 @@ Pode confirmar a disponibilidade?`;
                 </p>
               </div>
 
-              <a
-                href={buildWhatsAppLink(WHATSAPP, msg)}
-                className="mt-4 block text-center bg-green-600 hover:bg-green-700 text-white py-3.5 rounded-2xl font-extrabold shadow-sm"
-              >
-                Finalizar pedido no WhatsApp
-              </a>
+              {/* AÇÕES */}
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                <button
+                  onClick={handleAdd}
+                  className="bg-blue-700 hover:bg-blue-800 text-white py-3 rounded-2xl font-extrabold"
+                >
+                  Adicionar ao carrinho
+                </button>
+
+                <a
+                  href={buildWhatsAppLink(WHATSAPP, msg)}
+                  className="text-center bg-green-600 hover:bg-green-700 text-white py-3 rounded-2xl font-extrabold"
+                >
+                  Comprar agora
+                </a>
+              </div>
 
               <div className="mt-3 text-[11px] text-gray-500">
-                Dica: você pode adicionar outros itens na busca e finalizar tudo junto depois.
+                Dica: adicione outros itens e finalize tudo junto no carrinho.
               </div>
             </div>
           </div>
         </div>
       </div>
+
+      <CartDrawer
+        open={cartOpen}
+        onClose={() => setCartOpen(false)}
+        whatsapp={WHATSAPP}
+        taxaEntrega={TAXA_ENTREGA}
+      />
     </main>
   );
 }
