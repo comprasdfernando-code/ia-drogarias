@@ -20,33 +20,54 @@ function toISODate(d: Date) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
-/**
- * ✅ Correções aplicadas:
- * - Buscar fechamento automaticamente quando muda a data (useEffect com dataRef)
- * - Evitar "2 caixas no mesmo dia": usa sempre o mais recente (order desc + limit 1) e avisa se houver duplicados
- * - Normaliza range de data: fim do dia com milissegundos e ISO completo
- * - Pequenas proteções contra data vazia
- */
+function isValidDateISO(s: string) {
+  return /^\d{4}-\d{2}-\d{2}$/.test((s || "").trim());
+}
+
+function formatHora(data: any) {
+  if (!data) return "—";
+  try {
+    return new Date(data).toLocaleTimeString("pt-BR", {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+  } catch {
+    return "—";
+  }
+}
+
 export default function RelatorioDiarioCaixaPage() {
   const [dataRef, setDataRef] = useState<string>(toISODate(new Date()));
-  const [registro, setRegistro] = useState<any>(null);
+
+  // ✅ agora guardamos TODOS os registros do dia
+  const [registrosDoDia, setRegistrosDoDia] = useState<any[]>([]);
+  const [registroId, setRegistroId] = useState<string>(""); // id escolhido
+
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState<string>("");
-  const [avisoDuplicado, setAvisoDuplicado] = useState<string>("");
 
-  async function carregar(dataEscolhida?: string) {
-    const dt = (dataEscolhida ?? dataRef)?.trim();
-    if (!dt) {
-      setRegistro(null);
+  // ✅ registro selecionado
+  const registro = useMemo(() => {
+    if (!registrosDoDia?.length) return null;
+    const found = registrosDoDia.find((r) => String(r.id) === String(registroId));
+    return found || registrosDoDia[0] || null;
+  }, [registrosDoDia, registroId]);
+
+  async function carregar(d?: string) {
+    const dt = (d ?? dataRef)?.trim();
+
+    setErro("");
+    setLoading(true);
+    setRegistrosDoDia([]);
+    setRegistroId("");
+
+    if (!isValidDateISO(dt)) {
       setErro("Selecione uma data válida.");
+      setLoading(false);
       return;
     }
 
-    setErro("");
-    setAvisoDuplicado("");
-    setLoading(true);
-
-    // pega do começo ao fim do dia (inclui milissegundos)
+    // range do dia (com milissegundos)
     const ini = `${dt}T00:00:00.000`;
     const fim = `${dt}T23:59:59.999`;
 
@@ -56,34 +77,31 @@ export default function RelatorioDiarioCaixaPage() {
       .eq("loja", LOJA)
       .gte("data", ini)
       .lte("data", fim)
-      .order("data", { ascending: false })
-      .limit(5); // pega alguns pra detectar duplicado
+      .order("data", { ascending: false }); // mais recente primeiro
 
     if (error) {
       console.error(error);
       setErro("Erro ao buscar fechamento do dia.");
-      setRegistro(null);
       setLoading(false);
       return;
     }
 
-    const primeiro = data?.[0] || null;
-    setRegistro(primeiro);
+    const lista = data || [];
+    setRegistrosDoDia(lista);
 
-    if (data && data.length > 1) {
-      setAvisoDuplicado(
-        `⚠️ Existem ${data.length} fechamentos nessa data. Mostrando o MAIS RECENTE automaticamente.`
-      );
+    // ✅ se tiver registros, já seleciona o mais recente (primeiro da lista)
+    if (lista.length > 0) {
+      setRegistroId(String(lista[0].id));
     }
 
     setLoading(false);
   }
 
-  // ✅ carrega ao abrir e sempre que mudar a data
+  // carrega ao abrir
   useEffect(() => {
     carregar(dataRef);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dataRef]);
+  }, []);
 
   const calc = useMemo(() => {
     if (!registro) return null;
@@ -107,6 +125,7 @@ export default function RelatorioDiarioCaixaPage() {
   }, [registro]);
 
   function gerarPDF() {
+    // imprime somente a área de impressão
     window.print();
   }
 
@@ -143,7 +162,7 @@ export default function RelatorioDiarioCaixaPage() {
             onClick={() => carregar(dataRef)}
             className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-semibold"
           >
-            Buscar Fechamento
+            Buscar Fechamentos
           </button>
 
           <button
@@ -159,15 +178,45 @@ export default function RelatorioDiarioCaixaPage() {
           </button>
         </div>
 
-        {avisoDuplicado && (
-          <p className="text-amber-700 mt-3 font-semibold">{avisoDuplicado}</p>
+        {/* ✅ seletor quando houver 2+ fechamentos */}
+        {registrosDoDia.length > 0 && (
+          <div className="mt-4">
+            <label className="text-sm text-gray-600 block mb-1">
+              Fechamentos encontrados: <b>{registrosDoDia.length}</b>
+              {registrosDoDia.length > 1 ? " (escolha qual imprimir)" : ""}
+            </label>
+
+            <select
+              value={registroId}
+              onChange={(e) => setRegistroId(e.target.value)}
+              className="border rounded p-2 w-full"
+            >
+              {registrosDoDia.map((r, idx) => {
+                const hora = formatHora(r.data);
+                const venda = fmt(r.venda_total);
+                // label simples e útil
+                const label = `#${idx + 1} • ${hora} • Venda: R$ ${venda} • ID: ${r.id}`;
+                return (
+                  <option key={r.id} value={String(r.id)}>
+                    {label}
+                  </option>
+                );
+              })}
+            </select>
+
+            {registrosDoDia.length > 1 && (
+              <p className="text-amber-700 text-sm mt-2">
+                ⚠️ Existem múltiplos fechamentos nesse dia. Selecione acima qual deseja gerar o PDF.
+              </p>
+            )}
+          </div>
         )}
+
         {erro && <p className="text-red-600 mt-3">{erro}</p>}
         {loading && <p className="text-gray-600 mt-3">Carregando...</p>}
-        {!loading && !erro && !registro && (
-          <p className="text-gray-600 mt-3">
-            Nenhum fechamento encontrado nessa data.
-          </p>
+
+        {!loading && !erro && registrosDoDia.length === 0 && (
+          <p className="text-gray-600 mt-3">Nenhum fechamento encontrado nessa data.</p>
         )}
       </div>
 
@@ -185,6 +234,14 @@ export default function RelatorioDiarioCaixaPage() {
             <p className="text-sm text-gray-600">
               Data: <span className="font-semibold">{dataRef}</span>
             </p>
+
+            {/* ✅ mostra qual fechamento está selecionado */}
+            {registro && (
+              <p className="text-xs text-gray-500 mt-1">
+                Fechamento selecionado: <b>ID {registro.id}</b> • Horário:{" "}
+                <b>{formatHora(registro.data)}</b>
+              </p>
+            )}
           </div>
 
           <div className="text-right">
@@ -195,7 +252,7 @@ export default function RelatorioDiarioCaixaPage() {
 
         {!registro ? (
           <div className="py-10 text-center text-gray-600">
-            Selecione a data e clique em <b>Buscar Fechamento</b>.
+            Selecione a data e clique em <b>Buscar Fechamentos</b>.
           </div>
         ) : (
           <>
@@ -203,9 +260,7 @@ export default function RelatorioDiarioCaixaPage() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
               <div className="border rounded p-3">
                 <p className="text-xs text-gray-600">Venda Total</p>
-                <p className="text-lg font-bold">
-                  R$ {fmt(registro.venda_total)}
-                </p>
+                <p className="text-lg font-bold">R$ {fmt(registro.venda_total)}</p>
               </div>
               <div className="border rounded p-3">
                 <p className="text-xs text-gray-600">Entradas</p>
@@ -239,16 +294,8 @@ export default function RelatorioDiarioCaixaPage() {
                 <Item label="Pix CNPJ" value={registro.pix_cnpj} />
                 <Item label="Pix QR" value={registro.pix_qr} />
                 <Item label="Cartões" value={registro.cartoes} />
-                <Item
-                  label="Receb. Fiado"
-                  value={registro.receb_fiado}
-                  strong
-                />
-                <Item
-                  label="Venda Fiado (registro)"
-                  value={registro.venda_fiado}
-                  accent
-                />
+                <Item label="Receb. Fiado" value={registro.receb_fiado} strong />
+                <Item label="Venda Fiado (registro)" value={registro.venda_fiado} accent />
               </div>
             </div>
 
@@ -256,26 +303,10 @@ export default function RelatorioDiarioCaixaPage() {
             <div className="mt-6">
               <h3 className="font-bold text-blue-700 mb-2">Saídas</h3>
               <div className="grid grid-cols-2 md:grid-cols-2 gap-3">
-                <ItemDesc
-                  label="Sangrias"
-                  value={registro.sangrias}
-                  desc={registro.desc_sangrias}
-                />
-                <ItemDesc
-                  label="Despesas"
-                  value={registro.despesas}
-                  desc={registro.desc_despesas}
-                />
-                <ItemDesc
-                  label="Boletos"
-                  value={registro.boletos}
-                  desc={registro.desc_boletos}
-                />
-                <ItemDesc
-                  label="Compras"
-                  value={registro.compras}
-                  desc={registro.desc_compras}
-                />
+                <ItemDesc label="Sangrias" value={registro.sangrias} desc={registro.desc_sangrias} />
+                <ItemDesc label="Despesas" value={registro.despesas} desc={registro.desc_despesas} />
+                <ItemDesc label="Boletos" value={registro.boletos} desc={registro.desc_boletos} />
+                <ItemDesc label="Compras" value={registro.compras} desc={registro.desc_compras} />
               </div>
             </div>
 
@@ -285,9 +316,7 @@ export default function RelatorioDiarioCaixaPage() {
                 Gerado em: {new Date().toLocaleString("pt-BR")}
               </div>
               <div className="text-right">
-                <p className="text-sm font-semibold">
-                  Fernando dos Santos Pereira
-                </p>
+                <p className="text-sm font-semibold">Fernando dos Santos Pereira</p>
                 <p className="text-xs text-gray-500">Responsável</p>
               </div>
             </div>
