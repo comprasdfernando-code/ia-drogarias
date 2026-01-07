@@ -191,13 +191,24 @@ export default function EditarProduto() {
       </label>
 
       <label className="block mb-4">
-        <input
-          type="checkbox"
-          checked={p.ativo ?? false}
-          onChange={(e) => setP({ ...p, ativo: e.target.checked })}
-        />{" "}
-        Produto ativo
-      </label>
+  Imagem do produto (URL)
+  <input
+    type="text"
+    value={p.imagens?.[0] ?? ""}
+    onChange={(e) =>
+      setP({
+        ...p,
+        imagens: e.target.value ? [e.target.value] : [],
+      })
+    }
+    placeholder="https://..."
+    className="w-full border rounded px-3 py-2 mt-1"
+  />
+  <span className="text-xs text-gray-500">
+    Cole a URL da imagem principal do produto
+  </span>
+</label>
+
 
       {ok && <p className="text-green-700 text-sm mb-3">✅ {ok}</p>}
 
