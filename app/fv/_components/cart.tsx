@@ -15,6 +15,7 @@ export type CartItem = {
 type CartCtx = {
   items: CartItem[];
   addItem: (item: Omit<CartItem, "qtd">, qtd?: number) => void;
+  setQty: (ean: string, qtd: number) => void;
   inc: (ean: string) => void;
   dec: (ean: string) => void;
   remove: (ean: string) => void;
@@ -24,13 +25,11 @@ type CartCtx = {
 };
 
 const CartContext = createContext<CartCtx | null>(null);
-
-const LS_KEY = "fv_cart_v1";
+const LS_KEY = "fv_cart_v2";
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([]);
 
-  // load
   useEffect(() => {
     try {
       const raw = localStorage.getItem(LS_KEY);
@@ -38,7 +37,6 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     } catch {}
   }, []);
 
-  // persist
   useEffect(() => {
     try {
       localStorage.setItem(LS_KEY, JSON.stringify(items));
@@ -46,14 +44,23 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   }, [items]);
 
   function addItem(item: Omit<CartItem, "qtd">, qtd = 1) {
+    const q = Math.max(1, Number(qtd || 1));
     setItems((prev) => {
       const idx = prev.findIndex((x) => x.ean === item.ean);
       if (idx >= 0) {
         const copy = [...prev];
-        copy[idx] = { ...copy[idx], qtd: copy[idx].qtd + qtd };
+        copy[idx] = { ...copy[idx], qtd: copy[idx].qtd + q };
         return copy;
       }
-      return [...prev, { ...item, qtd }];
+      return [...prev, { ...item, qtd: q }];
+    });
+  }
+
+  function setQty(ean: string, qtd: number) {
+    const q = Math.max(0, Number(qtd || 0));
+    setItems((prev) => {
+      if (q === 0) return prev.filter((x) => x.ean !== ean);
+      return prev.map((x) => (x.ean === ean ? { ...x, qtd: q } : x));
     });
   }
 
@@ -83,6 +90,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   const value: CartCtx = {
     items,
     addItem,
+    setQty,
     inc,
     dec,
     remove,
