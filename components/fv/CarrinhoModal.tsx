@@ -229,7 +229,7 @@ export default function CarrinhoModal({
                 href={buildWhatsAppLink(whatsapp, msg)}
                 className="block text-center bg-green-600 hover:bg-green-700 text-white py-3 rounded-xl font-semibold"
               >
-                Finalizar no WhatsApp
+                Finalizar Pedido
               </a>
 
               <button
