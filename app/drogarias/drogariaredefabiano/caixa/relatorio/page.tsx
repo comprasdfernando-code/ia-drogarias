@@ -20,19 +20,35 @@ function toISODate(d: Date) {
   return `${yyyy}-${mm}-${dd}`;
 }
 
+/**
+ * ✅ Correções aplicadas:
+ * - Buscar fechamento automaticamente quando muda a data (useEffect com dataRef)
+ * - Evitar "2 caixas no mesmo dia": usa sempre o mais recente (order desc + limit 1) e avisa se houver duplicados
+ * - Normaliza range de data: fim do dia com milissegundos e ISO completo
+ * - Pequenas proteções contra data vazia
+ */
 export default function RelatorioDiarioCaixaPage() {
   const [dataRef, setDataRef] = useState<string>(toISODate(new Date()));
   const [registro, setRegistro] = useState<any>(null);
   const [loading, setLoading] = useState(false);
   const [erro, setErro] = useState<string>("");
+  const [avisoDuplicado, setAvisoDuplicado] = useState<string>("");
 
-  async function carregar() {
+  async function carregar(dataEscolhida?: string) {
+    const dt = (dataEscolhida ?? dataRef)?.trim();
+    if (!dt) {
+      setRegistro(null);
+      setErro("Selecione uma data válida.");
+      return;
+    }
+
     setErro("");
+    setAvisoDuplicado("");
     setLoading(true);
 
-    // pega do começo ao fim do dia
-    const ini = `${dataRef}T00:00:00`;
-    const fim = `${dataRef}T23:59:59`;
+    // pega do começo ao fim do dia (inclui milissegundos)
+    const ini = `${dt}T00:00:00.000`;
+    const fim = `${dt}T23:59:59.999`;
 
     const { data, error } = await supabase
       .from("caixa_diario")
@@ -41,7 +57,7 @@ export default function RelatorioDiarioCaixaPage() {
       .gte("data", ini)
       .lte("data", fim)
       .order("data", { ascending: false })
-      .limit(1);
+      .limit(5); // pega alguns pra detectar duplicado
 
     if (error) {
       console.error(error);
@@ -51,14 +67,23 @@ export default function RelatorioDiarioCaixaPage() {
       return;
     }
 
-    setRegistro(data?.[0] || null);
+    const primeiro = data?.[0] || null;
+    setRegistro(primeiro);
+
+    if (data && data.length > 1) {
+      setAvisoDuplicado(
+        `⚠️ Existem ${data.length} fechamentos nessa data. Mostrando o MAIS RECENTE automaticamente.`
+      );
+    }
+
     setLoading(false);
   }
 
+  // ✅ carrega ao abrir e sempre que mudar a data
   useEffect(() => {
-    carregar();
+    carregar(dataRef);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [dataRef]);
 
   const calc = useMemo(() => {
     if (!registro) return null;
@@ -115,7 +140,7 @@ export default function RelatorioDiarioCaixaPage() {
           </div>
 
           <button
-            onClick={carregar}
+            onClick={() => carregar(dataRef)}
             className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-semibold"
           >
             Buscar Fechamento
@@ -134,6 +159,9 @@ export default function RelatorioDiarioCaixaPage() {
           </button>
         </div>
 
+        {avisoDuplicado && (
+          <p className="text-amber-700 mt-3 font-semibold">{avisoDuplicado}</p>
+        )}
         {erro && <p className="text-red-600 mt-3">{erro}</p>}
         {loading && <p className="text-gray-600 mt-3">Carregando...</p>}
         {!loading && !erro && !registro && (
@@ -159,7 +187,6 @@ export default function RelatorioDiarioCaixaPage() {
             </p>
           </div>
 
-          {/* Se quiser, pode trocar por <img src="/logo.png" /> */}
           <div className="text-right">
             <p className="text-sm text-gray-600">Loja</p>
             <p className="font-semibold">{LOJA}</p>
@@ -176,7 +203,9 @@ export default function RelatorioDiarioCaixaPage() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mt-4">
               <div className="border rounded p-3">
                 <p className="text-xs text-gray-600">Venda Total</p>
-                <p className="text-lg font-bold">R$ {fmt(registro.venda_total)}</p>
+                <p className="text-lg font-bold">
+                  R$ {fmt(registro.venda_total)}
+                </p>
               </div>
               <div className="border rounded p-3">
                 <p className="text-xs text-gray-600">Entradas</p>
@@ -210,8 +239,16 @@ export default function RelatorioDiarioCaixaPage() {
                 <Item label="Pix CNPJ" value={registro.pix_cnpj} />
                 <Item label="Pix QR" value={registro.pix_qr} />
                 <Item label="Cartões" value={registro.cartoes} />
-                <Item label="Receb. Fiado" value={registro.receb_fiado} strong />
-                <Item label="Venda Fiado (registro)" value={registro.venda_fiado} accent />
+                <Item
+                  label="Receb. Fiado"
+                  value={registro.receb_fiado}
+                  strong
+                />
+                <Item
+                  label="Venda Fiado (registro)"
+                  value={registro.venda_fiado}
+                  accent
+                />
               </div>
             </div>
 
@@ -248,7 +285,9 @@ export default function RelatorioDiarioCaixaPage() {
                 Gerado em: {new Date().toLocaleString("pt-BR")}
               </div>
               <div className="text-right">
-                <p className="text-sm font-semibold">Fernando dos Santos Pereira</p>
+                <p className="text-sm font-semibold">
+                  Fernando dos Santos Pereira
+                </p>
                 <p className="text-xs text-gray-500">Responsável</p>
               </div>
             </div>
