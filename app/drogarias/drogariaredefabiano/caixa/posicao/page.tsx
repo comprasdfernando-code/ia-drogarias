@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 import RelatorioDiarioCompleto from "../components/RelatorioDiarioCompleto";
+import RelatorioDiarioCaixaEmbed from "../components/RelatorioDiarioCaixaEmbed";
 
 
 
@@ -153,8 +154,8 @@ export default function PosicaoFinanceiraPage() {
           </div>
         )}
 
-        {/* ================= RELATÓRIO DIÁRIO ================= */}
-<RelatorioDiarioCompleto />
+        // ...dentro do JSX
+<RelatorioDiarioCaixaEmbed />
 
 
 

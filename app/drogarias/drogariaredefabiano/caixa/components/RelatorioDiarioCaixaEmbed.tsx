@@ -55,9 +55,8 @@ function calcResumo(r: any) {
   return { entradas, saidas, saldo };
 }
 
-export default function RelatorioDiarioCaixaPage() {
+export default function RelatorioDiarioCaixaEmbed() {
   const [dataRef, setDataRef] = useState<string>(toISODate(new Date()));
-
   const [registrosDoDia, setRegistrosDoDia] = useState<any[]>([]);
   const [registroId, setRegistroId] = useState<string>("");
 
@@ -69,6 +68,11 @@ export default function RelatorioDiarioCaixaPage() {
     const found = registrosDoDia.find((r) => String(r.id) === String(registroId));
     return found || registrosDoDia[0] || null;
   }, [registrosDoDia, registroId]);
+
+  const calc = useMemo(() => {
+    if (!registro) return null;
+    return calcResumo(registro);
+  }, [registro]);
 
   async function carregar(d?: string) {
     const dt = (d ?? dataRef)?.trim();
@@ -105,7 +109,6 @@ export default function RelatorioDiarioCaixaPage() {
     const lista = data || [];
     setRegistrosDoDia(lista);
     if (lista.length > 0) setRegistroId(String(lista[0].id));
-
     setLoading(false);
   }
 
@@ -114,31 +117,41 @@ export default function RelatorioDiarioCaixaPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const calc = useMemo(() => {
-    if (!registro) return null;
-    return calcResumo(registro);
-  }, [registro]);
-
   function gerarPDF() {
     window.print();
   }
 
   return (
-    <main className="min-h-screen bg-gray-100 p-6">
+    <section className="w-full">
+      {/* ✅ CSS de impressão isolado: só imprime a área do relatório */}
       <style>{`
         @page { size: A4; margin: 12mm; }
+
         @media print {
           body { background: white !important; }
-          .no-print { display: none !important; }
-          .print-area { box-shadow: none !important; border: none !important; }
+
+          /* esconde tudo */
+          body * { visibility: hidden !important; }
+
+          /* mostra só o relatório */
+          #relatorio-print-area, #relatorio-print-area * { visibility: visible !important; }
+
+          /* posiciona no topo */
+          #relatorio-print-area { position: absolute; left: 0; top: 0; width: 100%; }
+
+          /* esconde controles */
+          .relatorio-no-print { display: none !important; }
+
+          /* remove sombras/bordas pesadas */
+          .relatorio-print-box { box-shadow: none !important; border: none !important; }
         }
       `}</style>
 
       {/* CONTROLES */}
-      <div className="no-print max-w-4xl mx-auto bg-white rounded-lg shadow p-4 mb-4">
-        <h1 className="text-xl font-bold text-blue-700 mb-3">
+      <div className="relatorio-no-print bg-white rounded-lg shadow p-4 mb-4">
+        <h2 className="text-lg font-bold text-blue-700 mb-3">
           📄 Relatório Diário (PDF) — Caixa
-        </h1>
+        </h2>
 
         <div className="flex flex-col md:flex-row gap-3 items-start md:items-end">
           <div className="flex flex-col">
@@ -171,7 +184,6 @@ export default function RelatorioDiarioCaixaPage() {
           </button>
         </div>
 
-        {/* ✅ seletor bonito */}
         {registrosDoDia.length > 0 && (
           <div className="mt-4">
             <label className="text-sm text-gray-600 block mb-1">
@@ -187,7 +199,6 @@ export default function RelatorioDiarioCaixaPage() {
               {registrosDoDia.map((r, idx) => {
                 const hora = formatHora(r.data);
                 const resumo = calcResumo(r);
-
                 const label = `Fechamento ${idx + 1} • ${hora} • Venda R$ ${fmt(
                   r.venda_total
                 )} • Entr R$ ${fmt(resumo.entradas)} • Saí R$ ${fmt(
@@ -212,22 +223,20 @@ export default function RelatorioDiarioCaixaPage() {
 
         {erro && <p className="text-red-600 mt-3">{erro}</p>}
         {loading && <p className="text-gray-600 mt-3">Carregando...</p>}
-
         {!loading && !erro && registrosDoDia.length === 0 && (
           <p className="text-gray-600 mt-3">Nenhum fechamento encontrado nessa data.</p>
         )}
       </div>
 
-      {/* ÁREA DE IMPRESSÃO */}
-      <div className="print-area max-w-4xl mx-auto bg-white rounded-lg shadow p-6">
+      {/* ✅ ÁREA DO PRINT (SÓ ELA VAI APARECER NA IMPRESSÃO) */}
+      <div id="relatorio-print-area" className="relatorio-print-box bg-white rounded-lg shadow p-6">
         <div className="flex items-start justify-between gap-4 border-b pb-4">
           <div>
-            <h2 className="text-2xl font-bold text-blue-800">Drogaria Rede Fabiano</h2>
+            <h3 className="text-2xl font-bold text-blue-800">Drogaria Rede Fabiano</h3>
             <p className="text-sm text-gray-600">Relatório Diário do Caixa (Fechamento)</p>
             <p className="text-sm text-gray-600">
               Data: <span className="font-semibold">{dataRef}</span>
             </p>
-
             {registro && (
               <p className="text-xs text-gray-500 mt-1">
                 Fechamento selecionado: <b>ID {registro.id}</b> • Horário:{" "}
@@ -263,18 +272,14 @@ export default function RelatorioDiarioCaixaPage() {
               </div>
               <div className="border rounded p-3">
                 <p className="text-xs text-gray-600">Saldo do Dia</p>
-                <p
-                  className={`text-lg font-bold ${
-                    (calc?.saldo || 0) >= 0 ? "text-green-700" : "text-red-700"
-                  }`}
-                >
+                <p className={`text-lg font-bold ${(calc?.saldo || 0) >= 0 ? "text-green-700" : "text-red-700"}`}>
                   R$ {fmt(calc?.saldo)}
                 </p>
               </div>
             </div>
 
             <div className="mt-6">
-              <h3 className="font-bold text-blue-700 mb-2">Entradas</h3>
+              <h4 className="font-bold text-blue-700 mb-2">Entradas</h4>
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
                 <Item label="Dinheiro" value={registro.dinheiro} />
                 <Item label="Pix CNPJ" value={registro.pix_cnpj} />
@@ -286,7 +291,7 @@ export default function RelatorioDiarioCaixaPage() {
             </div>
 
             <div className="mt-6">
-              <h3 className="font-bold text-blue-700 mb-2">Saídas</h3>
+              <h4 className="font-bold text-blue-700 mb-2">Saídas</h4>
               <div className="grid grid-cols-2 md:grid-cols-2 gap-3">
                 <ItemDesc label="Sangrias" value={registro.sangrias} desc={registro.desc_sangrias} />
                 <ItemDesc label="Despesas" value={registro.despesas} desc={registro.desc_despesas} />
@@ -296,9 +301,7 @@ export default function RelatorioDiarioCaixaPage() {
             </div>
 
             <div className="mt-8 pt-4 border-t flex items-end justify-between">
-              <div className="text-xs text-gray-500">
-                Gerado em: {new Date().toLocaleString("pt-BR")}
-              </div>
+              <div className="text-xs text-gray-500">Gerado em: {new Date().toLocaleString("pt-BR")}</div>
               <div className="text-right">
                 <p className="text-sm font-semibold">Fernando dos Santos Pereira</p>
                 <p className="text-xs text-gray-500">Responsável</p>
@@ -307,7 +310,7 @@ export default function RelatorioDiarioCaixaPage() {
           </>
         )}
       </div>
-    </main>
+    </section>
   );
 }
 
@@ -316,13 +319,7 @@ function Item({ label, value, strong, accent }: any) {
   return (
     <div className="border rounded p-3">
       <p className="text-xs text-gray-600">{label}</p>
-      <p
-        className={[
-          "text-base font-bold",
-          strong ? "text-green-700" : "",
-          accent ? "text-orange-700" : "",
-        ].join(" ")}
-      >
+      <p className={["text-base font-bold", strong ? "text-green-700" : "", accent ? "text-orange-700" : ""].join(" ")}>
         R$ {v.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
       </p>
     </div>
@@ -336,13 +333,9 @@ function ItemDesc({ label, value, desc }: any) {
       <div className="flex items-start justify-between gap-3">
         <div>
           <p className="text-xs text-gray-600">{label}</p>
-          <p className="text-base font-bold text-red-700">
-            R$ {v.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-          </p>
+          <p className="text-base font-bold text-red-700">R$ {v.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</p>
         </div>
-        <div className="text-right text-xs text-gray-500 max-w-[60%]">
-          {desc ? desc : "—"}
-        </div>
+        <div className="text-right text-xs text-gray-500 max-w-[60%]">{desc ? desc : "—"}</div>
       </div>
     </div>
   );
