@@ -4,26 +4,17 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 import Image from "next/image";
 
-// =========================
-// SUPABASE
-// =========================
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-// =========================
-// CONFIG
-// =========================
 const FARMACIA_SLUG = "drogariaredefabiano";
 const SENHA_ADMIN = "102030";
-const VIEW = "fv_produtos_loja_view"; // read
-const WRITE_TABLE = "fv_farmacia_produtos"; // write
+const VIEW = "fv_produtos_loja_view";
+const WRITE_TABLE = "fv_farmacia_produtos";
 const LIMITE = 800;
 
-// =========================
-// TYPES
-// =========================
 type ViewRow = {
   farmacia_slug: string;
   produto_id: string;
@@ -34,7 +25,7 @@ type ViewRow = {
   categoria: string | null;
   apresentacao: string | null;
 
-  imagens: any | null; // vem como jsonb (array)
+  imagens: any | null;
   disponivel_farmacia: boolean | null;
 
   estoque: number | null;
@@ -44,8 +35,6 @@ type ViewRow = {
   preco_promocional: number | null;
   percentual_off: number | null;
   destaque_home: boolean | null;
-
-  updated_at?: string | null;
 };
 
 type RowUI = ViewRow & {
@@ -54,9 +43,6 @@ type RowUI = ViewRow & {
   _error?: string | null;
 };
 
-// =========================
-// HELPERS
-// =========================
 function onlyDigits(s: string) {
   return (s || "").replace(/\D/g, "");
 }
@@ -66,7 +52,6 @@ function brl(n: number) {
 function normalizeImgs(v: any): string[] {
   if (!v) return [];
   if (Array.isArray(v)) return v.map(String).filter(Boolean);
-  // se vier string json
   if (typeof v === "string") {
     try {
       const parsed = JSON.parse(v);
@@ -77,8 +62,7 @@ function normalizeImgs(v: any): string[] {
 }
 function firstImg(v: any) {
   const arr = normalizeImgs(v);
-  if (arr.length > 0) return arr[0];
-  return "/produtos/caixa-padrao.png";
+  return arr.length > 0 ? arr[0] : "/produtos/caixa-padrao.png";
 }
 function stockBadge(n: number) {
   if (n <= 0) return "text-red-700 bg-red-50 border-red-200";
@@ -148,8 +132,7 @@ export default function AdminPageFabiano() {
           em_promocao,
           preco_promocional,
           percentual_off,
-          destaque_home,
-          updated_at
+          destaque_home
         `
         )
         .eq("farmacia_slug", FARMACIA_SLUG)
@@ -287,8 +270,7 @@ export default function AdminPageFabiano() {
 
     const estoqueVal = massEstoque.trim() === "" ? null : Number(massEstoque);
     const precoVal = massPreco.trim() === "" ? null : Number(massPreco);
-    const ativarVal =
-      massAtivar === "" ? null : massAtivar === "sim" ? true : false;
+    const ativarVal = massAtivar === "" ? null : massAtivar === "sim";
 
     setRows((prev) =>
       prev.map((x) => {
@@ -301,16 +283,10 @@ export default function AdminPageFabiano() {
       })
     );
 
-    for (const id of selecionadosIds) {
-      await salvarAgora(id);
-    }
-
+    for (const id of selecionadosIds) await salvarAgora(id);
     toast("✅ Massa aplicada");
   }
 
-  // =========================
-  // LOGIN UI
-  // =========================
   if (!autenticado) {
     return (
       <main className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
@@ -341,9 +317,6 @@ export default function AdminPageFabiano() {
     );
   }
 
-  // =========================
-  // MAIN UI
-  // =========================
   return (
     <main className="min-h-screen bg-gray-50 px-4 py-6">
       <div className="max-w-7xl mx-auto">
@@ -385,7 +358,6 @@ export default function AdminPageFabiano() {
           </div>
         )}
 
-        {/* Filtros */}
         <div className="mt-5 bg-white border rounded-2xl p-4 shadow-sm">
           <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
             <div className="md:col-span-2">
@@ -445,7 +417,6 @@ export default function AdminPageFabiano() {
           </div>
         </div>
 
-        {/* Massa */}
         <div className="mt-4 bg-white border rounded-2xl p-4 shadow-sm">
           <div className="flex flex-col lg:flex-row lg:items-center gap-3 justify-between">
             <div className="flex items-center gap-3">
@@ -504,7 +475,6 @@ export default function AdminPageFabiano() {
           </div>
         </div>
 
-        {/* Lista */}
         <div className="mt-4 bg-white border rounded-2xl shadow-sm overflow-x-auto">
           <table className="min-w-[1200px] w-full text-sm">
             <thead className="bg-blue-50 border-b text-gray-700">
