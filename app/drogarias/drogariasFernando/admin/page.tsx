@@ -99,7 +99,7 @@ export default function AdminDrogariasFernando() {
     try {
       setSalvando(true);
       const { error } = await supabase
-        .from("medicamentos_site")
+        .from("fv_produtos")
         .update({
           nome: p.nome,
           descricao: p.descricao,
