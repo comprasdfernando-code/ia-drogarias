@@ -1,8 +1,8 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
 type FVProduto = {
@@ -19,8 +19,9 @@ type FVProduto = {
   destaque_home: boolean | null;
   ativo: boolean | null;
   imagens: string[] | null;
-  updated_at?: string | null;
 };
+
+type Tog = "todos" | "sim" | "nao";
 
 function brl(v: number | null | undefined) {
   if (v === null || v === undefined || Number.isNaN(v)) return "—";
@@ -32,6 +33,10 @@ function firstImg(imagens?: string[] | null) {
   return "/produtos/caixa-padrao.png";
 }
 
+function onlyDigits(s: string) {
+  return s.replace(/\D/g, "");
+}
+
 function calcOff(pmc?: number | null, promo?: number | null) {
   const a = Number(pmc || 0);
   const b = Number(promo || 0);
@@ -39,365 +44,291 @@ function calcOff(pmc?: number | null, promo?: number | null) {
   return Math.round(((a - b) / a) * 100);
 }
 
-type SortKey = "nome" | "ean" | "pmc" | "preco_promocional" | "off" | "updated_at";
-type SortDir = "asc" | "desc";
+function precos(p: FVProduto) {
+  const pmc = Number(p.pmc || 0);
+  const promo = Number(p.preco_promocional || 0);
+  const emPromo = !!p.em_promocao && promo > 0 && (!pmc || promo < pmc);
+
+  const final = emPromo ? promo : pmc;
+
+  const offDb = Number(p.percentual_off || 0);
+  const off = emPromo ? (offDb > 0 ? offDb : calcOff(pmc, promo)) : 0;
+
+  return { pmc, promo, emPromo, final, off };
+}
 
 export default function AdminProdutosPage() {
-  // filtros / busca
+  // filtros
   const [q, setQ] = useState("");
-  const [ativo, setAtivo] = useState<"" | "sim" | "nao">("");
-  const [promo, setPromo] = useState<"" | "sim" | "nao">("");
-  const [home, setHome] = useState<"" | "sim" | "nao">("");
+  const [ativo, setAtivo] = useState<Tog>("todos");
+  const [promo, setPromo] = useState<Tog>("todos");
+  const [home, setHome] = useState<Tog>("todos");
+  const [precoZerado, setPrecoZerado] = useState<Tog>("todos");
   const [categoria, setCategoria] = useState("");
   const [laboratorio, setLaboratorio] = useState("");
-
-  // combos
-  const [categorias, setCategorias] = useState<string[]>([]);
-  const [laboratorios, setLaboratorios] = useState<string[]>([]);
-
-  // listagem
-  const [rows, setRows] = useState<FVProduto[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [erro, setErro] = useState<string | null>(null);
 
   // paginação
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
-  const [total, setTotal] = useState(0);
 
-  // ordenação
-  const [sortKey, setSortKey] = useState<SortKey>("updated_at");
-  const [sortDir, setSortDir] = useState<SortDir>("desc");
+  // dados
+  const [loading, setLoading] = useState(true);
+  const [rows, setRows] = useState<FVProduto[]>([]);
+  const [totalFound, setTotalFound] = useState(0);
 
-  // contadores rápidos
-  const [stats, setStats] = useState({
+  // kpis
+  const [kpis, setKpis] = useState({
     total: 0,
     ativos: 0,
-    promo: 0,
+    emPromo: 0,
     home: 0,
-    zerados: 0,
+    precoZerado: 0,
   });
 
-  // edição inline
-  const [draft, setDraft] = useState<Record<string, { pmc?: string; preco_promocional?: string }>>({});
-  const [savingId, setSavingId] = useState<string | null>(null);
+  // options
+  const [cats, setCats] = useState<string[]>([]);
+  const [labs, setLabs] = useState<string[]>([]);
 
-  const qDigits = useMemo(() => q.replace(/\D/g, ""), [q]);
+  const [err, setErr] = useState<string | null>(null);
 
-  function resetPage() {
-    setPage(1);
-  }
-
-  function clearFilters() {
-    setQ("");
-    setAtivo("");
-    setPromo("");
-    setHome("");
-    setCategoria("");
-    setLaboratorio("");
-    setSortKey("updated_at");
-    setSortDir("desc");
-    setPage(1);
-  }
-
-  async function loadCombos() {
-    // categorias
-    const { data: catData } = await supabase
-      .from("fv_produtos")
-      .select("categoria")
-      .not("categoria", "is", null)
-      .limit(5000);
-
-    const catSet = new Set<string>();
-    (catData || []).forEach((x: any) => {
-      const v = String(x.categoria || "").trim();
-      if (v) catSet.add(v);
-    });
-    setCategorias(Array.from(catSet).sort((a, b) => a.localeCompare(b)));
-
-    // laboratorios
-    const { data: labData } = await supabase
-      .from("fv_produtos")
-      .select("laboratorio")
-      .not("laboratorio", "is", null)
-      .limit(5000);
-
-    const labSet = new Set<string>();
-    (labData || []).forEach((x: any) => {
-      const v = String(x.laboratorio || "").trim();
-      if (v) labSet.add(v);
-    });
-    setLaboratorios(Array.from(labSet).sort((a, b) => a.localeCompare(b)));
-  }
-
-  async function loadStats() {
-    // Observação: Supabase não faz COUNT com filtros diferentes em uma única query.
-    // Aqui fazemos 5 contagens simples. É admin; vale a pena.
-    const base = supabase.from("fv_produtos").select("id", { count: "exact", head: true });
-
-    const [{ count: totalC }, { count: ativosC }, { count: promoC }, { count: homeC }, { count: zeradosC }] =
-      await Promise.all([
-        base,
-        supabase.from("fv_produtos").select("id", { count: "exact", head: true }).eq("ativo", true),
-        supabase.from("fv_produtos").select("id", { count: "exact", head: true }).eq("em_promocao", true).eq("ativo", true),
-        supabase.from("fv_produtos").select("id", { count: "exact", head: true }).eq("destaque_home", true).eq("ativo", true),
-        supabase.from("fv_produtos").select("id", { count: "exact", head: true }).or("pmc.is.null,pmc.eq.0").eq("ativo", true),
-      ]);
-
-    setStats({
-      total: totalC || 0,
-      ativos: ativosC || 0,
-      promo: promoC || 0,
-      home: homeC || 0,
-      zerados: zeradosC || 0,
-    });
-  }
-
-  function buildQuery() {
-    let query = supabase
+  /**
+   * ✅ IMPORTANTE:
+   * Sempre comece o builder com .select() para liberar .eq/.or/.not corretamente.
+   * Aqui retornamos um query builder já com select básico, e o loadTable usa .range().
+   */
+  function buildQueryBaseSelect() {
+    let qb = supabase
       .from("fv_produtos")
       .select(
-        "id,ean,nome,laboratorio,categoria,apresentacao,pmc,em_promocao,preco_promocional,percentual_off,destaque_home,ativo,imagens,updated_at",
+        "id,ean,nome,laboratorio,categoria,apresentacao,pmc,em_promocao,preco_promocional,percentual_off,destaque_home,ativo,imagens",
         { count: "exact" }
       );
 
-    // filtros
-    if (ativo === "sim") query = query.eq("ativo", true);
-    if (ativo === "nao") query = query.eq("ativo", false);
+    // boolean filters
+    if (ativo === "sim") qb = qb.eq("ativo", true);
+    if (ativo === "nao") qb = qb.eq("ativo", false);
 
-    if (promo === "sim") query = query.eq("em_promocao", true);
-    if (promo === "nao") query = query.or("em_promocao.is.null,em_promocao.eq.false");
+    if (promo === "sim") qb = qb.eq("em_promocao", true);
+    if (promo === "nao") qb = qb.eq("em_promocao", false);
 
-    if (home === "sim") query = query.eq("destaque_home", true);
-    if (home === "nao") query = query.or("destaque_home.is.null,destaque_home.eq.false");
+    if (home === "sim") qb = qb.eq("destaque_home", true);
+    if (home === "nao") qb = qb.eq("destaque_home", false);
 
-    if (categoria) query = query.eq("categoria", categoria);
-    if (laboratorio) query = query.eq("laboratorio", laboratorio);
+    // categoria / lab
+    const cat = categoria.trim();
+    if (cat) qb = qb.ilike("categoria", `%${cat}%`);
 
-    // busca (EAN é indispensável)
-    const t = q.trim();
-    if (t) {
-      // Se tiver cara de EAN (8-14 dígitos) -> EAN exato OU nome
-      if (qDigits.length >= 8 && qDigits.length <= 14) {
-        // EAN sempre exato (indispensável)
-        // e mantém fallback por nome
-        query = query.or(`ean.eq.${qDigits},nome.ilike.%${t}%`);
-      } else {
-        query = query.ilike("nome", `%${t}%`);
-      }
-    }
+    const lab = laboratorio.trim();
+    if (lab) qb = qb.ilike("laboratorio", `%${lab}%`);
 
-    // ordenação (OFF é calculado; usamos percentual_off como proxy quando existe)
-    if (sortKey === "off") {
-      query = query.order("percentual_off", { ascending: sortDir === "asc", nullsFirst: sortDir === "desc" });
-      // fallback secundário
-      query = query.order("updated_at", { ascending: false });
-    } else {
-      query = query.order(sortKey, { ascending: sortDir === "asc" });
-    }
+    // preço zerado (pmc null ou 0)
+    if (precoZerado === "sim") qb = qb.or("pmc.is.null,pmc.eq.0");
 
-    return query;
+    // ❗️"não" = pmc não é null E pmc != 0
+    // O jeito mais estável é aplicar duas condições:
+    if (precoZerado === "nao") qb = qb.not("pmc", "is", null).neq("pmc", 0);
+
+    return qb;
   }
 
-  async function loadList() {
+  function applySearch(qb: any) {
+    const t = q.trim();
+    if (!t) return qb;
+
+    const digits = onlyDigits(t);
+
+    // EAN exato quando só número e tamanho típico
+    if (digits && digits.length >= 8 && digits.length <= 14 && digits === t.replace(/\s/g, "")) {
+      return qb.eq("ean", digits);
+    }
+
+    // se digitou números misturado, tenta OR (ean eq digits) + nome ilike
+    if (digits.length >= 8 && digits.length <= 14) {
+      return qb.or(`ean.eq.${digits},nome.ilike.%${t}%`);
+    }
+
+    return qb.ilike("nome", `%${t}%`);
+  }
+
+  async function loadOptions() {
+    try {
+      // amostra grande só pra montar combos (evita distinct/RPC)
+      const { data, error } = await supabase
+        .from("fv_produtos")
+        .select("categoria,laboratorio")
+        .limit(8000);
+
+      if (error) throw error;
+
+      const cset = new Set<string>();
+      const lset = new Set<string>();
+
+      (data || []).forEach((r: any) => {
+        if (r.categoria) cset.add(String(r.categoria).trim());
+        if (r.laboratorio) lset.add(String(r.laboratorio).trim());
+      });
+
+      setCats(Array.from(cset).filter(Boolean).sort((a, b) => a.localeCompare(b)));
+      setLabs(Array.from(lset).filter(Boolean).sort((a, b) => a.localeCompare(b)));
+    } catch (e: any) {
+      console.error(e);
+    }
+  }
+
+  // ✅ contagens: use head:true para não baixar linhas
+  async function countHead(builder: any) {
+    const { count, error } = await builder.select("id", { count: "exact", head: true });
+    if (error) throw error;
+    return count || 0;
+  }
+
+  async function loadKpis() {
+    try {
+      // Total do banco (sem filtros)
+      const total = await countHead(supabase.from("fv_produtos"));
+
+      // Contagens respeitando filtros atuais de categoria/lab/busca? (aqui não, é KPI de visão geral com filtros de categoria/lab/preço etc.)
+      // Se você quiser KPI com busca também, é só aplicar applySearch.
+      const base = buildQueryBaseSelect();
+
+      const ativosCount = await countHead(buildQueryBaseSelect().eq("ativo", true));
+      const emPromoCount = await countHead(buildQueryBaseSelect().eq("em_promocao", true));
+      const homeCount = await countHead(buildQueryBaseSelect().eq("destaque_home", true));
+      const precoZeradoCount = await countHead(buildQueryBaseSelect().or("pmc.is.null,pmc.eq.0"));
+
+      setKpis({
+        total,
+        ativos: ativosCount,
+        emPromo: emPromoCount,
+        home: homeCount,
+        precoZerado: precoZeradoCount,
+      });
+
+      // (opcional) você pode usar `base` depois, se quiser KPI "Encontrados"
+      void base;
+    } catch (e: any) {
+      console.error(e);
+    }
+  }
+
+  async function loadTable() {
+    setErr(null);
     setLoading(true);
-    setErro(null);
 
     try {
       const from = (page - 1) * pageSize;
       const to = from + pageSize - 1;
 
-      const query = buildQuery().range(from, to);
-      const { data, error, count } = await query;
+      let qb = buildQueryBaseSelect();
+      qb = applySearch(qb);
+
+      const { data, count, error } = await qb
+        .order("nome", { ascending: true })
+        .range(from, to);
 
       if (error) throw error;
 
       setRows((data || []) as FVProduto[]);
-      setTotal(count || 0);
+      setTotalFound(count || 0);
     } catch (e: any) {
       console.error(e);
-      setErro(e?.message || "Erro ao carregar.");
       setRows([]);
-      setTotal(0);
+      setTotalFound(0);
+      setErr(e?.message || "Erro ao carregar produtos.");
     } finally {
       setLoading(false);
     }
   }
 
+  // init
   useEffect(() => {
-    loadCombos();
-    loadStats();
+    loadOptions();
+    loadKpis();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // reload tabela quando filtros mudarem (exceto page)
   useEffect(() => {
-    loadList();
+    const t = setTimeout(() => {
+      setPage(1);
+      loadTable();
+    }, 250);
+    return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [page, pageSize, sortKey, sortDir, ativo, promo, home, categoria, laboratorio]);
+  }, [q, ativo, promo, home, precoZerado, categoria, laboratorio, pageSize]);
 
-  // debounce busca
+  // reload tabela quando page mudar
   useEffect(() => {
-    const timer = setTimeout(() => {
-      resetPage();
-      loadList();
-    }, 300);
-    return () => clearTimeout(timer);
+    loadTable();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q]);
+  }, [page]);
 
-  const totalPages = Math.max(1, Math.ceil(total / pageSize));
+  const totalPages = Math.max(1, Math.ceil(totalFound / pageSize));
 
-  function toggleSort(k: SortKey) {
-    if (sortKey !== k) {
-      setSortKey(k);
-      setSortDir("asc");
-      return;
-    }
-    setSortDir((d) => (d === "asc" ? "desc" : "asc"));
+  function limpar() {
+    setQ("");
+    setAtivo("todos");
+    setPromo("todos");
+    setHome("todos");
+    setPrecoZerado("todos");
+    setCategoria("");
+    setLaboratorio("");
+    setPage(1);
   }
-
-  function getOff(p: FVProduto) {
-    const offDb = Number(p.percentual_off || 0);
-    if (offDb > 0) return offDb;
-    if (p.em_promocao && p.preco_promocional) return calcOff(p.pmc, p.preco_promocional);
-    return 0;
-  }
-
-  async function quickToggle(id: string, field: "ativo" | "destaque_home" | "em_promocao", current: boolean | null) {
-    const next = !Boolean(current);
-    // regra: se desligar promoção, zera preço promo (opcional, mas evita sujeira)
-    const patch: any = { [field]: next };
-    if (field === "em_promocao" && !next) patch.preco_promocional = null;
-
-    await supabase.from("fv_produtos").update(patch).eq("id", id);
-
-    // refresh leve
-    await Promise.all([loadList(), loadStats()]);
-  }
-
-  function setDraftField(id: string, field: "pmc" | "preco_promocional", value: string) {
-    setDraft((prev) => ({
-      ...prev,
-      [id]: {
-        ...prev[id],
-        [field]: value,
-      },
-    }));
-  }
-
-  function getDraftValue(id: string, field: "pmc" | "preco_promocional", fallback: number | null) {
-    const v = draft?.[id]?.[field];
-    if (v !== undefined) return v;
-    return fallback === null || fallback === undefined ? "" : String(fallback);
-  }
-
-  async function saveRow(p: FVProduto) {
-    try {
-      setSavingId(p.id);
-
-      const d = draft[p.id] || {};
-      const pmcStr = d.pmc ?? (p.pmc ?? "").toString();
-      const promoStr = d.preco_promocional ?? (p.preco_promocional ?? "").toString();
-
-      const pmc = pmcStr === "" ? null : Number(pmcStr);
-      const preco_promocional = promoStr === "" ? null : Number(promoStr);
-
-      // validações simples
-      if (pmc !== null && Number.isNaN(pmc)) throw new Error("PMC inválido.");
-      if (preco_promocional !== null && Number.isNaN(preco_promocional)) throw new Error("Preço promo inválido.");
-
-      // se tem preço promo, marca em promoção automaticamente (padrão “admin rápido”)
-      const em_promocao =
-        preco_promocional !== null && preco_promocional > 0 && (pmc === null || preco_promocional < pmc)
-          ? true
-          : Boolean(p.em_promocao);
-
-      // calcula %off e grava (mantém consistente pro front)
-      const percentual_off =
-        em_promocao && preco_promocional && pmc && preco_promocional < pmc ? calcOff(pmc, preco_promocional) : 0;
-
-      const patch = {
-        pmc,
-        preco_promocional,
-        em_promocao,
-        percentual_off,
-      };
-
-      const { error } = await supabase.from("fv_produtos").update(patch).eq("id", p.id);
-      if (error) throw error;
-
-      // limpa draft dessa linha
-      setDraft((prev) => {
-        const copy = { ...prev };
-        delete copy[p.id];
-        return copy;
-      });
-
-      await Promise.all([loadList(), loadStats()]);
-    } catch (e: any) {
-      alert(e?.message || "Erro ao salvar.");
-    } finally {
-      setSavingId(null);
-    }
-  }
-
-  const headerSortIcon = (k: SortKey) => {
-    if (sortKey !== k) return "↕";
-    return sortDir === "asc" ? "↑" : "↓";
-  };
 
   return (
     <main className="min-h-screen bg-gray-50 pb-24">
       <div className="max-w-7xl mx-auto px-4 pt-6">
-        {/* Topo */}
-        <div className="bg-white border rounded-3xl p-4 md:p-6 shadow-sm">
-          <div className="flex flex-col md:flex-row md:items-start md:justify-between gap-4">
-            <div>
-              <h1 className="text-2xl md:text-3xl font-extrabold text-blue-900">Admin FV — Produtos</h1>
-              <p className="text-sm text-gray-600 mt-1">
-                Busca por <b>EAN</b> (exato) ou nome • filtros • toggles • edição rápida
-              </p>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => {
-                  loadList();
-                  loadStats();
-                }}
-                className="px-4 py-2 rounded-2xl border bg-white hover:bg-gray-50 font-semibold"
-              >
-                Atualizar
-              </button>
-
-              <button
-                onClick={clearFilters}
-                className="px-4 py-2 rounded-2xl border bg-white hover:bg-gray-50 font-semibold"
-              >
-                Limpar filtros
-              </button>
-            </div>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div>
+            <h1 className="text-2xl md:text-3xl font-extrabold text-blue-950">
+              Admin FV — Produtos
+            </h1>
+            <p className="text-sm text-gray-600 mt-1">
+              Busca por <b>EAN (exato)</b> ou nome • filtros • toggles • edição rápida • imagens
+            </p>
           </div>
 
-          {/* Cards stats */}
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mt-5">
-            <StatCard label="Total" value={stats.total} />
-            <StatCard label="Ativos" value={stats.ativos} />
-            <StatCard label="Em promo" value={stats.promo} />
-            <StatCard label="Home" value={stats.home} />
-            <StatCard label="Preço zerado" value={stats.zerados} />
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => {
+                loadKpis();
+                loadTable();
+              }}
+              className="px-4 py-2.5 rounded-xl bg-blue-700 hover:bg-blue-800 text-white font-extrabold"
+            >
+              Atualizar
+            </button>
+            <button
+              onClick={limpar}
+              className="px-4 py-2.5 rounded-xl bg-white border hover:bg-gray-50 font-extrabold"
+            >
+              Limpar filtros
+            </button>
           </div>
+        </div>
 
-          {/* Busca + filtros */}
-          <div className="mt-5 grid grid-cols-1 md:grid-cols-12 gap-3">
-            <div className="md:col-span-5">
+        {/* KPIs */}
+        <div className="mt-5 grid grid-cols-2 md:grid-cols-5 gap-3">
+          <Kpi label="Total" value={kpis.total} />
+          <Kpi label="Ativos" value={kpis.ativos} />
+          <Kpi label="Em promo" value={kpis.emPromo} />
+          <Kpi label="Home" value={kpis.home} />
+          <Kpi label="Preço zerado" value={kpis.precoZerado} />
+        </div>
+
+        {/* filtros */}
+        <div className="mt-5 bg-white border rounded-3xl p-4 md:p-5 shadow-sm">
+          <div className="grid md:grid-cols-12 gap-3">
+            <div className="md:col-span-6">
               <label className="text-xs font-bold text-gray-700">Buscar (EAN ou nome)</label>
               <input
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
-                placeholder="Ex: 789... (EAN) ou 'cimegripe'..."
+                placeholder="Digite EAN (só números) ou nome…"
                 className="mt-1 w-full bg-gray-50 border rounded-2xl px-4 py-3 outline-none focus:ring-2 focus:ring-blue-200"
               />
-              <div className="text-[11px] text-gray-500 mt-1">
+              <div className="mt-1 text-[11px] text-gray-500">
                 Dica: se digitar só números (8–14 dígitos), o sistema busca <b>EAN exato</b>.
               </div>
             </div>
@@ -406,13 +337,10 @@ export default function AdminProdutosPage() {
               <label className="text-xs font-bold text-gray-700">Ativo</label>
               <select
                 value={ativo}
-                onChange={(e) => {
-                  setAtivo(e.target.value as any);
-                  resetPage();
-                }}
+                onChange={(e) => setAtivo(e.target.value as Tog)}
                 className="mt-1 w-full bg-white border rounded-2xl px-3 py-3"
               >
-                <option value="">Todos</option>
+                <option value="todos">Todos</option>
                 <option value="sim">Sim</option>
                 <option value="nao">Não</option>
               </select>
@@ -422,31 +350,25 @@ export default function AdminProdutosPage() {
               <label className="text-xs font-bold text-gray-700">Promoção</label>
               <select
                 value={promo}
-                onChange={(e) => {
-                  setPromo(e.target.value as any);
-                  resetPage();
-                }}
+                onChange={(e) => setPromo(e.target.value as Tog)}
                 className="mt-1 w-full bg-white border rounded-2xl px-3 py-3"
               >
-                <option value="">Todas</option>
-                <option value="sim">Só em promo</option>
-                <option value="nao">Sem promo</option>
+                <option value="todos">Todas</option>
+                <option value="sim">Sim</option>
+                <option value="nao">Não</option>
               </select>
             </div>
 
-            <div className="md:col-span-3">
+            <div className="md:col-span-2">
               <label className="text-xs font-bold text-gray-700">Destaque Home</label>
               <select
                 value={home}
-                onChange={(e) => {
-                  setHome(e.target.value as any);
-                  resetPage();
-                }}
+                onChange={(e) => setHome(e.target.value as Tog)}
                 className="mt-1 w-full bg-white border rounded-2xl px-3 py-3"
               >
-                <option value="">Todos</option>
-                <option value="sim">Só Home</option>
-                <option value="nao">Fora da Home</option>
+                <option value="todos">Todos</option>
+                <option value="sim">Sim</option>
+                <option value="nao">Não</option>
               </select>
             </div>
 
@@ -454,14 +376,11 @@ export default function AdminProdutosPage() {
               <label className="text-xs font-bold text-gray-700">Categoria</label>
               <select
                 value={categoria}
-                onChange={(e) => {
-                  setCategoria(e.target.value);
-                  resetPage();
-                }}
+                onChange={(e) => setCategoria(e.target.value)}
                 className="mt-1 w-full bg-white border rounded-2xl px-3 py-3"
               >
                 <option value="">Todas</option>
-                {categorias.map((c) => (
+                {cats.map((c) => (
                   <option key={c} value={c}>
                     {c}
                   </option>
@@ -469,274 +388,145 @@ export default function AdminProdutosPage() {
               </select>
             </div>
 
-            <div className="md:col-span-6">
+            <div className="md:col-span-4">
               <label className="text-xs font-bold text-gray-700">Laboratório</label>
               <select
                 value={laboratorio}
-                onChange={(e) => {
-                  setLaboratorio(e.target.value);
-                  resetPage();
-                }}
+                onChange={(e) => setLaboratorio(e.target.value)}
                 className="mt-1 w-full bg-white border rounded-2xl px-3 py-3"
               >
                 <option value="">Todos</option>
-                {laboratorios.map((l) => (
+                {labs.map((l) => (
                   <option key={l} value={l}>
                     {l}
                   </option>
                 ))}
               </select>
             </div>
-          </div>
 
-          {/* Paginação topo */}
-          <div className="mt-5 flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-            <div className="text-sm text-gray-600">
-              Mostrando <b>{rows.length}</b> de <b>{total}</b>
+            <div className="md:col-span-2">
+              <label className="text-xs font-bold text-gray-700">Preço zerado</label>
+              <select
+                value={precoZerado}
+                onChange={(e) => setPrecoZerado(e.target.value as Tog)}
+                className="mt-1 w-full bg-white border rounded-2xl px-3 py-3"
+              >
+                <option value="todos">Todos</option>
+                <option value="sim">Sim</option>
+                <option value="nao">Não</option>
+              </select>
             </div>
 
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-600">Itens/página</span>
-              <select
-                value={pageSize}
-                onChange={(e) => {
-                  setPageSize(Number(e.target.value));
-                  setPage(1);
-                }}
-                className="border rounded-xl px-2 py-2 bg-white"
-              >
-                {[10, 25, 50, 100].map((n) => (
-                  <option key={n} value={n}>
-                    {n}
-                  </option>
-                ))}
-              </select>
-
-              <button
-                disabled={page <= 1}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                className="px-3 py-2 rounded-xl border bg-white disabled:opacity-50"
-              >
-                ←
-              </button>
-
-              <div className="px-3 py-2 rounded-xl border bg-white text-sm">
-                Página <b>{page}</b> / <b>{totalPages}</b>
+            <div className="md:col-span-12 flex items-center justify-between gap-3 flex-wrap pt-1">
+              <div className="text-sm text-gray-600">
+                Mostrando <b>{rows.length}</b> de <b>{totalFound}</b>
+                {q.trim() ? (
+                  <>
+                    {" "}
+                    • busca: <b>{q.trim()}</b>
+                  </>
+                ) : null}
               </div>
 
-              <button
-                disabled={page >= totalPages}
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                className="px-3 py-2 rounded-xl border bg-white disabled:opacity-50"
-              >
-                →
-              </button>
+              <div className="flex items-center gap-2">
+                <div className="text-sm text-gray-600">Itens/página</div>
+                <select
+                  value={pageSize}
+                  onChange={(e) => {
+                    setPageSize(Number(e.target.value));
+                    setPage(1);
+                  }}
+                  className="bg-white border rounded-xl px-3 py-2"
+                >
+                  {[10, 25, 50, 100].map((n) => (
+                    <option key={n} value={n}>
+                      {n}
+                    </option>
+                  ))}
+                </select>
+
+                <button
+                  disabled={page <= 1}
+                  onClick={() => setPage((p) => Math.max(1, p - 1))}
+                  className="px-3 py-2 rounded-xl border bg-white disabled:opacity-40"
+                >
+                  ←
+                </button>
+
+                <div className="px-3 py-2 rounded-xl border bg-white font-bold">
+                  Página {page} / {totalPages}
+                </div>
+
+                <button
+                  disabled={page >= totalPages}
+                  onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                  className="px-3 py-2 rounded-xl border bg-white disabled:opacity-40"
+                >
+                  →
+                </button>
+              </div>
             </div>
           </div>
         </div>
 
-        {/* Tabela */}
-        <div className="mt-5 bg-white border rounded-3xl shadow-sm overflow-hidden">
-          <div className="p-4 md:p-5 border-b flex items-center justify-between">
+        {/* tabela */}
+        <div className="mt-6 bg-white border rounded-3xl shadow-sm overflow-hidden">
+          <div className="p-4 md:p-5 flex items-center justify-between gap-3 flex-wrap">
             <div>
-              <h2 className="text-lg font-extrabold text-gray-900">Produtos</h2>
-              <p className="text-xs text-gray-600">Edite preços e status direto aqui. EAN sempre visível.</p>
+              <h2 className="text-xl font-extrabold text-blue-950">Produtos</h2>
+              <p className="text-sm text-gray-600">
+                Edite preço, status e imagens direto aqui. EAN sempre visível.
+              </p>
             </div>
 
-            <div className="text-xs text-gray-500">
-              {loading ? "Carregando…" : erro ? `Erro: ${erro}` : " "}
-            </div>
+            {err ? (
+              <div className="text-sm bg-red-50 border border-red-200 text-red-700 px-3 py-2 rounded-xl">
+                {err}
+              </div>
+            ) : null}
           </div>
 
-          <div className="overflow-auto">
+          <div className="overflow-x-auto">
             <table className="min-w-[1100px] w-full text-sm">
-              <thead className="bg-gray-50 text-gray-700">
-                <tr>
+              <thead className="bg-gray-50 border-t border-b">
+                <tr className="text-left">
                   <Th>Imagem</Th>
-                  <ThBtn onClick={() => toggleSort("ean")}>EAN {headerSortIcon("ean")}</ThBtn>
-                  <ThBtn onClick={() => toggleSort("nome")}>Nome {headerSortIcon("nome")}</ThBtn>
+                  <Th>EAN</Th>
+                  <Th>Nome</Th>
                   <Th>Lab</Th>
                   <Th>Categoria</Th>
-                  <ThBtn onClick={() => toggleSort("pmc")}>PMC {headerSortIcon("pmc")}</ThBtn>
-                  <ThBtn onClick={() => toggleSort("preco_promocional")}>Promo {headerSortIcon("preco_promocional")}</ThBtn>
-                  <ThBtn onClick={() => toggleSort("off")}>%OFF {headerSortIcon("off")}</ThBtn>
-                  <ThBtn onClick={() => toggleSort("updated_at")}>Atualizado {headerSortIcon("updated_at")}</ThBtn>
-                  <Th className="text-center">Ativo</Th>
-                  <Th className="text-center">Home</Th>
-                  <Th className="text-center">Promo</Th>
-                  <Th className="text-center">Ações</Th>
+                  <Th>PMC</Th>
+                  <Th>Promo</Th>
+                  <Th>%OFF</Th>
+                  <Th>Ativo</Th>
+                  <Th>Home</Th>
+                  <Th>Preço</Th>
+                  <Th>Ações</Th>
                 </tr>
               </thead>
 
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={13} className="p-6 text-gray-600">
+                    <td colSpan={12} className="p-6 text-gray-600">
                       Carregando…
                     </td>
                   </tr>
                 ) : rows.length === 0 ? (
                   <tr>
-                    <td colSpan={13} className="p-6 text-gray-600">
+                    <td colSpan={12} className="p-6 text-gray-600">
                       Nenhum produto encontrado com esses filtros.
                     </td>
                   </tr>
                 ) : (
-                  rows.map((p) => {
-                    const off = getOff(p);
-                    const isSaving = savingId === p.id;
-
-                    return (
-                      <tr key={p.id} className="border-t hover:bg-gray-50/60">
-                        <td className="p-3">
-                          <div className="w-12 h-12 rounded-xl overflow-hidden bg-gray-50 border flex items-center justify-center">
-                            <Image
-                              src={firstImg(p.imagens)}
-                              alt={p.nome || "Produto"}
-                              width={64}
-                              height={64}
-                              className="object-contain w-12 h-12"
-                            />
-                          </div>
-                        </td>
-
-                        <td className="p-3 font-mono text-xs">{p.ean}</td>
-
-                        <td className="p-3">
-                          <div className="font-semibold text-gray-900 line-clamp-1">{p.nome}</div>
-                          <div className="text-xs text-gray-500 line-clamp-1">{p.apresentacao || "—"}</div>
-                        </td>
-
-                        <td className="p-3 text-xs text-gray-700">{p.laboratorio || "—"}</td>
-                        <td className="p-3 text-xs text-gray-700">{p.categoria || "—"}</td>
-
-                        <td className="p-3">
-                          <input
-                            value={getDraftValue(p.id, "pmc", p.pmc)}
-                            onChange={(e) => setDraftField(p.id, "pmc", e.target.value)}
-                            className="w-28 border rounded-xl px-2 py-2 bg-white"
-                            inputMode="decimal"
-                          />
-                          <div className="text-[11px] text-gray-500 mt-1">{brl(p.pmc)}</div>
-                        </td>
-
-                        <td className="p-3">
-                          <input
-                            value={getDraftValue(p.id, "preco_promocional", p.preco_promocional)}
-                            onChange={(e) => setDraftField(p.id, "preco_promocional", e.target.value)}
-                            className="w-28 border rounded-xl px-2 py-2 bg-white"
-                            inputMode="decimal"
-                          />
-                          <div className="text-[11px] text-gray-500 mt-1">{brl(p.preco_promocional)}</div>
-                        </td>
-
-                        <td className="p-3">
-                          {off > 0 ? (
-                            <span className="inline-flex items-center px-2 py-1 rounded-full bg-red-50 text-red-700 font-extrabold text-xs">
-                              {off}% OFF
-                            </span>
-                          ) : (
-                            <span className="text-xs text-gray-500">—</span>
-                          )}
-                        </td>
-
-                        <td className="p-3 text-xs text-gray-600">
-                          {p.updated_at ? new Date(p.updated_at).toLocaleString("pt-BR") : "—"}
-                        </td>
-
-                        <td className="p-3 text-center">
-                          <button
-                            onClick={() => quickToggle(p.id, "ativo", p.ativo)}
-                            className={`px-3 py-2 rounded-xl font-extrabold text-xs border ${
-                              p.ativo ? "bg-green-50 text-green-700 border-green-200" : "bg-gray-50 text-gray-600 border-gray-200"
-                            }`}
-                          >
-                            {p.ativo ? "SIM" : "NÃO"}
-                          </button>
-                        </td>
-
-                        <td className="p-3 text-center">
-                          <button
-                            onClick={() => quickToggle(p.id, "destaque_home", p.destaque_home)}
-                            className={`px-3 py-2 rounded-xl font-extrabold text-xs border ${
-                              p.destaque_home ? "bg-yellow-50 text-yellow-800 border-yellow-200" : "bg-gray-50 text-gray-600 border-gray-200"
-                            }`}
-                          >
-                            {p.destaque_home ? "HOME" : "—"}
-                          </button>
-                        </td>
-
-                        <td className="p-3 text-center">
-                          <button
-                            onClick={() => quickToggle(p.id, "em_promocao", p.em_promocao)}
-                            className={`px-3 py-2 rounded-xl font-extrabold text-xs border ${
-                              p.em_promocao ? "bg-red-50 text-red-700 border-red-200" : "bg-gray-50 text-gray-600 border-gray-200"
-                            }`}
-                          >
-                            {p.em_promocao ? "ON" : "OFF"}
-                          </button>
-                        </td>
-
-                        <td className="p-3">
-                          <div className="flex items-center justify-center gap-2">
-                            <button
-                              disabled={isSaving}
-                              onClick={() => saveRow(p)}
-                              className="px-3 py-2 rounded-xl bg-blue-700 hover:bg-blue-800 text-white font-extrabold text-xs disabled:opacity-60"
-                            >
-                              {isSaving ? "Salvando…" : "Salvar"}
-                            </button>
-
-                            <Link
-                              href={`/fv/admin/produtos/${p.id}`}
-                              className="px-3 py-2 rounded-xl border bg-white hover:bg-gray-50 font-extrabold text-xs"
-                            >
-                              Editar
-                            </Link>
-
-                            <Link
-                              href={`/fv/produtos/${p.ean}`}
-                              className="px-3 py-2 rounded-xl border bg-white hover:bg-gray-50 font-extrabold text-xs"
-                            >
-                              Ver
-                            </Link>
-                          </div>
-                        </td>
-                      </tr>
-                    );
-                  })
+                  rows.map((r) => <Row key={r.id} r={r} onSaved={loadTable} />)
                 )}
               </tbody>
             </table>
           </div>
 
-          {/* Paginação footer */}
-          <div className="p-4 md:p-5 border-t flex items-center justify-between">
-            <div className="text-sm text-gray-600">
-              Total: <b>{total}</b>
-            </div>
-
-            <div className="flex items-center gap-2">
-              <button
-                disabled={page <= 1}
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                className="px-3 py-2 rounded-xl border bg-white disabled:opacity-50"
-              >
-                ← Anterior
-              </button>
-
-              <div className="px-3 py-2 rounded-xl border bg-white text-sm">
-                Página <b>{page}</b> / <b>{totalPages}</b>
-              </div>
-
-              <button
-                disabled={page >= totalPages}
-                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
-                className="px-3 py-2 rounded-xl border bg-white disabled:opacity-50"
-              >
-                Próxima →
-              </button>
-            </div>
+          <div className="p-4 md:p-5 text-xs text-gray-500">
+            Dica: use o filtro de <b>Categoria</b> e <b>Laboratório</b> para organizar rapidamente a home.
           </div>
         </div>
       </div>
@@ -744,25 +534,276 @@ export default function AdminProdutosPage() {
   );
 }
 
-function StatCard({ label, value }: { label: string; value: number }) {
+function Kpi({ label, value }: { label: string; value: number }) {
   return (
-    <div className="bg-gray-50 border rounded-2xl p-3">
-      <div className="text-[11px] font-bold text-gray-600">{label}</div>
-      <div className="text-xl font-extrabold text-gray-900 mt-1">{value}</div>
+    <div className="bg-white border rounded-2xl p-4 shadow-sm">
+      <div className="text-xs font-bold text-gray-600">{label}</div>
+      <div className="text-2xl font-extrabold text-blue-950 mt-1">{value}</div>
     </div>
   );
 }
 
-function Th({ children, className = "" }: any) {
-  return <th className={`text-left p-3 text-xs font-extrabold ${className}`}>{children}</th>;
+function Th({ children }: { children: any }) {
+  return <th className="px-4 py-3 text-xs font-extrabold text-gray-700">{children}</th>;
 }
 
-function ThBtn({ children, onClick }: any) {
+function Toggle({
+  checked,
+  onChange,
+  label,
+}: {
+  checked: boolean;
+  onChange: (v: boolean) => void;
+  label: string;
+}) {
   return (
-    <th className="text-left p-3 text-xs font-extrabold">
-      <button onClick={onClick} className="hover:underline">
-        {children}
+    <button
+      onClick={() => onChange(!checked)}
+      className={`px-3 py-1.5 rounded-xl text-xs font-extrabold border ${
+        checked ? "bg-green-600 text-white border-green-600" : "bg-white text-gray-700"
+      }`}
+      aria-label={label}
+      title={label}
+    >
+      {checked ? "Sim" : "Não"}
+    </button>
+  );
+}
+
+function Row({ r, onSaved }: { r: FVProduto; onSaved: () => void }) {
+  const [saving, setSaving] = useState(false);
+
+  const [pmc, setPmc] = useState<number>(Number(r.pmc || 0));
+  const [emPromo, setEmPromo] = useState<boolean>(!!r.em_promocao);
+  const [precoPromo, setPrecoPromo] = useState<number>(Number(r.preco_promocional || 0));
+  const [ativo, setAtivo] = useState<boolean>(!!r.ativo);
+  const [home, setHome] = useState<boolean>(!!r.destaque_home);
+  const [imagens, setImagens] = useState<string[]>(Array.isArray(r.imagens) ? r.imagens : []);
+
+  const pr = useMemo(() => {
+    const mock: FVProduto = {
+      ...r,
+      pmc,
+      em_promocao: emPromo,
+      preco_promocional: precoPromo,
+      ativo,
+      destaque_home: home,
+      imagens,
+    };
+    return precos(mock);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pmc, emPromo, precoPromo, ativo, home, imagens]);
+
+  async function salvar() {
+    setSaving(true);
+    try {
+      const payload: any = {
+        pmc: Number.isFinite(pmc) ? pmc : null,
+        em_promocao: !!emPromo,
+        preco_promocional: emPromo ? (Number.isFinite(precoPromo) ? precoPromo : null) : null,
+        ativo: !!ativo,
+        destaque_home: !!home,
+        imagens: imagens?.length ? imagens : null,
+        percentual_off: pr.emPromo && pr.off > 0 ? pr.off : 0,
+      };
+
+      const { error } = await supabase.from("fv_produtos").update(payload).eq("id", r.id);
+      if (error) throw error;
+
+      onSaved();
+    } catch (e: any) {
+      alert(e?.message || "Erro ao salvar.");
+      console.error(e);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <tr className="border-t">
+      <td className="px-4 py-3">
+        <div className="w-14 h-14 bg-gray-50 border rounded-xl flex items-center justify-center overflow-hidden">
+          <Image src={firstImg(imagens)} alt={r.nome || "Produto"} width={56} height={56} className="object-contain" />
+        </div>
+      </td>
+
+      <td className="px-4 py-3 font-mono text-xs whitespace-nowrap">{r.ean}</td>
+
+      <td className="px-4 py-3">
+        <div className="font-bold text-blue-950 line-clamp-2">{r.nome}</div>
+        {r.apresentacao ? <div className="text-xs text-gray-500 line-clamp-1">{r.apresentacao}</div> : null}
+        <Link href={`/fv/produtos/${r.ean}`} className="text-xs text-blue-700 hover:underline">
+          Ver no site →
+        </Link>
+      </td>
+
+      <td className="px-4 py-3 text-xs text-gray-600">{r.laboratorio || "—"}</td>
+      <td className="px-4 py-3 text-xs text-gray-600">{r.categoria || "—"}</td>
+
+      <td className="px-4 py-3">
+        <input
+          type="number"
+          value={Number.isFinite(pmc) ? pmc : 0}
+          onChange={(e) => setPmc(Number(e.target.value))}
+          className="w-28 bg-white border rounded-xl px-3 py-2 text-sm"
+        />
+        <div className="text-[11px] text-gray-500 mt-1">{brl(pmc)}</div>
+      </td>
+
+      <td className="px-4 py-3">
+        <div className="flex items-center gap-2">
+          <Toggle checked={emPromo} onChange={setEmPromo} label="Promo" />
+          <input
+            type="number"
+            value={Number.isFinite(precoPromo) ? precoPromo : 0}
+            onChange={(e) => setPrecoPromo(Number(e.target.value))}
+            className={`w-28 bg-white border rounded-xl px-3 py-2 text-sm ${!emPromo ? "opacity-50" : ""}`}
+            disabled={!emPromo}
+          />
+        </div>
+        <div className="text-[11px] text-gray-500 mt-1">{emPromo ? `Por ${brl(precoPromo)}` : "—"}</div>
+      </td>
+
+      <td className="px-4 py-3">
+        {pr.emPromo && pr.off > 0 ? (
+          <span className="inline-flex items-center px-2 py-1 rounded-full bg-red-600 text-white text-xs font-extrabold">
+            {pr.off}% OFF
+          </span>
+        ) : (
+          <span className="text-xs text-gray-500">—</span>
+        )}
+      </td>
+
+      <td className="px-4 py-3">
+        <Toggle checked={ativo} onChange={setAtivo} label="Ativo" />
+      </td>
+
+      <td className="px-4 py-3">
+        <Toggle checked={home} onChange={setHome} label="Home" />
+      </td>
+
+      <td className="px-4 py-3">
+        {pr.emPromo ? (
+          <>
+            <div className="text-xs text-gray-500">
+              De <span className="line-through">{brl(pr.pmc)}</span>
+            </div>
+            <div className="font-extrabold text-blue-950">Por {brl(pr.final)}</div>
+          </>
+        ) : (
+          <div className="font-extrabold text-blue-950">{brl(pr.final)}</div>
+        )}
+      </td>
+
+      <td className="px-4 py-3">
+        <div className="flex flex-col gap-2">
+          <button
+            onClick={salvar}
+            disabled={saving}
+            className="px-3 py-2 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-xs font-extrabold disabled:opacity-50"
+          >
+            {saving ? "Salvando…" : "Salvar"}
+          </button>
+
+          <ImagesEditor imagens={imagens} setImagens={setImagens} />
+
+          <Link
+            href={`/fv/admin/produtos/${r.id}`}
+            className="px-3 py-2 rounded-xl border bg-white hover:bg-gray-50 text-xs font-extrabold text-center"
+          >
+            Editar (página)
+          </Link>
+        </div>
+      </td>
+    </tr>
+  );
+}
+
+function ImagesEditor({
+  imagens,
+  setImagens,
+}: {
+  imagens: string[];
+  setImagens: (v: string[]) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [txt, setTxt] = useState((imagens || []).join("\n"));
+
+  useEffect(() => {
+    setTxt((imagens || []).join("\n"));
+  }, [imagens]);
+
+  function apply() {
+    const list = txt
+      .split("\n")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    setImagens(list);
+    setOpen(false);
+  }
+
+  return (
+    <>
+      <button
+        onClick={() => setOpen(true)}
+        className="px-3 py-2 rounded-xl border bg-white hover:bg-gray-50 text-xs font-extrabold"
+      >
+        Imagens
       </button>
-    </th>
+
+      {open ? (
+        <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-2xl rounded-3xl shadow-lg overflow-hidden">
+            <div className="p-4 border-b flex items-center justify-between">
+              <div className="font-extrabold text-blue-950">Editar imagens</div>
+              <button onClick={() => setOpen(false)} className="px-3 py-2 rounded-xl border bg-white">
+                Fechar
+              </button>
+            </div>
+
+            <div className="p-4 grid md:grid-cols-2 gap-4">
+              <div>
+                <div className="text-xs font-bold text-gray-700 mb-2">
+                  Cole URLs (1 por linha). Salva como array em <code>imagens</code>.
+                </div>
+                <textarea
+                  value={txt}
+                  onChange={(e) => setTxt(e.target.value)}
+                  className="w-full h-56 border rounded-2xl p-3 text-sm"
+                  placeholder="https://…\nhttps://…"
+                />
+                <button
+                  onClick={apply}
+                  className="mt-3 w-full px-4 py-3 rounded-2xl bg-blue-700 hover:bg-blue-800 text-white font-extrabold"
+                >
+                  Aplicar (não salva no banco ainda)
+                </button>
+                <div className="text-[11px] text-gray-500 mt-2">
+                  Depois clique em <b>Salvar</b> na linha do produto.
+                </div>
+              </div>
+
+              <div>
+                <div className="text-xs font-bold text-gray-700 mb-2">Preview</div>
+                <div className="grid grid-cols-3 gap-2">
+                  {(txt || "")
+                    .split("\n")
+                    .map((s) => s.trim())
+                    .filter(Boolean)
+                    .slice(0, 9)
+                    .map((url) => (
+                      <div key={url} className="bg-gray-50 border rounded-2xl p-2 flex items-center justify-center">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img src={url} alt="img" className="max-h-20 object-contain" />
+                      </div>
+                    ))}
+                </div>
+                {!txt.trim() ? <div className="text-sm text-gray-500 mt-4">Sem imagens.</div> : null}
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </>
   );
 }
