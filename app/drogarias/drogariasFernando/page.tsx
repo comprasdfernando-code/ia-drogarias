@@ -14,19 +14,25 @@ const LOJA = {
 
 const LIMITE = 40;
 
-type FVProduto = {
-  id: string;
+type ProdutoLoja = {
+  farmacia_slug: string;
+  produto_id: string;
+
   ean: string;
   nome: string;
   laboratorio: string | null;
   categoria: string | null;
   apresentacao: string | null;
-  pmc: number | null;
+  imagens: string[] | null;
+
+  disponivel_farmacia: boolean | null; // ativo
+  estoque: number | null;
+
+  preco_venda: number | null;
   em_promocao: boolean | null;
   preco_promocional: number | null;
   percentual_off: number | null;
-  ativo: boolean | null;
-  imagens: string[] | null;
+  destaque_home: boolean | null;
 };
 
 function brl(v: number | null | undefined) {
@@ -39,19 +45,8 @@ function firstImg(imagens?: string[] | null) {
   return "/produtos/caixa-padrao.png";
 }
 
-function onlyDigits(s: string) {
-  return s.replace(/\D/g, "");
-}
-
-function getPrecoFinal(p: FVProduto) {
-  const pmc = Number(p.pmc || 0);
-  const promo = Number(p.preco_promocional || 0);
-  const emPromo = !!p.em_promocao && promo > 0 && (!pmc || promo < pmc);
-  return emPromo ? promo : pmc;
-}
-
 export default function DrogariasFernandoPage() {
-  const [itens, setItens] = useState<FVProduto[]>([]);
+  const [itens, setItens] = useState<ProdutoLoja[]>([]);
   const [busca, setBusca] = useState("");
   const [categoria, setCategoria] = useState("");
   const [carregando, setCarregando] = useState(false);
@@ -62,68 +57,66 @@ export default function DrogariasFernandoPage() {
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [itens]);
 
-  // 🔍 Buscar produtos (fv_produtos)
+  function precoFinal(p: ProdutoLoja) {
+    const pv = Number(p.preco_venda || 0);
+    const promo = Number(p.preco_promocional || 0);
+    const emPromo = !!p.em_promocao && promo > 0 && promo < pv;
+    return emPromo ? promo : pv;
+  }
+
+  // 🔍 Buscar produtos da VIEW por loja
   async function carregar() {
     try {
       setCarregando(true);
       setErro(null);
 
       let query = supabase
-        .from("fv_produtos")
+        .from("fv_produtos_loja_view")
         .select(
-          "id,ean,nome,laboratorio,categoria,apresentacao,pmc,em_promocao,preco_promocional,percentual_off,ativo,imagens"
+          "farmacia_slug,produto_id,ean,nome,laboratorio,categoria,apresentacao,imagens,disponivel_farmacia,estoque,preco_venda,em_promocao,preco_promocional,percentual_off,destaque_home"
         )
-        // aqui você decide: mostrar só ativos ou deixar aparecer tudo com badge
-        .eq("ativo", true)
-        .order("nome", { ascending: true })
-        .limit(LIMITE);
+        .eq("farmacia_slug", LOJA.slug)
+        // mostra só os ativos da farmácia (se quiser mostrar tudo, remove essa linha)
+        .eq("disponivel_farmacia", true)
+        .order("nome", { ascending: true });
 
       if (categoria) {
-        // categoria exata (mais estável). Se preferir parcial, troque por ilike
+        // na view vem categoria do master
         query = query.eq("categoria", categoria);
       }
 
-      const termo = busca.trim();
-      if (termo) {
-        const digits = onlyDigits(termo);
-
-        // EAN exato quando digitar só números (8–14 dígitos)
-        if (digits && digits.length >= 8 && digits.length <= 14 && digits === termo) {
+      if (busca.trim()) {
+        const termo = busca.trim();
+        const digits = termo.replace(/\D/g, "");
+        if (digits.length >= 8 && digits.length <= 14 && digits === termo) {
+          // busca por EAN exato (gente grande)
           query = query.eq("ean", digits);
-        } else if (digits && digits.length >= 8 && digits.length <= 14) {
-          // mistura: tenta ean OU nome/apresentacao
-          query = query.or(
-            `ean.eq.${digits},nome.ilike.%${termo}%,apresentacao.ilike.%${termo}%`
-          );
+        } else if (digits.length >= 8 && digits.length <= 14) {
+          // mistura número + texto
+          query = query.or(`ean.eq.${digits},nome.ilike.%${termo}%`);
         } else {
-          query = query.or(`nome.ilike.%${termo}%,apresentacao.ilike.%${termo}%`);
+          query = query.or(`nome.ilike.%${termo}%,laboratorio.ilike.%${termo}%,categoria.ilike.%${termo}%`);
         }
       }
 
-      const { data, error } = await query;
+      const { data, error } = await query.range(0, LIMITE - 1);
       if (error) throw error;
 
-      setItens((data || []) as FVProduto[]);
+      setItens((data || []) as ProdutoLoja[]);
     } catch (e: any) {
-      setErro(e?.message || "Erro ao carregar produtos.");
-      setItens([]);
+      setErro(e?.message || "Erro ao carregar.");
     } finally {
       setCarregando(false);
     }
   }
 
   useEffect(() => {
-    const t = setTimeout(() => carregar(), 250);
-    return () => clearTimeout(t);
+    carregar();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [busca, categoria]);
 
-  function linkWhatsApp(p: FVProduto) {
-    const preco = brl(getPrecoFinal(p));
-    const msg = `Olá! Tenho interesse no produto:
-• ${p.nome}
-• EAN: ${p.ean}
-• Preço: ${preco}`;
+  function linkWhatsApp(p: ProdutoLoja) {
+    const msg = `Olá! Tenho interesse no produto:\n• ${p.nome}\n• EAN: ${p.ean}\n• Preço: ${brl(precoFinal(p))}`;
     return `https://wa.me/${LOJA.whatsapp}?text=${encodeURIComponent(msg)}`;
   }
 
@@ -165,10 +158,6 @@ export default function DrogariasFernandoPage() {
               Limpar filtros
             </button>
           </div>
-
-          <div className="mt-2 text-xs text-white/80">
-            Dica: se digitar só números (8–14 dígitos) ele busca <b>EAN exato</b>.
-          </div>
         </div>
       </section>
 
@@ -178,49 +167,45 @@ export default function DrogariasFernandoPage() {
         {!carregando && itens.length === 0 && <p>Nenhum produto encontrado.</p>}
 
         {itens.map((p) => {
-          const preco = getPrecoFinal(p);
-          const emPromo = !!p.em_promocao && Number(p.preco_promocional || 0) > 0;
+          const final = precoFinal(p);
+          const disponivel = !!p.disponivel_farmacia && (Number(p.estoque || 0) > 0 || p.estoque === null); 
+          // ↑ se você ainda não controla estoque, pode deixar null e considerar disponível.
 
           return (
-            <div key={p.id} className="bg-white rounded-2xl shadow-md overflow-hidden">
+            <div key={`${p.produto_id}`} className="bg-white rounded-2xl shadow-md overflow-hidden">
               <Image
                 src={firstImg(p.imagens)}
                 alt={p.nome}
                 width={300}
                 height={200}
-                className="w-full h-48 object-contain bg-white"
+                className="w-full h-48 object-contain bg-gray-50"
               />
 
               <div className="p-4">
                 <h2 className="font-bold text-lg line-clamp-2">{p.nome}</h2>
 
                 <p className="text-xs text-gray-500 mt-1">
-                  <b>EAN:</b> <span className="font-mono">{p.ean}</span>
+                  EAN: <span className="font-mono">{p.ean}</span>
                 </p>
 
-                <p className="text-sm text-gray-600 mt-1 line-clamp-2">
-                  {p.apresentacao || p.laboratorio || ""}
+                <p className="text-sm text-gray-600 mt-1 line-clamp-1">
+                  {p.apresentacao || p.laboratorio || p.categoria || ""}
                 </p>
 
-                {emPromo ? (
-                  <div className="mt-2">
-                    <div className="text-xs text-gray-500">
-                      De <span className="line-through">{brl(p.pmc)}</span>
-                    </div>
-                    <p className="font-extrabold text-blue-700">{brl(preco)}</p>
-                  </div>
-                ) : (
-                  <p className="font-extrabold text-blue-700 mt-2">{brl(preco)}</p>
-                )}
+                <p className="font-extrabold text-blue-700 mt-3">{brl(final)}</p>
 
-                <div className="flex justify-between items-center mt-3">
-                  {/* aqui é sempre disponível porque filtramos ativo=true */}
-                  <span className="text-green-600 font-semibold">Disponível</span>
+                <div className="flex justify-between items-center mt-3 gap-2">
+                  {disponivel ? (
+                    <span className="text-green-600 font-semibold text-sm">Disponível</span>
+                  ) : (
+                    <span className="text-red-500 font-semibold text-sm">Indisponível</span>
+                  )}
 
                   <a
                     href={linkWhatsApp(p)}
                     target="_blank"
-                    className="bg-green-500 hover:bg-green-600 text-white px-3 py-1 rounded-md text-sm"
+                    className="bg-green-600 hover:bg-green-700 text-white px-3 py-2 rounded-md text-sm font-semibold"
+                    rel="noreferrer"
                   >
                     Pedir no WhatsApp
                   </a>
