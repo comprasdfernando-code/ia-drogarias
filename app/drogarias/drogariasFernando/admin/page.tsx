@@ -34,10 +34,6 @@ type ProdutoLoja = {
   preco_promocional: number | null;
   percentual_off: number | null;
   destaque_home: boolean | null;
-
-  // (opcional) base PF/PMC se existir na view (se não existir, fica undefined)
-  PF_18?: string | null;
-  PMC_18?: string | null;
 };
 
 function brl(v: number | null | undefined) {
@@ -59,7 +55,6 @@ async function copyToClipboard(text: string) {
     await navigator.clipboard.writeText(text);
     return true;
   } catch {
-    // fallback antigo
     const ta = document.createElement("textarea");
     ta.value = text;
     document.body.appendChild(ta);
@@ -83,7 +78,6 @@ export default function AdminDrogariasFernando() {
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
-  // LOGIN simples
   function autenticar() {
     if (senha === SENHA_ADMIN) {
       setAutenticado(true);
@@ -101,7 +95,6 @@ export default function AdminDrogariasFernando() {
     return Array.from(set).filter(Boolean).sort((a, b) => a.localeCompare(b));
   }, [itens]);
 
-  // 🔄 carregar produtos (pela view pronta)
   async function carregarProdutos() {
     try {
       setCarregando(true);
@@ -111,7 +104,7 @@ export default function AdminDrogariasFernando() {
       let query = supabase
         .from("fv_produtos_loja_view")
         .select(
-          "farmacia_slug,produto_id,ean,nome,laboratorio,categoria,apresentacao,imagens,disponivel_farmacia,estoque,preco_venda,em_promocao,preco_promocional,percentual_off,destaque_home,PF_18,PMC_18"
+          "farmacia_slug,produto_id,ean,nome,laboratorio,categoria,apresentacao,imagens,disponivel_farmacia,estoque,preco_venda,em_promocao,preco_promocional,percentual_off,destaque_home"
         )
         .eq("farmacia_slug", LOJA_SLUG)
         .order("nome", { ascending: true })
@@ -154,7 +147,6 @@ export default function AdminDrogariasFernando() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autenticado, busca, categoria]);
 
-  // 💾 salvar alterações da linha (atualiza APENAS tabela da loja)
   async function salvarAlteracoes(p: ProdutoLoja) {
     try {
       setSalvandoId(p.produto_id);
@@ -195,9 +187,7 @@ export default function AdminDrogariasFernando() {
           <h2 className="text-xl font-extrabold text-blue-900">
             Painel Admin — Drogarias Fernando
           </h2>
-          <p className="text-sm text-gray-600 mt-1">
-            Acesso restrito
-          </p>
+          <p className="text-sm text-gray-600 mt-1">Acesso restrito</p>
 
           <input
             type="password"
@@ -269,7 +259,6 @@ export default function AdminDrogariasFernando() {
           </div>
         )}
 
-        {/* Filtros */}
         <div className="mt-5 bg-white border rounded-3xl p-4 md:p-5 shadow-sm">
           <div className="grid md:grid-cols-12 gap-3">
             <div className="md:col-span-7">
@@ -307,7 +296,6 @@ export default function AdminDrogariasFernando() {
           </div>
         </div>
 
-        {/* Tabela */}
         <div className="mt-6 bg-white border rounded-3xl shadow-sm overflow-hidden">
           <div className="p-4 md:p-5 flex items-center justify-between gap-3 flex-wrap">
             <div>
@@ -423,13 +411,7 @@ function Row({
     <tr className="border-t">
       <td className="px-4 py-3">
         <div className="w-14 h-14 bg-gray-50 border rounded-xl flex items-center justify-center overflow-hidden">
-          <Image
-            src={firstImg(p.imagens)}
-            alt={p.nome || "Produto"}
-            width={56}
-            height={56}
-            className="object-contain"
-          />
+          <Image src={firstImg(p.imagens)} alt={p.nome || "Produto"} width={56} height={56} className="object-contain" />
         </div>
       </td>
 
@@ -522,8 +504,7 @@ function Row({
           <button
             className="px-3 py-2 rounded-xl border bg-white hover:bg-gray-50 text-xs font-extrabold"
             onClick={async () => {
-              const ok = await copyToClipboard(`${location.origin}/fv/produtos/${p.ean}`);
-              void ok;
+              await copyToClipboard(`${location.origin}/fv/produtos/${p.ean}`);
             }}
             title="Copiar link do produto"
           >
