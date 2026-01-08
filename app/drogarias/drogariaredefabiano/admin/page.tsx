@@ -13,7 +13,7 @@ const FARMACIA_SLUG = "drogariaredefabiano";
 const SENHA_ADMIN = "102030";
 const VIEW = "fv_produtos_loja_view";
 const WRITE_TABLE = "fv_farmacia_produtos";
-const LIMITE = 800;
+const LIMITE = 18000;
 
 type ViewRow = {
   farmacia_slug: string;
