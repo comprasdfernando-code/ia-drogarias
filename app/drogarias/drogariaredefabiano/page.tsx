@@ -99,78 +99,56 @@ export default function DrogariaRedeFabianoPage() {
   const [busca, setBusca] = useState("");
   const [carrinho, setCarrinho] = useState<ItemCarrinho[]>([]);
 
-  // 🔄 Carrega catálogo global + estoque da loja, e monta "disponível/indisponível"
-  useEffect(() => {
-    async function carregarTudo() {
-      try {
-        setCarregando(true);
+  // 🔄 Produtos (agora lendo da VIEW loja x catálogo)
+useEffect(() => {
+  async function carregarProdutos() {
+    const { data, error } = await supabase
+      .from("fv_produtos_loja_view")
+      .select(`
+        produto_id,
+        ean,
+        nome,
+        categoria,
+        imagens,
+        pmc,
+        em_promocao,
+        preco_promocional,
+        percentual_off,
+        estoque,
+        disponivel_farmacia
+      `)
+      .eq("farmacia_slug", LOJA_SLUG)                 // <- 'drogariaredefabiano'
+      .eq("disponivel_farmacia", true)          // ativo da loja
+      .gt("estoque", 0)                          // estoque da loja
+      .order("nome", { ascending: true });
 
-        // 1) Catálogo global (ativo no catálogo)
-        const { data: catalogo, error: e1 } = await supabase
-          .from("fv_produtos")
-          .select(
-            "id,ean,nome,laboratorio,categoria,apresentacao,pmc,em_promocao,preco_promocional,percentual_off,imagens,ativo"
-          )
-          .eq("ativo", true)
-          .limit(2500);
-
-        if (e1) throw e1;
-
-        // 2) Estoque específico da loja
-        // ⚠️ ajuste o nome da tabela/colunas se estiver diferente
-        const { data: loja, error: e2 } = await supabase
-          .from("fv_loja_produtos")
-          .select("produto_id,loja_slug,estoque,preco_venda,ativo")
-          .eq("loja_slug", LOJA_SLUG)
-          .limit(10000);
-
-        if (e2) throw e2;
-
-        const mapa = new Map<string, LojaProduto>();
-        (loja || []).forEach((r) => mapa.set(r.produto_id, r));
-
-        const joined: ProdutoTela[] = (catalogo || []).map((p: FVProduto) => {
-          const lp = mapa.get(p.id);
-
-          const loja_ativo = !!lp?.ativo;
-          const loja_estoque = Number(lp?.estoque || 0);
-          const loja_preco = lp?.preco_venda != null ? Number(lp.preco_venda) : null;
-
-          const disponivel = loja_ativo && loja_estoque > 0;
-
-          return {
-            ...p,
-            loja_ativo,
-            loja_estoque,
-            loja_preco,
-            disponivel,
-          };
-        });
-
-        // ordena: disponíveis primeiro, depois promo, depois nome
-        joined.sort((a, b) => {
-          const da = a.disponivel ? 1 : 0;
-          const db = b.disponivel ? 1 : 0;
-          if (db !== da) return db - da;
-
-          const pa = a.em_promocao ? 1 : 0;
-          const pb = b.em_promocao ? 1 : 0;
-          if (pb !== pa) return pb - pa;
-
-          return (a.nome || "").localeCompare(b.nome || "");
-        });
-
-        setProdutos(joined);
-      } catch (err) {
-        console.error("Erro carregarTudo:", err);
-        setProdutos([]);
-      } finally {
-        setCarregando(false);
-      }
+    if (error) {
+      console.error(error);
+      setProdutos([]);
+      setCarregando(false);
+      return;
     }
 
-    carregarTudo();
-  }, []);
+    // mapeia pra estrutura que seu card já usa
+    const mapped = (data || []).map((r: any) => ({
+      id: r.produto_id,
+      nome: r.nome,
+      preco_venda: Number(
+        r.em_promocao && r.preco_promocional ? r.preco_promocional : (r.pmc || 0)
+      ),
+      estoque: Number(r.estoque || 0),
+      imagem: Array.isArray(r.imagens) && r.imagens.length ? r.imagens[0] : null,
+      categoria: r.categoria || null,
+      ean: r.ean,
+    }));
+
+   
+    setCarregando(false);
+  }
+
+  carregarProdutos();
+}, []);
+
 
   // 🛒 Carrinho — leitura
   useEffect(() => {
