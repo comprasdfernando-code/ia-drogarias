@@ -57,6 +57,32 @@ function precos(p: FVProduto) {
   return { pmc, promo, emPromo, final, off };
 }
 
+function buildProductLink(ean: string) {
+  return `/fv/produtos/${ean}`;
+}
+
+async function copyToClipboard(text: string) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    // fallback
+    try {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.left = "-9999px";
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+}
+
 export default function AdminProdutosPage() {
   // filtros
   const [q, setQ] = useState("");
@@ -76,6 +102,18 @@ export default function AdminProdutosPage() {
   const [rows, setRows] = useState<FVProduto[]>([]);
   const [totalFound, setTotalFound] = useState(0);
 
+  // seleção (para salvar em lote / ativar em lote etc.)
+  const [selected, setSelected] = useState<Record<string, boolean>>({}); // id -> bool
+  const selectedIds = useMemo(() => Object.keys(selected).filter((id) => selected[id]), [selected]);
+  const allOnPageSelected = useMemo(
+    () => rows.length > 0 && rows.every((r) => !!selected[r.id]),
+    [rows, selected]
+  );
+  const someOnPageSelected = useMemo(
+    () => rows.some((r) => !!selected[r.id]) && !allOnPageSelected,
+    [rows, selected, allOnPageSelected]
+  );
+
   // kpis
   const [kpis, setKpis] = useState({
     total: 0,
@@ -90,6 +128,13 @@ export default function AdminProdutosPage() {
   const [labs, setLabs] = useState<string[]>([]);
 
   const [err, setErr] = useState<string | null>(null);
+
+  // lote: clonar promo (fonte)
+  const [cloneFromId, setCloneFromId] = useState<string>("");
+
+  // lote: estados de loading
+  const [savingBatch, setSavingBatch] = useState(false);
+  const [bulkBusy, setBulkBusy] = useState<null | string>(null);
 
   /**
    * ✅ IMPORTANTE:
@@ -124,8 +169,7 @@ export default function AdminProdutosPage() {
     // preço zerado (pmc null ou 0)
     if (precoZerado === "sim") qb = qb.or("pmc.is.null,pmc.eq.0");
 
-    // ❗️"não" = pmc não é null E pmc != 0
-    // O jeito mais estável é aplicar duas condições:
+    // "não" = pmc não é null E pmc != 0
     if (precoZerado === "nao") qb = qb.not("pmc", "is", null).neq("pmc", 0);
 
     return qb;
@@ -153,11 +197,7 @@ export default function AdminProdutosPage() {
   async function loadOptions() {
     try {
       // amostra grande só pra montar combos (evita distinct/RPC)
-      const { data, error } = await supabase
-        .from("fv_produtos")
-        .select("categoria,laboratorio")
-        .limit(8000);
-
+      const { data, error } = await supabase.from("fv_produtos").select("categoria,laboratorio").limit(8000);
       if (error) throw error;
 
       const cset = new Set<string>();
@@ -175,7 +215,7 @@ export default function AdminProdutosPage() {
     }
   }
 
-  // ✅ contagens: use head:true para não baixar linhas
+  // contagens: use head:true para não baixar linhas
   async function countHead(builder: any) {
     const { count, error } = await builder.select("id", { count: "exact", head: true });
     if (error) throw error;
@@ -184,12 +224,7 @@ export default function AdminProdutosPage() {
 
   async function loadKpis() {
     try {
-      // Total do banco (sem filtros)
       const total = await countHead(supabase.from("fv_produtos"));
-
-      // Contagens respeitando filtros atuais de categoria/lab/busca? (aqui não, é KPI de visão geral com filtros de categoria/lab/preço etc.)
-      // Se você quiser KPI com busca também, é só aplicar applySearch.
-      const base = buildQueryBaseSelect();
 
       const ativosCount = await countHead(buildQueryBaseSelect().eq("ativo", true));
       const emPromoCount = await countHead(buildQueryBaseSelect().eq("em_promocao", true));
@@ -203,12 +238,15 @@ export default function AdminProdutosPage() {
         home: homeCount,
         precoZerado: precoZeradoCount,
       });
-
-      // (opcional) você pode usar `base` depois, se quiser KPI "Encontrados"
-      void base;
     } catch (e: any) {
       console.error(e);
     }
+  }
+
+  function clearSelectionNotOnPage(nextRows: FVProduto[]) {
+    // mantém seleção global, mas remove ids que não existem mais no dataset atual? (opcional)
+    // aqui vamos manter seleção global, e só limpar quando clicar "Limpar seleção"
+    void nextRows;
   }
 
   async function loadTable() {
@@ -222,14 +260,13 @@ export default function AdminProdutosPage() {
       let qb = buildQueryBaseSelect();
       qb = applySearch(qb);
 
-      const { data, count, error } = await qb
-        .order("nome", { ascending: true })
-        .range(from, to);
-
+      const { data, count, error } = await qb.order("nome", { ascending: true }).range(from, to);
       if (error) throw error;
 
-      setRows((data || []) as FVProduto[]);
+      const arr = (data || []) as FVProduto[];
+      setRows(arr);
       setTotalFound(count || 0);
+      clearSelectionNotOnPage(arr);
     } catch (e: any) {
       console.error(e);
       setRows([]);
@@ -265,7 +302,7 @@ export default function AdminProdutosPage() {
 
   const totalPages = Math.max(1, Math.ceil(totalFound / pageSize));
 
-  function limpar() {
+  function limparFiltros() {
     setQ("");
     setAtivo("todos");
     setPromo("todos");
@@ -276,20 +313,189 @@ export default function AdminProdutosPage() {
     setPage(1);
   }
 
+  function toggleSelectRow(id: string, v?: boolean) {
+    setSelected((prev) => ({ ...prev, [id]: typeof v === "boolean" ? v : !prev[id] }));
+  }
+
+  function toggleSelectAllOnPage() {
+    const next = !allOnPageSelected;
+    setSelected((prev) => {
+      const copy = { ...prev };
+      for (const r of rows) copy[r.id] = next;
+      return copy;
+    });
+  }
+
+  function clearSelection() {
+    setSelected({});
+  }
+
+  // ============ LOTE ============
+  async function saveBatchSelected() {
+    if (selectedIds.length === 0) return;
+    setSavingBatch(true);
+    try {
+      // pega os payloads alterados do cache local (editsById)
+      const payloads = selectedIds
+        .map((id) => editsById[id])
+        .filter(Boolean)
+        .map((p) => ({
+          id: p.id,
+          pmc: p.pmc,
+          em_promocao: p.em_promocao,
+          preco_promocional: p.preco_promocional,
+          percentual_off: p.percentual_off,
+          destaque_home: p.destaque_home,
+          ativo: p.ativo,
+          imagens: p.imagens && p.imagens.length ? p.imagens : null,
+        }));
+
+      if (payloads.length === 0) {
+        alert("Nenhuma linha selecionada tem alterações pendentes.");
+        return;
+      }
+
+      const { error } = await supabase.from("fv_produtos").upsert(payloads, { onConflict: "id" });
+      if (error) throw error;
+
+      await loadTable();
+    } catch (e: any) {
+      console.error(e);
+      alert(e?.message || "Erro ao salvar em lote.");
+    } finally {
+      setSavingBatch(false);
+    }
+  }
+
+  async function bulkSet(field: "ativo" | "destaque_home" | "em_promocao", value: boolean) {
+    if (selectedIds.length === 0) return;
+    setBulkBusy(`${field}:${value ? "sim" : "nao"}`);
+    try {
+      const patch: any = { [field]: value };
+
+      // se desligar promo em lote, zera preco_promocional e off
+      if (field === "em_promocao" && value === false) {
+        patch.preco_promocional = null;
+        patch.percentual_off = 0;
+      }
+
+      const { error } = await supabase.from("fv_produtos").update(patch).in("id", selectedIds);
+      if (error) throw error;
+
+      await loadTable();
+    } catch (e: any) {
+      console.error(e);
+      alert(e?.message || "Erro no lote.");
+    } finally {
+      setBulkBusy(null);
+    }
+  }
+
+  async function clonePromoToSelected() {
+    if (!cloneFromId) {
+      alert("Selecione o produto fonte para clonar a promo.");
+      return;
+    }
+    if (selectedIds.length === 0) {
+      alert("Selecione pelo menos 1 produto destino.");
+      return;
+    }
+
+    // evita clonar nele mesmo (ok também, mas fica estranho)
+    const targets = selectedIds.filter((id) => id !== cloneFromId);
+    if (targets.length === 0) {
+      alert("Selecione destinos diferentes do produto fonte.");
+      return;
+    }
+
+    setBulkBusy("clonePromo");
+    try {
+      const src = rows.find((r) => r.id === cloneFromId);
+      if (!src) {
+        // se não estiver na página, busca no banco
+        const { data, error } = await supabase
+          .from("fv_produtos")
+          .select("em_promocao,preco_promocional,percentual_off")
+          .eq("id", cloneFromId)
+          .single();
+        if (error) throw error;
+
+        const patch = {
+          em_promocao: !!data.em_promocao,
+          preco_promocional: data.preco_promocional,
+          percentual_off: Number(data.percentual_off || 0),
+        };
+
+        const { error: e2 } = await supabase.from("fv_produtos").update(patch).in("id", targets);
+        if (e2) throw e2;
+      } else {
+        const patch = {
+          em_promocao: !!src.em_promocao,
+          preco_promocional: src.preco_promocional,
+          percentual_off: Number(src.percentual_off || 0),
+        };
+        const { error: e2 } = await supabase.from("fv_produtos").update(patch).in("id", targets);
+        if (e2) throw e2;
+      }
+
+      await loadTable();
+    } catch (e: any) {
+      console.error(e);
+      alert(e?.message || "Erro ao clonar promo.");
+    } finally {
+      setBulkBusy(null);
+    }
+  }
+
+  // ============ EDIÇÃO LOCAL (para salvar em lote) ============
+  // guarda as edições por id (o que o admin mudou na UI)
+  const [editsById, setEditsById] = useState<Record<string, FVProduto>>({});
+
+  function setEdit(id: string, patch: Partial<FVProduto>) {
+    setEditsById((prev) => {
+      const base = prev[id] || rows.find((r) => r.id === id);
+      if (!base) return prev;
+      const merged: FVProduto = { ...base, ...patch } as FVProduto;
+
+      // recalcula off coerente se estiver em promo
+      const pr = precos(merged);
+      merged.percentual_off = pr.emPromo && pr.off > 0 ? pr.off : 0;
+
+      // se desligou promo, limpa preco_promocional e off
+      if (!merged.em_promocao) {
+        merged.preco_promocional = null;
+        merged.percentual_off = 0;
+      }
+
+      return { ...prev, [id]: merged };
+    });
+  }
+
+  function getRowView(r: FVProduto) {
+    return editsById[r.id] || r;
+  }
+
+  function markSelectedFromRow(id: string) {
+    // quando editar, auto-seleciona a linha (pra facilitar salvar em lote)
+    setSelected((prev) => ({ ...prev, [id]: true }));
+  }
+
+  const selectedCount = selectedIds.length;
+
   return (
     <main className="min-h-screen bg-gray-50 pb-24">
       <div className="max-w-7xl mx-auto px-4 pt-6">
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <div>
             <h1 className="text-2xl md:text-3xl font-extrabold text-blue-950">
-              Admin FV — Produtos
+              Admin FV — Produtos (V4)
             </h1>
             <p className="text-sm text-gray-600 mt-1">
-              Busca por <b>EAN (exato)</b> ou nome • filtros • toggles • edição rápida • imagens
+              EAN sempre visível • Seleção • Salvar em lote • Copiar link • Clonar promo
             </p>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <button
               onClick={() => {
                 loadKpis();
@@ -300,7 +506,7 @@ export default function AdminProdutosPage() {
               Atualizar
             </button>
             <button
-              onClick={limpar}
+              onClick={limparFiltros}
               className="px-4 py-2.5 rounded-xl bg-white border hover:bg-gray-50 font-extrabold"
             >
               Limpar filtros
@@ -329,7 +535,7 @@ export default function AdminProdutosPage() {
                 className="mt-1 w-full bg-gray-50 border rounded-2xl px-4 py-3 outline-none focus:ring-2 focus:ring-blue-200"
               />
               <div className="mt-1 text-[11px] text-gray-500">
-                Dica: se digitar só números (8–14 dígitos), o sistema busca <b>EAN exato</b>.
+                Dica: se digitar só números (8–14 dígitos), busca <b>EAN exato</b>.
               </div>
             </div>
 
@@ -469,14 +675,102 @@ export default function AdminProdutosPage() {
           </div>
         </div>
 
+        {/* AÇÕES EM LOTE */}
+        <div className="mt-4 bg-white border rounded-3xl p-4 md:p-5 shadow-sm">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <div className="text-sm text-gray-700">
+                Selecionados: <b>{selectedCount}</b>
+                {someOnPageSelected ? <span className="ml-2 text-xs text-gray-500">(parcial na página)</span> : null}
+              </div>
+              <div className="text-[11px] text-gray-500 mt-1">
+                Dica: ao editar um campo na linha, ela é auto-selecionada pra salvar em lote.
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 flex-wrap">
+              <button
+                onClick={saveBatchSelected}
+                disabled={savingBatch || selectedCount === 0}
+                className="px-4 py-2.5 rounded-xl bg-blue-700 hover:bg-blue-800 text-white font-extrabold disabled:opacity-50"
+              >
+                {savingBatch ? "Salvando lote…" : "Salvar em lote"}
+              </button>
+
+              <button
+                onClick={() => bulkSet("ativo", true)}
+                disabled={bulkBusy !== null || selectedCount === 0}
+                className="px-3 py-2.5 rounded-xl border bg-white hover:bg-gray-50 font-extrabold disabled:opacity-50"
+              >
+                Ativar selecionados
+              </button>
+
+              <button
+                onClick={() => bulkSet("ativo", false)}
+                disabled={bulkBusy !== null || selectedCount === 0}
+                className="px-3 py-2.5 rounded-xl border bg-white hover:bg-gray-50 font-extrabold disabled:opacity-50"
+              >
+                Desativar selecionados
+              </button>
+
+              <button
+                onClick={() => bulkSet("destaque_home", true)}
+                disabled={bulkBusy !== null || selectedCount === 0}
+                className="px-3 py-2.5 rounded-xl border bg-white hover:bg-gray-50 font-extrabold disabled:opacity-50"
+              >
+                Colocar Home
+              </button>
+
+              <button
+                onClick={() => bulkSet("destaque_home", false)}
+                disabled={bulkBusy !== null || selectedCount === 0}
+                className="px-3 py-2.5 rounded-xl border bg-white hover:bg-gray-50 font-extrabold disabled:opacity-50"
+              >
+                Tirar Home
+              </button>
+
+              <div className="flex items-center gap-2">
+                <select
+                  value={cloneFromId}
+                  onChange={(e) => setCloneFromId(e.target.value)}
+                  className="bg-white border rounded-xl px-3 py-2"
+                  title="Produto fonte"
+                >
+                  <option value="">Clonar promo de… (fonte)</option>
+                  {rows.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.nome?.slice(0, 48)}{r.nome && r.nome.length > 48 ? "…" : ""} • {r.ean}
+                    </option>
+                  ))}
+                </select>
+
+                <button
+                  onClick={clonePromoToSelected}
+                  disabled={bulkBusy !== null || selectedCount === 0 || !cloneFromId}
+                  className="px-3 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-extrabold disabled:opacity-50"
+                  title="Copia em_promocao / preco_promocional / percentual_off do produto fonte para os selecionados"
+                >
+                  {bulkBusy === "clonePromo" ? "Clonando…" : "Clonar promo"}
+                </button>
+              </div>
+
+              <button
+                onClick={clearSelection}
+                disabled={selectedCount === 0}
+                className="px-3 py-2.5 rounded-xl border bg-white hover:bg-gray-50 font-extrabold disabled:opacity-50"
+              >
+                Limpar seleção
+              </button>
+            </div>
+          </div>
+        </div>
+
         {/* tabela */}
-        <div className="mt-6 bg-white border rounded-3xl shadow-sm overflow-hidden">
+        <div className="mt-4 bg-white border rounded-3xl shadow-sm overflow-hidden">
           <div className="p-4 md:p-5 flex items-center justify-between gap-3 flex-wrap">
             <div>
               <h2 className="text-xl font-extrabold text-blue-950">Produtos</h2>
-              <p className="text-sm text-gray-600">
-                Edite preço, status e imagens direto aqui. EAN sempre visível.
-              </p>
+              <p className="text-sm text-gray-600">Selecione, edite e depois use “Salvar em lote”. EAN sempre visível.</p>
             </div>
 
             {err ? (
@@ -487,9 +781,23 @@ export default function AdminProdutosPage() {
           </div>
 
           <div className="overflow-x-auto">
-            <table className="min-w-[1100px] w-full text-sm">
+            <table className="min-w-[1250px] w-full text-sm">
               <thead className="bg-gray-50 border-t border-b">
                 <tr className="text-left">
+                  <Th>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="checkbox"
+                        checked={allOnPageSelected}
+                        ref={(el) => {
+                          if (el) el.indeterminate = someOnPageSelected;
+                        }}
+                        onChange={toggleSelectAllOnPage}
+                        title="Selecionar todos na página"
+                      />
+                      <span>Sel.</span>
+                    </div>
+                  </Th>
                   <Th>Imagem</Th>
                   <Th>EAN</Th>
                   <Th>Nome</Th>
@@ -508,25 +816,41 @@ export default function AdminProdutosPage() {
               <tbody>
                 {loading ? (
                   <tr>
-                    <td colSpan={12} className="p-6 text-gray-600">
+                    <td colSpan={13} className="p-6 text-gray-600">
                       Carregando…
                     </td>
                   </tr>
                 ) : rows.length === 0 ? (
                   <tr>
-                    <td colSpan={12} className="p-6 text-gray-600">
+                    <td colSpan={13} className="p-6 text-gray-600">
                       Nenhum produto encontrado com esses filtros.
                     </td>
                   </tr>
                 ) : (
-                  rows.map((r) => <Row key={r.id} r={r} onSaved={loadTable} />)
+                  rows.map((r) => {
+                    const view = getRowView(r);
+                    return (
+                      <RowV4
+                        key={r.id}
+                        r={r}
+                        view={view}
+                        selected={!!selected[r.id]}
+                        onSelect={(v) => toggleSelectRow(r.id, v)}
+                        onEdit={(patch) => {
+                          setEdit(r.id, patch);
+                          markSelectedFromRow(r.id);
+                        }}
+                        onSaved={loadTable}
+                      />
+                    );
+                  })
                 )}
               </tbody>
             </table>
           </div>
 
           <div className="p-4 md:p-5 text-xs text-gray-500">
-            Dica: use o filtro de <b>Categoria</b> e <b>Laboratório</b> para organizar rapidamente a home.
+            Botões: <b>Copiar link</b> copia o caminho do produto no site • <b>Clonar promo</b> acelera campanhas.
           </div>
         </div>
       </div>
@@ -570,40 +894,34 @@ function Toggle({
   );
 }
 
-function Row({ r, onSaved }: { r: FVProduto; onSaved: () => void }) {
+function RowV4({
+  r,
+  view,
+  selected,
+  onSelect,
+  onEdit,
+  onSaved,
+}: {
+  r: FVProduto;
+  view: FVProduto;
+  selected: boolean;
+  onSelect: (v: boolean) => void;
+  onEdit: (patch: Partial<FVProduto>) => void;
+  onSaved: () => void;
+}) {
   const [saving, setSaving] = useState(false);
+  const pr = useMemo(() => precos(view), [view]);
 
-  const [pmc, setPmc] = useState<number>(Number(r.pmc || 0));
-  const [emPromo, setEmPromo] = useState<boolean>(!!r.em_promocao);
-  const [precoPromo, setPrecoPromo] = useState<number>(Number(r.preco_promocional || 0));
-  const [ativo, setAtivo] = useState<boolean>(!!r.ativo);
-  const [home, setHome] = useState<boolean>(!!r.destaque_home);
-  const [imagens, setImagens] = useState<string[]>(Array.isArray(r.imagens) ? r.imagens : []);
-
-  const pr = useMemo(() => {
-    const mock: FVProduto = {
-      ...r,
-      pmc,
-      em_promocao: emPromo,
-      preco_promocional: precoPromo,
-      ativo,
-      destaque_home: home,
-      imagens,
-    };
-    return precos(mock);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pmc, emPromo, precoPromo, ativo, home, imagens]);
-
-  async function salvar() {
+  async function salvarLinha() {
     setSaving(true);
     try {
       const payload: any = {
-        pmc: Number.isFinite(pmc) ? pmc : null,
-        em_promocao: !!emPromo,
-        preco_promocional: emPromo ? (Number.isFinite(precoPromo) ? precoPromo : null) : null,
-        ativo: !!ativo,
-        destaque_home: !!home,
-        imagens: imagens?.length ? imagens : null,
+        pmc: Number.isFinite(Number(view.pmc)) ? Number(view.pmc) : null,
+        em_promocao: !!view.em_promocao,
+        preco_promocional: view.em_promocao ? (Number.isFinite(Number(view.preco_promocional)) ? Number(view.preco_promocional) : null) : null,
+        ativo: !!view.ativo,
+        destaque_home: !!view.destaque_home,
+        imagens: view.imagens?.length ? view.imagens : null,
         percentual_off: pr.emPromo && pr.off > 0 ? pr.off : 0,
       };
 
@@ -612,18 +930,28 @@ function Row({ r, onSaved }: { r: FVProduto; onSaved: () => void }) {
 
       onSaved();
     } catch (e: any) {
-      alert(e?.message || "Erro ao salvar.");
       console.error(e);
+      alert(e?.message || "Erro ao salvar.");
     } finally {
       setSaving(false);
     }
   }
 
+  async function copiarLink() {
+    const link = buildProductLink(r.ean);
+    const ok = await copyToClipboard(link);
+    if (!ok) alert("Não consegui copiar. Copie manualmente: " + link);
+  }
+
   return (
-    <tr className="border-t">
+    <tr className={`border-t ${selected ? "bg-blue-50/40" : ""}`}>
+      <td className="px-4 py-3">
+        <input type="checkbox" checked={selected} onChange={(e) => onSelect(e.target.checked)} />
+      </td>
+
       <td className="px-4 py-3">
         <div className="w-14 h-14 bg-gray-50 border rounded-xl flex items-center justify-center overflow-hidden">
-          <Image src={firstImg(imagens)} alt={r.nome || "Produto"} width={56} height={56} className="object-contain" />
+          <Image src={firstImg(view.imagens)} alt={r.nome || "Produto"} width={56} height={56} className="object-contain" />
         </div>
       </td>
 
@@ -632,7 +960,7 @@ function Row({ r, onSaved }: { r: FVProduto; onSaved: () => void }) {
       <td className="px-4 py-3">
         <div className="font-bold text-blue-950 line-clamp-2">{r.nome}</div>
         {r.apresentacao ? <div className="text-xs text-gray-500 line-clamp-1">{r.apresentacao}</div> : null}
-        <Link href={`/fv/produtos/${r.ean}`} className="text-xs text-blue-700 hover:underline">
+        <Link href={buildProductLink(r.ean)} className="text-xs text-blue-700 hover:underline">
           Ver no site →
         </Link>
       </td>
@@ -643,25 +971,27 @@ function Row({ r, onSaved }: { r: FVProduto; onSaved: () => void }) {
       <td className="px-4 py-3">
         <input
           type="number"
-          value={Number.isFinite(pmc) ? pmc : 0}
-          onChange={(e) => setPmc(Number(e.target.value))}
+          value={Number(view.pmc || 0)}
+          onChange={(e) => onEdit({ pmc: Number(e.target.value) || 0 })}
           className="w-28 bg-white border rounded-xl px-3 py-2 text-sm"
         />
-        <div className="text-[11px] text-gray-500 mt-1">{brl(pmc)}</div>
+        <div className="text-[11px] text-gray-500 mt-1">{brl(view.pmc)}</div>
       </td>
 
       <td className="px-4 py-3">
         <div className="flex items-center gap-2">
-          <Toggle checked={emPromo} onChange={setEmPromo} label="Promo" />
+          <Toggle checked={!!view.em_promocao} onChange={(v) => onEdit({ em_promocao: v })} label="Promo" />
           <input
             type="number"
-            value={Number.isFinite(precoPromo) ? precoPromo : 0}
-            onChange={(e) => setPrecoPromo(Number(e.target.value))}
-            className={`w-28 bg-white border rounded-xl px-3 py-2 text-sm ${!emPromo ? "opacity-50" : ""}`}
-            disabled={!emPromo}
+            value={Number(view.preco_promocional || 0)}
+            onChange={(e) => onEdit({ preco_promocional: Number(e.target.value) || 0 })}
+            className={`w-28 bg-white border rounded-xl px-3 py-2 text-sm ${!view.em_promocao ? "opacity-50" : ""}`}
+            disabled={!view.em_promocao}
           />
         </div>
-        <div className="text-[11px] text-gray-500 mt-1">{emPromo ? `Por ${brl(precoPromo)}` : "—"}</div>
+        <div className="text-[11px] text-gray-500 mt-1">
+          {view.em_promocao ? `Por ${brl(view.preco_promocional)}` : "—"}
+        </div>
       </td>
 
       <td className="px-4 py-3">
@@ -675,11 +1005,11 @@ function Row({ r, onSaved }: { r: FVProduto; onSaved: () => void }) {
       </td>
 
       <td className="px-4 py-3">
-        <Toggle checked={ativo} onChange={setAtivo} label="Ativo" />
+        <Toggle checked={!!view.ativo} onChange={(v) => onEdit({ ativo: v })} label="Ativo" />
       </td>
 
       <td className="px-4 py-3">
-        <Toggle checked={home} onChange={setHome} label="Home" />
+        <Toggle checked={!!view.destaque_home} onChange={(v) => onEdit({ destaque_home: v })} label="Home" />
       </td>
 
       <td className="px-4 py-3">
@@ -698,14 +1028,22 @@ function Row({ r, onSaved }: { r: FVProduto; onSaved: () => void }) {
       <td className="px-4 py-3">
         <div className="flex flex-col gap-2">
           <button
-            onClick={salvar}
+            onClick={salvarLinha}
             disabled={saving}
             className="px-3 py-2 rounded-xl bg-blue-700 hover:bg-blue-800 text-white text-xs font-extrabold disabled:opacity-50"
           >
-            {saving ? "Salvando…" : "Salvar"}
+            {saving ? "Salvando…" : "Salvar (linha)"}
           </button>
 
-          <ImagesEditor imagens={imagens} setImagens={setImagens} />
+          <button
+            onClick={copiarLink}
+            className="px-3 py-2 rounded-xl border bg-white hover:bg-gray-50 text-xs font-extrabold"
+            title="Copia /fv/produtos/EAN"
+          >
+            Copiar link
+          </button>
+
+          <ImagesEditor imagens={Array.isArray(view.imagens) ? view.imagens : []} setImagens={(imgs) => onEdit({ imagens: imgs })} />
 
           <Link
             href={`/fv/admin/produtos/${r.id}`}
@@ -779,7 +1117,7 @@ function ImagesEditor({
                   Aplicar (não salva no banco ainda)
                 </button>
                 <div className="text-[11px] text-gray-500 mt-2">
-                  Depois clique em <b>Salvar</b> na linha do produto.
+                  Depois clique em <b>Salvar em lote</b> ou <b>Salvar (linha)</b>.
                 </div>
               </div>
 
