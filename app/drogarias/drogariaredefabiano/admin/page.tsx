@@ -11,9 +11,12 @@ const supabase = createClient(
 
 const FARMACIA_SLUG = "drogariaredefabiano";
 const SENHA_ADMIN = "102030";
+
 const VIEW = "fv_produtos_loja_view";
 const WRITE_TABLE = "fv_farmacia_produtos";
-const LIMITE = 18000;
+
+// ✅ 50 itens por tela (paginação)
+const PAGE_SIZE = 50;
 
 type ViewRow = {
   farmacia_slug: string;
@@ -46,9 +49,11 @@ type RowUI = ViewRow & {
 function onlyDigits(s: string) {
   return (s || "").replace(/\D/g, "");
 }
+
 function brl(n: number) {
   return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
+
 function normalizeImgs(v: any): string[] {
   if (!v) return [];
   if (Array.isArray(v)) return v.map(String).filter(Boolean);
@@ -60,10 +65,12 @@ function normalizeImgs(v: any): string[] {
   }
   return [];
 }
+
 function firstImg(v: any) {
   const arr = normalizeImgs(v);
   return arr.length > 0 ? arr[0] : "/produtos/caixa-padrao.png";
 }
+
 function stockBadge(n: number) {
   if (n <= 0) return "text-red-700 bg-red-50 border-red-200";
   if (n <= 5) return "text-amber-800 bg-amber-50 border-amber-200";
@@ -77,12 +84,24 @@ export default function AdminPageFabiano() {
   const [carregando, setCarregando] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
+  // ✅ agora a tela carrega SÓ a página atual
   const [rows, setRows] = useState<RowUI[]>([]);
+  const rowsRef = useRef<RowUI[]>([]);
+  useEffect(() => {
+    rowsRef.current = rows;
+  }, [rows]);
+
+  // filtros
   const [busca, setBusca] = useState("");
   const [categoria, setCategoria] = useState("");
   const [somenteAtivos, setSomenteAtivos] = useState(false);
   const [somenteZerados, setSomenteZerados] = useState(false);
 
+  // paginação
+  const [page, setPage] = useState(1); // 1..N
+  const [totalCount, setTotalCount] = useState<number>(0);
+
+  // seleção + massa (aplica só na página atual selecionada)
   const [selecionados, setSelecionados] = useState<Record<string, boolean>>({});
   const selecionadosIds = useMemo(
     () => Object.entries(selecionados).filter(([, v]) => v).map(([k]) => k),
@@ -93,6 +112,7 @@ export default function AdminPageFabiano() {
   const [massPreco, setMassPreco] = useState("");
   const [massAtivar, setMassAtivar] = useState<"nao" | "sim" | "">("");
 
+  // autosave debounce por produto
   const timersRef = useRef<Record<string, any>>({});
 
   function toast(s: string) {
@@ -110,11 +130,28 @@ export default function AdminPageFabiano() {
     }
   }
 
-  async function carregar() {
+  const totalPages = useMemo(() => {
+    const n = Math.ceil((totalCount || 0) / PAGE_SIZE);
+    return Math.max(1, n || 1);
+  }, [totalCount]);
+
+  const canPrev = page > 1;
+  const canNext = page < totalPages;
+
+  // ==========================
+  // ✅ FETCH SERVER-SIDE (paginação + filtros)
+  // ==========================
+  async function carregar(p = page) {
     try {
       setCarregando(true);
 
-      const { data, error } = await supabase
+      const termo = busca.trim();
+      const digits = onlyDigits(termo);
+
+      const from = (p - 1) * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
+
+      let q = supabase
         .from(VIEW)
         .select(
           `
@@ -133,13 +170,35 @@ export default function AdminPageFabiano() {
           preco_promocional,
           percentual_off,
           destaque_home
-        `
+        `,
+          { count: "exact" }
         )
-        .eq("farmacia_slug", FARMACIA_SLUG)
-        .order("nome", { ascending: true })
-        .limit(LIMITE);
+        .eq("farmacia_slug", FARMACIA_SLUG);
 
+      if (categoria) q = q.eq("categoria", categoria);
+      if (somenteAtivos) q = q.eq("disponivel_farmacia", true);
+      if (somenteZerados) q = q.lte("estoque", 0);
+
+      // busca: se número (6+) -> EAN; senão -> nome/lab/apresentacao
+      if (termo) {
+        if (digits.length >= 6 && digits === termo.replace(/\s/g, "")) {
+          q = q.ilike("ean", `%${digits}%`);
+        } else {
+          // OR robusto
+          const safe = termo.replace(/,/g, " ").trim();
+          q = q.or(
+            `nome.ilike.%${safe}%,laboratorio.ilike.%${safe}%,apresentacao.ilike.%${safe}%,ean.ilike.%${safe}%`
+          );
+        }
+      }
+
+      // ordenação e paginação real
+      q = q.order("nome", { ascending: true }).range(from, to);
+
+      const { data, error, count } = await q;
       if (error) throw error;
+
+      setTotalCount(Number(count || 0));
 
       const list = (data || []).map((r: any) => ({
         ...r,
@@ -149,8 +208,9 @@ export default function AdminPageFabiano() {
       })) as RowUI[];
 
       setRows(list);
+
+      // limpa seleção ao mudar página/filtro (pra não aplicar massa no item errado)
       setSelecionados({});
-      toast("✅ Carregado");
     } catch (e: any) {
       console.error(e);
       alert(e?.message || "Erro ao carregar.");
@@ -159,43 +219,44 @@ export default function AdminPageFabiano() {
     }
   }
 
+  // ✅ quando autentica, carrega página 1
   useEffect(() => {
-    if (autenticado) carregar();
+    if (!autenticado) return;
+    setPage(1);
+    // carrega com page=1
+    // eslint-disable-next-line @typescript-eslint/no-floating-promises
+    carregar(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autenticado]);
 
+  // ✅ debounce de filtros -> volta pra página 1 e recarrega
+  useEffect(() => {
+    if (!autenticado) return;
+    const t = setTimeout(() => {
+      setPage(1);
+      carregar(1);
+    }, 350);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [busca, categoria, somenteAtivos, somenteZerados, autenticado]);
+
+  // ✅ quando muda página manualmente
+  useEffect(() => {
+    if (!autenticado) return;
+    carregar(page);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page]);
+
+  // categorias: pra não baixar 17k só pra montar o select,
+  // vamos extrair categorias da página atual + deixar opção livre.
   const categorias = useMemo(() => {
     const set = new Set(rows.map((r) => r.categoria).filter(Boolean) as string[]);
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [rows]);
 
-  const filtrados = useMemo(() => {
-    const termo = busca.trim();
-    const digits = onlyDigits(termo);
-
-    return rows.filter((r) => {
-      if (categoria && (r.categoria || "") !== categoria) return false;
-      if (somenteAtivos && !r.disponivel_farmacia) return false;
-
-      const est = Number(r.estoque || 0);
-      if (somenteZerados && est > 0) return false;
-
-      if (!termo) return true;
-
-      if (digits.length >= 6 && digits === termo.replace(/\s/g, "")) {
-        return String(r.ean || "").includes(digits);
-      }
-
-      const t = termo.toLowerCase();
-      const nome = String(r.nome || "").toLowerCase();
-      const ean = String(r.ean || "").toLowerCase();
-      const lab = String(r.laboratorio || "").toLowerCase();
-      const ap = String(r.apresentacao || "").toLowerCase();
-
-      return nome.includes(t) || ean.includes(t) || lab.includes(t) || ap.includes(t);
-    });
-  }, [rows, busca, categoria, somenteAtivos, somenteZerados]);
-
+  // ==========================
+  // EDIÇÃO LOCAL + AUTOSAVE
+  // ==========================
   function setField(produto_id: string, patch: Partial<RowUI>, autosave = true) {
     setRows((prev) =>
       prev.map((x) =>
@@ -208,13 +269,14 @@ export default function AdminPageFabiano() {
   function agendarSalvar(produto_id: string, ms = 650) {
     if (timersRef.current[produto_id]) clearTimeout(timersRef.current[produto_id]);
     timersRef.current[produto_id] = setTimeout(() => {
+      // eslint-disable-next-line @typescript-eslint/no-floating-promises
       salvarAgora(produto_id);
       timersRef.current[produto_id] = null;
     }, ms);
   }
 
   async function salvarAgora(produto_id: string) {
-    const row = rows.find((r) => r.produto_id === produto_id);
+    const row = rowsRef.current.find((r) => r.produto_id === produto_id);
     if (!row) return;
 
     const payload = {
@@ -261,7 +323,7 @@ export default function AdminPageFabiano() {
 
   function toggleAll(checked: boolean) {
     const map: Record<string, boolean> = {};
-    filtrados.forEach((r) => (map[r.produto_id] = checked));
+    rows.forEach((r) => (map[r.produto_id] = checked));
     setSelecionados(map);
   }
 
@@ -283,20 +345,24 @@ export default function AdminPageFabiano() {
       })
     );
 
-    for (const id of selecionadosIds) await salvarAgora(id);
+    // salva apenas os selecionados da página atual
+    for (const id of selecionadosIds) {
+      // eslint-disable-next-line @typescript-eslint/no-floating-promises
+      await salvarAgora(id);
+    }
+
     toast("✅ Massa aplicada");
   }
 
+  // ==========================
+  // UI
+  // ==========================
   if (!autenticado) {
     return (
       <main className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
         <div className="bg-white p-6 rounded-2xl shadow-md w-full max-w-sm text-center border">
-          <h2 className="text-xl font-bold mb-1 text-blue-700">
-            Admin — Drogaria Rede Fabiano
-          </h2>
-          <p className="text-sm text-gray-600 mb-4">
-            Controle de estoque / preço / ativo
-          </p>
+          <h2 className="text-xl font-bold mb-1 text-blue-700">Admin — Drogaria Rede Fabiano</h2>
+          <p className="text-sm text-gray-600 mb-4">Controle de estoque / preço / ativo</p>
 
           <input
             type="password"
@@ -322,17 +388,15 @@ export default function AdminPageFabiano() {
       <div className="max-w-7xl mx-auto">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-blue-700">
-              Administração — {FARMACIA_SLUG}
-            </h1>
+            <h1 className="text-2xl sm:text-3xl font-bold text-blue-700">Administração — {FARMACIA_SLUG}</h1>
             <p className="text-sm text-gray-600">
-              Edita preço/estoque/ativo/promo/destaque. Salva automático e também manual.
+              50 itens por página. Pesquise para achar no catálogo (17k+). Salva automático e também manual.
             </p>
           </div>
 
           <div className="flex gap-2">
             <button
-              onClick={carregar}
+              onClick={() => carregar(page)}
               className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-semibold"
             >
               Atualizar
@@ -343,7 +407,10 @@ export default function AdminPageFabiano() {
                 setCategoria("");
                 setSomenteAtivos(false);
                 setSomenteZerados(false);
-                setSelecionados({});
+                setMassAtivar("");
+                setMassEstoque("");
+                setMassPreco("");
+                setPage(1);
               }}
               className="bg-white hover:bg-gray-100 border px-4 py-2 rounded-xl font-semibold"
             >
@@ -358,22 +425,23 @@ export default function AdminPageFabiano() {
           </div>
         )}
 
+        {/* filtros */}
         <div className="mt-5 bg-white border rounded-2xl p-4 shadow-sm">
-          <div className="grid grid-cols-1 md:grid-cols-5 gap-3">
-            <div className="md:col-span-2">
+          <div className="grid grid-cols-1 md:grid-cols-6 gap-3">
+            <div className="md:col-span-3">
               <label className="text-xs text-gray-600 font-semibold">Buscar</label>
               <input
                 value={busca}
                 onChange={(e) => setBusca(e.target.value)}
-                placeholder="EAN (só números) ou nome..."
+                placeholder="EAN (só números) ou nome/lab/apresentação..."
                 className="w-full border rounded-xl px-3 py-2"
               />
               <div className="text-[11px] text-gray-500 mt-1">
-                Se digitar só números (6+), filtra por EAN.
+                Se digitar só números (6+), filtra por EAN. Senão busca em nome/lab/apresentação.
               </div>
             </div>
 
-            <div>
+            <div className="md:col-span-1">
               <label className="text-xs text-gray-600 font-semibold">Categoria</label>
               <select
                 value={categoria}
@@ -387,48 +455,63 @@ export default function AdminPageFabiano() {
                   </option>
                 ))}
               </select>
+              <div className="text-[11px] text-gray-500 mt-1">Dica: pesquise e depois selecione.</div>
             </div>
 
-            <div className="flex items-end gap-3">
+            <div className="md:col-span-2 flex items-end gap-3">
               <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={somenteAtivos}
-                  onChange={(e) => setSomenteAtivos(e.target.checked)}
-                />
+                <input type="checkbox" checked={somenteAtivos} onChange={(e) => setSomenteAtivos(e.target.checked)} />
                 Somente ativos
               </label>
 
               <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={somenteZerados}
-                  onChange={(e) => setSomenteZerados(e.target.checked)}
-                />
+                <input type="checkbox" checked={somenteZerados} onChange={(e) => setSomenteZerados(e.target.checked)} />
                 Só zerados
               </label>
             </div>
+          </div>
 
-            <div className="flex items-end justify-between md:justify-end">
-              <div className="text-sm text-gray-600">
-                Encontrados: <b>{filtrados.length}</b>
-              </div>
+          <div className="mt-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <div className="text-sm text-gray-700">
+              Total encontrados: <b>{totalCount}</b> • Página <b>{page}</b> / <b>{totalPages}</b>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                disabled={!canPrev || carregando}
+                onClick={() => setPage((p) => Math.max(1, p - 1))}
+                className={`px-3 py-2 rounded-xl border text-sm font-semibold ${
+                  !canPrev || carregando ? "bg-gray-50 text-gray-400" : "bg-white hover:bg-gray-50"
+                }`}
+              >
+                ◀ Anterior
+              </button>
+
+              <button
+                disabled={!canNext || carregando}
+                onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
+                className={`px-3 py-2 rounded-xl border text-sm font-semibold ${
+                  !canNext || carregando ? "bg-gray-50 text-gray-400" : "bg-white hover:bg-gray-50"
+                }`}
+              >
+                Próxima ▶
+              </button>
             </div>
           </div>
         </div>
 
+        {/* massa */}
         <div className="mt-4 bg-white border rounded-2xl p-4 shadow-sm">
           <div className="flex flex-col lg:flex-row lg:items-center gap-3 justify-between">
             <div className="flex items-center gap-3">
               <label className="text-sm font-semibold text-gray-700">
-                Selecionados:{" "}
-                <span className="text-blue-700">{selecionadosIds.length}</span>
+                Selecionados (página): <span className="text-blue-700">{selecionadosIds.length}</span>
               </label>
               <button
                 onClick={() => toggleAll(true)}
                 className="text-sm px-3 py-1 rounded-xl border bg-white hover:bg-gray-50"
               >
-                Marcar todos (filtro)
+                Marcar todos (página)
               </button>
               <button
                 onClick={() => toggleAll(false)}
@@ -475,6 +558,7 @@ export default function AdminPageFabiano() {
           </div>
         </div>
 
+        {/* tabela */}
         <div className="mt-4 bg-white border rounded-2xl shadow-sm overflow-x-auto">
           <table className="min-w-[1200px] w-full text-sm">
             <thead className="bg-blue-50 border-b text-gray-700">
@@ -503,7 +587,7 @@ export default function AdminPageFabiano() {
                 </tr>
               )}
 
-              {!carregando && filtrados.length === 0 && (
+              {!carregando && rows.length === 0 && (
                 <tr>
                   <td colSpan={12} className="p-6 text-center text-gray-600">
                     Nada encontrado.
@@ -512,7 +596,7 @@ export default function AdminPageFabiano() {
               )}
 
               {!carregando &&
-                filtrados.map((r) => {
+                rows.map((r) => {
                   const est = Math.max(0, Number(r.estoque || 0));
                   const ativo = !!r.disponivel_farmacia;
 
@@ -543,18 +627,12 @@ export default function AdminPageFabiano() {
                             />
                           </div>
                           <div className="min-w-0">
-                            <div className="font-semibold text-gray-900 truncate max-w-[340px]">
-                              {r.nome || "—"}
-                            </div>
+                            <div className="font-semibold text-gray-900 truncate max-w-[340px]">{r.nome || "—"}</div>
                             <div className="text-xs text-gray-500 truncate max-w-[340px]">
                               {r.laboratorio || "—"}
                               {r.apresentacao ? ` • ${r.apresentacao}` : ""}
                             </div>
-                            {r._error && (
-                              <div className="text-xs text-red-600 mt-1">
-                                {r._error}
-                              </div>
-                            )}
+                            {r._error && <div className="text-xs text-red-600 mt-1">{r._error}</div>}
                           </div>
                         </div>
                       </td>
@@ -566,11 +644,7 @@ export default function AdminPageFabiano() {
                         <input
                           type="checkbox"
                           checked={ativo}
-                          onChange={(e) =>
-                            setField(r.produto_id, {
-                              disponivel_farmacia: e.target.checked,
-                            })
-                          }
+                          onChange={(e) => setField(r.produto_id, { disponivel_farmacia: e.target.checked })}
                         />
                       </td>
 
@@ -578,11 +652,7 @@ export default function AdminPageFabiano() {
                         <input
                           type="checkbox"
                           checked={!!r.destaque_home}
-                          onChange={(e) =>
-                            setField(r.produto_id, {
-                              destaque_home: e.target.checked,
-                            })
-                          }
+                          onChange={(e) => setField(r.produto_id, { destaque_home: e.target.checked })}
                         />
                       </td>
 
@@ -592,16 +662,10 @@ export default function AdminPageFabiano() {
                             type="number"
                             min={0}
                             value={est}
-                            onChange={(e) =>
-                              setField(r.produto_id, {
-                                estoque: Number(e.target.value || 0),
-                              })
-                            }
+                            onChange={(e) => setField(r.produto_id, { estoque: Number(e.target.value || 0) })}
                             className="border rounded-xl px-2 py-1 w-24 text-center"
                           />
-                          <span
-                            className={`text-xs px-2 py-1 rounded-full border ${stockBadge(est)}`}
-                          >
+                          <span className={`text-xs px-2 py-1 rounded-full border ${stockBadge(est)}`}>
                             {est <= 0 ? "ZERADO" : est <= 5 ? "BAIXO" : "OK"}
                           </span>
                         </div>
@@ -613,12 +677,7 @@ export default function AdminPageFabiano() {
                           step="0.01"
                           value={r.preco_venda ?? ""}
                           onChange={(e) =>
-                            setField(r.produto_id, {
-                              preco_venda:
-                                e.target.value === ""
-                                  ? null
-                                  : Number(e.target.value),
-                            })
+                            setField(r.produto_id, { preco_venda: e.target.value === "" ? null : Number(e.target.value) })
                           }
                           className="border rounded-xl px-2 py-1 w-32 text-right"
                           placeholder="R$"
@@ -632,11 +691,7 @@ export default function AdminPageFabiano() {
                         <input
                           type="checkbox"
                           checked={!!r.em_promocao}
-                          onChange={(e) =>
-                            setField(r.produto_id, {
-                              em_promocao: e.target.checked,
-                            })
-                          }
+                          onChange={(e) => setField(r.produto_id, { em_promocao: e.target.checked })}
                         />
                       </td>
 
@@ -647,10 +702,7 @@ export default function AdminPageFabiano() {
                           value={r.preco_promocional ?? ""}
                           onChange={(e) =>
                             setField(r.produto_id, {
-                              preco_promocional:
-                                e.target.value === ""
-                                  ? null
-                                  : Number(e.target.value),
+                              preco_promocional: e.target.value === "" ? null : Number(e.target.value),
                             })
                           }
                           className="border rounded-xl px-2 py-1 w-32 text-right"
@@ -664,12 +716,7 @@ export default function AdminPageFabiano() {
                           step="0.01"
                           value={r.percentual_off ?? ""}
                           onChange={(e) =>
-                            setField(r.produto_id, {
-                              percentual_off:
-                                e.target.value === ""
-                                  ? null
-                                  : Number(e.target.value),
-                            })
+                            setField(r.produto_id, { percentual_off: e.target.value === "" ? null : Number(e.target.value) })
                           }
                           className="border rounded-xl px-2 py-1 w-24 text-right"
                           placeholder="%"
@@ -699,7 +746,7 @@ export default function AdminPageFabiano() {
           </table>
 
           <div className="p-4 border-t text-xs text-gray-600">
-            ✅ Autosave com debounce + botão manual por linha. Massa aplica e salva item a item.
+            ✅ 50 itens por página • busca server-side • sem travar navegador • autosave com debounce + botão manual por linha.
           </div>
         </div>
       </div>
