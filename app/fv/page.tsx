@@ -6,6 +6,8 @@ import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import { useCart } from "./_components/cart";
 import { ToastProvider, useToast } from "./_components/toast";
+import FVBanners from "./_components/FVBanners";
+
 
 type FVProduto = {
   id: string;
@@ -208,6 +210,9 @@ function FarmaciaVirtualHome() {
             <h2 className="text-lg font-extrabold text-gray-900 mb-3">
               Resultados <span className="text-gray-500">({resultado.length})</span>
             </h2>
+
+            <FVBanners />
+
 
             {loadingBusca ? (
               <GridSkeleton />
