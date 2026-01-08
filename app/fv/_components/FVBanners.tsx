@@ -169,7 +169,7 @@ export default function FVBanners() {
           </p>
 
           <div className="mt-4 space-y-3">
-            <Benefit icon="⚡" title="Rápido" desc="Carrinho modal estilo Ultrafarma" />
+            <Benefit icon="⚡" title="Rápido" desc="Carrinho modal para Melhor agilidade" />
             <Benefit icon="✅" title="Confirmação" desc="Checamos disponibilidade e retornamos" />
             <Benefit icon="🚚" title="Entrega" desc="Taxa fixa e prazo até 24h" />
           </div>
