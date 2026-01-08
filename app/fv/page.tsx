@@ -8,7 +8,6 @@ import { useCart } from "./_components/cart";
 import { ToastProvider, useToast } from "./_components/toast";
 import FVBanners from "./_components/FVBanners";
 
-
 type FVProduto = {
   id: string;
   ean: string;
@@ -53,7 +52,7 @@ function precoFinal(p: {
 }
 
 function firstImg(imagens?: string[] | null) {
-  if (Array.isArray(imagens) && imagens.length > 0) return imagens[0];
+  if (Array.isArray(imagens) && imagens.length > 0 && imagens[0]) return imagens[0];
   return "/produtos/caixa-padrao.png";
 }
 
@@ -176,6 +175,7 @@ function FarmaciaVirtualHome() {
 
   return (
     <main className="min-h-screen bg-gray-50 pb-24">
+      {/* TOPO */}
       <section className="max-w-6xl mx-auto px-4 pt-6">
         <div className="bg-white border rounded-3xl p-4 md:p-5 shadow-sm">
           <h1 className="text-2xl md:text-3xl font-extrabold text-blue-900">
@@ -204,15 +204,16 @@ function FarmaciaVirtualHome() {
         </div>
       </section>
 
+      {/* ✅ BANNERS: AGORA FICA AQUI (SEMPRE APARECE) */}
+      <FVBanners />
+
+      {/* CONTEÚDO */}
       <section className="max-w-6xl mx-auto px-4">
         {isSearching ? (
           <div className="mt-6">
             <h2 className="text-lg font-extrabold text-gray-900 mb-3">
               Resultados <span className="text-gray-500">({resultado.length})</span>
             </h2>
-
-            <FVBanners />
-
 
             {loadingBusca ? (
               <GridSkeleton />
@@ -324,7 +325,6 @@ function ProdutoCardUltra({ p }: { p: FVProduto }) {
           )}
         </div>
 
-        {/* Ultrafarma: stepper + comprar */}
         <div className="mt-3 flex items-center gap-2">
           <div className="flex items-center border rounded-xl overflow-hidden">
             <button
