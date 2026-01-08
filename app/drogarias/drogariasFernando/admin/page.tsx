@@ -50,7 +50,7 @@ export default function AdminDrogariasFernando() {
 
       // 1️⃣ Buscar dados da tabela medicamentos_site (editável)
       const { data: siteData, error: siteError } = await supabase
-        .from("medicamentos_site")
+        .from("fv_produtos")
         .select("*")
         .eq("farmacia_slug", LOJA_SLUG)
         .order("nome", { ascending: true });
