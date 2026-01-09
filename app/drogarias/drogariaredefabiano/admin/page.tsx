@@ -63,6 +63,12 @@ function normalizeImgs(v: any): string[] {
       if (Array.isArray(parsed)) return parsed.map(String).filter(Boolean);
     } catch {}
   }
+  // se vier jsonb como objeto (raro), tenta extrair
+  if (typeof v === "object") {
+    try {
+      if (Array.isArray(v)) return v.map(String).filter(Boolean);
+    } catch {}
+  }
   return [];
 }
 
@@ -88,6 +94,11 @@ function isValidHttpUrl(u: string) {
   } catch {
     return false;
   }
+}
+
+// escapa % e _ para ilike (e remove vírgulas pra não quebrar o .or do PostgREST)
+function escapeForILike(term: string) {
+  return term.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_").replace(/,+/g, " ").trim();
 }
 
 export default function AdminPageFabiano() {
@@ -200,9 +211,12 @@ export default function AdminPageFabiano() {
 
       if (termo) {
         if (digits.length >= 6 && digits === termo.replace(/\s/g, "")) {
+          // EAN
           q = q.ilike("ean", `%${digits}%`);
         } else {
-          const safe = termo.replace(/,/g, " ").trim();
+          const safe = escapeForILike(termo);
+          // Observação: o .or usa vírgulas como separador. Por isso removemos vírgulas acima.
+          // Também escapamos % e _ (ilike).
           q = q.or(
             `nome.ilike.%${safe}%,laboratorio.ilike.%${safe}%,apresentacao.ilike.%${safe}%,ean.ilike.%${safe}%`
           );
@@ -256,6 +270,7 @@ export default function AdminPageFabiano() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page]);
 
+  // lista de categorias (da página atual)
   const categorias = useMemo(() => {
     const set = new Set(rows.map((r) => r.categoria).filter(Boolean) as string[]);
     return Array.from(set).sort((a, b) => a.localeCompare(b));
@@ -285,7 +300,7 @@ export default function AdminPageFabiano() {
     const row = rowsRef.current.find((r) => r.produto_id === produto_id);
     if (!row) return;
 
-    // ✅ salva também as imagens (jsonb) na tabela da farmácia
+    // ✅ salva também as imagens (jsonb)
     const imgs = normalizeImgs(row.imagens);
 
     const payload: any = {
@@ -298,7 +313,7 @@ export default function AdminPageFabiano() {
       preco_promocional: row.preco_promocional == null ? null : Number(row.preco_promocional),
       percentual_off: row.percentual_off == null ? null : Number(row.percentual_off),
       destaque_home: !!row.destaque_home,
-      imagens: imgs.length ? imgs : null, // 👈 importante
+      imagens: imgs.length ? imgs : null, // 👈 jsonb array ou null
     };
 
     setRows((prev) =>
@@ -380,7 +395,7 @@ export default function AdminPageFabiano() {
 
   function aplicarImagensNoRow() {
     if (!imgProdutoId) return;
-    // grava no state do produto e já agenda salvar
+    // grava no state do produto e já agenda salvar (upsert)
     setField(imgProdutoId, { imagens: imgList }, true);
     toast("🖼️ Imagens atualizadas");
     fecharModalImagens();
@@ -407,7 +422,12 @@ export default function AdminPageFabiano() {
       valid.forEach((u) => set.add(u));
       return Array.from(set);
     });
+
     setImgAddText("");
+  }
+
+  function removeImgByIndex(idx: number) {
+    setImgList((prev) => prev.filter((_, i) => i !== idx));
   }
 
   // ==========================
@@ -444,9 +464,11 @@ export default function AdminPageFabiano() {
       <div className="max-w-7xl mx-auto">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-blue-700">Administração — {FARMACIA_SLUG}</h1>
+            <h1 className="text-2xl sm:text-3xl font-bold text-blue-700">
+              Administração — {FARMACIA_SLUG}
+            </h1>
             <p className="text-sm text-gray-600">
-              50 itens por página. Pesquise (17k+). Autosave + manual. Agora com edição de imagens.
+              50 itens por página. Pesquise (17k+). Autosave + manual. Edição de imagens por item.
             </p>
           </div>
 
@@ -466,6 +488,7 @@ export default function AdminPageFabiano() {
                 setMassAtivar("");
                 setMassEstoque("");
                 setMassPreco("");
+                setSelecionados({});
                 setPage(1);
               }}
               className="bg-white hover:bg-gray-100 border px-4 py-2 rounded-xl font-semibold"
@@ -516,18 +539,25 @@ export default function AdminPageFabiano() {
 
             <div className="md:col-span-2 flex items-end gap-3">
               <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={somenteAtivos} onChange={(e) => setSomenteAtivos(e.target.checked)} />
+                <input
+                  type="checkbox"
+                  checked={somenteAtivos}
+                  onChange={(e) => setSomenteAtivos(e.target.checked)}
+                />
                 Somente ativos
               </label>
 
               <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={somenteZerados} onChange={(e) => setSomenteZerados(e.target.checked)} />
+                <input
+                  type="checkbox"
+                  checked={somenteZerados}
+                  onChange={(e) => setSomenteZerados(e.target.checked)}
+                />
                 Só zerados
               </label>
             </div>
           </div>
 
-          avoid{" "}
           <div className="mt-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <div className="text-sm text-gray-700">
               Total encontrados: <b>{totalCount}</b> • Página <b>{page}</b> / <b>{totalPages}</b>
@@ -685,7 +715,9 @@ export default function AdminPageFabiano() {
                             />
                           </div>
                           <div className="min-w-0">
-                            <div className="font-semibold text-gray-900 truncate max-w-[340px]">{r.nome || "—"}</div>
+                            <div className="font-semibold text-gray-900 truncate max-w-[340px]">
+                              {r.nome || "—"}
+                            </div>
                             <div className="text-xs text-gray-500 truncate max-w-[340px]">
                               {r.laboratorio || "—"}
                               {r.apresentacao ? ` • ${r.apresentacao}` : ""}
@@ -735,7 +767,9 @@ export default function AdminPageFabiano() {
                           step="0.01"
                           value={r.preco_venda ?? ""}
                           onChange={(e) =>
-                            setField(r.produto_id, { preco_venda: e.target.value === "" ? null : Number(e.target.value) })
+                            setField(r.produto_id, {
+                              preco_venda: e.target.value === "" ? null : Number(e.target.value),
+                            })
                           }
                           className="border rounded-xl px-2 py-1 w-32 text-right"
                           placeholder="R$"
@@ -759,7 +793,9 @@ export default function AdminPageFabiano() {
                           step="0.01"
                           value={r.preco_promocional ?? ""}
                           onChange={(e) =>
-                            setField(r.produto_id, { preco_promocional: e.target.value === "" ? null : Number(e.target.value) })
+                            setField(r.produto_id, {
+                              preco_promocional: e.target.value === "" ? null : Number(e.target.value),
+                            })
                           }
                           className="border rounded-xl px-2 py-1 w-32 text-right"
                           placeholder="R$"
@@ -772,7 +808,9 @@ export default function AdminPageFabiano() {
                           step="0.01"
                           value={r.percentual_off ?? ""}
                           onChange={(e) =>
-                            setField(r.produto_id, { percentual_off: e.target.value === "" ? null : Number(e.target.value) })
+                            setField(r.produto_id, {
+                              percentual_off: e.target.value === "" ? null : Number(e.target.value),
+                            })
                           }
                           className="border rounded-xl px-2 py-1 w-24 text-right"
                           placeholder="%"
@@ -910,7 +948,7 @@ export default function AdminPageFabiano() {
                           </button>
 
                           <button
-                            onClick={() => setImgList((prev) => prev.filter((x) => x !== u))}
+                            onClick={() => removeImgByIndex(idx)}
                             className="text-xs px-2 py-1 rounded-lg border bg-white hover:bg-gray-50 text-red-600"
                             title="Remover"
                           >
