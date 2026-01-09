@@ -15,6 +15,8 @@ const SENHA_ADMIN = "102030";
 const VIEW = "fv_produtos_loja_view";
 const WRITE_TABLE = "fv_farmacia_produtos";
 
+
+
 // ✅ 50 itens por tela
 const PAGE_SIZE = 50;
 
@@ -87,6 +89,13 @@ function cleanUrl(u: string) {
   return (u || "").trim().replace(/\s+/g, "");
 }
 
+function urlsToJsonb(text: string): string[] {
+  return text
+    .split("\n")
+    .map((l) => l.trim())
+    .filter((l) => l.startsWith("http"));
+}
+
 function isValidHttpUrl(u: string) {
   try {
     const x = new URL(u);
@@ -124,6 +133,8 @@ export default function AdminPageFabiano() {
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState<number>(0);
 
+  
+
   // seleção + massa
   const [selecionados, setSelecionados] = useState<Record<string, boolean>>({});
   const selecionadosIds = useMemo(
@@ -144,6 +155,11 @@ export default function AdminPageFabiano() {
   const [imgNome, setImgNome] = useState<string>("");
   const [imgList, setImgList] = useState<string[]>([]);
   const [imgAddText, setImgAddText] = useState<string>("");
+
+const [imgProduto, setImgProduto] = useState<RowUI | null>(null);
+const [imgTextarea, setImgTextarea] = useState("");
+const [imgSaving, setImgSaving] = useState(false);
+
 
   function toast(s: string) {
     setToastMsg(s);
@@ -663,10 +679,14 @@ export default function AdminPageFabiano() {
                 <th className="p-3 text-right">% Off</th>
                 <th className="p-3 text-center">Imagem</th>
                 <th className="p-3 text-center">Salvar</th>
+                <th className="p-3 text-center">Imagem</th>
+
               </tr>
             </thead>
 
             <tbody>
+
+              
               {carregando && (
                 <tr>
                   <td colSpan={13} className="p-6 text-center text-gray-600">
@@ -702,6 +722,20 @@ export default function AdminPageFabiano() {
                           }
                         />
                       </td>
+<td className="p-3 text-center">
+  <button
+    onClick={() => {
+      setImgProduto(r);
+      setImgTextarea(
+        normalizeImgs(r.imagens).join("\n")
+      );
+      setImgModalOpen(true);
+    }}
+    className="px-3 py-1 rounded-xl border bg-white hover:bg-gray-50 text-xs font-semibold"
+  >
+    Editar
+  </button>
+</td>
 
                       <td className="p-3">
                         <div className="flex items-center gap-3">
@@ -983,6 +1017,114 @@ export default function AdminPageFabiano() {
           </div>
         </div>
       )}
+
+      {imgModalOpen && imgProduto && (
+  <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center px-4">
+    <div className="bg-white rounded-2xl w-full max-w-3xl p-6 shadow-xl">
+      <h3 className="text-xl font-bold text-blue-700 mb-1">
+        Imagens — {imgProduto.nome}
+      </h3>
+
+      <p className="text-sm text-gray-600 mb-4">
+        Cole URLs (http/https), uma por linha.  
+        A primeira será a imagem principal.
+      </p>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {/* Preview */}
+        <div className="border rounded-xl p-3">
+          <div className="text-xs text-gray-600 mb-2">Preview (principal)</div>
+          <div className="w-full h-48 bg-gray-100 rounded-xl flex items-center justify-center overflow-hidden">
+            <Image
+              src={
+                normalizeImgs(imgTextarea)[0] ||
+                "/produtos/caixa-padrao.png"
+              }
+              alt="Preview"
+              width={220}
+              height={220}
+              className="object-contain"
+            />
+          </div>
+        </div>
+
+        {/* Editor */}
+        <div>
+          <textarea
+            value={imgTextarea}
+            onChange={(e) => setImgTextarea(e.target.value)}
+            rows={7}
+            className="w-full border rounded-xl px-3 py-2 text-sm"
+            placeholder={`https://...\nhttps://...`}
+          />
+
+          <div className="mt-3 flex justify-between items-center">
+            <button
+              onClick={() => {
+                setImgTextarea("");
+              }}
+              className="text-sm px-3 py-1 rounded-xl border bg-white hover:bg-gray-50"
+            >
+              Limpar
+            </button>
+
+            <div className="flex gap-2">
+              <button
+                onClick={() => setImgModalOpen(false)}
+                className="px-4 py-2 rounded-xl border bg-white hover:bg-gray-50 font-semibold"
+              >
+                Cancelar
+              </button>
+
+              <button
+                disabled={imgSaving}
+                onClick={async () => {
+                  const imgs = urlsToJsonb(imgTextarea);
+
+                  setImgSaving(true);
+                  try {
+                    const { error } = await supabase
+                      .from(WRITE_TABLE)
+                      .upsert(
+                        {
+                          farmacia_slug: FARMACIA_SLUG,
+                          produto_id: imgProduto.produto_id,
+                          imagens: imgs, // 👈 JSONB PERFEITO
+                        },
+                        { onConflict: "farmacia_slug,produto_id" }
+                      );
+
+                    if (error) throw error;
+
+                    // Atualiza tela
+                    setRows((prev) =>
+                      prev.map((x) =>
+                        x.produto_id === imgProduto.produto_id
+                          ? { ...x, imagens: imgs }
+                          : x
+                      )
+                    );
+
+                    toast("✅ Imagens salvas");
+                    setImgModalOpen(false);
+                  } catch (e: any) {
+                    alert(e.message || "Erro ao salvar imagens");
+                  } finally {
+                    setImgSaving(false);
+                  }
+                }}
+                className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl font-semibold"
+              >
+                {imgSaving ? "Salvando..." : "Salvar Imagens"}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+)}
+
     </main>
   );
 }
