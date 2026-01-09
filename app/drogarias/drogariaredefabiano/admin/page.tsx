@@ -15,7 +15,7 @@ const SENHA_ADMIN = "102030";
 const VIEW = "fv_produtos_loja_view";
 const WRITE_TABLE = "fv_farmacia_produtos";
 
-// ✅ 50 itens por tela (paginação)
+// ✅ 50 itens por tela
 const PAGE_SIZE = 50;
 
 type ViewRow = {
@@ -77,6 +77,19 @@ function stockBadge(n: number) {
   return "text-emerald-800 bg-emerald-50 border-emerald-200";
 }
 
+function cleanUrl(u: string) {
+  return (u || "").trim().replace(/\s+/g, "");
+}
+
+function isValidHttpUrl(u: string) {
+  try {
+    const x = new URL(u);
+    return x.protocol === "http:" || x.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
 export default function AdminPageFabiano() {
   const [autenticado, setAutenticado] = useState(false);
   const [senha, setSenha] = useState("");
@@ -84,7 +97,6 @@ export default function AdminPageFabiano() {
   const [carregando, setCarregando] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
-  // ✅ agora a tela carrega SÓ a página atual
   const [rows, setRows] = useState<RowUI[]>([]);
   const rowsRef = useRef<RowUI[]>([]);
   useEffect(() => {
@@ -98,10 +110,10 @@ export default function AdminPageFabiano() {
   const [somenteZerados, setSomenteZerados] = useState(false);
 
   // paginação
-  const [page, setPage] = useState(1); // 1..N
+  const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState<number>(0);
 
-  // seleção + massa (aplica só na página atual selecionada)
+  // seleção + massa
   const [selecionados, setSelecionados] = useState<Record<string, boolean>>({});
   const selecionadosIds = useMemo(
     () => Object.entries(selecionados).filter(([, v]) => v).map(([k]) => k),
@@ -112,8 +124,15 @@ export default function AdminPageFabiano() {
   const [massPreco, setMassPreco] = useState("");
   const [massAtivar, setMassAtivar] = useState<"nao" | "sim" | "">("");
 
-  // autosave debounce por produto
+  // autosave debounce
   const timersRef = useRef<Record<string, any>>({});
+
+  // ===== Modal Imagens =====
+  const [imgModalOpen, setImgModalOpen] = useState(false);
+  const [imgProdutoId, setImgProdutoId] = useState<string | null>(null);
+  const [imgNome, setImgNome] = useState<string>("");
+  const [imgList, setImgList] = useState<string[]>([]);
+  const [imgAddText, setImgAddText] = useState<string>("");
 
   function toast(s: string) {
     setToastMsg(s);
@@ -139,7 +158,7 @@ export default function AdminPageFabiano() {
   const canNext = page < totalPages;
 
   // ==========================
-  // ✅ FETCH SERVER-SIDE (paginação + filtros)
+  // FETCH server-side (paginado + filtros)
   // ==========================
   async function carregar(p = page) {
     try {
@@ -179,12 +198,10 @@ export default function AdminPageFabiano() {
       if (somenteAtivos) q = q.eq("disponivel_farmacia", true);
       if (somenteZerados) q = q.lte("estoque", 0);
 
-      // busca: se número (6+) -> EAN; senão -> nome/lab/apresentacao
       if (termo) {
         if (digits.length >= 6 && digits === termo.replace(/\s/g, "")) {
           q = q.ilike("ean", `%${digits}%`);
         } else {
-          // OR robusto
           const safe = termo.replace(/,/g, " ").trim();
           q = q.or(
             `nome.ilike.%${safe}%,laboratorio.ilike.%${safe}%,apresentacao.ilike.%${safe}%,ean.ilike.%${safe}%`
@@ -192,7 +209,6 @@ export default function AdminPageFabiano() {
         }
       }
 
-      // ordenação e paginação real
       q = q.order("nome", { ascending: true }).range(from, to);
 
       const { data, error, count } = await q;
@@ -208,8 +224,6 @@ export default function AdminPageFabiano() {
       })) as RowUI[];
 
       setRows(list);
-
-      // limpa seleção ao mudar página/filtro (pra não aplicar massa no item errado)
       setSelecionados({});
     } catch (e: any) {
       console.error(e);
@@ -219,17 +233,13 @@ export default function AdminPageFabiano() {
     }
   }
 
-  // ✅ quando autentica, carrega página 1
   useEffect(() => {
     if (!autenticado) return;
     setPage(1);
-    // carrega com page=1
-    // eslint-disable-next-line @typescript-eslint/no-floating-promises
     carregar(1);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autenticado]);
 
-  // ✅ debounce de filtros -> volta pra página 1 e recarrega
   useEffect(() => {
     if (!autenticado) return;
     const t = setTimeout(() => {
@@ -240,22 +250,19 @@ export default function AdminPageFabiano() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [busca, categoria, somenteAtivos, somenteZerados, autenticado]);
 
-  // ✅ quando muda página manualmente
   useEffect(() => {
     if (!autenticado) return;
     carregar(page);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page]);
 
-  // categorias: pra não baixar 17k só pra montar o select,
-  // vamos extrair categorias da página atual + deixar opção livre.
   const categorias = useMemo(() => {
     const set = new Set(rows.map((r) => r.categoria).filter(Boolean) as string[]);
     return Array.from(set).sort((a, b) => a.localeCompare(b));
   }, [rows]);
 
   // ==========================
-  // EDIÇÃO LOCAL + AUTOSAVE
+  // EDIÇÃO + AUTOSAVE
   // ==========================
   function setField(produto_id: string, patch: Partial<RowUI>, autosave = true) {
     setRows((prev) =>
@@ -269,7 +276,6 @@ export default function AdminPageFabiano() {
   function agendarSalvar(produto_id: string, ms = 650) {
     if (timersRef.current[produto_id]) clearTimeout(timersRef.current[produto_id]);
     timersRef.current[produto_id] = setTimeout(() => {
-      // eslint-disable-next-line @typescript-eslint/no-floating-promises
       salvarAgora(produto_id);
       timersRef.current[produto_id] = null;
     }, ms);
@@ -279,7 +285,10 @@ export default function AdminPageFabiano() {
     const row = rowsRef.current.find((r) => r.produto_id === produto_id);
     if (!row) return;
 
-    const payload = {
+    // ✅ salva também as imagens (jsonb) na tabela da farmácia
+    const imgs = normalizeImgs(row.imagens);
+
+    const payload: any = {
       farmacia_slug: FARMACIA_SLUG,
       produto_id: row.produto_id,
       ativo: !!row.disponivel_farmacia,
@@ -289,6 +298,7 @@ export default function AdminPageFabiano() {
       preco_promocional: row.preco_promocional == null ? null : Number(row.preco_promocional),
       percentual_off: row.percentual_off == null ? null : Number(row.percentual_off),
       destaque_home: !!row.destaque_home,
+      imagens: imgs.length ? imgs : null, // 👈 importante
     };
 
     setRows((prev) =>
@@ -345,13 +355,59 @@ export default function AdminPageFabiano() {
       })
     );
 
-    // salva apenas os selecionados da página atual
-    for (const id of selecionadosIds) {
-      // eslint-disable-next-line @typescript-eslint/no-floating-promises
-      await salvarAgora(id);
+    for (const id of selecionadosIds) await salvarAgora(id);
+    toast("✅ Massa aplicada");
+  }
+
+  // ==========================
+  // MODAL IMAGENS
+  // ==========================
+  function abrirModalImagens(r: RowUI) {
+    setImgProdutoId(r.produto_id);
+    setImgNome(String(r.nome || "Produto"));
+    setImgList(normalizeImgs(r.imagens));
+    setImgAddText("");
+    setImgModalOpen(true);
+  }
+
+  function fecharModalImagens() {
+    setImgModalOpen(false);
+    setImgProdutoId(null);
+    setImgNome("");
+    setImgList([]);
+    setImgAddText("");
+  }
+
+  function aplicarImagensNoRow() {
+    if (!imgProdutoId) return;
+    // grava no state do produto e já agenda salvar
+    setField(imgProdutoId, { imagens: imgList }, true);
+    toast("🖼️ Imagens atualizadas");
+    fecharModalImagens();
+  }
+
+  function addFromTextarea() {
+    const lines = (imgAddText || "")
+      .split("\n")
+      .map((x) => cleanUrl(x))
+      .filter(Boolean);
+
+    if (lines.length === 0) return;
+
+    const valid = lines.filter((u) => isValidHttpUrl(u));
+    const invalid = lines.filter((u) => !isValidHttpUrl(u));
+
+    if (invalid.length > 0) {
+      alert("Algumas URLs são inválidas (precisam começar com http/https). Ajuste e tente novamente.");
+      return;
     }
 
-    toast("✅ Massa aplicada");
+    setImgList((prev) => {
+      const set = new Set(prev);
+      valid.forEach((u) => set.add(u));
+      return Array.from(set);
+    });
+    setImgAddText("");
   }
 
   // ==========================
@@ -362,7 +418,7 @@ export default function AdminPageFabiano() {
       <main className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
         <div className="bg-white p-6 rounded-2xl shadow-md w-full max-w-sm text-center border">
           <h2 className="text-xl font-bold mb-1 text-blue-700">Admin — Drogaria Rede Fabiano</h2>
-          <p className="text-sm text-gray-600 mb-4">Controle de estoque / preço / ativo</p>
+          <p className="text-sm text-gray-600 mb-4">Controle de estoque / preço / ativo / imagens</p>
 
           <input
             type="password"
@@ -390,7 +446,7 @@ export default function AdminPageFabiano() {
           <div>
             <h1 className="text-2xl sm:text-3xl font-bold text-blue-700">Administração — {FARMACIA_SLUG}</h1>
             <p className="text-sm text-gray-600">
-              50 itens por página. Pesquise para achar no catálogo (17k+). Salva automático e também manual.
+              50 itens por página. Pesquise (17k+). Autosave + manual. Agora com edição de imagens.
             </p>
           </div>
 
@@ -471,6 +527,7 @@ export default function AdminPageFabiano() {
             </div>
           </div>
 
+          avoid{" "}
           <div className="mt-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
             <div className="text-sm text-gray-700">
               Total encontrados: <b>{totalCount}</b> • Página <b>{page}</b> / <b>{totalPages}</b>
@@ -560,7 +617,7 @@ export default function AdminPageFabiano() {
 
         {/* tabela */}
         <div className="mt-4 bg-white border rounded-2xl shadow-sm overflow-x-auto">
-          <table className="min-w-[1200px] w-full text-sm">
+          <table className="min-w-[1320px] w-full text-sm">
             <thead className="bg-blue-50 border-b text-gray-700">
               <tr>
                 <th className="p-3 text-left">Sel</th>
@@ -574,6 +631,7 @@ export default function AdminPageFabiano() {
                 <th className="p-3 text-center">Promo</th>
                 <th className="p-3 text-right">Preço Promo</th>
                 <th className="p-3 text-right">% Off</th>
+                <th className="p-3 text-center">Imagem</th>
                 <th className="p-3 text-center">Salvar</th>
               </tr>
             </thead>
@@ -581,7 +639,7 @@ export default function AdminPageFabiano() {
             <tbody>
               {carregando && (
                 <tr>
-                  <td colSpan={12} className="p-6 text-center text-gray-600">
+                  <td colSpan={13} className="p-6 text-center text-gray-600">
                     Carregando...
                   </td>
                 </tr>
@@ -589,7 +647,7 @@ export default function AdminPageFabiano() {
 
               {!carregando && rows.length === 0 && (
                 <tr>
-                  <td colSpan={12} className="p-6 text-center text-gray-600">
+                  <td colSpan={13} className="p-6 text-center text-gray-600">
                     Nada encontrado.
                   </td>
                 </tr>
@@ -701,9 +759,7 @@ export default function AdminPageFabiano() {
                           step="0.01"
                           value={r.preco_promocional ?? ""}
                           onChange={(e) =>
-                            setField(r.produto_id, {
-                              preco_promocional: e.target.value === "" ? null : Number(e.target.value),
-                            })
+                            setField(r.produto_id, { preco_promocional: e.target.value === "" ? null : Number(e.target.value) })
                           }
                           className="border rounded-xl px-2 py-1 w-32 text-right"
                           placeholder="R$"
@@ -721,6 +777,16 @@ export default function AdminPageFabiano() {
                           className="border rounded-xl px-2 py-1 w-24 text-right"
                           placeholder="%"
                         />
+                      </td>
+
+                      <td className="p-3 text-center">
+                        <button
+                          onClick={() => abrirModalImagens(r)}
+                          className="px-3 py-1 rounded-xl text-xs font-semibold border bg-white hover:bg-gray-50"
+                          title="Editar / adicionar imagens (URLs)"
+                        >
+                          🖼️ Editar
+                        </button>
                       </td>
 
                       <td className="p-3 text-center">
@@ -746,10 +812,139 @@ export default function AdminPageFabiano() {
           </table>
 
           <div className="p-4 border-t text-xs text-gray-600">
-            ✅ 50 itens por página • busca server-side • sem travar navegador • autosave com debounce + botão manual por linha.
+            ✅ 50 itens por página • busca server-side • autosave com debounce + botão manual por linha • imagens por loja.
           </div>
         </div>
       </div>
+
+      {/* MODAL IMAGENS */}
+      {imgModalOpen && (
+        <div className="fixed inset-0 z-[9999] bg-black/60 flex items-center justify-center px-3">
+          <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden">
+            <div className="p-4 border-b flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h3 className="text-lg font-bold text-blue-700 truncate">🖼️ Imagens — {imgNome}</h3>
+                <p className="text-xs text-gray-500">
+                  Cole URLs (http/https). Uma por linha. A primeira vira a “imagem principal”.
+                </p>
+              </div>
+              <button onClick={fecharModalImagens} className="text-gray-500 hover:text-gray-800 text-xl">
+                ×
+              </button>
+            </div>
+
+            <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="border rounded-xl p-3">
+                <div className="text-sm font-semibold text-gray-700 mb-2">Preview (principal)</div>
+                <div className="w-full h-52 bg-gray-50 border rounded-xl flex items-center justify-center overflow-hidden">
+                  <Image
+                    src={imgList[0] || "/produtos/caixa-padrao.png"}
+                    alt="Preview"
+                    width={420}
+                    height={260}
+                    className="object-contain"
+                  />
+                </div>
+
+                <div className="mt-3">
+                  <label className="text-xs text-gray-600 font-semibold">Adicionar URLs</label>
+                  <textarea
+                    value={imgAddText}
+                    onChange={(e) => setImgAddText(e.target.value)}
+                    placeholder={"https://.../img1.png\nhttps://.../img2.png"}
+                    className="w-full border rounded-xl p-2 text-sm min-h-[110px]"
+                  />
+                  <button
+                    onClick={addFromTextarea}
+                    className="mt-2 w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-xl font-semibold"
+                  >
+                    ➕ Adicionar
+                  </button>
+                </div>
+              </div>
+
+              <div className="border rounded-xl p-3">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-sm font-semibold text-gray-700">Lista ({imgList.length})</div>
+                  <button
+                    onClick={() => setImgList([])}
+                    className="text-xs px-2 py-1 rounded-lg border bg-white hover:bg-gray-50"
+                    title="Limpar todas"
+                  >
+                    Limpar
+                  </button>
+                </div>
+
+                {imgList.length === 0 ? (
+                  <div className="text-sm text-gray-500">Sem imagens cadastradas.</div>
+                ) : (
+                  <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1">
+                    {imgList.map((u, idx) => (
+                      <div key={`${u}-${idx}`} className="flex items-center gap-2 border rounded-xl p-2">
+                        <div className="w-12 h-12 bg-gray-50 border rounded-lg overflow-hidden flex items-center justify-center">
+                          <Image src={u} alt="img" width={48} height={48} className="object-contain" />
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+                          <div className="text-xs text-gray-600 truncate">{u}</div>
+                          <div className="text-[11px] text-gray-400">{idx === 0 ? "Principal" : `#${idx + 1}`}</div>
+                        </div>
+
+                        <div className="flex gap-1">
+                          <button
+                            disabled={idx === 0}
+                            onClick={() => {
+                              setImgList((prev) => {
+                                const copy = [...prev];
+                                const [item] = copy.splice(idx, 1);
+                                copy.unshift(item);
+                                return copy;
+                              });
+                            }}
+                            className={`text-xs px-2 py-1 rounded-lg border ${
+                              idx === 0 ? "bg-gray-50 text-gray-400" : "bg-white hover:bg-gray-50"
+                            }`}
+                            title="Tornar principal"
+                          >
+                            ↑
+                          </button>
+
+                          <button
+                            onClick={() => setImgList((prev) => prev.filter((x) => x !== u))}
+                            className="text-xs px-2 py-1 rounded-lg border bg-white hover:bg-gray-50 text-red-600"
+                            title="Remover"
+                          >
+                            🗑️
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="mt-3 text-[11px] text-gray-500">
+                  Dica: se quiser “trocar” a imagem, torne a desejada principal (↑).
+                </div>
+              </div>
+            </div>
+
+            <div className="p-4 border-t flex flex-col sm:flex-row gap-2 justify-end">
+              <button
+                onClick={fecharModalImagens}
+                className="px-4 py-2 rounded-xl border bg-white hover:bg-gray-50 font-semibold"
+              >
+                Cancelar
+              </button>
+              <button
+                onClick={aplicarImagensNoRow}
+                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
+              >
+                ✅ Salvar Imagens
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
