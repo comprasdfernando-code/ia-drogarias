@@ -489,21 +489,42 @@ export default function PDVPageFabiano() {
   // ==========================
   // CONSULTA (admin)
   // ==========================
-  async function carregarVendas() {
-    const { data, error } = await supabase
-      .from("vendas")
-      .select("*")
-      .eq("loja_slug", LOJA_SLUG)
-      .order("created_at", { ascending: false })
-      .limit(300);
+  async function carregarVendas(termo: string = "") {
+  const termoLimpo = termo.trim();
 
-    if (error) {
-      console.error(error);
-      alert("Erro ao carregar vendas!");
-      return;
-    }
-    setVendas(data || []);
+  const query = supabase
+    .from("fv_produtos_loja_view")
+    .select(`
+      produto_id,
+      ean,
+      nome,
+      categoria,
+      imagens,
+      estoque,
+      preco_venda,
+      disponivel_farmacia
+    `)
+    .eq("farmacia_slug", LOJA_SLUG)
+    .eq("disponivel_farmacia", true)
+    .order("nome", { ascending: true })
+    .limit(30);
+
+  // só aplica o ilike se tiver termo
+  if (termoLimpo) {
+    query.ilike("nome", `%${termoLimpo}%`);
   }
+
+  const { data, error } = await query;
+
+  if (error) {
+    console.error(error);
+    alert("Erro ao carregar vendas!");
+    return;
+  }
+
+  setVendas(data || []);
+}
+
 
   async function buscarPorData() {
     if (!filtroData) {
