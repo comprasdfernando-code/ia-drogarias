@@ -15,8 +15,6 @@ const SENHA_ADMIN = "102030";
 const VIEW = "fv_produtos_loja_view";
 const WRITE_TABLE = "fv_farmacia_produtos";
 
-
-
 // ✅ 50 itens por tela
 const PAGE_SIZE = 50;
 
@@ -59,18 +57,14 @@ function brl(n: number) {
 function normalizeImgs(v: any): string[] {
   if (!v) return [];
   if (Array.isArray(v)) return v.map(String).filter(Boolean);
+
   if (typeof v === "string") {
     try {
       const parsed = JSON.parse(v);
       if (Array.isArray(parsed)) return parsed.map(String).filter(Boolean);
     } catch {}
   }
-  // se vier jsonb como objeto (raro), tenta extrair
-  if (typeof v === "object") {
-    try {
-      if (Array.isArray(v)) return v.map(String).filter(Boolean);
-    } catch {}
-  }
+
   return [];
 }
 
@@ -89,13 +83,6 @@ function cleanUrl(u: string) {
   return (u || "").trim().replace(/\s+/g, "");
 }
 
-function urlsToJsonb(text: string): string[] {
-  return text
-    .split("\n")
-    .map((l) => l.trim())
-    .filter((l) => l.startsWith("http"));
-}
-
 function isValidHttpUrl(u: string) {
   try {
     const x = new URL(u);
@@ -105,9 +92,24 @@ function isValidHttpUrl(u: string) {
   }
 }
 
+function urlsToJsonb(text: string): string[] {
+  const lines = (text || "")
+    .split("\n")
+    .map((l) => cleanUrl(l))
+    .filter(Boolean);
+
+  const valid = lines.filter((u) => isValidHttpUrl(u));
+  return Array.from(new Set(valid));
+}
+
 // escapa % e _ para ilike (e remove vírgulas pra não quebrar o .or do PostgREST)
 function escapeForILike(term: string) {
-  return term.replaceAll("\\", "\\\\").replaceAll("%", "\\%").replaceAll("_", "\\_").replace(/,+/g, " ").trim();
+  return term
+    .replaceAll("\\", "\\\\")
+    .replaceAll("%", "\\%")
+    .replaceAll("_", "\\_")
+    .replace(/,+/g, " ")
+    .trim();
 }
 
 export default function AdminPageFabiano() {
@@ -133,8 +135,6 @@ export default function AdminPageFabiano() {
   const [page, setPage] = useState(1);
   const [totalCount, setTotalCount] = useState<number>(0);
 
-  
-
   // seleção + massa
   const [selecionados, setSelecionados] = useState<Record<string, boolean>>({});
   const selecionadosIds = useMemo(
@@ -149,17 +149,11 @@ export default function AdminPageFabiano() {
   // autosave debounce
   const timersRef = useRef<Record<string, any>>({});
 
-  // ===== Modal Imagens =====
+  // ===== Modal (ÚNICO) Imagens =====
   const [imgModalOpen, setImgModalOpen] = useState(false);
-  const [imgProdutoId, setImgProdutoId] = useState<string | null>(null);
-  const [imgNome, setImgNome] = useState<string>("");
-  const [imgList, setImgList] = useState<string[]>([]);
-  const [imgAddText, setImgAddText] = useState<string>("");
-
-const [imgProduto, setImgProduto] = useState<RowUI | null>(null);
-const [imgTextarea, setImgTextarea] = useState("");
-const [imgSaving, setImgSaving] = useState(false);
-
+  const [imgProduto, setImgProduto] = useState<RowUI | null>(null);
+  const [imgTextarea, setImgTextarea] = useState("");
+  const [imgSaving, setImgSaving] = useState(false);
 
   function toast(s: string) {
     setToastMsg(s);
@@ -227,12 +221,9 @@ const [imgSaving, setImgSaving] = useState(false);
 
       if (termo) {
         if (digits.length >= 6 && digits === termo.replace(/\s/g, "")) {
-          // EAN
           q = q.ilike("ean", `%${digits}%`);
         } else {
           const safe = escapeForILike(termo);
-          // Observação: o .or usa vírgulas como separador. Por isso removemos vírgulas acima.
-          // Também escapamos % e _ (ilike).
           q = q.or(
             `nome.ilike.%${safe}%,laboratorio.ilike.%${safe}%,apresentacao.ilike.%${safe}%,ean.ilike.%${safe}%`
           );
@@ -316,7 +307,6 @@ const [imgSaving, setImgSaving] = useState(false);
     const row = rowsRef.current.find((r) => r.produto_id === produto_id);
     if (!row) return;
 
-    // ✅ salva também as imagens (jsonb)
     const imgs = normalizeImgs(row.imagens);
 
     const payload: any = {
@@ -329,7 +319,7 @@ const [imgSaving, setImgSaving] = useState(false);
       preco_promocional: row.preco_promocional == null ? null : Number(row.preco_promocional),
       percentual_off: row.percentual_off == null ? null : Number(row.percentual_off),
       destaque_home: !!row.destaque_home,
-      imagens: imgs.length ? imgs : null, // 👈 jsonb array ou null
+      imagens: imgs.length ? imgs : null,
     };
 
     setRows((prev) =>
@@ -391,59 +381,71 @@ const [imgSaving, setImgSaving] = useState(false);
   }
 
   // ==========================
-  // MODAL IMAGENS
+  // MODAL IMAGENS (ÚNICO)
   // ==========================
   function abrirModalImagens(r: RowUI) {
-    setImgProdutoId(r.produto_id);
-    setImgNome(String(r.nome || "Produto"));
-    setImgList(normalizeImgs(r.imagens));
-    setImgAddText("");
+    setImgProduto(r);
+    setImgTextarea(normalizeImgs(r.imagens).join("\n"));
     setImgModalOpen(true);
   }
 
   function fecharModalImagens() {
     setImgModalOpen(false);
-    setImgProdutoId(null);
-    setImgNome("");
-    setImgList([]);
-    setImgAddText("");
+    setImgProduto(null);
+    setImgTextarea("");
+    setImgSaving(false);
   }
 
-  function aplicarImagensNoRow() {
-    if (!imgProdutoId) return;
-    // grava no state do produto e já agenda salvar (upsert)
-    setField(imgProdutoId, { imagens: imgList }, true);
-    toast("🖼️ Imagens atualizadas");
-    fecharModalImagens();
-  }
+  async function salvarImagensDoModal() {
+    if (!imgProduto) return;
 
-  function addFromTextarea() {
-    const lines = (imgAddText || "")
+    const imgs = urlsToJsonb(imgTextarea);
+
+    // se tiver linha inválida, avisa (pra você não salvar lixo)
+    const lines = (imgTextarea || "")
       .split("\n")
-      .map((x) => cleanUrl(x))
+      .map((l) => cleanUrl(l))
       .filter(Boolean);
 
-    if (lines.length === 0) return;
-
-    const valid = lines.filter((u) => isValidHttpUrl(u));
     const invalid = lines.filter((u) => !isValidHttpUrl(u));
-
     if (invalid.length > 0) {
-      alert("Algumas URLs são inválidas (precisam começar com http/https). Ajuste e tente novamente.");
+      alert("Tem URL inválida. Precisa começar com http/https.\n\nExemplo:\nhttps://.../dorflex.png");
       return;
     }
 
-    setImgList((prev) => {
-      const set = new Set(prev);
-      valid.forEach((u) => set.add(u));
-      return Array.from(set);
-    });
+    setImgSaving(true);
 
-    setImgAddText("");
-  }
+    try {
+      const { error } = await supabase
+        .from(WRITE_TABLE)
+        .upsert(
+          {
+            farmacia_slug: FARMACIA_SLUG,
+            produto_id: imgProduto.produto_id,
+            imagens: imgs.length ? imgs : null, // 👈 salva como JSONB array (ou null)
+          },
+          { onConflict: "farmacia_slug,produto_id" }
+        );
 
-  function removeImgByIndex(idx: number) {
-    setImgList((prev) => prev.filter((_, i) => i !== idx));
+      if (error) throw error;
+
+      // atualiza tela (e também o rowsRef vai acompanhar via useEffect)
+      setRows((prev) =>
+        prev.map((x) =>
+          x.produto_id === imgProduto.produto_id
+            ? { ...x, imagens: imgs.length ? imgs : null, _dirty: false, _error: null }
+            : x
+        )
+      );
+
+      toast("✅ Imagens salvas");
+      fecharModalImagens();
+    } catch (e: any) {
+      console.error(e);
+      alert(e?.message || "Erro ao salvar imagens");
+    } finally {
+      setImgSaving(false);
+    }
   }
 
   // ==========================
@@ -480,12 +482,8 @@ const [imgSaving, setImgSaving] = useState(false);
       <div className="max-w-7xl mx-auto">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-blue-700">
-              Administração — {FARMACIA_SLUG}
-            </h1>
-            <p className="text-sm text-gray-600">
-              50 itens por página. Pesquise (17k+). Autosave + manual. Edição de imagens por item.
-            </p>
+            <h1 className="text-2xl sm:text-3xl font-bold text-blue-700">Administração — {FARMACIA_SLUG}</h1>
+            <p className="text-sm text-gray-600">50 itens por página • autosave + botão manual • imagens por item.</p>
           </div>
 
           <div className="flex gap-2">
@@ -550,25 +548,16 @@ const [imgSaving, setImgSaving] = useState(false);
                   </option>
                 ))}
               </select>
-              <div className="text-[11px] text-gray-500 mt-1">Dica: pesquise e depois selecione.</div>
             </div>
 
             <div className="md:col-span-2 flex items-end gap-3">
               <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={somenteAtivos}
-                  onChange={(e) => setSomenteAtivos(e.target.checked)}
-                />
+                <input type="checkbox" checked={somenteAtivos} onChange={(e) => setSomenteAtivos(e.target.checked)} />
                 Somente ativos
               </label>
 
               <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={somenteZerados}
-                  onChange={(e) => setSomenteZerados(e.target.checked)}
-                />
+                <input type="checkbox" checked={somenteZerados} onChange={(e) => setSomenteZerados(e.target.checked)} />
                 Só zerados
               </label>
             </div>
@@ -610,16 +599,10 @@ const [imgSaving, setImgSaving] = useState(false);
               <label className="text-sm font-semibold text-gray-700">
                 Selecionados (página): <span className="text-blue-700">{selecionadosIds.length}</span>
               </label>
-              <button
-                onClick={() => toggleAll(true)}
-                className="text-sm px-3 py-1 rounded-xl border bg-white hover:bg-gray-50"
-              >
+              <button onClick={() => toggleAll(true)} className="text-sm px-3 py-1 rounded-xl border bg-white hover:bg-gray-50">
                 Marcar todos (página)
               </button>
-              <button
-                onClick={() => toggleAll(false)}
-                className="text-sm px-3 py-1 rounded-xl border bg-white hover:bg-gray-50"
-              >
+              <button onClick={() => toggleAll(false)} className="text-sm px-3 py-1 rounded-xl border bg-white hover:bg-gray-50">
                 Desmarcar
               </button>
             </div>
@@ -651,10 +634,7 @@ const [imgSaving, setImgSaving] = useState(false);
                 <option value="nao">Inativar</option>
               </select>
 
-              <button
-                onClick={aplicarEmMassa}
-                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-semibold"
-              >
+              <button onClick={aplicarEmMassa} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-semibold">
                 Aplicar
               </button>
             </div>
@@ -679,14 +659,10 @@ const [imgSaving, setImgSaving] = useState(false);
                 <th className="p-3 text-right">% Off</th>
                 <th className="p-3 text-center">Imagem</th>
                 <th className="p-3 text-center">Salvar</th>
-                <th className="p-3 text-center">Imagem</th>
-
               </tr>
             </thead>
 
             <tbody>
-
-              
               {carregando && (
                 <tr>
                   <td colSpan={13} className="p-6 text-center text-gray-600">
@@ -722,20 +698,6 @@ const [imgSaving, setImgSaving] = useState(false);
                           }
                         />
                       </td>
-<td className="p-3 text-center">
-  <button
-    onClick={() => {
-      setImgProduto(r);
-      setImgTextarea(
-        normalizeImgs(r.imagens).join("\n")
-      );
-      setImgModalOpen(true);
-    }}
-    className="px-3 py-1 rounded-xl border bg-white hover:bg-gray-50 text-xs font-semibold"
-  >
-    Editar
-  </button>
-</td>
 
                       <td className="p-3">
                         <div className="flex items-center gap-3">
@@ -855,7 +817,7 @@ const [imgSaving, setImgSaving] = useState(false);
                         <button
                           onClick={() => abrirModalImagens(r)}
                           className="px-3 py-1 rounded-xl text-xs font-semibold border bg-white hover:bg-gray-50"
-                          title="Editar / adicionar imagens (URLs)"
+                          title="Editar imagens (salva como JSONB array)"
                         >
                           🖼️ Editar
                         </button>
@@ -884,20 +846,20 @@ const [imgSaving, setImgSaving] = useState(false);
           </table>
 
           <div className="p-4 border-t text-xs text-gray-600">
-            ✅ 50 itens por página • busca server-side • autosave com debounce + botão manual por linha • imagens por loja.
+            ✅ imagens salvam como <code>["https://.../dorflex.png"]</code> (jsonb array) na <b>{WRITE_TABLE}</b>.
           </div>
         </div>
       </div>
 
-      {/* MODAL IMAGENS */}
-      {imgModalOpen && (
+      {/* MODAL IMAGENS (ÚNICO) */}
+      {imgModalOpen && imgProduto && (
         <div className="fixed inset-0 z-[9999] bg-black/60 flex items-center justify-center px-3">
-          <div className="bg-white w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden">
+          <div className="bg-white w-full max-w-3xl rounded-2xl shadow-2xl overflow-hidden">
             <div className="p-4 border-b flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <h3 className="text-lg font-bold text-blue-700 truncate">🖼️ Imagens — {imgNome}</h3>
+                <h3 className="text-lg font-bold text-blue-700 truncate">🖼️ Imagens — {imgProduto.nome || "Produto"}</h3>
                 <p className="text-xs text-gray-500">
-                  Cole URLs (http/https). Uma por linha. A primeira vira a “imagem principal”.
+                  Cole URLs (http/https). Uma por linha. A primeira vira a principal. (Salva como JSONB array)
                 </p>
               </div>
               <button onClick={fecharModalImagens} className="text-gray-500 hover:text-gray-800 text-xl">
@@ -906,225 +868,73 @@ const [imgSaving, setImgSaving] = useState(false);
             </div>
 
             <div className="p-4 grid grid-cols-1 md:grid-cols-2 gap-4">
+              {/* Preview */}
               <div className="border rounded-xl p-3">
                 <div className="text-sm font-semibold text-gray-700 mb-2">Preview (principal)</div>
-                <div className="w-full h-52 bg-gray-50 border rounded-xl flex items-center justify-center overflow-hidden">
+                <div className="w-full h-56 bg-gray-50 border rounded-xl flex items-center justify-center overflow-hidden">
                   <Image
-                    src={imgList[0] || "/produtos/caixa-padrao.png"}
+                    src={urlsToJsonb(imgTextarea)[0] || "/produtos/caixa-padrao.png"}
                     alt="Preview"
-                    width={420}
-                    height={260}
+                    width={520}
+                    height={320}
                     className="object-contain"
                   />
                 </div>
 
-                <div className="mt-3">
-                  <label className="text-xs text-gray-600 font-semibold">Adicionar URLs</label>
-                  <textarea
-                    value={imgAddText}
-                    onChange={(e) => setImgAddText(e.target.value)}
-                    placeholder={"https://.../img1.png\nhttps://.../img2.png"}
-                    className="w-full border rounded-xl p-2 text-sm min-h-[110px]"
-                  />
-                  <button
-                    onClick={addFromTextarea}
-                    className="mt-2 w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-xl font-semibold"
-                  >
-                    ➕ Adicionar
-                  </button>
+                <div className="mt-3 text-xs text-gray-500">
+                  Exemplo:
+                  <div className="mt-1 font-mono text-[11px] bg-gray-50 border rounded-lg p-2">
+                    ["https://skzcvpkmcktjryvstcti.supabase.co/storage/v1/object/public/produtos/dorflex.png"]
+                  </div>
                 </div>
               </div>
 
+              {/* Editor */}
               <div className="border rounded-xl p-3">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="text-sm font-semibold text-gray-700">Lista ({imgList.length})</div>
+                <div className="text-sm font-semibold text-gray-700 mb-2">URLs (1 por linha)</div>
+                <textarea
+                  value={imgTextarea}
+                  onChange={(e) => setImgTextarea(e.target.value)}
+                  placeholder={"https://.../img1.png\nhttps://.../img2.png"}
+                  className="w-full border rounded-xl p-2 text-sm min-h-[180px]"
+                />
+
+                <div className="mt-3 flex items-center justify-between gap-2">
                   <button
-                    onClick={() => setImgList([])}
-                    className="text-xs px-2 py-1 rounded-lg border bg-white hover:bg-gray-50"
-                    title="Limpar todas"
+                    onClick={() => setImgTextarea("")}
+                    className="text-xs px-3 py-2 rounded-xl border bg-white hover:bg-gray-50 font-semibold"
                   >
                     Limpar
                   </button>
-                </div>
 
-                {imgList.length === 0 ? (
-                  <div className="text-sm text-gray-500">Sem imagens cadastradas.</div>
-                ) : (
-                  <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1">
-                    {imgList.map((u, idx) => (
-                      <div key={`${u}-${idx}`} className="flex items-center gap-2 border rounded-xl p-2">
-                        <div className="w-12 h-12 bg-gray-50 border rounded-lg overflow-hidden flex items-center justify-center">
-                          <Image src={u} alt="img" width={48} height={48} className="object-contain" />
-                        </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={fecharModalImagens}
+                      className="px-4 py-2 rounded-xl border bg-white hover:bg-gray-50 font-semibold"
+                    >
+                      Cancelar
+                    </button>
 
-                        <div className="min-w-0 flex-1">
-                          <div className="text-xs text-gray-600 truncate">{u}</div>
-                          <div className="text-[11px] text-gray-400">{idx === 0 ? "Principal" : `#${idx + 1}`}</div>
-                        </div>
-
-                        <div className="flex gap-1">
-                          <button
-                            disabled={idx === 0}
-                            onClick={() => {
-                              setImgList((prev) => {
-                                const copy = [...prev];
-                                const [item] = copy.splice(idx, 1);
-                                copy.unshift(item);
-                                return copy;
-                              });
-                            }}
-                            className={`text-xs px-2 py-1 rounded-lg border ${
-                              idx === 0 ? "bg-gray-50 text-gray-400" : "bg-white hover:bg-gray-50"
-                            }`}
-                            title="Tornar principal"
-                          >
-                            ↑
-                          </button>
-
-                          <button
-                            onClick={() => removeImgByIndex(idx)}
-                            className="text-xs px-2 py-1 rounded-lg border bg-white hover:bg-gray-50 text-red-600"
-                            title="Remover"
-                          >
-                            🗑️
-                          </button>
-                        </div>
-                      </div>
-                    ))}
+                    <button
+                      onClick={salvarImagensDoModal}
+                      disabled={imgSaving}
+                      className={`px-4 py-2 rounded-xl font-semibold text-white ${
+                        imgSaving ? "bg-emerald-300" : "bg-emerald-600 hover:bg-emerald-700"
+                      }`}
+                    >
+                      {imgSaving ? "Salvando..." : "✅ Salvar Imagens"}
+                    </button>
                   </div>
-                )}
+                </div>
 
                 <div className="mt-3 text-[11px] text-gray-500">
-                  Dica: se quiser “trocar” a imagem, torne a desejada principal (↑).
+                  Dica: a primeira URL da lista é a que aparece no PDV.
                 </div>
               </div>
-            </div>
-
-            <div className="p-4 border-t flex flex-col sm:flex-row gap-2 justify-end">
-              <button
-                onClick={fecharModalImagens}
-                className="px-4 py-2 rounded-xl border bg-white hover:bg-gray-50 font-semibold"
-              >
-                Cancelar
-              </button>
-              <button
-                onClick={aplicarImagensNoRow}
-                className="px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-semibold"
-              >
-                ✅ Salvar Imagens
-              </button>
             </div>
           </div>
         </div>
       )}
-
-      {imgModalOpen && imgProduto && (
-  <div className="fixed inset-0 z-50 bg-black/40 flex items-center justify-center px-4">
-    <div className="bg-white rounded-2xl w-full max-w-3xl p-6 shadow-xl">
-      <h3 className="text-xl font-bold text-blue-700 mb-1">
-        Imagens — {imgProduto.nome}
-      </h3>
-
-      <p className="text-sm text-gray-600 mb-4">
-        Cole URLs (http/https), uma por linha.  
-        A primeira será a imagem principal.
-      </p>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        {/* Preview */}
-        <div className="border rounded-xl p-3">
-          <div className="text-xs text-gray-600 mb-2">Preview (principal)</div>
-          <div className="w-full h-48 bg-gray-100 rounded-xl flex items-center justify-center overflow-hidden">
-            <Image
-              src={
-                normalizeImgs(imgTextarea)[0] ||
-                "/produtos/caixa-padrao.png"
-              }
-              alt="Preview"
-              width={220}
-              height={220}
-              className="object-contain"
-            />
-          </div>
-        </div>
-
-        {/* Editor */}
-        <div>
-          <textarea
-            value={imgTextarea}
-            onChange={(e) => setImgTextarea(e.target.value)}
-            rows={7}
-            className="w-full border rounded-xl px-3 py-2 text-sm"
-            placeholder={`https://...\nhttps://...`}
-          />
-
-          <div className="mt-3 flex justify-between items-center">
-            <button
-              onClick={() => {
-                setImgTextarea("");
-              }}
-              className="text-sm px-3 py-1 rounded-xl border bg-white hover:bg-gray-50"
-            >
-              Limpar
-            </button>
-
-            <div className="flex gap-2">
-              <button
-                onClick={() => setImgModalOpen(false)}
-                className="px-4 py-2 rounded-xl border bg-white hover:bg-gray-50 font-semibold"
-              >
-                Cancelar
-              </button>
-
-              <button
-                disabled={imgSaving}
-                onClick={async () => {
-                  const imgs = urlsToJsonb(imgTextarea);
-
-                  setImgSaving(true);
-                  try {
-                    const { error } = await supabase
-                      .from(WRITE_TABLE)
-                      .upsert(
-                        {
-                          farmacia_slug: FARMACIA_SLUG,
-                          produto_id: imgProduto.produto_id,
-                          imagens: imgs, // 👈 JSONB PERFEITO
-                        },
-                        { onConflict: "farmacia_slug,produto_id" }
-                      );
-
-                    if (error) throw error;
-
-                    // Atualiza tela
-                    setRows((prev) =>
-                      prev.map((x) =>
-                        x.produto_id === imgProduto.produto_id
-                          ? { ...x, imagens: imgs }
-                          : x
-                      )
-                    );
-
-                    toast("✅ Imagens salvas");
-                    setImgModalOpen(false);
-                  } catch (e: any) {
-                    alert(e.message || "Erro ao salvar imagens");
-                  } finally {
-                    setImgSaving(false);
-                  }
-                }}
-                className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl font-semibold"
-              >
-                {imgSaving ? "Salvando..." : "Salvar Imagens"}
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-)}
-
     </main>
   );
 }
