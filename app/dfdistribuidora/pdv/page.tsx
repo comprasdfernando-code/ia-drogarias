@@ -13,9 +13,10 @@ const RPC_SEARCH = "df_search_produtos"; // se não existir, fallback
 const WHATS = "5511952068432";
 const TAXA_ENTREGA_FIXA = 10;
 
-const HOME_LIMIT = 10;        // ✅ deixa leve
-const SEARCH_LIMIT = 80;      // ✅ resultados da busca
-const SEARCH_DEBOUNCE = 350;  // ms
+const HOME_LIMIT = 10; // ✅ deixa leve
+const SEARCH_LIMIT = 80; // ✅ resultados da busca
+const SEARCH_DEBOUNCE = 350; // ms
+const ESTOQUE_LABEL_LOW = 5; // só pra badge "baixo"
 
 /* =========================
    TIPOS
@@ -34,6 +35,7 @@ type DFProduto = {
   destaque_home: boolean | null;
   ativo: boolean | null;
   imagens: string[] | null;
+  estoque: number | null;
 };
 
 type CartItem = {
@@ -50,7 +52,10 @@ type CartItem = {
 ========================= */
 function brl(v: number | null | undefined) {
   if (v === null || v === undefined || Number.isNaN(v)) return "—";
-  return Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  return Number(v).toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  });
 }
 
 function firstImg(imagens?: string[] | null) {
@@ -69,7 +74,11 @@ function precoFinal(p: DFProduto) {
   const promo = Number(p.preco_promocional || 0);
   const emPromo = !!p.em_promocao && promo > 0 && (!pmc || promo < pmc);
   const final = emPromo ? promo : pmc;
-  const off = emPromo ? (p.percentual_off && p.percentual_off > 0 ? p.percentual_off : calcOff(pmc, promo)) : 0;
+  const off = emPromo
+    ? p.percentual_off && p.percentual_off > 0
+      ? p.percentual_off
+      : calcOff(pmc, promo)
+    : 0;
   return { emPromo, final, pmc, promo, off };
 }
 
@@ -80,6 +89,14 @@ function onlyDigits(v: string) {
 function waLink(phone: string, msg: string) {
   const clean = phone.replace(/\D/g, "");
   return `https://wa.me/${clean}?text=${encodeURIComponent(msg)}`;
+}
+
+function normalizeSearch(raw: string) {
+  return raw
+    .toLowerCase()
+    .replace(/(\d+)\s*(mg|ml|mcg|g|ui|iu)/gi, "$1 $2")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 /* =========================
@@ -103,15 +120,29 @@ export default function PDVDF() {
   const [clienteNome, setClienteNome] = useState("");
   const [clienteTelefone, setClienteTelefone] = useState("");
 
-  const [tipoEntrega, setTipoEntrega] = useState<"ENTREGA" | "RETIRADA">("ENTREGA");
+  const [tipoEntrega, setTipoEntrega] = useState<"ENTREGA" | "RETIRADA">(
+    "ENTREGA"
+  );
   const [endereco, setEndereco] = useState("");
   const [numero, setNumero] = useState("");
   const [bairro, setBairro] = useState("");
 
-  const [pagamento, setPagamento] = useState<"PIX" | "CARTAO" | "DINHEIRO" | "COMBINAR">("PIX");
+  const [pagamento, setPagamento] = useState<
+    "PIX" | "CARTAO" | "DINHEIRO" | "COMBINAR"
+  >("PIX");
+
   const taxaEntrega = tipoEntrega === "ENTREGA" ? TAXA_ENTREGA_FIXA : 0;
 
   const isSearching = !!busca.trim();
+  const lista = isSearching ? resultado : home;
+
+  // ✅ mapa de estoque por produto (pra travar inc/add no carrinho)
+  const estoqueById = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const p of home) m.set(p.id, Number(p.estoque ?? 0));
+    for (const p of resultado) m.set(p.id, Number(p.estoque ?? 0));
+    return m;
+  }, [home, resultado]);
 
   /* =========================
      HOME (10 itens)
@@ -121,10 +152,11 @@ export default function PDVDF() {
       try {
         setLoadingHome(true);
 
-        // ✅ pega poucos e bons: destaque/promo primeiro, depois nome
         const { data, error } = await supabase
           .from(PROD_TABLE)
-          .select("id,ean,nome,laboratorio,categoria,apresentacao,pmc,em_promocao,preco_promocional,percentual_off,destaque_home,ativo,imagens")
+          .select(
+            "id,ean,nome,laboratorio,categoria,apresentacao,pmc,em_promocao,preco_promocional,percentual_off,destaque_home,ativo,imagens,estoque"
+          )
           .eq("ativo", true)
           .order("destaque_home", { ascending: false })
           .order("em_promocao", { ascending: false })
@@ -158,25 +190,26 @@ export default function PDVDF() {
       setLoadingBusca(true);
 
       try {
-        const normalized = raw
-          .toLowerCase()
-          .replace(/(\d+)\s*(mg|ml|mcg|g|ui|iu)/gi, "$1 $2")
-          .replace(/\s+/g, " ")
-          .trim();
+        const normalized = normalizeSearch(raw);
 
-        // 1) tenta RPC (se você criar a função)
-        const { data, error } = await supabase.rpc(RPC_SEARCH, { q: normalized, lim: SEARCH_LIMIT });
+        // 1) tenta RPC (se existir)
+        const { data, error } = await supabase.rpc(RPC_SEARCH, {
+          q: normalized,
+          lim: SEARCH_LIMIT,
+        });
         if (error) throw error;
 
         setResultado(((data || []) as DFProduto[]) ?? []);
       } catch (e) {
-        // 2) fallback sem RPC (funciona sempre)
+        // 2) fallback sem RPC
         try {
           const digits = onlyDigits(raw);
 
           let query = supabase
             .from(PROD_TABLE)
-            .select("id,ean,nome,laboratorio,categoria,apresentacao,pmc,em_promocao,preco_promocional,percentual_off,destaque_home,ativo,imagens")
+            .select(
+              "id,ean,nome,laboratorio,categoria,apresentacao,pmc,em_promocao,preco_promocional,percentual_off,destaque_home,ativo,imagens,estoque"
+            )
             .eq("ativo", true)
             .limit(SEARCH_LIMIT);
 
@@ -186,7 +219,10 @@ export default function PDVDF() {
             query = query.ilike("nome", `%${raw}%`);
           }
 
-          const { data, error } = await query.order("em_promocao", { ascending: false }).order("nome", { ascending: true });
+          const { data, error } = await query
+            .order("em_promocao", { ascending: false })
+            .order("nome", { ascending: true });
+
           if (error) throw error;
 
           setResultado(((data || []) as DFProduto[]) ?? []);
@@ -204,9 +240,12 @@ export default function PDVDF() {
   }, [busca]);
 
   /* =========================
-     CARRINHO
+     CARRINHO (com trava de estoque)
   ========================= */
   function addProduto(p: DFProduto) {
+    const estoqueAtual = Number(p.estoque ?? 0);
+    if (estoqueAtual <= 0) return; // ✅ não adiciona
+
     const pr = precoFinal(p);
     const preco = Number(pr.final || 0);
 
@@ -214,18 +253,36 @@ export default function PDVDF() {
       const idx = prev.findIndex((x) => x.id === p.id);
       if (idx >= 0) {
         const copy = [...prev];
+        // ✅ trava para não passar do estoque
+        if (copy[idx].qtd >= estoqueAtual) return copy;
         copy[idx] = { ...copy[idx], qtd: copy[idx].qtd + 1, preco };
         return copy;
       }
       return [
         ...prev,
-        { id: p.id, ean: p.ean, nome: p.nome, imagem: firstImg(p.imagens), preco, qtd: 1 },
+        {
+          id: p.id,
+          ean: p.ean,
+          nome: p.nome,
+          imagem: firstImg(p.imagens),
+          preco,
+          qtd: 1,
+        },
       ];
     });
   }
 
   function inc(id: string) {
-    setCarrinho((prev) => prev.map((x) => (x.id === id ? { ...x, qtd: x.qtd + 1 } : x)));
+    const estoqueAtual = Number(estoqueById.get(id) ?? 0);
+    if (estoqueAtual <= 0) return;
+
+    setCarrinho((prev) =>
+      prev.map((x) => {
+        if (x.id !== id) return x;
+        if (x.qtd >= estoqueAtual) return x; // ✅ trava estoque
+        return { ...x, qtd: x.qtd + 1 };
+      })
+    );
   }
 
   function dec(id: string) {
@@ -240,10 +297,39 @@ export default function PDVDF() {
     setCarrinho((prev) => prev.filter((x) => x.id !== id));
   }
 
-  const subtotal = useMemo(() => carrinho.reduce((a, b) => a + b.preco * b.qtd, 0), [carrinho]);
+  function setQtd(id: string, qtd: number) {
+    const estoqueAtual = Number(estoqueById.get(id) ?? 0);
+    const alvo = Math.max(1, Math.floor(Number(qtd || 1)));
+    const travado = estoqueAtual > 0 ? Math.min(alvo, estoqueAtual) : 1;
+
+    setCarrinho((prev) =>
+      prev.map((x) => (x.id === id ? { ...x, qtd: travado } : x))
+    );
+  }
+
+  const subtotal = useMemo(
+    () => carrinho.reduce((a, b) => a + b.preco * b.qtd, 0),
+    [carrinho]
+  );
   const total = subtotal + taxaEntrega;
 
-  const qtdCarrinho = useMemo(() => carrinho.reduce((acc, it) => acc + it.qtd, 0), [carrinho]);
+  const qtdCarrinho = useMemo(
+    () => carrinho.reduce((acc, it) => acc + it.qtd, 0),
+    [carrinho]
+  );
+
+  /* =========================
+     ENCOMENDAR (quando indisponível)
+  ========================= */
+  function encomendar(p: DFProduto) {
+    const msg =
+      `Olá! Quero encomendar este item:\n\n` +
+      `• ${p.nome} (EAN: ${p.ean})\n` +
+      (p.apresentacao ? `• Apresentação: ${p.apresentacao}\n` : "") +
+      (p.laboratorio ? `• Laboratório: ${p.laboratorio}\n` : "") +
+      `\nPode me avisar prazo e valor?`;
+    window.open(waLink(WHATS, msg), "_blank");
+  }
 
   /* =========================
      WHATS
@@ -253,13 +339,18 @@ export default function PDVDF() {
     msg += `👤 Cliente: ${clienteNome}\n`;
     msg += `📞 WhatsApp: ${clienteTelefone}\n\n`;
 
-    msg += tipoEntrega === "ENTREGA"
-      ? `🚚 *Entrega*\n${endereco}, ${numero} - ${bairro}\nTaxa: ${brl(taxaEntrega)}\n\n`
-      : `🏪 *Retirada na loja*\n\n`;
+    msg +=
+      tipoEntrega === "ENTREGA"
+        ? `🚚 *Entrega*\n${endereco}, ${numero} - ${bairro}\nTaxa: ${brl(
+            taxaEntrega
+          )}\n\n`
+        : `🏪 *Retirada na loja*\n\n`;
 
     msg += `💳 Pagamento: ${pagamento}\n\n🛒 *Itens:*\n`;
     carrinho.forEach((i) => {
-      msg += `• ${i.nome} (${i.ean}) — ${i.qtd}x — ${brl(i.preco * i.qtd)}\n`;
+      msg += `• ${i.nome} (${i.ean}) — ${i.qtd}x — ${brl(
+        i.preco * i.qtd
+      )}\n`;
     });
 
     msg += `\nSubtotal: ${brl(subtotal)}\n`;
@@ -267,18 +358,45 @@ export default function PDVDF() {
     msg += `Pode confirmar disponibilidade e prazo?`;
 
     return msg;
-  }, [carrinho, clienteNome, clienteTelefone, tipoEntrega, endereco, numero, bairro, pagamento, subtotal, total, taxaEntrega]);
+  }, [
+    carrinho,
+    clienteNome,
+    clienteTelefone,
+    tipoEntrega,
+    endereco,
+    numero,
+    bairro,
+    pagamento,
+    subtotal,
+    total,
+    taxaEntrega,
+  ]);
 
-  const lista = isSearching ? resultado : home;
+  const canCheckout = useMemo(() => {
+    if (carrinho.length === 0) return false;
+    if (!clienteNome.trim()) return false;
+    if (onlyDigits(clienteTelefone).length < 10) return false;
+    if (tipoEntrega === "ENTREGA") {
+      if (!endereco.trim() || !numero.trim() || !bairro.trim()) return false;
+    }
+    return true;
+  }, [carrinho.length, clienteNome, clienteTelefone, tipoEntrega, endereco, numero, bairro]);
 
   return (
     <div className="p-4 pb-24 bg-gray-50 min-h-screen">
       {/* LOGO */}
       <div className="flex justify-center mb-4">
-        <Image src="/df-distribuidora-logo.png" alt="DF Distribuidora" width={120} height={120} />
+        <Image
+          src="/df-distribuidora-logo.png"
+          alt="DF Distribuidora"
+          width={120}
+          height={120}
+        />
       </div>
 
-      <h1 className="text-2xl font-extrabold text-center mb-4">PDV — DF Distribuidora</h1>
+      <h1 className="text-2xl font-extrabold text-center mb-4">
+        PDV — DF Distribuidora
+      </h1>
 
       {/* BUSCA */}
       <div className="relative">
@@ -300,7 +418,11 @@ export default function PDVDF() {
 
       {isSearching ? (
         <div className="text-xs text-gray-500 mb-3">
-          {loadingBusca ? "Buscando…" : resultado.length ? `${resultado.length} resultado(s)` : "Nenhum resultado"}
+          {loadingBusca
+            ? "Buscando…"
+            : resultado.length
+            ? `${resultado.length} resultado(s)`
+            : "Nenhum resultado"}
         </div>
       ) : (
         <div className="text-xs text-gray-500 mb-3">
@@ -310,20 +432,35 @@ export default function PDVDF() {
 
       {/* LISTA (10 no home / até SEARCH_LIMIT na busca) */}
       <div className="space-y-3">
-        {(loadingHome && !isSearching) ? (
-          <div className="bg-white border rounded-2xl p-4 text-gray-600">Carregando…</div>
+        {loadingHome && !isSearching ? (
+          <div className="bg-white border rounded-2xl p-4 text-gray-600">
+            Carregando…
+          </div>
         ) : (
           lista.map((p) => {
             const pr = precoFinal(p);
+            const estoqueAtual = Number(p.estoque ?? 0);
+            const indisponivel = estoqueAtual <= 0;
+
             return (
-              <div key={p.id} className="bg-white p-3 rounded-2xl border flex justify-between items-center">
+              <div
+                key={p.id}
+                className="bg-white p-3 rounded-2xl border flex justify-between items-center"
+              >
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="h-12 w-12 rounded-xl bg-gray-50 border overflow-hidden flex items-center justify-center">
-                    <Image src={firstImg(p.imagens)} alt={p.nome} width={48} height={48} className="object-contain" />
+                    <Image
+                      src={firstImg(p.imagens)}
+                      alt={p.nome}
+                      width={48}
+                      height={48}
+                      className="object-contain"
+                    />
                   </div>
 
                   <div className="min-w-0">
                     <div className="font-bold line-clamp-1">{p.nome}</div>
+
                     <div className="text-blue-700 font-extrabold">
                       {brl(pr.final)}
                       {pr.emPromo && pr.off > 0 ? (
@@ -332,18 +469,55 @@ export default function PDVDF() {
                         </span>
                       ) : null}
                     </div>
+
                     <div className="text-xs text-gray-500 line-clamp-1">
-                      {p.laboratorio || "—"} {p.apresentacao ? `• ${p.apresentacao}` : ""}
+                      {p.laboratorio || "—"}{" "}
+                      {p.apresentacao ? `• ${p.apresentacao}` : ""}
+                    </div>
+
+                    <div className="mt-1 text-[11px]">
+                      {indisponivel ? (
+                        <span className="font-extrabold text-gray-500">
+                          Sem estoque
+                        </span>
+                      ) : estoqueAtual <= ESTOQUE_LABEL_LOW ? (
+                        <span className="font-extrabold text-yellow-700">
+                          Estoque baixo: {estoqueAtual}
+                        </span>
+                      ) : (
+                        <span className="font-bold text-gray-500">
+                          Estoque: {estoqueAtual}
+                        </span>
+                      )}
                     </div>
                   </div>
                 </div>
 
-                <button
-                  onClick={() => addProduto(p)}
-                  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-extrabold"
-                >
-                  +
-                </button>
+                {/* AÇÕES */}
+                <div className="flex flex-col items-end gap-2">
+                  <button
+                    onClick={() => addProduto(p)}
+                    disabled={indisponivel}
+                    className={`px-4 py-2 rounded-xl font-extrabold ${
+                      indisponivel
+                        ? "bg-gray-200 text-gray-500 cursor-not-allowed"
+                        : "bg-blue-600 hover:bg-blue-700 text-white"
+                    }`}
+                    title={indisponivel ? "Sem estoque" : "Adicionar ao carrinho"}
+                  >
+                    {indisponivel ? "Indisponível" : "+"}
+                  </button>
+
+                  {indisponivel ? (
+                    <button
+                      onClick={() => encomendar(p)}
+                      className="px-4 py-2 rounded-xl font-extrabold bg-green-600 hover:bg-green-700 text-white"
+                      title="Pedir por encomenda no WhatsApp"
+                    >
+                      Encomendar
+                    </button>
+                  ) : null}
+                </div>
               </div>
             );
           })
@@ -361,40 +535,89 @@ export default function PDVDF() {
       {/* DRAWER */}
       {drawerOpen && (
         <div className="fixed inset-0 z-50">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setDrawerOpen(false)} />
+          <div
+            className="absolute inset-0 bg-black/40"
+            onClick={() => setDrawerOpen(false)}
+          />
 
           <div className="absolute right-0 top-0 h-full w-full sm:w-[420px] bg-white p-4 overflow-auto">
             <div className="flex items-center justify-between">
               <h2 className="text-xl font-extrabold">Carrinho</h2>
-              <button onClick={() => setDrawerOpen(false)} className="px-3 py-2 rounded-xl border font-extrabold">
+              <button
+                onClick={() => setDrawerOpen(false)}
+                className="px-3 py-2 rounded-xl border font-extrabold"
+              >
                 Continuar comprando
               </button>
             </div>
 
             <div className="mt-4">
               {carrinho.length === 0 ? (
-                <div className="text-gray-600 bg-gray-50 border rounded-2xl p-4">Seu carrinho está vazio.</div>
+                <div className="text-gray-600 bg-gray-50 border rounded-2xl p-4">
+                  Seu carrinho está vazio.
+                </div>
               ) : (
-                carrinho.map((i) => (
-                  <div key={i.id} className="border rounded-xl p-3 mb-2">
-                    <div className="font-bold">{i.nome}</div>
-                    <div className="text-sm text-gray-600">{brl(i.preco)}</div>
+                carrinho.map((i) => {
+                  const estoqueAtual = Number(estoqueById.get(i.id) ?? 0);
+                  const max = Math.max(1, estoqueAtual || 1);
+                  const travado = estoqueAtual > 0 ? Math.min(i.qtd, estoqueAtual) : i.qtd;
 
-                    <div className="flex items-center gap-2 mt-2">
-                      <button onClick={() => dec(i.id)} className="px-3 py-1 bg-gray-200 rounded font-extrabold">-</button>
-                      <span className="font-extrabold">{i.qtd}</span>
-                      <button onClick={() => inc(i.id)} className="px-3 py-1 bg-blue-600 text-white rounded font-extrabold">+</button>
+                  return (
+                    <div key={i.id} className="border rounded-xl p-3 mb-2">
+                      <div className="font-bold">{i.nome}</div>
+                      <div className="text-sm text-gray-600">{brl(i.preco)}</div>
 
-                      <button onClick={() => remove(i.id)} className="ml-auto text-red-600 font-extrabold">
-                        Excluir
-                      </button>
+                      <div className="mt-2 flex items-center gap-2">
+                        <button
+                          onClick={() => dec(i.id)}
+                          className="px-3 py-1 bg-gray-200 rounded font-extrabold"
+                        >
+                          -
+                        </button>
+
+                        <input
+                          type="number"
+                          min={1}
+                          max={max}
+                          value={travado}
+                          onChange={(e) => setQtd(i.id, Number(e.target.value))}
+                          className="w-16 border rounded px-2 py-1 text-center font-extrabold"
+                        />
+
+                        <button
+                          onClick={() => inc(i.id)}
+                          disabled={estoqueAtual > 0 ? i.qtd >= estoqueAtual : false}
+                          className={`px-3 py-1 rounded font-extrabold ${
+                            estoqueAtual > 0 && i.qtd >= estoqueAtual
+                              ? "bg-gray-200 text-gray-500 cursor-not-allowed"
+                              : "bg-blue-600 text-white"
+                          }`}
+                        >
+                          +
+                        </button>
+
+                        <button
+                          onClick={() => remove(i.id)}
+                          className="ml-auto text-red-600 font-extrabold"
+                        >
+                          Excluir
+                        </button>
+                      </div>
+
+                      <div className="mt-2 text-xs text-gray-600">
+                        {estoqueAtual > 0 ? (
+                          <span>Disponível: <b>{estoqueAtual}</b></span>
+                        ) : (
+                          <span className="text-red-600 font-bold">Atenção: estoque não encontrado (0)</span>
+                        )}
+                      </div>
+
+                      <div className="mt-2 font-extrabold text-blue-900">
+                        Total item: {brl(i.preco * i.qtd)}
+                      </div>
                     </div>
-
-                    <div className="mt-2 font-extrabold text-blue-900">
-                      Total item: {brl(i.preco * i.qtd)}
-                    </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
 
@@ -412,23 +635,38 @@ export default function PDVDF() {
                 onChange={(e) => setClienteTelefone(e.target.value)}
                 className="w-full border p-2 rounded"
               />
+              <div className="text-[11px] text-gray-500">
+                Dica: informe com DDD (ex: 11999999999)
+              </div>
             </div>
 
             {/* ENTREGA */}
             <div className="mt-4">
               <div className="font-bold mb-2">Entrega</div>
-              <button
-                onClick={() => setTipoEntrega("ENTREGA")}
-                className={`px-3 py-2 mr-2 rounded ${tipoEntrega === "ENTREGA" ? "bg-blue-600 text-white" : "bg-gray-200"}`}
-              >
-                Entrega
-              </button>
-              <button
-                onClick={() => setTipoEntrega("RETIRADA")}
-                className={`px-3 py-2 rounded ${tipoEntrega === "RETIRADA" ? "bg-blue-600 text-white" : "bg-gray-200"}`}
-              >
-                Retirada
-              </button>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setTipoEntrega("ENTREGA")}
+                  className={`px-3 py-2 rounded flex-1 ${
+                    tipoEntrega === "ENTREGA"
+                      ? "bg-blue-600 text-white"
+                      : "bg-gray-200"
+                  }`}
+                >
+                  Entrega
+                </button>
+
+                <button
+                  onClick={() => setTipoEntrega("RETIRADA")}
+                  className={`px-3 py-2 rounded flex-1 ${
+                    tipoEntrega === "RETIRADA"
+                      ? "bg-blue-600 text-white"
+                      : "bg-gray-200"
+                  }`}
+                >
+                  Retirada
+                </button>
+              </div>
 
               {tipoEntrega === "ENTREGA" && (
                 <div className="mt-3 space-y-2">
@@ -450,7 +688,9 @@ export default function PDVDF() {
                     onChange={(e) => setBairro(e.target.value)}
                     className="w-full border p-2 rounded"
                   />
-                  <div className="text-sm font-bold">Taxa fixa: {brl(taxaEntrega)}</div>
+                  <div className="text-sm font-bold">
+                    Taxa fixa: {brl(taxaEntrega)}
+                  </div>
                 </div>
               )}
             </div>
@@ -458,15 +698,20 @@ export default function PDVDF() {
             {/* PAGAMENTO */}
             <div className="mt-4">
               <div className="font-bold mb-2">Pagamento</div>
-              {["PIX", "CARTAO", "DINHEIRO", "COMBINAR"].map((p) => (
-                <button
-                  key={p}
-                  onClick={() => setPagamento(p as any)}
-                  className={`px-3 py-2 mr-2 mb-2 rounded ${pagamento === p ? "bg-blue-600 text-white" : "bg-gray-200"}`}
-                >
-                  {p}
-                </button>
-              ))}
+
+              <div className="flex flex-wrap gap-2">
+                {["PIX", "CARTAO", "DINHEIRO", "COMBINAR"].map((p) => (
+                  <button
+                    key={p}
+                    onClick={() => setPagamento(p as any)}
+                    className={`px-3 py-2 rounded ${
+                      pagamento === p ? "bg-blue-600 text-white" : "bg-gray-200"
+                    }`}
+                  >
+                    {p}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* TOTAL */}
@@ -476,14 +721,32 @@ export default function PDVDF() {
               <div className="font-extrabold text-lg">Total: {brl(total)}</div>
             </div>
 
+            {/* FINALIZAR */}
             <a
               href={waLink(WHATS, mensagem)}
               target="_blank"
               rel="noreferrer"
-              className="block mt-4 bg-green-600 text-white text-center py-3 rounded-xl font-extrabold"
+              className={`block mt-4 text-center py-3 rounded-xl font-extrabold ${
+                canCheckout
+                  ? "bg-green-600 hover:bg-green-700 text-white"
+                  : "bg-gray-200 text-gray-500 pointer-events-none"
+              }`}
+              title={
+                canCheckout
+                  ? "Finalizar no WhatsApp"
+                  : "Preencha nome/Whats e itens (e endereço se entrega)."
+              }
             >
               Finalizar no WhatsApp
             </a>
+
+            {!canCheckout ? (
+              <div className="mt-2 text-xs text-gray-500">
+                Para liberar o botão: informe <b>Nome</b>, <b>WhatsApp</b>, e
+                adicione itens. Se escolher <b>Entrega</b>, preencha{" "}
+                <b>Endereço/Número/Bairro</b>.
+              </div>
+            ) : null}
           </div>
         </div>
       )}
