@@ -188,61 +188,118 @@ function FarmaciaVirtualHome() {
   return (
     <main className="min-h-screen bg-gray-50 pb-24">
       {/* ✅ HEADER AZUL STICKY (BUSCA + CARRINHO) */}
-      <header className="sticky top-0 z-40 bg-blue-700 shadow">
-        <div className="mx-auto max-w-6xl px-4 py-3 flex items-center gap-3">
-          <div className="text-white font-extrabold whitespace-nowrap">
-            IA Drogarias <span className="opacity-80">• FV</span>
-          </div>
+      {/* ✅ HEADER AZUL STICKY (DESKTOP 1 LINHA / MOBILE 2 LINHAS) */}
+<header className="sticky top-0 z-40 bg-blue-700 shadow">
+  <div className="mx-auto max-w-6xl px-4 py-3">
+    {/* MOBILE: linha 1 (logo + carrinho) */}
+    <div className="flex items-center justify-between gap-3 md:hidden">
+      <div className="text-white font-extrabold whitespace-nowrap">
+        IA Drogarias <span className="opacity-80">• FV</span>
+      </div>
 
-          <div className="flex-1">
-            <div className="relative">
-              <input
-                value={busca}
-                onChange={(e) => setBusca(e.target.value)}
-                placeholder="Digite o nome do medicamento ou EAN..."
-                className="w-full rounded-full bg-white/95 px-4 py-2.5 text-sm outline-none focus:ring-4 focus:ring-white/20"
-              />
+      <button
+        onClick={() => setCartOpen(true)}
+        className="relative text-white font-extrabold whitespace-nowrap bg-white/10 hover:bg-white/15 px-4 py-2 rounded-full"
+        title="Abrir carrinho"
+      >
+        🛒 {brl(totalCarrinho)}
+        {qtdCarrinho > 0 && (
+          <span className="absolute -top-2 -right-2 h-6 min-w-[24px] px-1 rounded-full bg-green-400 text-blue-900 text-xs font-extrabold flex items-center justify-center border-2 border-blue-700">
+            {qtdCarrinho}
+          </span>
+        )}
+      </button>
+    </div>
 
-              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-                {busca.trim() ? (
-                  <button
-                    onClick={() => setBusca("")}
-                    className="text-xs font-extrabold px-2 py-1 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700"
-                    title="Limpar"
-                  >
-                    Limpar
-                  </button>
-                ) : null}
-                <span className="text-blue-900 bg-green-400/90 px-2 py-1 rounded-full text-xs font-extrabold">
-                  🔎
-                </span>
-              </div>
-            </div>
+    {/* MOBILE: linha 2 (busca grande) */}
+    <div className="mt-3 md:hidden">
+      <div className="relative">
+        <input
+          value={busca}
+          onChange={(e) => setBusca(e.target.value)}
+          placeholder="Digite o nome do medicamento ou EAN..."
+          className="w-full rounded-full bg-white/95 px-4 py-3 text-sm outline-none focus:ring-4 focus:ring-white/20"
+        />
 
-            {isSearching && (
-              <div className="mt-1 text-[11px] text-white/80">
-                {loadingBusca ? "Buscando…" : resultado.length ? `${resultado.length} resultado(s)` : " "}
-              </div>
-            )}
-          </div>
-
-          {/* ✅ Carrinho abre modal + badge soma quantidade */}
-          <button
-            onClick={() => setCartOpen(true)}
-            className="relative text-white font-extrabold whitespace-nowrap bg-white/10 hover:bg-white/15 px-4 py-2 rounded-full"
-            title="Abrir carrinho"
-          >
-            🛒 <span className="hidden sm:inline">Carrinho • </span>
-            {brl(totalCarrinho)}
-
-            {qtdCarrinho > 0 && (
-              <span className="absolute -top-2 -right-2 h-6 min-w-[24px] px-1 rounded-full bg-green-400 text-blue-900 text-xs font-extrabold flex items-center justify-center border-2 border-blue-700">
-                {qtdCarrinho}
-              </span>
-            )}
-          </button>
+        <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+          {busca.trim() ? (
+            <button
+              onClick={() => setBusca("")}
+              className="text-xs font-extrabold px-2 py-1 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700"
+              title="Limpar"
+            >
+              Limpar
+            </button>
+          ) : null}
+          <span className="text-blue-900 bg-green-400/90 px-2 py-1 rounded-full text-xs font-extrabold">
+            🔎
+          </span>
         </div>
-      </header>
+      </div>
+
+      {isSearching && (
+        <div className="mt-1 text-[11px] text-white/80">
+          {loadingBusca ? "Buscando…" : resultado.length ? `${resultado.length} resultado(s)` : " "}
+        </div>
+      )}
+    </div>
+
+    {/* DESKTOP: tudo na mesma linha (como está no PC) */}
+    <div className="hidden md:flex items-center gap-3">
+      <div className="text-white font-extrabold whitespace-nowrap">
+        IA Drogarias <span className="opacity-80">• FV</span>
+      </div>
+
+      <div className="flex-1">
+        <div className="relative">
+          <input
+            value={busca}
+            onChange={(e) => setBusca(e.target.value)}
+            placeholder="Digite o nome do medicamento ou EAN..."
+            className="w-full rounded-full bg-white/95 px-4 py-2.5 text-sm outline-none focus:ring-4 focus:ring-white/20"
+          />
+
+          <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+            {busca.trim() ? (
+              <button
+                onClick={() => setBusca("")}
+                className="text-xs font-extrabold px-2 py-1 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700"
+                title="Limpar"
+              >
+                Limpar
+              </button>
+            ) : null}
+            <span className="text-blue-900 bg-green-400/90 px-2 py-1 rounded-full text-xs font-extrabold">
+              🔎
+            </span>
+          </div>
+        </div>
+
+        {isSearching && (
+          <div className="mt-1 text-[11px] text-white/80">
+            {loadingBusca ? "Buscando…" : resultado.length ? `${resultado.length} resultado(s)` : " "}
+          </div>
+        )}
+      </div>
+
+      <button
+        onClick={() => setCartOpen(true)}
+        className="relative text-white font-extrabold whitespace-nowrap bg-white/10 hover:bg-white/15 px-4 py-2 rounded-full"
+        title="Abrir carrinho"
+      >
+        🛒 <span className="hidden lg:inline">Carrinho • </span>
+        {brl(totalCarrinho)}
+
+        {qtdCarrinho > 0 && (
+          <span className="absolute -top-2 -right-2 h-6 min-w-[24px] px-1 rounded-full bg-green-400 text-blue-900 text-xs font-extrabold flex items-center justify-center border-2 border-blue-700">
+            {qtdCarrinho}
+          </span>
+        )}
+      </button>
+    </div>
+  </div>
+</header>
+
 
       {/* ✅ BANNERS (voltou) */}
       <div className="mt-4">
