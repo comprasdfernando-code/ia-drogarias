@@ -77,7 +77,7 @@ function FarmaciaVirtualHome() {
   const [homeProdutos, setHomeProdutos] = useState<FVProduto[]>([]);
   const [resultado, setResultado] = useState<FVProduto[]>([]);
 
-  // ✅ Modal do carrinho agora é local (não depende de open())
+  // ✅ Modal do carrinho local
   const [cartOpen, setCartOpen] = useState(false);
 
   const cart = useCart();
@@ -127,73 +127,74 @@ function FarmaciaVirtualHome() {
     loadHome();
   }, []);
 
+  // ✅ BUSCA ULTRA (usa RPC fv_search_produtos)
   useEffect(() => {
-  async function search() {
-    const raw = busca.trim();
-    if (!raw) {
-      setResultado([]);
-      return;
-    }
-
-    setLoadingBusca(true);
-
-    try {
-      // ✅ normaliza: "300mg" -> "300 mg"
-      const normalized = raw
-        .toLowerCase()
-        .replace(/(\d+)\s*(mg|ml|mcg|g|ui|iu)/gi, "$1 $2")
-        .replace(/\s+/g, " ")
-        .trim();
-
-      const digits = normalized.replace(/\D/g, "");
-
-      let query = supabase
-        .from("fv_produtos")
-        .select(
-          "id,ean,nome,laboratorio,categoria,apresentacao,pmc,em_promocao,preco_promocional,percentual_off,destaque_home,ativo,imagens"
-        )
-        .eq("ativo", true)
-        .limit(100);
-
-      // ✅ se for EAN “puro” (8 a 14 dígitos), tenta prioridade no ean
-      if (digits.length >= 8 && digits.length <= 14 && digits === normalized.replace(/\s/g, "")) {
-        query = query.eq("ean", digits);
-      } else {
-        // ✅ termos: "gabapentina 300 mg" -> ["gabapentina","300","mg"]
-        const terms = normalized
-          .split(" ")
-          .map((t) => t.trim())
-          .filter(Boolean)
-          .slice(0, 6); // evita query gigante
-
-        // ✅ AND: cada termo precisa aparecer no nome OU apresentação
-        for (const term of terms) {
-          query = query.or(`nome.ilike.%${term}%,apresentacao.ilike.%${term}%`);
-        }
+    async function search() {
+      const raw = busca.trim();
+      if (!raw) {
+        setResultado([]);
+        return;
       }
 
-      const { data, error } = await query;
-      if (error) throw error;
+      setLoadingBusca(true);
 
-      const ordered = ((data || []) as FVProduto[]).sort((a, b) => {
-        const pa = a.em_promocao ? 1 : 0;
-        const pb = b.em_promocao ? 1 : 0;
-        if (pb !== pa) return pb - pa;
-        return (a.nome || "").localeCompare(b.nome || "");
-      });
+      try {
+        // ✅ normaliza: "300mg" -> "300 mg"
+        const normalized = raw
+          .toLowerCase()
+          .replace(/(\d+)\s*(mg|ml|mcg|g|ui|iu)/gi, "$1 $2")
+          .replace(/\s+/g, " ")
+          .trim();
 
-      setResultado(ordered);
-    } catch (e) {
-      console.error("Erro search:", e);
-    } finally {
-      setLoadingBusca(false);
+        // ✅ RPC retorna já ordenado (mais barato -> mais caro)
+        const { data, error } = await supabase.rpc("fv_search_produtos", {
+          q: normalized,
+          lim: 100,
+        });
+
+        if (error) throw error;
+
+        setResultado(((data || []) as FVProduto[]) ?? []);
+      } catch (e) {
+        console.error("Erro search (RPC):", e);
+
+        // ✅ fallback simples (não quebra se RPC não existir/der erro)
+        try {
+          const digits = raw.replace(/\D/g, "");
+          let query = supabase
+            .from("fv_produtos")
+            .select(
+              "id,ean,nome,laboratorio,categoria,apresentacao,pmc,em_promocao,preco_promocional,percentual_off,destaque_home,ativo,imagens"
+            )
+            .eq("ativo", true)
+            .limit(100);
+
+          if (digits.length >= 8 && digits.length <= 14) query = query.or(`ean.eq.${digits},nome.ilike.%${raw}%`);
+          else query = query.ilike("nome", `%${raw}%`);
+
+          const { data, error } = await query;
+          if (error) throw error;
+
+          const ordered = ((data || []) as FVProduto[]).sort((a, b) => {
+            const pa = a.em_promocao ? 1 : 0;
+            const pb = b.em_promocao ? 1 : 0;
+            if (pb !== pa) return pb - pa;
+            return (a.nome || "").localeCompare(b.nome || "");
+          });
+
+          setResultado(ordered);
+        } catch (e2) {
+          console.error("Erro fallback search:", e2);
+          setResultado([]);
+        }
+      } finally {
+        setLoadingBusca(false);
+      }
     }
-  }
 
-  const timer = setTimeout(search, 350);
-  return () => clearTimeout(timer);
-}, [busca]);
-
+    const timer = setTimeout(search, 350);
+    return () => clearTimeout(timer);
+  }, [busca]);
 
   const categoriasHome = useMemo(() => {
     if (busca.trim()) return [];
@@ -211,121 +212,119 @@ function FarmaciaVirtualHome() {
 
   return (
     <main className="min-h-screen bg-gray-50 pb-24">
-      {/* ✅ HEADER AZUL STICKY (BUSCA + CARRINHO) */}
       {/* ✅ HEADER AZUL STICKY (DESKTOP 1 LINHA / MOBILE 2 LINHAS) */}
-<header className="sticky top-0 z-40 bg-blue-700 shadow">
-  <div className="mx-auto max-w-6xl px-4 py-3">
-    {/* MOBILE: linha 1 (logo + carrinho) */}
-    <div className="flex items-center justify-between gap-3 md:hidden">
-      <div className="text-white font-extrabold whitespace-nowrap">
-        IA Drogarias <span className="opacity-80">• FV</span>
-      </div>
+      <header className="sticky top-0 z-40 bg-blue-700 shadow">
+        <div className="mx-auto max-w-6xl px-4 py-3">
+          {/* MOBILE: linha 1 (logo + carrinho) */}
+          <div className="flex items-center justify-between gap-3 md:hidden">
+            <div className="text-white font-extrabold whitespace-nowrap">
+              IA Drogarias <span className="opacity-80">• FV</span>
+            </div>
 
-      <button
-        onClick={() => setCartOpen(true)}
-        className="relative text-white font-extrabold whitespace-nowrap bg-white/10 hover:bg-white/15 px-4 py-2 rounded-full"
-        title="Abrir carrinho"
-      >
-        🛒 {brl(totalCarrinho)}
-        {qtdCarrinho > 0 && (
-          <span className="absolute -top-2 -right-2 h-6 min-w-[24px] px-1 rounded-full bg-green-400 text-blue-900 text-xs font-extrabold flex items-center justify-center border-2 border-blue-700">
-            {qtdCarrinho}
-          </span>
-        )}
-      </button>
-    </div>
-
-    {/* MOBILE: linha 2 (busca grande) */}
-    <div className="mt-3 md:hidden">
-      <div className="relative">
-        <input
-          value={busca}
-          onChange={(e) => setBusca(e.target.value)}
-          placeholder="Digite o nome do medicamento ou EAN..."
-          className="w-full rounded-full bg-white/95 px-4 py-3 text-sm outline-none focus:ring-4 focus:ring-white/20"
-        />
-
-        <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-          {busca.trim() ? (
             <button
-              onClick={() => setBusca("")}
-              className="text-xs font-extrabold px-2 py-1 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700"
-              title="Limpar"
+              onClick={() => setCartOpen(true)}
+              className="relative text-white font-extrabold whitespace-nowrap bg-white/10 hover:bg-white/15 px-4 py-2 rounded-full"
+              title="Abrir carrinho"
             >
-              Limpar
+              🛒 {brl(totalCarrinho)}
+              {qtdCarrinho > 0 && (
+                <span className="absolute -top-2 -right-2 h-6 min-w-[24px] px-1 rounded-full bg-green-400 text-blue-900 text-xs font-extrabold flex items-center justify-center border-2 border-blue-700">
+                  {qtdCarrinho}
+                </span>
+              )}
             </button>
-          ) : null}
-          <span className="text-blue-900 bg-green-400/90 px-2 py-1 rounded-full text-xs font-extrabold">
-            🔎
-          </span>
-        </div>
-      </div>
+          </div>
 
-      {isSearching && (
-        <div className="mt-1 text-[11px] text-white/80">
-          {loadingBusca ? "Buscando…" : resultado.length ? `${resultado.length} resultado(s)` : " "}
-        </div>
-      )}
-    </div>
+          {/* MOBILE: linha 2 (busca grande) */}
+          <div className="mt-3 md:hidden">
+            <div className="relative">
+              <input
+                value={busca}
+                onChange={(e) => setBusca(e.target.value)}
+                placeholder="Digite o nome do medicamento ou EAN..."
+                className="w-full rounded-full bg-white/95 px-4 py-3 text-sm outline-none focus:ring-4 focus:ring-white/20"
+              />
 
-    {/* DESKTOP: tudo na mesma linha (como está no PC) */}
-    <div className="hidden md:flex items-center gap-3">
-      <div className="text-white font-extrabold whitespace-nowrap">
-        IA Drogarias <span className="opacity-80">• FV</span>
-      </div>
+              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                {busca.trim() ? (
+                  <button
+                    onClick={() => setBusca("")}
+                    className="text-xs font-extrabold px-2 py-1 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700"
+                    title="Limpar"
+                  >
+                    Limpar
+                  </button>
+                ) : null}
+                <span className="text-blue-900 bg-green-400/90 px-2 py-1 rounded-full text-xs font-extrabold">
+                  🔎
+                </span>
+              </div>
+            </div>
 
-      <div className="flex-1">
-        <div className="relative">
-          <input
-            value={busca}
-            onChange={(e) => setBusca(e.target.value)}
-            placeholder="Digite o nome do medicamento ou EAN..."
-            className="w-full rounded-full bg-white/95 px-4 py-2.5 text-sm outline-none focus:ring-4 focus:ring-white/20"
-          />
+            {isSearching && (
+              <div className="mt-1 text-[11px] text-white/80">
+                {loadingBusca ? "Buscando…" : resultado.length ? `${resultado.length} resultado(s)` : " "}
+              </div>
+            )}
+          </div>
 
-          <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
-            {busca.trim() ? (
-              <button
-                onClick={() => setBusca("")}
-                className="text-xs font-extrabold px-2 py-1 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700"
-                title="Limpar"
-              >
-                Limpar
-              </button>
-            ) : null}
-            <span className="text-blue-900 bg-green-400/90 px-2 py-1 rounded-full text-xs font-extrabold">
-              🔎
-            </span>
+          {/* DESKTOP: tudo na mesma linha */}
+          <div className="hidden md:flex items-center gap-3">
+            <div className="text-white font-extrabold whitespace-nowrap">
+              IA Drogarias <span className="opacity-80">• FV</span>
+            </div>
+
+            <div className="flex-1">
+              <div className="relative">
+                <input
+                  value={busca}
+                  onChange={(e) => setBusca(e.target.value)}
+                  placeholder="Digite o nome do medicamento ou EAN..."
+                  className="w-full rounded-full bg-white/95 px-4 py-2.5 text-sm outline-none focus:ring-4 focus:ring-white/20"
+                />
+
+                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                  {busca.trim() ? (
+                    <button
+                      onClick={() => setBusca("")}
+                      className="text-xs font-extrabold px-2 py-1 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700"
+                      title="Limpar"
+                    >
+                      Limpar
+                    </button>
+                  ) : null}
+                  <span className="text-blue-900 bg-green-400/90 px-2 py-1 rounded-full text-xs font-extrabold">
+                    🔎
+                  </span>
+                </div>
+              </div>
+
+              {isSearching && (
+                <div className="mt-1 text-[11px] text-white/80">
+                  {loadingBusca ? "Buscando…" : resultado.length ? `${resultado.length} resultado(s)` : " "}
+                </div>
+              )}
+            </div>
+
+            <button
+              onClick={() => setCartOpen(true)}
+              className="relative text-white font-extrabold whitespace-nowrap bg-white/10 hover:bg-white/15 px-4 py-2 rounded-full"
+              title="Abrir carrinho"
+            >
+              🛒 <span className="hidden lg:inline">Carrinho • </span>
+              {brl(totalCarrinho)}
+
+              {qtdCarrinho > 0 && (
+                <span className="absolute -top-2 -right-2 h-6 min-w-[24px] px-1 rounded-full bg-green-400 text-blue-900 text-xs font-extrabold flex items-center justify-center border-2 border-blue-700">
+                  {qtdCarrinho}
+                </span>
+              )}
+            </button>
           </div>
         </div>
+      </header>
 
-        {isSearching && (
-          <div className="mt-1 text-[11px] text-white/80">
-            {loadingBusca ? "Buscando…" : resultado.length ? `${resultado.length} resultado(s)` : " "}
-          </div>
-        )}
-      </div>
-
-      <button
-        onClick={() => setCartOpen(true)}
-        className="relative text-white font-extrabold whitespace-nowrap bg-white/10 hover:bg-white/15 px-4 py-2 rounded-full"
-        title="Abrir carrinho"
-      >
-        🛒 <span className="hidden lg:inline">Carrinho • </span>
-        {brl(totalCarrinho)}
-
-        {qtdCarrinho > 0 && (
-          <span className="absolute -top-2 -right-2 h-6 min-w-[24px] px-1 rounded-full bg-green-400 text-blue-900 text-xs font-extrabold flex items-center justify-center border-2 border-blue-700">
-            {qtdCarrinho}
-          </span>
-        )}
-      </button>
-    </div>
-  </div>
-</header>
-
-
-      {/* ✅ BANNERS (voltou) */}
+      {/* ✅ BANNERS */}
       <div className="mt-4">
         <FVBanners />
       </div>
@@ -357,15 +356,12 @@ function FarmaciaVirtualHome() {
             ) : (
               categoriasHome.map(([cat, itens]) => (
                 <div key={cat}>
+                  {/* ✅ sem título gigante, só o "ver todos" */}
                   <div className="flex justify-end mb-2">
-  <Link
-    href={`/fv/categoria/${encodeURIComponent(cat)}`}
-    className="text-sm text-blue-700 hover:underline"
-  >
-    Ver todos →
-  </Link>
-</div>
-
+                    <Link href={`/fv/categoria/${encodeURIComponent(cat)}`} className="text-sm text-blue-700 hover:underline">
+                      Ver todos →
+                    </Link>
+                  </div>
 
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-5">
                     {itens.map((p) => (
@@ -427,11 +423,11 @@ function FarmaciaVirtualHome() {
 function CartModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const cart = useCart();
 
-  // coloque aqui o WhatsApp da farmácia (E164 ou com DDD)
+  // ✅ WhatsApp da farmácia
   const WHATS = "5511952068432";
 
   const mensagem = useMemo(() => {
-    if (!cart.items.length) return "Olá! Quero fazer um pedido na Farmácia Virtual.";
+    if (!cart.items.length) return "Olá! Quero fazer um pedido da Farmácia Virtual.";
     const linhas = cart.items.map((it) => `• ${it.nome} (${it.ean}) — ${it.qtd}x — ${brl(it.preco)}`);
     const total = brl(cart.subtotal);
     return `Olá! Quero finalizar meu pedido:\n\n${linhas.join("\n")}\n\nTotal: ${total}\n\nPode confirmar disponibilidade e prazo?`;
@@ -452,9 +448,7 @@ function CartModal({ open, onClose }: { open: boolean; onClose: () => void }) {
 
         <div className="p-4 flex-1 overflow-auto">
           {cart.items.length === 0 ? (
-            <div className="text-gray-600 bg-gray-50 border rounded-2xl p-4">
-              Seu carrinho está vazio. Adicione alguns itens 😊
-            </div>
+            <div className="text-gray-600 bg-gray-50 border rounded-2xl p-4">Seu carrinho está vazio. Adicione itens 😊</div>
           ) : (
             <div className="space-y-3">
               {cart.items.map((it) => (
@@ -476,17 +470,11 @@ function CartModal({ open, onClose }: { open: boolean; onClose: () => void }) {
 
                     <div className="mt-2 flex items-center gap-2">
                       <div className="flex items-center border rounded-xl overflow-hidden">
-                        <button
-                          onClick={() => cart.dec(it.ean)}
-                          className="w-9 h-9 bg-white hover:bg-gray-50 font-extrabold"
-                        >
+                        <button onClick={() => cart.dec(it.ean)} className="w-9 h-9 bg-white hover:bg-gray-50 font-extrabold">
                           –
                         </button>
                         <div className="w-10 text-center font-extrabold text-sm">{it.qtd}</div>
-                        <button
-                          onClick={() => cart.inc(it.ean)}
-                          className="w-9 h-9 bg-white hover:bg-gray-50 font-extrabold"
-                        >
+                        <button onClick={() => cart.inc(it.ean)} className="w-9 h-9 bg-white hover:bg-gray-50 font-extrabold">
                           +
                         </button>
                       </div>
@@ -569,31 +557,34 @@ function ProdutoCardUltra({ p }: { p: FVProduto }) {
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition overflow-hidden flex flex-col">
       <div className="relative p-3">
-  <Link
-    href={`/fv/produtos/${p.ean}`}
-    className="bg-gray-50 rounded-xl p-2 flex items-center justify-center hover:opacity-95 transition"
-  >
-    <Image
-      src={firstImg(p.imagens)}
-      alt={p.nome || "Produto"}
-      width={240}
-      height={240}
-      className="rounded object-contain h-24 sm:h-28"
-    />
-  </Link>
+        {/* ✅ imagem clicável igual o nome */}
+        <Link
+          href={`/fv/produtos/${p.ean}`}
+          className="bg-gray-50 rounded-xl p-2 flex items-center justify-center hover:opacity-95 transition"
+        >
+          <Image
+            src={firstImg(p.imagens)}
+            alt={p.nome || "Produto"}
+            width={240}
+            height={240}
+            className="rounded object-contain h-24 sm:h-28"
+          />
+        </Link>
 
-  {pr.emPromo && pr.off > 0 && (
-    <span className="absolute top-3 right-3 text-[11px] font-extrabold bg-red-600 text-white px-2 py-1 rounded-full shadow-sm">
-      {pr.off}% OFF
-    </span>
-  )}
-</div>
-
+        {pr.emPromo && pr.off > 0 && (
+          <span className="absolute top-3 right-3 text-[11px] font-extrabold bg-red-600 text-white px-2 py-1 rounded-full shadow-sm">
+            {pr.off}% OFF
+          </span>
+        )}
+      </div>
 
       <div className="px-3 pb-3 flex-1 flex flex-col">
         <div className="text-[11px] text-gray-500 line-clamp-1">{p.laboratorio || "—"}</div>
 
-        <Link href={`/fv/produtos/${p.ean}`} className="mt-1 font-semibold text-blue-950 text-xs sm:text-sm line-clamp-2 hover:underline">
+        <Link
+          href={`/fv/produtos/${p.ean}`}
+          className="mt-1 font-semibold text-blue-950 text-xs sm:text-sm line-clamp-2 hover:underline"
+        >
           {p.nome}
         </Link>
 
@@ -614,17 +605,11 @@ function ProdutoCardUltra({ p }: { p: FVProduto }) {
 
         <div className="mt-3 flex items-center gap-2">
           <div className="flex items-center border rounded-xl overflow-hidden">
-            <button
-              onClick={() => setQtd((x) => Math.max(1, x - 1))}
-              className="w-9 h-9 bg-white hover:bg-gray-50 font-extrabold"
-            >
+            <button onClick={() => setQtd((x) => Math.max(1, x - 1))} className="w-9 h-9 bg-white hover:bg-gray-50 font-extrabold">
               –
             </button>
             <div className="w-10 text-center font-extrabold text-sm">{qtd}</div>
-            <button
-              onClick={() => setQtd((x) => x + 1)}
-              className="w-9 h-9 bg-white hover:bg-gray-50 font-extrabold"
-            >
+            <button onClick={() => setQtd((x) => x + 1)} className="w-9 h-9 bg-white hover:bg-gray-50 font-extrabold">
               +
             </button>
           </div>
