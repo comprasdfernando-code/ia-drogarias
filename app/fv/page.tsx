@@ -333,12 +333,15 @@ function FarmaciaVirtualHome() {
             ) : (
               categoriasHome.map(([cat, itens]) => (
                 <div key={cat}>
-                  <div className="flex items-center justify-between mb-3">
-                    <h2 className="text-lg font-extrabold text-gray-900">{cat}</h2>
-                    <Link href={`/fv/categoria/${encodeURIComponent(cat)}`} className="text-sm text-blue-700 hover:underline">
-                      Ver todos →
-                    </Link>
-                  </div>
+                  <div className="flex justify-end mb-2">
+  <Link
+    href={`/fv/categoria/${encodeURIComponent(cat)}`}
+    className="text-sm text-blue-700 hover:underline"
+  >
+    Ver todos →
+  </Link>
+</div>
+
 
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-5">
                     {itens.map((p) => (
@@ -401,7 +404,7 @@ function CartModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const cart = useCart();
 
   // coloque aqui o WhatsApp da farmácia (E164 ou com DDD)
-  const WHATS = "5511948343725";
+  const WHATS = "5511952068432";
 
   const mensagem = useMemo(() => {
     if (!cart.items.length) return "Olá! Quero fazer um pedido na Farmácia Virtual.";
