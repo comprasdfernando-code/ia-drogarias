@@ -252,9 +252,7 @@ function FarmaciaVirtualHome() {
       </header>
 
       {/* ✅ BANNERS (MANTER) — SEM CARD LATERAL */}
-      <div className="mt-4">
-        <FVBanners showSideInfo={false} />
-      </div>
+      
 
       {/* CONTEÚDO */}
       <section className="max-w-6xl mx-auto px-4">
