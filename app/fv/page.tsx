@@ -72,6 +72,16 @@ function cartTotalSafe(cart: any) {
   }, 0);
 }
 
+function cartCountSafe(cart: any) {
+  if (!cart) return 0;
+  const items = cart.items || cart.cartItems || [];
+  if (!Array.isArray(items)) return 0;
+  return items.reduce((sum: number, it: any) => {
+    const qtd = Number(it?.qtd ?? it?.quantidade ?? it?.quantity ?? 0);
+    return sum + (Number.isFinite(qtd) ? qtd : 0);
+  }, 0);
+}
+
 function cartOpenSafe(cart: any) {
   if (!cart) return;
   if (typeof cart.open === "function") return cart.open();
@@ -97,6 +107,7 @@ function FarmaciaVirtualHome() {
 
   const cart = useCart() as any;
   const totalCarrinho = cartTotalSafe(cart);
+  const qtdCarrinho = cartCountSafe(cart);
 
   useEffect(() => {
     async function loadHome() {
@@ -240,19 +251,28 @@ function FarmaciaVirtualHome() {
             )}
           </div>
 
+          {/* ✅ Carrinho (abre + badge soma quantidade) */}
           <button
             onClick={() => cartOpenSafe(cart)}
-            className="text-white font-extrabold whitespace-nowrap bg-white/10 hover:bg-white/15 px-3 py-2 rounded-full"
+            className="relative text-white font-extrabold whitespace-nowrap bg-white/10 hover:bg-white/15 px-4 py-2 rounded-full"
             title="Abrir carrinho"
           >
             🛒 <span className="hidden sm:inline">Carrinho • </span>
             {brl(totalCarrinho)}
+
+            {qtdCarrinho > 0 && (
+              <span className="absolute -top-2 -right-2 h-6 min-w-[24px] px-1 rounded-full bg-green-400 text-blue-900 text-xs font-extrabold flex items-center justify-center border-2 border-blue-700">
+                {qtdCarrinho}
+              </span>
+            )}
           </button>
         </div>
       </header>
 
-      {/* ✅ BANNERS (MANTER) — SEM CARD LATERAL */}
-      
+      {/* ✅ BANNERS (voltou) */}
+      <div className="mt-4">
+        <FVBanners />
+      </div>
 
       {/* CONTEÚDO */}
       <section className="max-w-6xl mx-auto px-4">
