@@ -7,46 +7,92 @@ import { supabase } from "@/lib/supabaseClient";
    CONFIG
 ========================= */
 const SENHA_ADMIN = "102030"; // 🔴 troque
-const RPC_IMPORT = "df_importar_estoque";
+const TABLE = "df_produtos";
+const RPC_APPLY = "df_apply_stock_import";
 
 type Mode = "REPLACE" | "ADD" | "SUBTRACT";
 
 type ParsedRow = {
-  line: number;
-  raw: Record<string, string>;
-  ean: string;
-  estoque: number | null;
-  error?: string | null;
+  line: number;            // linha do arquivo (1-based)
+  raw: Record<string, any>;
+  ean_raw: string;
+  estoque_raw: string;
 };
 
-type ImportItem = { ean: string; estoque: number };
-
-function normalizeHeader(s: string) {
-  return (s || "")
-    .trim()
-    .toLowerCase()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "") // remove acentos
-    .replace(/[^\w]+/g, "_") // tudo que não é letra/numero vira _
-    .replace(/^_+|_+$/g, "");
-}
+type RowFixed = {
+  line: number;
+  ean: string;             // já limpo (apenas dígitos)
+  estoque: number;         // inteiro >= 0
+  status: "OK" | "ERRO";
+  errors: string[];
+  produto_nome?: string | null;
+  exists?: boolean;
+};
 
 function onlyDigits(v: string) {
   return (v || "").replace(/\D/g, "");
 }
 
-function detectDelimiter(line: string) {
-  const candidates = [",", ";", "\t", "|"];
-  let best = { d: ",", score: -1 };
-  for (const d of candidates) {
-    const score = (line.split(d).length - 1);
-    if (score > best.score) best = { d, score };
-  }
-  return best.d;
+function toIntEstoque(v: any): number | null {
+  if (v === null || v === undefined) return null;
+  const s = String(v)
+    .trim()
+    .replace(/\s+/g, " ")
+    .replace(/\./g, "")     // 1.234 -> 1234
+    .replace(",", ".");     // 12,0 -> 12.0
+  if (!s) return null;
+
+  // se vier "12.0" etc.
+  const n = Number(s);
+  if (!Number.isFinite(n)) return null;
+
+  // arredonda pra inteiro (estoque não pode quebrar)
+  const i = Math.round(n);
+  return i < 0 ? 0 : i;
 }
 
-// CSV split simples com suporte a aspas
-function splitCsvLine(line: string, delimiter: string) {
+function looksLikeScientific(v: string) {
+  const s = String(v || "").toLowerCase();
+  return s.includes("e+") || s.includes("e-");
+}
+
+/**
+ * Parser CSV/TSV simples:
+ * - detecta delimitador
+ * - suporta aspas "..."
+ * - não depende de lib externa
+ */
+function detectDelimiter(text: string): string {
+  const sample = text.split(/\r?\n/).slice(0, 20).join("\n");
+  const candidates = [",", ";", "\t", "|"];
+  const scores = candidates.map((d) => ({
+    d,
+    count: (sample.match(new RegExp(`\\${d}`, "g")) || []).length,
+  }));
+  scores.sort((a, b) => b.count - a.count);
+  return scores[0].count > 0 ? scores[0].d : ",";
+}
+
+function parseDelimited(text: string, delimiter: string) {
+  const lines = text.replace(/\uFEFF/g, "").split(/\r?\n/).filter((l) => l.trim().length > 0);
+  if (!lines.length) return { headers: [] as string[], rows: [] as Record<string, string>[] };
+
+  const headers = splitLine(lines[0], delimiter).map((h) => h.trim());
+  const rows: Record<string, string>[] = [];
+
+  for (let i = 1; i < lines.length; i++) {
+    const cols = splitLine(lines[i], delimiter);
+    const obj: Record<string, string> = {};
+    for (let c = 0; c < headers.length; c++) {
+      obj[headers[c]] = (cols[c] ?? "").trim();
+    }
+    rows.push(obj);
+  }
+
+  return { headers, rows };
+}
+
+function splitLine(line: string, delimiter: string) {
   const out: string[] = [];
   let cur = "";
   let inQuotes = false;
@@ -55,7 +101,7 @@ function splitCsvLine(line: string, delimiter: string) {
     const ch = line[i];
 
     if (ch === '"') {
-      // "" dentro de aspas vira "
+      // aspas duplas dentro: ""
       if (inQuotes && line[i + 1] === '"') {
         cur += '"';
         i++;
@@ -73,64 +119,86 @@ function splitCsvLine(line: string, delimiter: string) {
 
     cur += ch;
   }
+
   out.push(cur);
-  return out.map((x) => x.trim());
+  return out;
 }
 
-function parseNumberFlexible(v: string): number | null {
-  const s = (v ?? "").toString().trim();
-  if (!s) return null;
-
-  // remove espaços
-  let x = s.replace(/\s+/g, "");
-
-  // se for inteiro puro
-  if (/^-?\d+$/.test(x)) return Math.max(0, parseInt(x, 10));
-
-  // se tiver decimal com , ou .
-  if (/^-?\d+([,.]\d+)$/.test(x)) {
-    x = x.replace(",", ".");
-    const n = Math.round(Number(x));
-    return Number.isFinite(n) ? Math.max(0, n) : null;
-  }
-
-  // se vier com separador de milhar (1.234 ou 1.234,00) ou (1,234.00)
-  // estratégia: manter só dígitos, ponto, vírgula e sinal
-  x = x.replace(/[^\d,.\-]/g, "");
-
-  // tenta formato BR: 1.234,56
-  if (/^-?\d{1,3}(\.\d{3})+(,\d+)?$/.test(x)) {
-    x = x.replace(/\./g, "").replace(",", ".");
-    const n = Math.round(Number(x));
-    return Number.isFinite(n) ? Math.max(0, n) : null;
-  }
-
-  // tenta formato US: 1,234.56
-  if (/^-?\d{1,3}(,\d{3})+(\.\d+)?$/.test(x)) {
-    x = x.replace(/,/g, "");
-    const n = Math.round(Number(x));
-    return Number.isFinite(n) ? Math.max(0, n) : null;
-  }
-
-  // fallback: pega primeiro número encontrado
-  const m = x.match(/-?\d+([,.]\d+)?/);
-  if (!m) return null;
-  let y = m[0].replace(",", ".");
-  const n = Math.round(Number(y));
-  return Number.isFinite(n) ? Math.max(0, n) : null;
+function normalizeHeader(h: string) {
+  return (h || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "") // tira acento
+    .replace(/[^a-z0-9]/g, "");
 }
 
-function downloadText(filename: string, content: string) {
-  const blob = new Blob([content], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(url);
+function guessEanColumn(headers: string[]) {
+  const keys = headers.map((h) => ({ h, n: normalizeHeader(h) }));
+  const candidates = [
+    "ean",
+    "gtin",
+    "codigobarras",
+    "codigodebarras",
+    "barcode",
+    "codigo",
+    "cod",
+    "codbarras",
+  ];
+  for (const c of candidates) {
+    const found = keys.find((x) => x.n === c);
+    if (found) return found.h;
+  }
+  // fallback: qualquer header que tenha "ean" ou "gtin"
+  const fuzzy = keys.find((x) => x.n.includes("ean") || x.n.includes("gtin") || x.n.includes("barras"));
+  return fuzzy?.h ?? "";
 }
 
-export default function ImportarEstoquePage() {
+function guessStockColumn(headers: string[]) {
+  const keys = headers.map((h) => ({ h, n: normalizeHeader(h) }));
+  const candidates = [
+    "estoque",
+    "saldo",
+    "qtd",
+    "quantidade",
+    "disponivel",
+    "disponivelestoque",
+    "stock",
+  ];
+  for (const c of candidates) {
+    const found = keys.find((x) => x.n === c);
+    if (found) return found.h;
+  }
+  const fuzzy = keys.find((x) => x.n.includes("estoque") || x.n.includes("saldo") || x.n.includes("quant"));
+  return fuzzy?.h ?? "";
+}
+
+async function fetchExistingByEan(eans: string[]) {
+  // busca em chunks pra não estourar URL/limites
+  const uniq = Array.from(new Set(eans.filter(Boolean)));
+  const chunkSize = 400;
+  const map = new Map<string, { nome: string | null }>();
+
+  for (let i = 0; i < uniq.length; i += chunkSize) {
+    const chunk = uniq.slice(i, i + chunkSize);
+    const { data, error } = await supabase
+      .from(TABLE)
+      .select("ean,nome")
+      .in("ean", chunk);
+
+    if (error) throw error;
+
+    for (const row of data || []) {
+      map.set(row.ean, { nome: row.nome ?? null });
+    }
+  }
+
+  return map;
+}
+
+/* =========================
+   PAGE
+========================= */
+export default function AdminImportarEstoqueDF() {
   const [authed, setAuthed] = useState(false);
   const [senha, setSenha] = useState("");
 
@@ -184,142 +252,204 @@ export default function ImportarEstoquePage() {
     );
   }
 
-  return <ImportarEstoqueInner onSair={sair} />;
+  return <ImportInner onSair={sair} />;
 }
 
-function ImportarEstoqueInner({ onSair }: { onSair: () => void }) {
+function ImportInner({ onSair }: { onSair: () => void }) {
   const [mode, setMode] = useState<Mode>("REPLACE");
-  const [filename, setFilename] = useState<string | null>(null);
+  const [createMissing, setCreateMissing] = useState(false);
 
-  const [rawText, setRawText] = useState<string>("");
-  const [parsed, setParsed] = useState<ParsedRow[]>([]);
-  const [items, setItems] = useState<ImportItem[]>([]);
+  const [headers, setHeaders] = useState<string[]>([]);
+  const [rowsParsed, setRowsParsed] = useState<ParsedRow[]>([]);
+  const [colEan, setColEan] = useState("");
+  const [colStock, setColStock] = useState("");
 
+  const [fixed, setFixed] = useState<RowFixed[]>([]);
   const [loadingParse, setLoadingParse] = useState(false);
-  const [sending, setSending] = useState(false);
+  const [loadingCheck, setLoadingCheck] = useState(false);
+  const [processing, setProcessing] = useState(false);
 
-  const [result, setResult] = useState<any>(null);
+  const validRows = useMemo(() => fixed.filter((r) => r.status === "OK"), [fixed]);
+  const invalidRows = useMemo(() => fixed.filter((r) => r.status === "ERRO"), [fixed]);
 
-  const eanAliases = useMemo(
-    () =>
-      new Set([
-        "ean",
-        "gtin",
-        "barcode",
-        "codigo_barras",
-        "codigo_de_barras",
-        "cod_barras",
-        "codbarras",
-        "codigobarras",
-        "codigo",
-        "cod",
-        "ean_gtin",
-        "codigoean",
-      ]),
-    []
-  );
+  const preview = useMemo(() => fixed.slice(0, 12), [fixed]);
 
-  const stockAliases = useMemo(
-    () =>
-      new Set([
-        "estoque",
-        "saldo",
-        "saldo_disponivel",
-        "disponivel",
-        "disponivel_loja",
-        "quantidade",
-        "qtd",
-        "qty",
-        "stock",
-        "saldo_atual",
-        "saldo_positivo",
-      ]),
-    []
-  );
-
-  async function onPickFile(file: File | null) {
-    if (!file) return;
-    setFilename(file.name);
-    setResult(null);
-
+  async function handleFile(file: File) {
     setLoadingParse(true);
     try {
       const text = await file.text();
-      setRawText(text);
-      const p = parseCsvToRows(text, eanAliases, stockAliases);
-      setParsed(p.rows);
-      setItems(p.items);
+      const delimiter = detectDelimiter(text);
+      const parsed = parseDelimited(text, delimiter);
+
+      setHeaders(parsed.headers);
+
+      const guessedEan = guessEanColumn(parsed.headers);
+      const guessedStock = guessStockColumn(parsed.headers);
+
+      setColEan(guessedEan);
+      setColStock(guessedStock);
+
+      const parsedRows: ParsedRow[] = parsed.rows.map((r, idx) => {
+        const eanRaw = String(r[guessedEan] ?? "").trim();
+        const stockRaw = String(r[guessedStock] ?? "").trim();
+        return {
+          line: idx + 2, // linha 1 é header
+          raw: r,
+          ean_raw: eanRaw,
+          estoque_raw: stockRaw,
+        };
+      });
+
+      setRowsParsed(parsedRows);
+
+      // valida já com o guess
+      await revalidate(parsedRows, guessedEan, guessedStock);
     } catch (e) {
       console.error(e);
-      alert("Erro ao ler/parsear arquivo. Veja console.");
+      alert("Erro ao ler arquivo. Veja o console.");
     } finally {
       setLoadingParse(false);
     }
   }
 
-  async function enviar() {
-    if (!items.length) {
-      alert("Nenhum item válido para importar.");
+  async function revalidate(baseRows = rowsParsed, eanCol = colEan, stockCol = colStock) {
+    if (!baseRows.length) {
+      setFixed([]);
+      return;
+    }
+    if (!eanCol || !stockCol) {
+      setFixed(
+        baseRows.slice(0, 5000).map((r) => ({
+          line: r.line,
+          ean: "",
+          estoque: 0,
+          status: "ERRO",
+          errors: ["Selecione as colunas de EAN e Estoque."],
+        }))
+      );
       return;
     }
 
-    setSending(true);
-    setResult(null);
+    setLoadingCheck(true);
     try {
-      const { data, error } = await supabase.rpc(RPC_IMPORT, {
-        items,
-        mode,
-        filename: filename || null,
+      // monta e corrige + valida base
+      const temp: RowFixed[] = baseRows.map((r) => {
+        const eanRaw = String((r.raw as any)[eanCol] ?? r.ean_raw ?? "").trim();
+        const stockRaw = String((r.raw as any)[stockCol] ?? r.estoque_raw ?? "").trim();
+
+        const errors: string[] = [];
+
+        // EAN
+        if (!eanRaw) errors.push("EAN vazio");
+        if (looksLikeScientific(eanRaw)) errors.push("EAN em notação científica (corrija na planilha ou edite aqui)");
+        const ean = onlyDigits(eanRaw);
+
+        if (!ean) errors.push("EAN sem dígitos");
+        if (ean && ![8, 12, 13, 14].includes(ean.length)) {
+          errors.push(`EAN inválido (tamanho ${ean.length})`);
+        }
+
+        // Estoque
+        const estoque = toIntEstoque(stockRaw);
+        if (estoque === null) errors.push("Estoque inválido/vazio");
+
+        return {
+          line: r.line,
+          ean,
+          estoque: estoque ?? 0,
+          status: errors.length ? "ERRO" : "OK",
+          errors,
+          produto_nome: null,
+          exists: false,
+        };
       });
 
-      if (error) throw error;
-      setResult(data);
+      // remove duplicados: se mesmo EAN aparecer muitas vezes, soma estoque? ou mantém último?
+      // Pra não gerar confusão e manter 0 erro: marcamos como erro e você decide.
+      const seen = new Map<string, number>();
+      for (const row of temp) {
+        if (row.status === "OK") {
+          const c = (seen.get(row.ean) ?? 0) + 1;
+          seen.set(row.ean, c);
+        }
+      }
+      for (const row of temp) {
+        if (row.status === "OK" && (seen.get(row.ean) ?? 0) > 1) {
+          row.status = "ERRO";
+          row.errors.push("EAN duplicado no arquivo (una as linhas ou deixe apenas uma)");
+        }
+      }
 
-      // Se quiser: resetar arquivo após sucesso
-      // setRawText("");
-      // setParsed([]);
-      // setItems([]);
-    } catch (e: any) {
-      console.error("Erro RPC import:", e);
-      alert(`Erro ao importar: ${e?.message || "veja o console"}`);
+      // valida existência no banco (somente linhas que ainda estão OK)
+      const eansOK = temp.filter((r) => r.status === "OK").map((r) => r.ean);
+      const existsMap = await fetchExistingByEan(eansOK);
+
+      for (const row of temp) {
+        if (row.status !== "OK") continue;
+        const found = existsMap.get(row.ean);
+        row.exists = !!found;
+        row.produto_nome = found?.nome ?? null;
+
+        if (!found && !createMissing) {
+          row.status = "ERRO";
+          row.errors.push("EAN não cadastrado no DF (cadastre o produto ou marque 'criar automaticamente')");
+        }
+      }
+
+      setFixed(temp);
+    } catch (e) {
+      console.error(e);
+      alert("Erro ao validar. Veja o console.");
     } finally {
-      setSending(false);
+      setLoadingCheck(false);
     }
   }
 
-  const preview = useMemo(() => parsed.slice(0, 12), [parsed]);
-
-  const counts = useMemo(() => {
-    const total = parsed.length;
-    const valid = items.length;
-    const invalid = parsed.filter((r) => r.error).length;
-    return { total, valid, invalid };
-  }, [parsed, items]);
-
-  function baixarNaoEncontrados() {
-    const arr = (result?.not_found_items || []) as Array<{ ean: string; estoque: number }>;
-    const csv = ["ean,estoque", ...arr.map((x) => `${x.ean},${x.estoque}`)].join("\n");
-    downloadText(`df_nao_encontrados_${Date.now()}.csv`, csv);
+  function updateInvalid(idx: number, patch: Partial<RowFixed>) {
+    setFixed((prev) => {
+      const copy = [...prev];
+      copy[idx] = { ...copy[idx], ...patch };
+      return copy;
+    });
   }
 
-  function baixarInvalidos() {
-    const arr = (result?.invalid_items || []) as Array<any>;
-    const header = "linha,ean,estoque_raw,erro";
-    const lines = arr.map((x) => {
-      const linha = x.linha ?? "";
-      const ean = x.ean ?? "";
-      const estoque_raw = (x.estoque_raw ?? "").toString().replace(/"/g, '""');
-      const erro = (x.erro ?? "").toString().replace(/"/g, '""');
-      return `${linha},${ean},"${estoque_raw}","${erro}"`;
-    });
-    downloadText(`df_invalidos_${Date.now()}.csv`, [header, ...lines].join("\n"));
+  async function applyImport() {
+    if (invalidRows.length > 0) {
+      alert("Ainda existem erros. Corrija tudo para ficar 0 inválidas antes de processar.");
+      return;
+    }
+    if (!validRows.length) {
+      alert("Nenhuma linha válida para importar.");
+      return;
+    }
+
+    setProcessing(true);
+    try {
+      // payload só com ean + estoque
+      const payload = validRows.map((r) => ({ ean: r.ean, estoque: r.estoque }));
+
+      const { data, error } = await supabase.rpc(RPC_APPLY, {
+        rows: payload,
+        mode,
+        create_missing: createMissing,
+      });
+
+      if (error) throw error;
+
+      alert(`Importação OK ✅\nLinhas aplicadas: ${payload.length}\nModo: ${mode}`);
+    } catch (e: any) {
+      console.error(e);
+      alert(`Erro ao processar importação.\n${e?.message || "Veja o console."}`);
+    } finally {
+      setProcessing(false);
+    }
   }
 
   return (
     <div className="min-h-screen bg-gray-50">
       {/* HEADER */}
       <div className="sticky top-0 z-30 bg-white border-b">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center gap-3">
+        <div className="max-w-7xl mx-auto px-4 py-3 flex items-center gap-3">
           <div className="font-extrabold text-gray-900">Admin • Importar estoque (DF)</div>
           <div className="flex-1" />
           <button
@@ -331,24 +461,25 @@ function ImportarEstoqueInner({ onSair }: { onSair: () => void }) {
         </div>
       </div>
 
-      <div className="max-w-6xl mx-auto px-4 py-6 space-y-6">
-        {/* UPLOAD + CONFIG */}
-        <div className="bg-white border rounded-3xl p-4 shadow-sm">
+      <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
+        {/* 1) Upload */}
+        <div className="bg-white border rounded-3xl p-5 shadow-sm">
           <div className="font-extrabold text-gray-900">1) Envie o arquivo CSV</div>
           <div className="text-sm text-gray-600 mt-1">
-            Aceita <b>;</b>, <b>,</b>, <b>tab</b> e <b>|</b>. Colunas podem ter nomes variados (EAN/GTIN/Código de barras, estoque/saldo/qtd…).
+            Aceita <b>,</b> <b>;</b> <b>tab</b> e <b>|</b>. Colunas podem ter nomes variados (EAN/GTIN/Código de barras, estoque/saldo/qtd...).
           </div>
 
-          <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3 items-end">
+          <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3">
             <div className="md:col-span-2">
-              <div className="text-xs font-bold text-gray-600">Arquivo</div>
               <input
                 type="file"
                 accept=".csv,.txt"
-                onChange={(e) => onPickFile(e.target.files?.[0] || null)}
-                className="mt-1 w-full rounded-2xl border px-3 py-2 bg-white"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  if (f) handleFile(f);
+                }}
+                className="w-full rounded-2xl border px-4 py-3 bg-white"
               />
-              {filename ? <div className="mt-1 text-xs text-gray-500">Selecionado: {filename}</div> : null}
             </div>
 
             <div>
@@ -356,57 +487,127 @@ function ImportarEstoqueInner({ onSair }: { onSair: () => void }) {
               <select
                 value={mode}
                 onChange={(e) => setMode(e.target.value as Mode)}
-                className="mt-1 w-full rounded-2xl border px-3 py-2 bg-white"
+                className="mt-1 w-full rounded-2xl border px-4 py-3 bg-white outline-none focus:ring-4 focus:ring-blue-100"
               >
                 <option value="REPLACE">Substituir (REPLACE)</option>
                 <option value="ADD">Somar (ADD)</option>
                 <option value="SUBTRACT">Subtrair (SUBTRACT)</option>
               </select>
-              <div className="mt-1 text-[11px] text-gray-500">
+              <div className="text-[11px] text-gray-500 mt-1">
                 Diário normalmente é <b>REPLACE</b>.
               </div>
             </div>
           </div>
 
-          {/* RESUMO PARSE */}
-          <div className="mt-4 grid grid-cols-3 gap-3">
-            <CardMini label="Linhas lidas" value={loadingParse ? "..." : String(counts.total)} />
-            <CardMini label="Válidas" value={loadingParse ? "..." : String(counts.valid)} />
-            <CardMini label="Inválidas" value={loadingParse ? "..." : String(counts.invalid)} />
+          <div className="mt-4 flex items-center gap-2">
+            <input
+              id="createMissing"
+              type="checkbox"
+              checked={createMissing}
+              onChange={(e) => setCreateMissing(e.target.checked)}
+            />
+            <label htmlFor="createMissing" className="text-sm text-gray-700">
+              Criar produto automaticamente se não existir (nome vira “PRODUTO {`{ean}` }”)
+            </label>
           </div>
+
+          {!!headers.length && (
+            <div className="mt-5 grid grid-cols-1 md:grid-cols-2 gap-3">
+              <div>
+                <div className="text-xs font-bold text-gray-600">Coluna EAN</div>
+                <select
+                  value={colEan}
+                  onChange={(e) => setColEan(e.target.value)}
+                  className="mt-1 w-full rounded-2xl border px-4 py-3 bg-white outline-none focus:ring-4 focus:ring-blue-100"
+                >
+                  <option value="">Selecione…</option>
+                  {headers.map((h) => (
+                    <option key={h} value={h}>
+                      {h}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <div className="text-xs font-bold text-gray-600">Coluna Estoque</div>
+                <select
+                  value={colStock}
+                  onChange={(e) => setColStock(e.target.value)}
+                  className="mt-1 w-full rounded-2xl border px-4 py-3 bg-white outline-none focus:ring-4 focus:ring-blue-100"
+                >
+                  <option value="">Selecione…</option>
+                  {headers.map((h) => (
+                    <option key={h} value={h}>
+                      {h}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <button
+                onClick={() => revalidate(rowsParsed, colEan, colStock)}
+                disabled={loadingParse || loadingCheck || !rowsParsed.length}
+                className={`md:col-span-2 mt-1 px-4 py-3 rounded-2xl font-extrabold ${
+                  loadingParse || loadingCheck || !rowsParsed.length
+                    ? "bg-gray-200 text-gray-500"
+                    : "bg-blue-700 hover:bg-blue-800 text-white"
+                }`}
+              >
+                {loadingCheck ? "Revalidando..." : "Revalidar (aplicar correções e checar banco)"}
+              </button>
+            </div>
+          )}
         </div>
 
-        {/* PREVIEW */}
-        <div className="bg-white border rounded-3xl p-4 shadow-sm">
-          <div className="font-extrabold text-gray-900">2) Prévia</div>
-          <div className="text-sm text-gray-600 mt-1">Mostrando até 12 linhas (já com EAN limpo e estoque convertido).</div>
+        {/* RESUMO */}
+        {!!fixed.length && (
+          <div className="bg-white border rounded-3xl p-5 shadow-sm">
+            <div className="font-extrabold text-gray-900">Resumo</div>
+            <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <Stat title="Linhas lidas" value={fixed.length} />
+              <Stat title="Válidas" value={validRows.length} ok />
+              <Stat title="Inválidas" value={invalidRows.length} bad />
+            </div>
 
-          {loadingParse ? (
-            <div className="mt-4 text-gray-600">Lendo/parseando…</div>
-          ) : preview.length === 0 ? (
-            <div className="mt-4 text-gray-600">Nenhum dado para mostrar (envie um arquivo).</div>
-          ) : (
-            <div className="mt-4 overflow-auto border rounded-2xl">
-              <table className="min-w-full text-sm">
-                <thead className="bg-gray-50">
-                  <tr>
-                    <th className="text-left p-2">Linha</th>
-                    <th className="text-left p-2">EAN</th>
-                    <th className="text-left p-2">Estoque</th>
-                    <th className="text-left p-2">Status</th>
+            <div className="mt-4 text-sm text-gray-600">
+              Para dar <b>0 erro</b>, corrija as inválidas abaixo (editando EAN/Estoque) e clique <b>Revalidar</b>.
+              O botão de processar só libera quando <b>Inválidas = 0</b>.
+            </div>
+          </div>
+        )}
+
+        {/* 2) Prévia */}
+        {!!fixed.length && (
+          <div className="bg-white border rounded-3xl p-5 shadow-sm overflow-hidden">
+            <div className="font-extrabold text-gray-900">2) Prévia</div>
+            <div className="text-sm text-gray-600 mt-1">
+              Mostrando até 12 linhas (já com EAN limpo e estoque convertido).
+            </div>
+
+            <div className="mt-4 overflow-auto">
+              <table className="min-w-[760px] w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs text-gray-500">
+                    <th className="py-2 pr-3">Linha</th>
+                    <th className="py-2 pr-3">EAN</th>
+                    <th className="py-2 pr-3">Estoque</th>
+                    <th className="py-2 pr-3">Produto</th>
+                    <th className="py-2 pr-3">Status</th>
                   </tr>
                 </thead>
                 <tbody>
                   {preview.map((r) => (
                     <tr key={r.line} className="border-t">
-                      <td className="p-2 text-gray-500">{r.line}</td>
-                      <td className="p-2 font-mono">{r.ean || "—"}</td>
-                      <td className="p-2">{r.estoque ?? "—"}</td>
-                      <td className="p-2">
-                        {r.error ? (
-                          <span className="text-red-700 font-bold">{r.error}</span>
+                      <td className="py-2 pr-3">{r.line}</td>
+                      <td className="py-2 pr-3 font-mono">{r.ean || "—"}</td>
+                      <td className="py-2 pr-3 font-extrabold">{r.estoque}</td>
+                      <td className="py-2 pr-3 text-gray-600">{r.produto_nome || (r.exists ? "—" : "")}</td>
+                      <td className="py-2 pr-3">
+                        {r.status === "OK" ? (
+                          <span className="text-green-700 font-extrabold">OK</span>
                         ) : (
-                          <span className="text-green-700 font-bold">OK</span>
+                          <span className="text-red-600 font-extrabold">ERRO</span>
                         )}
                       </td>
                     </tr>
@@ -414,152 +615,120 @@ function ImportarEstoqueInner({ onSair }: { onSair: () => void }) {
                 </tbody>
               </table>
             </div>
-          )}
 
-          <button
-            onClick={enviar}
-            disabled={sending || !items.length}
-            className={`mt-4 px-4 py-3 rounded-2xl font-extrabold ${
-              sending || !items.length ? "bg-gray-200 text-gray-500" : "bg-green-600 hover:bg-green-700 text-white"
-            }`}
-          >
-            {sending ? "Importando…" : "3) Processar importação"}
-          </button>
-
-          {!items.length && rawText ? (
-            <div className="mt-2 text-[12px] text-red-700 font-bold">
-              Nenhuma linha válida encontrada. Confere se tem coluna de EAN e estoque/saldo.
-            </div>
-          ) : null}
-        </div>
-
-        {/* RESULTADO */}
-        {result ? (
-          <div className="bg-white border rounded-3xl p-4 shadow-sm">
-            <div className="font-extrabold text-gray-900">Resultado</div>
-
-            <div className="mt-3 grid grid-cols-1 md:grid-cols-5 gap-3">
-              <CardMini label="Total" value={String(result.total ?? 0)} />
-              <CardMini label="Válidas" value={String(result.valid ?? 0)} />
-              <CardMini label="Atualizadas" value={String(result.updated ?? 0)} />
-              <CardMini label="Não encontradas" value={String(result.not_found ?? 0)} />
-              <CardMini label="Inválidas" value={String(result.invalid ?? 0)} />
-            </div>
-
-            <div className="mt-4 flex flex-wrap gap-2">
-              <button
-                onClick={baixarNaoEncontrados}
-                disabled={!Array.isArray(result?.not_found_items) || result.not_found_items.length === 0}
-                className="px-3 py-2 rounded-xl border bg-white hover:bg-gray-50 font-extrabold text-sm disabled:opacity-50"
-              >
-                Baixar “não encontrados” (CSV)
-              </button>
-              <button
-                onClick={baixarInvalidos}
-                disabled={!Array.isArray(result?.invalid_items) || result.invalid_items.length === 0}
-                className="px-3 py-2 rounded-xl border bg-white hover:bg-gray-50 font-extrabold text-sm disabled:opacity-50"
-              >
-                Baixar “inválidos” (CSV)
-              </button>
-            </div>
-
-            <div className="mt-3 text-[11px] text-gray-500">
-              Run ID: <span className="font-mono">{result.run_id}</span> • Mode: <b>{result.mode}</b>
-            </div>
+            {invalidRows.length === 0 && validRows.length > 0 ? (
+              <div className="mt-5">
+                <button
+                  onClick={applyImport}
+                  disabled={processing}
+                  className={`w-full px-4 py-4 rounded-2xl font-extrabold ${
+                    processing ? "bg-gray-200 text-gray-500" : "bg-green-600 hover:bg-green-700 text-white"
+                  }`}
+                >
+                  {processing ? "Processando..." : "3) Processar importação (0 erros ✅)"}
+                </button>
+              </div>
+            ) : null}
           </div>
-        ) : null}
+        )}
+
+        {/* 3) Correção de erros */}
+        {invalidRows.length > 0 && (
+          <div className="bg-white border rounded-3xl p-5 shadow-sm overflow-hidden">
+            <div className="font-extrabold text-gray-900">Corrigir erros (obrigatório)</div>
+            <div className="text-sm text-gray-600 mt-1">
+              Edite EAN/Estoque nas linhas com problema. Depois clique <b>Revalidar</b>.
+            </div>
+
+            <div className="mt-4 overflow-auto">
+              <table className="min-w-[980px] w-full text-sm">
+                <thead>
+                  <tr className="text-left text-xs text-gray-500">
+                    <th className="py-2 pr-3">Linha</th>
+                    <th className="py-2 pr-3">EAN (editar)</th>
+                    <th className="py-2 pr-3">Estoque (editar)</th>
+                    <th className="py-2 pr-3">Erros</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {fixed.map((r, idx) => {
+                    if (r.status !== "ERRO") return null;
+
+                    return (
+                      <tr key={r.line} className="border-t">
+                        <td className="py-2 pr-3">{r.line}</td>
+
+                        <td className="py-2 pr-3">
+                          <input
+                            value={r.ean}
+                            onChange={(e) => updateInvalid(idx, { ean: onlyDigits(e.target.value) })}
+                            className="w-full rounded-xl border px-3 py-2 font-mono outline-none focus:ring-4 focus:ring-blue-100"
+                            placeholder="Somente dígitos"
+                          />
+                          <div className="text-[11px] text-gray-500 mt-1">
+                            Dica: EAN válido = 8, 12, 13 ou 14 dígitos.
+                          </div>
+                        </td>
+
+                        <td className="py-2 pr-3">
+                          <input
+                            value={String(r.estoque)}
+                            onChange={(e) => {
+                              const v = toIntEstoque(e.target.value);
+                              updateInvalid(idx, { estoque: v ?? 0 });
+                            }}
+                            className="w-full rounded-xl border px-3 py-2 outline-none focus:ring-4 focus:ring-blue-100"
+                            placeholder="inteiro"
+                          />
+                          <div className="text-[11px] text-gray-500 mt-1">Sempre inteiro ≥ 0.</div>
+                        </td>
+
+                        <td className="py-2 pr-3">
+                          <ul className="text-red-600 font-semibold list-disc pl-5">
+                            {r.errors.map((er, i) => (
+                              <li key={i}>{er}</li>
+                            ))}
+                          </ul>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+
+            <button
+              onClick={() => revalidate(rowsParsed, colEan, colStock)}
+              disabled={loadingCheck}
+              className={`mt-5 w-full px-4 py-4 rounded-2xl font-extrabold ${
+                loadingCheck ? "bg-gray-200 text-gray-500" : "bg-blue-700 hover:bg-blue-800 text-white"
+              }`}
+            >
+              {loadingCheck ? "Revalidando..." : "Revalidar e tentar zerar erros"}
+            </button>
+          </div>
+        )}
+
+        {/* Aviso Excel */}
+        <div className="bg-blue-50 border border-blue-200 rounded-3xl p-5">
+          <div className="font-extrabold text-blue-900">Importante (Excel)</div>
+          <div className="text-sm text-blue-900/80 mt-1">
+            Se o EAN vier como <b>notação científica</b> (ex: 7,8912E+12), ele fica impossível de recuperar automaticamente.
+            O certo é importar o CSV pelo Excel como <b>Texto</b> (Dados → De Texto/CSV → coluna EAN = Texto).
+          </div>
+        </div>
       </div>
     </div>
   );
 }
 
-function CardMini({ label, value }: { label: string; value: string }) {
+function Stat({ title, value, ok, bad }: { title: string; value: number; ok?: boolean; bad?: boolean }) {
   return (
-    <div className="bg-gray-50 border rounded-2xl p-3">
-      <div className="text-[11px] text-gray-500 font-bold">{label}</div>
-      <div className="font-extrabold text-gray-900 text-lg">{value}</div>
+    <div className={`border rounded-2xl p-4 ${ok ? "bg-green-50 border-green-200" : bad ? "bg-red-50 border-red-200" : "bg-gray-50"}`}>
+      <div className="text-[11px] text-gray-600 font-bold">{title}</div>
+      <div className={`text-2xl font-extrabold ${ok ? "text-green-700" : bad ? "text-red-600" : "text-gray-900"}`}>
+        {value}
+      </div>
     </div>
   );
-}
-
-function parseCsvToRows(
-  text: string,
-  eanAliases: Set<string>,
-  stockAliases: Set<string>
-): { rows: ParsedRow[]; items: ImportItem[] } {
-  const lines = (text || "")
-    .replace(/\r\n/g, "\n")
-    .replace(/\r/g, "\n")
-    .split("\n")
-    .map((l) => l.trim())
-    .filter((l) => l.length > 0);
-
-  if (!lines.length) return { rows: [], items: [] };
-
-  const delimiter = detectDelimiter(lines[0]);
-  const headerCells = splitCsvLine(lines[0], delimiter).map(normalizeHeader);
-
-  // detecta colunas
-  const idxEan = findHeaderIndex(headerCells, eanAliases);
-  const idxStock = findHeaderIndex(headerCells, stockAliases);
-
-  // se não achou cabeçalho, tenta fallback: primeira coluna = ean, segunda = estoque
-  const hasHeader = idxEan !== -1 || idxStock !== -1;
-
-  const start = hasHeader ? 1 : 0;
-
-  const rows: ParsedRow[] = [];
-  const itemsMap = new Map<string, number>(); // ean -> estoque (último vence)
-
-  for (let i = start; i < lines.length; i++) {
-    const cells = splitCsvLine(lines[i], delimiter);
-    const lineNo = i + 1;
-
-    let eanRaw = "";
-    let stockRaw = "";
-
-    if (hasHeader) {
-      if (idxEan >= 0) eanRaw = cells[idxEan] ?? "";
-      if (idxStock >= 0) stockRaw = cells[idxStock] ?? "";
-    } else {
-      eanRaw = cells[0] ?? "";
-      stockRaw = cells[1] ?? "";
-    }
-
-    const ean = onlyDigits(eanRaw);
-    const estoque = parseNumberFlexible(stockRaw);
-
-    let error: string | null = null;
-    if (!ean || ean.length < 8) error = "EAN inválido";
-    else if (estoque === null) error = "Estoque inválido";
-
-    const raw: Record<string, string> = {};
-    // só para debug/registro local
-    raw["ean"] = eanRaw;
-    raw["estoque"] = stockRaw;
-
-    rows.push({ line: lineNo, raw, ean, estoque, error });
-
-    if (!error && estoque !== null) {
-      itemsMap.set(ean, estoque);
-    }
-  }
-
-  const items: ImportItem[] = Array.from(itemsMap.entries()).map(([ean, estoque]) => ({ ean, estoque }));
-
-  return { rows, items };
-}
-
-function findHeaderIndex(headers: string[], aliases: Set<string>) {
-  // match exato
-  for (let i = 0; i < headers.length; i++) {
-    if (aliases.has(headers[i])) return i;
-  }
-  // match parcial (ex: "codigo_de_barras_ean")
-  for (let i = 0; i < headers.length; i++) {
-    for (const a of aliases) {
-      if (headers[i].includes(a)) return i;
-    }
-  }
-  return -1;
 }
