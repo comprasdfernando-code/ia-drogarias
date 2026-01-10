@@ -6,24 +6,21 @@ import Image from "next/image";
 import { supabase } from "@/lib/supabaseClient";
 
 /**
- * ✅ Admin simples e completo para df_produtos:
- * - login por senha (local) (troque SENHA_ADMIN)
- * - lista com paginação
- * - busca por nome/ean
- * - editar campos principais
+ * ✅ Admin DF (df_produtos) com ESTOQUE:
+ * - login por senha (local)
+ * - lista com paginação + busca
+ * - editar campos + estoque (saldo disponível)
+ * - criar produto já com estoque
  * - ativar/desativar
- * - promoção on/off + preço promocional
- * - destaque_home
- * - editar imagem principal (url) e lista de imagens (JSON)
- * - criar novo produto
- * - excluir produto
+ * - promoção + destaque
+ * - imagens (JSON)
+ * - excluir
  *
- * Requisitos:
- * - tabela public.df_produtos com colunas iguais fv_produtos
+ * Requisito: tabela public.df_produtos precisa ter coluna:
+ * - estoque numeric/int (default 0)
  */
 
 const SENHA_ADMIN = "102030"; // 🔴 troque
-
 const TABLE = "df_produtos";
 const PAGE_SIZE = 50;
 
@@ -41,6 +38,7 @@ type DFProduto = {
   destaque_home: boolean | null;
   ativo: boolean | null;
   imagens: string[] | null;
+  estoque: number | null; // ✅ NOVO
 };
 
 function brl(v: number | null | undefined) {
@@ -65,6 +63,15 @@ function toNum(v: any) {
   return Number.isFinite(n) ? n : null;
 }
 
+function toInt(v: any) {
+  if (v === null || v === undefined) return null;
+  const s = String(v).replace(/[^\d-]/g, "").trim();
+  if (!s) return null;
+  const n = Number(s);
+  if (!Number.isFinite(n)) return null;
+  return Math.trunc(n);
+}
+
 function safeJsonArray(v: string): string[] | null {
   const raw = v.trim();
   if (!raw) return null;
@@ -76,7 +83,6 @@ function safeJsonArray(v: string): string[] | null {
     }
     return null;
   } catch {
-    // permite colar separado por vírgula/linhas
     const arr = raw
       .split(/[\n,;]/g)
       .map((x) => x.trim())
@@ -131,9 +137,7 @@ export default function AdminProdutosDF() {
             Entrar
           </button>
 
-          <div className="mt-3 text-[11px] text-gray-500">
-            Dica: depois de entrar, fica salvo no navegador (localStorage).
-          </div>
+          <div className="mt-3 text-[11px] text-gray-500">Dica: fica salvo no navegador (localStorage).</div>
         </div>
       </div>
     );
@@ -155,12 +159,14 @@ function AdminProdutosInner({ onSair }: { onSair: () => void }) {
 
   const [editing, setEditing] = useState<DFProduto | null>(null);
 
+  // ✅ novo produto já com estoque
   const [novo, setNovo] = useState<Partial<DFProduto>>({
     ativo: true,
     em_promocao: false,
     destaque_home: false,
     percentual_off: null,
     imagens: null,
+    estoque: 0,
   });
 
   async function load() {
@@ -170,18 +176,15 @@ function AdminProdutosInner({ onSair }: { onSair: () => void }) {
       let query = supabase
         .from(TABLE)
         .select(
-          "id,ean,nome,laboratorio,categoria,apresentacao,pmc,em_promocao,preco_promocional,percentual_off,destaque_home,ativo,imagens",
+          "id,ean,nome,laboratorio,categoria,apresentacao,pmc,em_promocao,preco_promocional,percentual_off,destaque_home,ativo,imagens,estoque",
           { count: "exact" }
         );
 
       const raw = q.trim();
       if (raw) {
         const digits = onlyDigits(raw);
-        if (digits.length >= 8 && digits.length <= 14) {
-          query = query.or(`ean.eq.${digits},nome.ilike.%${raw}%`);
-        } else {
-          query = query.ilike("nome", `%${raw}%`);
-        }
+        if (digits.length >= 8 && digits.length <= 14) query = query.or(`ean.eq.${digits},nome.ilike.%${raw}%`);
+        else query = query.ilike("nome", `%${raw}%`);
       }
 
       query = query.order("nome", { ascending: true });
@@ -190,7 +193,6 @@ function AdminProdutosInner({ onSair }: { onSair: () => void }) {
       const to = from + PAGE_SIZE - 1;
 
       const { data, count, error } = await query.range(from, to);
-
       if (error) throw error;
 
       setRows((data || []) as DFProduto[]);
@@ -233,14 +235,37 @@ function AdminProdutosInner({ onSair }: { onSair: () => void }) {
     }
   }
 
+  // ✅ ajuste rápido de estoque na lista (incrementa/decrementa)
+  async function changeEstoque(id: string, delta: number) {
+    const current = rows.find((r) => r.id === id)?.estoque ?? 0;
+    const next = Math.max(0, Number(current) + delta);
+
+    try {
+      setSavingId(id);
+      const { error } = await supabase.from(TABLE).update({ estoque: next }).eq("id", id);
+      if (error) throw error;
+
+      setRows((prev) => prev.map((r) => (r.id === id ? ({ ...r, estoque: next } as DFProduto) : r)));
+    } catch (e) {
+      console.error("Erro changeEstoque:", e);
+      alert("Erro ao ajustar estoque.");
+    } finally {
+      setSavingId(null);
+    }
+  }
+
   function openEdit(p: DFProduto) {
-    setEditing({ ...p, imagens: Array.isArray(p.imagens) ? [...p.imagens] : null });
+    setEditing({
+      ...p,
+      imagens: Array.isArray(p.imagens) ? [...p.imagens] : null,
+      estoque: Number(p.estoque ?? 0),
+    });
   }
 
   async function saveEdit() {
     if (!editing) return;
-
     const id = editing.id;
+
     try {
       setSavingId(id);
 
@@ -257,6 +282,7 @@ function AdminProdutosInner({ onSair }: { onSair: () => void }) {
         destaque_home: !!editing.destaque_home,
         ativo: !!editing.ativo,
         imagens: Array.isArray(editing.imagens) ? editing.imagens.filter(Boolean) : null,
+        estoque: Math.max(0, Number(toInt(editing.estoque) ?? 0)), // ✅
       };
 
       if (!payload.ean || payload.ean.length < 8) {
@@ -298,6 +324,7 @@ function AdminProdutosInner({ onSair }: { onSair: () => void }) {
         destaque_home: !!novo.destaque_home,
         ativo: novo.ativo ?? true,
         imagens: Array.isArray(novo.imagens) ? (novo.imagens as any) : null,
+        estoque: Math.max(0, Number(toInt(novo.estoque) ?? 0)), // ✅ já cria com estoque
       };
 
       if (!payload.ean || payload.ean.length < 8) {
@@ -318,6 +345,7 @@ function AdminProdutosInner({ onSair }: { onSair: () => void }) {
         destaque_home: false,
         percentual_off: null,
         imagens: null,
+        estoque: 0,
       });
 
       setPage(1);
@@ -424,6 +452,16 @@ function AdminProdutosInner({ onSair }: { onSair: () => void }) {
                 className="w-full rounded-2xl border px-3 py-2 outline-none focus:ring-4 focus:ring-blue-100"
                 placeholder="Nome do produto"
               />
+            </Field>
+
+            <Field label="Estoque inicial" className="md:col-span-2">
+              <input
+                value={String(novo.estoque ?? 0)}
+                onChange={(e) => setNovo((p) => ({ ...p, estoque: e.target.value as any }))}
+                className="w-full rounded-2xl border px-3 py-2 outline-none focus:ring-4 focus:ring-blue-100"
+                placeholder="0"
+              />
+              <div className="text-[11px] text-gray-500 mt-1">Dica: coloque 0 pra ficar indisponível no site.</div>
             </Field>
 
             <Field label="Laboratório" className="md:col-span-2">
@@ -535,9 +573,7 @@ function AdminProdutosInner({ onSair }: { onSair: () => void }) {
         {/* LISTA */}
         <div className="bg-white border rounded-3xl shadow-sm overflow-hidden">
           <div className="p-4 border-b flex items-center justify-between">
-            <div className="font-extrabold text-gray-900">
-              Produtos {loading ? "• carregando…" : ""}
-            </div>
+            <div className="font-extrabold text-gray-900">Produtos {loading ? "• carregando…" : ""}</div>
 
             <div className="flex items-center gap-2">
               <button
@@ -569,13 +605,7 @@ function AdminProdutosInner({ onSair }: { onSair: () => void }) {
                 <div key={p.id} className="p-4 flex flex-col md:flex-row md:items-center gap-3">
                   <div className="flex gap-3 items-center min-w-0 flex-1">
                     <div className="h-14 w-14 rounded-xl bg-gray-50 border overflow-hidden flex items-center justify-center shrink-0">
-                      <Image
-                        src={firstImg(p.imagens)}
-                        alt={p.nome || "Produto"}
-                        width={64}
-                        height={64}
-                        className="object-contain"
-                      />
+                      <Image src={firstImg(p.imagens)} alt={p.nome || "Produto"} width={64} height={64} className="object-contain" />
                     </div>
 
                     <div className="min-w-0">
@@ -585,29 +615,59 @@ function AdminProdutosInner({ onSair }: { onSair: () => void }) {
                         {p.laboratorio ? ` • ${p.laboratorio}` : ""}
                         {p.apresentacao ? ` • ${p.apresentacao}` : ""}
                       </div>
+
                       <div className="text-xs mt-1">
                         <span className="font-extrabold text-blue-900">{brl(p.pmc)}</span>
                         {p.em_promocao && p.preco_promocional ? (
                           <span className="ml-2 text-green-700 font-extrabold">Promo: {brl(p.preco_promocional)}</span>
                         ) : null}
                       </div>
+
+                      <div className="text-xs mt-1">
+                        Estoque:{" "}
+                        <span className={`font-extrabold ${Number(p.estoque ?? 0) > 0 ? "text-green-700" : "text-red-600"}`}>
+                          {Number(p.estoque ?? 0)}
+                        </span>
+                      </div>
                     </div>
                   </div>
 
-                  {/* toggles rápidos */}
+                  {/* estoque rápido */}
                   <div className="flex flex-wrap gap-2 items-center">
-                    <QuickToggle
-                      label="Ativo"
-                      value={!!p.ativo}
+                    <button
+                      onClick={() => changeEstoque(p.id, -1)}
+                      disabled={savingId === p.id || Number(p.estoque ?? 0) <= 0}
+                      className={`px-3 py-2 rounded-xl border font-extrabold text-sm ${
+                        savingId === p.id || Number(p.estoque ?? 0) <= 0 ? "bg-gray-100 text-gray-400" : "bg-white hover:bg-gray-50"
+                      }`}
+                      title="Diminuir estoque"
+                    >
+                      -1
+                    </button>
+                    <button
+                      onClick={() => changeEstoque(p.id, +1)}
                       disabled={savingId === p.id}
-                      onChange={(v) => toggleQuick(p.id, { ativo: v })}
-                    />
-                    <QuickToggle
-                      label="Promo"
-                      value={!!p.em_promocao}
+                      className={`px-3 py-2 rounded-xl border font-extrabold text-sm ${
+                        savingId === p.id ? "bg-gray-100 text-gray-400" : "bg-white hover:bg-gray-50"
+                      }`}
+                      title="Aumentar estoque"
+                    >
+                      +1
+                    </button>
+                    <button
+                      onClick={() => changeEstoque(p.id, +10)}
                       disabled={savingId === p.id}
-                      onChange={(v) => toggleQuick(p.id, { em_promocao: v })}
-                    />
+                      className={`px-3 py-2 rounded-xl border font-extrabold text-sm ${
+                        savingId === p.id ? "bg-gray-100 text-gray-400" : "bg-white hover:bg-gray-50"
+                      }`}
+                      title="Aumentar +10"
+                    >
+                      +10
+                    </button>
+
+                    {/* toggles rápidos */}
+                    <QuickToggle label="Ativo" value={!!p.ativo} disabled={savingId === p.id} onChange={(v) => toggleQuick(p.id, { ativo: v })} />
+                    <QuickToggle label="Promo" value={!!p.em_promocao} disabled={savingId === p.id} onChange={(v) => toggleQuick(p.id, { em_promocao: v })} />
                     <QuickToggle
                       label="Destaque"
                       value={!!p.destaque_home}
@@ -615,10 +675,7 @@ function AdminProdutosInner({ onSair }: { onSair: () => void }) {
                       onChange={(v) => toggleQuick(p.id, { destaque_home: v })}
                     />
 
-                    <button
-                      onClick={() => openEdit(p)}
-                      className="px-3 py-2 rounded-xl border bg-white hover:bg-gray-50 font-extrabold text-sm"
-                    >
+                    <button onClick={() => openEdit(p)} className="px-3 py-2 rounded-xl border bg-white hover:bg-gray-50 font-extrabold text-sm">
                       Editar
                     </button>
 
@@ -640,13 +697,7 @@ function AdminProdutosInner({ onSair }: { onSair: () => void }) {
 
         {/* MODAL EDITAR */}
         {editing ? (
-          <EditModal
-            p={editing}
-            setP={setEditing}
-            saving={savingId === editing.id}
-            onClose={() => setEditing(null)}
-            onSave={saveEdit}
-          />
+          <EditModal p={editing} setP={setEditing} saving={savingId === editing.id} onClose={() => setEditing(null)} onSave={saveEdit} />
         ) : null}
       </div>
     </div>
@@ -654,7 +705,7 @@ function AdminProdutosInner({ onSair }: { onSair: () => void }) {
 }
 
 /* =========================
-   COMPONENTES AUXILIARES
+   UI helpers
 ========================= */
 function Field({ label, className, children }: { label: string; className?: string; children: React.ReactNode }) {
   return (
@@ -733,6 +784,15 @@ function EditModal({
               value={p.nome}
               onChange={(e) => setP({ ...p, nome: e.target.value })}
               className="w-full rounded-2xl border px-3 py-2 outline-none focus:ring-4 focus:ring-blue-100"
+            />
+          </Field>
+
+          <Field label="Estoque (saldo disponível)" className="md:col-span-2">
+            <input
+              value={String(p.estoque ?? 0)}
+              onChange={(e) => setP({ ...p, estoque: e.target.value as any })}
+              className="w-full rounded-2xl border px-3 py-2 outline-none focus:ring-4 focus:ring-blue-100"
+              placeholder="0"
             />
           </Field>
 
@@ -835,9 +895,7 @@ function EditModal({
           <button
             onClick={onSave}
             disabled={saving}
-            className={`px-4 py-3 rounded-2xl font-extrabold ${
-              saving ? "bg-gray-200 text-gray-500" : "bg-blue-700 hover:bg-blue-800 text-white"
-            }`}
+            className={`px-4 py-3 rounded-2xl font-extrabold ${saving ? "bg-gray-200 text-gray-500" : "bg-blue-700 hover:bg-blue-800 text-white"}`}
           >
             {saving ? "Salvando..." : "Salvar"}
           </button>
