@@ -545,22 +545,26 @@ function ProdutoCardUltra({ p }: { p: FVProduto }) {
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition overflow-hidden flex flex-col">
       <div className="relative p-3">
-        <div className="bg-gray-50 rounded-xl p-2 flex items-center justify-center">
-          <Image
-            src={firstImg(p.imagens)}
-            alt={p.nome || "Produto"}
-            width={240}
-            height={240}
-            className="rounded object-contain h-24 sm:h-28"
-          />
-        </div>
+  <Link
+    href={`/fv/produtos/${p.ean}`}
+    className="bg-gray-50 rounded-xl p-2 flex items-center justify-center hover:opacity-95 transition"
+  >
+    <Image
+      src={firstImg(p.imagens)}
+      alt={p.nome || "Produto"}
+      width={240}
+      height={240}
+      className="rounded object-contain h-24 sm:h-28"
+    />
+  </Link>
 
-        {pr.emPromo && pr.off > 0 && (
-          <span className="absolute top-3 right-3 text-[11px] font-extrabold bg-red-600 text-white px-2 py-1 rounded-full shadow-sm">
-            {pr.off}% OFF
-          </span>
-        )}
-      </div>
+  {pr.emPromo && pr.off > 0 && (
+    <span className="absolute top-3 right-3 text-[11px] font-extrabold bg-red-600 text-white px-2 py-1 rounded-full shadow-sm">
+      {pr.off}% OFF
+    </span>
+  )}
+</div>
+
 
       <div className="px-3 pb-3 flex-1 flex flex-col">
         <div className="text-[11px] text-gray-500 line-clamp-1">{p.laboratorio || "—"}</div>
