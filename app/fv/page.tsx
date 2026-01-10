@@ -57,7 +57,6 @@ function firstImg(imagens?: string[] | null) {
 }
 
 function cartTotalSafe(cart: any) {
-  // tenta vários formatos pra não quebrar
   if (!cart) return 0;
   if (typeof cart.total === "number") return cart.total;
   if (typeof cart.totalValue === "number") return cart.totalValue;
@@ -78,7 +77,6 @@ function cartOpenSafe(cart: any) {
   if (typeof cart.open === "function") return cart.open();
   if (typeof cart.setOpen === "function") return cart.setOpen(true);
   if (typeof cart.toggle === "function") return cart.toggle(true);
-  // se não existir função de abrir, não faz nada (evita quebrar)
 }
 
 export default function FarmaciaVirtualHomePage() {
@@ -204,13 +202,12 @@ function FarmaciaVirtualHome() {
   return (
     <main className="min-h-screen bg-gray-50 pb-24">
       {/* ✅ HEADER AZUL STICKY (BUSCA + CARRINHO) */}
-      <header className="sticky top-0 z-50 bg-blue-700 shadow">
+      <header className="sticky top-0 z-40 bg-blue-700 shadow">
         <div className="mx-auto max-w-6xl px-4 py-3 flex items-center gap-3">
           <div className="text-white font-extrabold whitespace-nowrap">
             IA Drogarias <span className="opacity-80">• FV</span>
           </div>
 
-          {/* Busca no header */}
           <div className="flex-1">
             <div className="relative">
               <input
@@ -219,6 +216,7 @@ function FarmaciaVirtualHome() {
                 placeholder="Digite o nome do medicamento ou EAN..."
                 className="w-full rounded-full bg-white/95 px-4 py-2.5 text-sm outline-none focus:ring-4 focus:ring-white/20"
               />
+
               <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
                 {busca.trim() ? (
                   <button
@@ -229,7 +227,7 @@ function FarmaciaVirtualHome() {
                     Limpar
                   </button>
                 ) : null}
-                <span className="text-blue-800 bg-green-400/90 px-2 py-1 rounded-full text-xs font-extrabold">
+                <span className="text-blue-900 bg-green-400/90 px-2 py-1 rounded-full text-xs font-extrabold">
                   🔎
                 </span>
               </div>
@@ -242,7 +240,6 @@ function FarmaciaVirtualHome() {
             )}
           </div>
 
-          {/* Carrinho */}
           <button
             onClick={() => cartOpenSafe(cart)}
             className="text-white font-extrabold whitespace-nowrap bg-white/10 hover:bg-white/15 px-3 py-2 rounded-full"
@@ -254,9 +251,9 @@ function FarmaciaVirtualHome() {
         </div>
       </header>
 
-      {/* ✅ BANNERS (MANTER) */}
+      {/* ✅ BANNERS (MANTER) — SEM CARD LATERAL */}
       <div className="mt-4">
-        <FVBanners />
+        <FVBanners showSideInfo={false} />
       </div>
 
       {/* CONTEÚDO */}
@@ -288,7 +285,10 @@ function FarmaciaVirtualHome() {
                 <div key={cat}>
                   <div className="flex items-center justify-between mb-3">
                     <h2 className="text-lg font-extrabold text-gray-900">{cat}</h2>
-                    <Link href={`/fv/categoria/${encodeURIComponent(cat)}`} className="text-sm text-blue-700 hover:underline">
+                    <Link
+                      href={`/fv/categoria/${encodeURIComponent(cat)}`}
+                      className="text-sm text-blue-700 hover:underline"
+                    >
                       Ver todos →
                     </Link>
                   </div>
@@ -305,7 +305,7 @@ function FarmaciaVirtualHome() {
         )}
       </section>
 
-      {/* ✅ “COMPRA RÁPIDA” NO FINAL DA PÁGINA */}
+      {/* ✅ “COMPRA RÁPIDA” SOMENTE NO FINAL */}
       <section className="max-w-6xl mx-auto px-4 mt-12 pb-12">
         <div className="bg-white rounded-3xl border shadow-sm p-6">
           <h3 className="text-xl md:text-2xl font-extrabold text-gray-900">Compra rápida</h3>
