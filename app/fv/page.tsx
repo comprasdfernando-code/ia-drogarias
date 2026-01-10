@@ -128,48 +128,72 @@ function FarmaciaVirtualHome() {
   }, []);
 
   useEffect(() => {
-    async function search() {
-      const t = busca.trim();
-      if (!t) {
-        setResultado([]);
-        return;
-      }
-
-      setLoadingBusca(true);
-      try {
-        const digits = t.replace(/\D/g, "");
-        let query = supabase
-          .from("fv_produtos")
-          .select(
-            "id,ean,nome,laboratorio,categoria,apresentacao,pmc,em_promocao,preco_promocional,percentual_off,destaque_home,ativo,imagens"
-          )
-          .eq("ativo", true)
-          .limit(100);
-
-        if (digits.length >= 8 && digits.length <= 14) query = query.or(`ean.eq.${digits},nome.ilike.%${t}%`);
-        else query = query.ilike("nome", `%${t}%`);
-
-        const { data, error } = await query;
-        if (error) throw error;
-
-        const ordered = ((data || []) as FVProduto[]).sort((a, b) => {
-          const pa = a.em_promocao ? 1 : 0;
-          const pb = b.em_promocao ? 1 : 0;
-          if (pb !== pa) return pb - pa;
-          return (a.nome || "").localeCompare(b.nome || "");
-        });
-
-        setResultado(ordered);
-      } catch (e) {
-        console.error("Erro search:", e);
-      } finally {
-        setLoadingBusca(false);
-      }
+  async function search() {
+    const raw = busca.trim();
+    if (!raw) {
+      setResultado([]);
+      return;
     }
 
-    const timer = setTimeout(search, 350);
-    return () => clearTimeout(timer);
-  }, [busca]);
+    setLoadingBusca(true);
+
+    try {
+      // ✅ normaliza: "300mg" -> "300 mg"
+      const normalized = raw
+        .toLowerCase()
+        .replace(/(\d+)\s*(mg|ml|mcg|g|ui|iu)/gi, "$1 $2")
+        .replace(/\s+/g, " ")
+        .trim();
+
+      const digits = normalized.replace(/\D/g, "");
+
+      let query = supabase
+        .from("fv_produtos")
+        .select(
+          "id,ean,nome,laboratorio,categoria,apresentacao,pmc,em_promocao,preco_promocional,percentual_off,destaque_home,ativo,imagens"
+        )
+        .eq("ativo", true)
+        .limit(100);
+
+      // ✅ se for EAN “puro” (8 a 14 dígitos), tenta prioridade no ean
+      if (digits.length >= 8 && digits.length <= 14 && digits === normalized.replace(/\s/g, "")) {
+        query = query.eq("ean", digits);
+      } else {
+        // ✅ termos: "gabapentina 300 mg" -> ["gabapentina","300","mg"]
+        const terms = normalized
+          .split(" ")
+          .map((t) => t.trim())
+          .filter(Boolean)
+          .slice(0, 6); // evita query gigante
+
+        // ✅ AND: cada termo precisa aparecer no nome OU apresentação
+        for (const term of terms) {
+          query = query.or(`nome.ilike.%${term}%,apresentacao.ilike.%${term}%`);
+        }
+      }
+
+      const { data, error } = await query;
+      if (error) throw error;
+
+      const ordered = ((data || []) as FVProduto[]).sort((a, b) => {
+        const pa = a.em_promocao ? 1 : 0;
+        const pb = b.em_promocao ? 1 : 0;
+        if (pb !== pa) return pb - pa;
+        return (a.nome || "").localeCompare(b.nome || "");
+      });
+
+      setResultado(ordered);
+    } catch (e) {
+      console.error("Erro search:", e);
+    } finally {
+      setLoadingBusca(false);
+    }
+  }
+
+  const timer = setTimeout(search, 350);
+  return () => clearTimeout(timer);
+}, [busca]);
+
 
   const categoriasHome = useMemo(() => {
     if (busca.trim()) return [];
