@@ -56,37 +56,9 @@ function firstImg(imagens?: string[] | null) {
   return "/produtos/caixa-padrao.png";
 }
 
-function cartTotalSafe(cart: any) {
-  if (!cart) return 0;
-  if (typeof cart.total === "number") return cart.total;
-  if (typeof cart.totalValue === "number") return cart.totalValue;
-  if (typeof cart.subtotal === "number") return cart.subtotal;
-
-  const items = cart.items || cart.cartItems || [];
-  if (!Array.isArray(items)) return 0;
-
-  return items.reduce((sum: number, it: any) => {
-    const qtd = Number(it?.qtd ?? it?.quantidade ?? it?.quantity ?? 0);
-    const preco = Number(it?.preco ?? it?.price ?? 0);
-    return sum + qtd * preco;
-  }, 0);
-}
-
-function cartCountSafe(cart: any) {
-  if (!cart) return 0;
-  const items = cart.items || cart.cartItems || [];
-  if (!Array.isArray(items)) return 0;
-  return items.reduce((sum: number, it: any) => {
-    const qtd = Number(it?.qtd ?? it?.quantidade ?? it?.quantity ?? 0);
-    return sum + (Number.isFinite(qtd) ? qtd : 0);
-  }, 0);
-}
-
-function cartOpenSafe(cart: any) {
-  if (!cart) return;
-  if (typeof cart.open === "function") return cart.open();
-  if (typeof cart.setOpen === "function") return cart.setOpen(true);
-  if (typeof cart.toggle === "function") return cart.toggle(true);
+function waLink(phone: string, msg: string) {
+  const clean = phone.replace(/\D/g, "");
+  return `https://wa.me/${clean}?text=${encodeURIComponent(msg)}`;
 }
 
 export default function FarmaciaVirtualHomePage() {
@@ -105,9 +77,12 @@ function FarmaciaVirtualHome() {
   const [homeProdutos, setHomeProdutos] = useState<FVProduto[]>([]);
   const [resultado, setResultado] = useState<FVProduto[]>([]);
 
-  const cart = useCart() as any;
-  const totalCarrinho = cartTotalSafe(cart);
-  const qtdCarrinho = cartCountSafe(cart);
+  // ✅ Modal do carrinho agora é local (não depende de open())
+  const [cartOpen, setCartOpen] = useState(false);
+
+  const cart = useCart();
+  const totalCarrinho = cart.subtotal;
+  const qtdCarrinho = cart.countItems;
 
   useEffect(() => {
     async function loadHome() {
@@ -251,9 +226,9 @@ function FarmaciaVirtualHome() {
             )}
           </div>
 
-          {/* ✅ Carrinho (abre + badge soma quantidade) */}
+          {/* ✅ Carrinho abre modal + badge soma quantidade */}
           <button
-            onClick={() => cartOpenSafe(cart)}
+            onClick={() => setCartOpen(true)}
             className="relative text-white font-extrabold whitespace-nowrap bg-white/10 hover:bg-white/15 px-4 py-2 rounded-full"
             title="Abrir carrinho"
           >
@@ -303,10 +278,7 @@ function FarmaciaVirtualHome() {
                 <div key={cat}>
                   <div className="flex items-center justify-between mb-3">
                     <h2 className="text-lg font-extrabold text-gray-900">{cat}</h2>
-                    <Link
-                      href={`/fv/categoria/${encodeURIComponent(cat)}`}
-                      className="text-sm text-blue-700 hover:underline"
-                    >
+                    <Link href={`/fv/categoria/${encodeURIComponent(cat)}`} className="text-sm text-blue-700 hover:underline">
                       Ver todos →
                     </Link>
                   </div>
@@ -327,9 +299,7 @@ function FarmaciaVirtualHome() {
       <section className="max-w-6xl mx-auto px-4 mt-12 pb-12">
         <div className="bg-white rounded-3xl border shadow-sm p-6">
           <h3 className="text-xl md:text-2xl font-extrabold text-gray-900">Compra rápida</h3>
-          <p className="text-gray-600 mt-1">
-            Adicione no carrinho e finalize no WhatsApp em poucos cliques.
-          </p>
+          <p className="text-gray-600 mt-1">Adicione no carrinho e finalize no WhatsApp em poucos cliques.</p>
 
           <div className="grid md:grid-cols-3 gap-4 mt-6">
             <div className="flex gap-3 items-start">
@@ -363,13 +333,131 @@ function FarmaciaVirtualHome() {
           </div>
         </div>
       </section>
+
+      {/* ✅ MODAL DO CARRINHO */}
+      <CartModal open={cartOpen} onClose={() => setCartOpen(false)} />
     </main>
+  );
+}
+
+function CartModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const cart = useCart();
+
+  // coloque aqui o WhatsApp da farmácia (E164 ou com DDD)
+  const WHATS = "5511948343725";
+
+  const mensagem = useMemo(() => {
+    if (!cart.items.length) return "Olá! Quero fazer um pedido na Farmácia Virtual.";
+    const linhas = cart.items.map((it) => `• ${it.nome} (${it.ean}) — ${it.qtd}x — ${brl(it.preco)}`);
+    const total = brl(cart.subtotal);
+    return `Olá! Quero finalizar meu pedido:\n\n${linhas.join("\n")}\n\nTotal: ${total}\n\nPode confirmar disponibilidade e prazo?`;
+  }, [cart.items, cart.subtotal]);
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-[60]">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="absolute right-0 top-0 h-full w-full sm:w-[480px] bg-white shadow-2xl flex flex-col">
+        <div className="p-4 border-b flex items-center justify-between">
+          <div className="font-extrabold text-lg">🛒 Seu carrinho</div>
+          <button onClick={onClose} className="px-3 py-2 rounded-xl border bg-white hover:bg-gray-50 font-extrabold">
+            Fechar
+          </button>
+        </div>
+
+        <div className="p-4 flex-1 overflow-auto">
+          {cart.items.length === 0 ? (
+            <div className="text-gray-600 bg-gray-50 border rounded-2xl p-4">
+              Seu carrinho está vazio. Adicione alguns itens 😊
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {cart.items.map((it) => (
+                <div key={it.ean} className="border rounded-2xl p-3 flex gap-3">
+                  <div className="h-14 w-14 bg-gray-50 rounded-xl overflow-hidden flex items-center justify-center">
+                    <Image
+                      src={it.imagem || "/produtos/caixa-padrao.png"}
+                      alt={it.nome}
+                      width={64}
+                      height={64}
+                      className="object-contain"
+                    />
+                  </div>
+
+                  <div className="flex-1">
+                    <div className="font-extrabold text-sm line-clamp-2">{it.nome}</div>
+                    <div className="text-xs text-gray-500">EAN: {it.ean}</div>
+                    <div className="mt-1 font-extrabold text-blue-900">{brl(it.preco)}</div>
+
+                    <div className="mt-2 flex items-center gap-2">
+                      <div className="flex items-center border rounded-xl overflow-hidden">
+                        <button
+                          onClick={() => cart.dec(it.ean)}
+                          className="w-9 h-9 bg-white hover:bg-gray-50 font-extrabold"
+                        >
+                          –
+                        </button>
+                        <div className="w-10 text-center font-extrabold text-sm">{it.qtd}</div>
+                        <button
+                          onClick={() => cart.inc(it.ean)}
+                          className="w-9 h-9 bg-white hover:bg-gray-50 font-extrabold"
+                        >
+                          +
+                        </button>
+                      </div>
+
+                      <button
+                        onClick={() => cart.remove(it.ean)}
+                        className="px-3 py-2 rounded-xl border bg-white hover:bg-gray-50 text-sm font-extrabold"
+                        title="Remover item"
+                      >
+                        Remover
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="p-4 border-t">
+          <div className="flex items-center justify-between">
+            <div className="text-sm text-gray-600">Subtotal</div>
+            <div className="text-lg font-extrabold text-blue-900">{brl(cart.subtotal)}</div>
+          </div>
+
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <button
+              onClick={() => cart.clear()}
+              className="px-4 py-3 rounded-2xl border bg-white hover:bg-gray-50 font-extrabold"
+              disabled={!cart.items.length}
+            >
+              Limpar
+            </button>
+
+            <a
+              className={`px-4 py-3 rounded-2xl font-extrabold text-center ${
+                cart.items.length ? "bg-green-500 hover:bg-green-600 text-white" : "bg-gray-200 text-gray-500 pointer-events-none"
+              }`}
+              href={waLink(WHATS, mensagem)}
+              target="_blank"
+              rel="noreferrer"
+              title="Finalizar no WhatsApp"
+            >
+              Finalizar no WhatsApp
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
 
 function ProdutoCardUltra({ p }: { p: FVProduto }) {
   const pr = precoFinal(p);
-  const { addItem } = useCart() as any;
+  const { addItem } = useCart();
   const { push } = useToast();
   const [qtd, setQtd] = useState(1);
 
@@ -417,10 +505,7 @@ function ProdutoCardUltra({ p }: { p: FVProduto }) {
       <div className="px-3 pb-3 flex-1 flex flex-col">
         <div className="text-[11px] text-gray-500 line-clamp-1">{p.laboratorio || "—"}</div>
 
-        <Link
-          href={`/fv/produtos/${p.ean}`}
-          className="mt-1 font-semibold text-blue-950 text-xs sm:text-sm line-clamp-2 hover:underline"
-        >
+        <Link href={`/fv/produtos/${p.ean}`} className="mt-1 font-semibold text-blue-950 text-xs sm:text-sm line-clamp-2 hover:underline">
           {p.nome}
         </Link>
 
