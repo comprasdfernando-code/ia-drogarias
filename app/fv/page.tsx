@@ -56,6 +56,31 @@ function firstImg(imagens?: string[] | null) {
   return "/produtos/caixa-padrao.png";
 }
 
+function cartTotalSafe(cart: any) {
+  // tenta vários formatos pra não quebrar
+  if (!cart) return 0;
+  if (typeof cart.total === "number") return cart.total;
+  if (typeof cart.totalValue === "number") return cart.totalValue;
+  if (typeof cart.subtotal === "number") return cart.subtotal;
+
+  const items = cart.items || cart.cartItems || [];
+  if (!Array.isArray(items)) return 0;
+
+  return items.reduce((sum: number, it: any) => {
+    const qtd = Number(it?.qtd ?? it?.quantidade ?? it?.quantity ?? 0);
+    const preco = Number(it?.preco ?? it?.price ?? 0);
+    return sum + qtd * preco;
+  }, 0);
+}
+
+function cartOpenSafe(cart: any) {
+  if (!cart) return;
+  if (typeof cart.open === "function") return cart.open();
+  if (typeof cart.setOpen === "function") return cart.setOpen(true);
+  if (typeof cart.toggle === "function") return cart.toggle(true);
+  // se não existir função de abrir, não faz nada (evita quebrar)
+}
+
 export default function FarmaciaVirtualHomePage() {
   return (
     <ToastProvider>
@@ -71,6 +96,9 @@ function FarmaciaVirtualHome() {
 
   const [homeProdutos, setHomeProdutos] = useState<FVProduto[]>([]);
   const [resultado, setResultado] = useState<FVProduto[]>([]);
+
+  const cart = useCart() as any;
+  const totalCarrinho = cartTotalSafe(cart);
 
   useEffect(() => {
     async function loadHome() {
@@ -175,37 +203,61 @@ function FarmaciaVirtualHome() {
 
   return (
     <main className="min-h-screen bg-gray-50 pb-24">
-      {/* TOPO */}
-      <section className="max-w-6xl mx-auto px-4 pt-6">
-        <div className="bg-white border rounded-3xl p-4 md:p-5 shadow-sm">
-          <h1 className="text-2xl md:text-3xl font-extrabold text-blue-900">
-            Farmácia Virtual — IA Drogarias
-          </h1>
-          <p className="text-gray-600 mt-1 text-sm md:text-base">
-            Finalização do pedido: nós analisamos a disponibilidade e retornamos em poucos minutos para confirmar.
-          </p>
-
-          <div className="mt-4 flex gap-2 items-center">
-            <input
-              value={busca}
-              onChange={(e) => setBusca(e.target.value)}
-              placeholder="Digite o nome ou EAN..."
-              className="w-full bg-gray-50 border rounded-2xl px-4 py-3 shadow-sm outline-none focus:ring-2 focus:ring-blue-200"
-            />
-            <button
-              onClick={() => setBusca("")}
-              className="px-4 py-3 rounded-2xl border bg-white hover:bg-gray-50 font-semibold"
-            >
-              Limpar
-            </button>
+      {/* ✅ HEADER AZUL STICKY (BUSCA + CARRINHO) */}
+      <header className="sticky top-0 z-50 bg-blue-700 shadow">
+        <div className="mx-auto max-w-6xl px-4 py-3 flex items-center gap-3">
+          <div className="text-white font-extrabold whitespace-nowrap">
+            IA Drogarias <span className="opacity-80">• FV</span>
           </div>
 
-          {isSearching && <div className="mt-2 text-xs text-gray-500">{loadingBusca ? "Buscando…" : " "}</div>}
-        </div>
-      </section>
+          {/* Busca no header */}
+          <div className="flex-1">
+            <div className="relative">
+              <input
+                value={busca}
+                onChange={(e) => setBusca(e.target.value)}
+                placeholder="Digite o nome do medicamento ou EAN..."
+                className="w-full rounded-full bg-white/95 px-4 py-2.5 text-sm outline-none focus:ring-4 focus:ring-white/20"
+              />
+              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                {busca.trim() ? (
+                  <button
+                    onClick={() => setBusca("")}
+                    className="text-xs font-extrabold px-2 py-1 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700"
+                    title="Limpar"
+                  >
+                    Limpar
+                  </button>
+                ) : null}
+                <span className="text-blue-800 bg-green-400/90 px-2 py-1 rounded-full text-xs font-extrabold">
+                  🔎
+                </span>
+              </div>
+            </div>
 
-      {/* ✅ BANNERS: AGORA FICA AQUI (SEMPRE APARECE) */}
-      <FVBanners />
+            {isSearching && (
+              <div className="mt-1 text-[11px] text-white/80">
+                {loadingBusca ? "Buscando…" : resultado.length ? `${resultado.length} resultado(s)` : " "}
+              </div>
+            )}
+          </div>
+
+          {/* Carrinho */}
+          <button
+            onClick={() => cartOpenSafe(cart)}
+            className="text-white font-extrabold whitespace-nowrap bg-white/10 hover:bg-white/15 px-3 py-2 rounded-full"
+            title="Abrir carrinho"
+          >
+            🛒 <span className="hidden sm:inline">Carrinho • </span>
+            {brl(totalCarrinho)}
+          </button>
+        </div>
+      </header>
+
+      {/* ✅ BANNERS (MANTER) */}
+      <div className="mt-4">
+        <FVBanners />
+      </div>
 
       {/* CONTEÚDO */}
       <section className="max-w-6xl mx-auto px-4">
@@ -252,13 +304,54 @@ function FarmaciaVirtualHome() {
           </div>
         )}
       </section>
+
+      {/* ✅ “COMPRA RÁPIDA” NO FINAL DA PÁGINA */}
+      <section className="max-w-6xl mx-auto px-4 mt-12 pb-12">
+        <div className="bg-white rounded-3xl border shadow-sm p-6">
+          <h3 className="text-xl md:text-2xl font-extrabold text-gray-900">Compra rápida</h3>
+          <p className="text-gray-600 mt-1">
+            Adicione no carrinho e finalize no WhatsApp em poucos cliques.
+          </p>
+
+          <div className="grid md:grid-cols-3 gap-4 mt-6">
+            <div className="flex gap-3 items-start">
+              <div className="h-11 w-11 rounded-2xl bg-gray-100 flex items-center justify-center text-lg">⚡</div>
+              <div>
+                <div className="font-extrabold">Rápido</div>
+                <div className="text-sm text-gray-600">Carrinho modal para melhor agilidade</div>
+              </div>
+            </div>
+
+            <div className="flex gap-3 items-start">
+              <div className="h-11 w-11 rounded-2xl bg-gray-100 flex items-center justify-center text-lg">✅</div>
+              <div>
+                <div className="font-extrabold">Confirmação</div>
+                <div className="text-sm text-gray-600">Checamos disponibilidade e retornamos</div>
+              </div>
+            </div>
+
+            <div className="flex gap-3 items-start">
+              <div className="h-11 w-11 rounded-2xl bg-gray-100 flex items-center justify-center text-lg">🚚</div>
+              <div>
+                <div className="font-extrabold">Entrega</div>
+                <div className="text-sm text-gray-600">Taxa fixa e prazo até 24h</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-6 rounded-3xl border p-4 bg-gray-50">
+            <div className="text-xs uppercase tracking-wide text-gray-500 font-bold">Dica</div>
+            <div className="font-extrabold text-gray-900">Pesquise pelo nome ou EAN pra achar rapidinho.</div>
+          </div>
+        </div>
+      </section>
     </main>
   );
 }
 
 function ProdutoCardUltra({ p }: { p: FVProduto }) {
   const pr = precoFinal(p);
-  const { addItem } = useCart();
+  const { addItem } = useCart() as any;
   const { push } = useToast();
   const [qtd, setQtd] = useState(1);
 
@@ -306,7 +399,10 @@ function ProdutoCardUltra({ p }: { p: FVProduto }) {
       <div className="px-3 pb-3 flex-1 flex flex-col">
         <div className="text-[11px] text-gray-500 line-clamp-1">{p.laboratorio || "—"}</div>
 
-        <Link href={`/fv/produtos/${p.ean}`} className="mt-1 font-semibold text-blue-950 text-xs sm:text-sm line-clamp-2 hover:underline">
+        <Link
+          href={`/fv/produtos/${p.ean}`}
+          className="mt-1 font-semibold text-blue-950 text-xs sm:text-sm line-clamp-2 hover:underline"
+        >
           {p.nome}
         </Link>
 
