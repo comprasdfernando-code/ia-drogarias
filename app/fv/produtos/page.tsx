@@ -6,7 +6,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 
-const WHATSAPP = "5511948343725";
+const WHATSAPP = "5511952068432";
 const TAXA_ENTREGA = 10;
 
 type FVProduto = {
@@ -51,7 +51,9 @@ export default function FVProdutoPage() {
       try {
         const { data, error } = await supabase
           .from("fv_produtos")
-          .select("id,ean,nome,laboratorio,categoria,apresentacao,pmc,em_promocao,preco_promocional,percentual_off,imagens,ativo")
+          .select(
+            "id,ean,nome,laboratorio,categoria,apresentacao,pmc,em_promocao,preco_promocional,percentual_off,imagens,ativo"
+          )
           .eq("ean", ean)
           .eq("ativo", true)
           .maybeSingle();
@@ -81,12 +83,15 @@ export default function FVProdutoPage() {
   if (!p) {
     return (
       <div className="p-6">
-        <Link href="/fv" className="text-blue-700 underline">← Voltar</Link>
+        <Link href="/fv" className="text-blue-700 underline">
+          ← Voltar
+        </Link>
         <p className="mt-4 text-gray-600">Produto não encontrado.</p>
       </div>
     );
   }
 
+  // (mantive aqui, mas NÃO usamos mais nesta tela)
   const msg = `Olá! Quero finalizar este pedido:
 • Produto: ${p.nome}
 • EAN: ${p.ean}
@@ -98,7 +103,9 @@ Pode confirmar a disponibilidade?`;
   return (
     <main className="bg-gray-50 min-h-screen pb-24">
       <div className="max-w-6xl mx-auto px-4 pt-6">
-        <Link href="/fv" className="text-sm text-blue-700 underline">← Voltar</Link>
+        <Link href="/fv" className="text-sm text-blue-700 underline">
+          ← Voltar
+        </Link>
 
         <div className="grid md:grid-cols-2 gap-6 mt-4">
           {/* Imagem */}
@@ -122,14 +129,22 @@ Pode confirmar a disponibilidade?`;
           {/* Info */}
           <div className="bg-white rounded-2xl shadow p-4">
             <div className="text-sm text-gray-500">{p.laboratorio || "—"}</div>
-            <h1 className="text-xl md:text-2xl font-bold text-blue-900 mt-1">
-              {p.nome}
-            </h1>
+            <h1 className="text-xl md:text-2xl font-bold text-blue-900 mt-1">{p.nome}</h1>
 
             <div className="mt-2 text-sm text-gray-600">
-              <div><b>EAN:</b> <span className="font-mono">{p.ean}</span></div>
-              {p.apresentacao && <div><b>Apresentação:</b> {p.apresentacao}</div>}
-              {p.categoria && <div><b>Categoria:</b> {p.categoria}</div>}
+              <div>
+                <b>EAN:</b> <span className="font-mono">{p.ean}</span>
+              </div>
+              {p.apresentacao && (
+                <div>
+                  <b>Apresentação:</b> {p.apresentacao}
+                </div>
+              )}
+              {p.categoria && (
+                <div>
+                  <b>Categoria:</b> {p.categoria}
+                </div>
+              )}
             </div>
 
             {/* Preço estilo Ultrafarma */}
@@ -140,20 +155,14 @@ Pode confirmar a disponibilidade?`;
                     De <span className="line-through">{brl(p.pmc)}</span>
                   </div>
                   <div className="flex items-center gap-2 mt-1">
-                    <div className="text-2xl font-extrabold text-blue-900">
-                      Por {brl(p.preco_promocional)}
-                    </div>
+                    <div className="text-2xl font-extrabold text-blue-900">Por {brl(p.preco_promocional)}</div>
                     {p.percentual_off != null && p.percentual_off > 0 && (
-                      <span className="bg-red-600 text-white text-xs px-2 py-1 rounded">
-                        {p.percentual_off}% off
-                      </span>
+                      <span className="bg-red-600 text-white text-xs px-2 py-1 rounded">{p.percentual_off}% off</span>
                     )}
                   </div>
                 </>
               ) : (
-                <div className="text-2xl font-extrabold text-blue-900">
-                  {brl(p.pmc)}
-                </div>
+                <div className="text-2xl font-extrabold text-blue-900">{brl(p.pmc)}</div>
               )}
 
               <div className="text-xs text-gray-500 mt-2">
@@ -163,12 +172,17 @@ Pode confirmar a disponibilidade?`;
                 Entrega São Paulo capital • prazo até 24h • taxa fixa {brl(TAXA_ENTREGA)}.
               </div>
 
-              <a
-                href={buildWhatsAppLink(WHATSAPP, msg)}
-                className="mt-4 block text-center bg-green-600 hover:bg-green-700 text-white py-3 rounded-xl font-semibold"
+              {/* ✅ TROCA AQUI */}
+              <Link
+                href="/fv"
+                className="mt-4 block text-center bg-blue-700 hover:bg-blue-800 text-white py-3 rounded-xl font-semibold"
               >
-                Finalizar pedido
-              </a>
+                Continuar comprando
+              </Link>
+
+              {/* (se quiser deixar o whatsapp escondido pra outra etapa, tá aqui mas removido da UI)
+              <a href={buildWhatsAppLink(WHATSAPP, msg)} className="hidden">Whats</a>
+              */}
             </div>
           </div>
         </div>
