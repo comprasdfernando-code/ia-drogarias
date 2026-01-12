@@ -490,6 +490,9 @@ function DFDistribuidoraHome({ onSair }: { onSair: () => void }) {
 /* =========================
    CART MODAL (com trava de estoque)
 ========================= */
+/* =========================
+   CART MODAL (ESTILO PDV + trava de estoque)
+========================= */
 function CartModal({
   open,
   onClose,
@@ -526,9 +529,15 @@ function CartModal({
     }
   }
 
+  function clearCart() {
+    if (!cart.items.length) return;
+    if (!confirm("Limpar carrinho?")) return;
+    cart.clear();
+  }
+
   const mensagem = useMemo(() => {
     if (!cart.items.length) return "Olá! Quero fazer um pedido da DF Distribuidora.";
-    const linhas = cart.items.map((it) => `• ${it.nome} (${it.ean}) — ${it.qtd}x — ${brl(it.preco)}`);
+    const linhas = cart.items.map((it) => `• ${it.nome} (${it.ean}) — ${it.qtd}x — ${brl(it.preco * it.qtd)}`);
     const total = brl(cart.subtotal);
     return `Olá! Quero finalizar meu pedido:\n\n${linhas.join("\n")}\n\nTotal: ${total}\n\nPode confirmar disponibilidade e prazo?`;
   }, [cart.items, cart.subtotal]);
@@ -538,17 +547,46 @@ function CartModal({
   return (
     <div className="fixed inset-0 z-[60]">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="absolute right-0 top-0 h-full w-full sm:w-[480px] bg-white shadow-2xl flex flex-col">
-        <div className="p-4 border-b flex items-center justify-between">
-          <div className="font-extrabold text-lg">🛒 Seu carrinho</div>
-          <button onClick={onClose} className="px-3 py-2 rounded-xl border bg-white hover:bg-gray-50 font-extrabold">
-            Continuar comprando
-          </button>
+
+      <div className="absolute right-0 top-0 h-full w-full sm:w-[520px] bg-gray-50 shadow-2xl flex flex-col">
+        {/* HEADER */}
+        <div className="p-4 bg-white border-b flex items-center justify-between gap-2">
+          <div>
+            <div className="text-xs font-bold text-gray-500">Carrinho</div>
+            <div className="text-lg font-extrabold text-gray-900">
+              Itens: {cart.items.reduce((a, b) => a + (b.qtd || 0), 0)}
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              onClick={clearCart}
+              disabled={!cart.items.length}
+              className={`px-3 py-2 rounded-2xl font-extrabold text-sm border ${
+                !cart.items.length ? "bg-gray-100 text-gray-400" : "bg-white hover:bg-gray-50"
+              }`}
+              title="Limpar carrinho"
+            >
+              Limpar
+            </button>
+
+            <button
+              onClick={onClose}
+              className="px-3 py-2 rounded-2xl border bg-white hover:bg-gray-50 font-extrabold text-sm"
+              title="Continuar comprando"
+            >
+              Voltar
+            </button>
+          </div>
         </div>
 
+        {/* ITENS */}
         <div className="p-4 flex-1 overflow-auto">
           {cart.items.length === 0 ? (
-            <div className="text-gray-600 bg-gray-50 border rounded-2xl p-4">Seu carrinho está vazio. Adicione itens 😊</div>
+            <div className="bg-white border rounded-3xl p-6 text-gray-600">
+              Seu carrinho está vazio.
+              <div className="text-xs text-gray-500 mt-1">Adicione produtos para finalizar no WhatsApp.</div>
+            </div>
           ) : (
             <div className="space-y-3">
               {cart.items.map((it) => {
@@ -556,58 +594,93 @@ function CartModal({
                 const max = Math.max(1, est || 1);
                 const travado = est > 0 ? Math.min(it.qtd, est) : it.qtd;
 
+                const badge =
+                  est <= 0 ? (
+                    <span className="text-[11px] font-extrabold bg-gray-200 text-gray-700 px-2 py-1 rounded-full">
+                      Estoque 0
+                    </span>
+                  ) : est <= 5 ? (
+                    <span className="text-[11px] font-extrabold bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full">
+                      Baixo: {est}
+                    </span>
+                  ) : (
+                    <span className="text-[11px] font-bold text-gray-500">Disp: {est}</span>
+                  );
+
                 return (
-                  <div key={it.ean} className="border rounded-2xl p-3 flex gap-3">
-                    <div className="h-14 w-14 bg-gray-50 rounded-xl overflow-hidden flex items-center justify-center">
-                      <Image src={it.imagem || "/produtos/caixa-padrao.png"} alt={it.nome} width={64} height={64} className="object-contain" />
-                    </div>
-
-                    <div className="flex-1">
-                      <div className="font-extrabold text-sm line-clamp-2">{it.nome}</div>
-                      <div className="text-xs text-gray-500">EAN: {it.ean}</div>
-                      <div className="mt-1 font-extrabold text-blue-900">{brl(it.preco)}</div>
-
-                      <div className="mt-2 flex items-center gap-2">
-                        <button onClick={() => cart.dec(it.ean)} className="w-9 h-9 bg-white hover:bg-gray-50 font-extrabold border rounded-xl">
-                          –
-                        </button>
-
-                        <input
-                          type="number"
-                          min={1}
-                          max={max}
-                          value={travado}
-                          onChange={(e) => setQtdSafe(it.ean, Number(e.target.value))}
-                          className="w-16 h-9 border rounded-xl text-center font-extrabold"
+                  <div key={it.ean} className="bg-white border rounded-3xl p-3">
+                    <div className="flex gap-3">
+                      <div className="h-14 w-14 rounded-2xl bg-gray-50 border overflow-hidden flex items-center justify-center shrink-0">
+                        <Image
+                          src={it.imagem || "/produtos/caixa-padrao.png"}
+                          alt={it.nome}
+                          width={56}
+                          height={56}
+                          className="object-contain"
                         />
-
-                        <button
-                          onClick={() => incSafe(it.ean)}
-                          disabled={est > 0 && it.qtd >= est}
-                          className={`w-9 h-9 font-extrabold border rounded-xl ${
-                            est > 0 && it.qtd >= est ? "bg-gray-100 text-gray-400 cursor-not-allowed" : "bg-white hover:bg-gray-50"
-                          }`}
-                        >
-                          +
-                        </button>
-
-                        <button
-                          onClick={() => cart.remove(it.ean)}
-                          className="px-3 py-2 rounded-xl border bg-white hover:bg-gray-50 text-sm font-extrabold ml-auto"
-                          title="Remover item"
-                        >
-                          Remover
-                        </button>
                       </div>
 
-                      <div className="mt-2 text-[11px] text-gray-500">
-                        {est > 0 ? (
-                          <>
-                            Disponível: <b>{est}</b>
-                          </>
-                        ) : (
-                          <span className="text-red-600 font-bold">Sem estoque / indisponível</span>
-                        )}
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <div className="font-extrabold text-gray-900 line-clamp-2">{it.nome}</div>
+                            <div className="text-[11px] text-gray-500">
+                              EAN: <b>{it.ean}</b>
+                            </div>
+                          </div>
+
+                          <button
+                            onClick={() => cart.remove(it.ean)}
+                            className="text-red-600 font-extrabold text-sm hover:underline"
+                            title="Remover item"
+                          >
+                            Remover
+                          </button>
+                        </div>
+
+                        <div className="mt-2 flex items-center justify-between gap-2">
+                          <div className="text-sm font-extrabold text-blue-900">{brl(it.preco)}</div>
+                          {badge}
+                        </div>
+
+                        <div className="mt-3 flex items-center gap-2">
+                          <button
+                            onClick={() => cart.dec(it.ean)}
+                            className="w-10 h-10 rounded-2xl bg-gray-100 hover:bg-gray-200 font-extrabold"
+                            title="Diminuir"
+                          >
+                            −
+                          </button>
+
+                          <input
+                            type="number"
+                            min={1}
+                            max={max}
+                            value={travado}
+                            onChange={(e) => setQtdSafe(it.ean, Number(e.target.value))}
+                            className="w-20 h-10 rounded-2xl border text-center font-extrabold outline-none focus:ring-4 focus:ring-blue-100"
+                            title="Quantidade"
+                          />
+
+                          <button
+                            onClick={() => incSafe(it.ean)}
+                            disabled={est > 0 && it.qtd >= est}
+                            className={`w-10 h-10 rounded-2xl font-extrabold ${
+                              est > 0 && it.qtd >= est
+                                ? "bg-gray-100 text-gray-400 cursor-not-allowed"
+                                : "bg-blue-700 hover:bg-blue-800 text-white"
+                            }`}
+                            title="Aumentar"
+                          >
+                            +
+                          </button>
+
+                          <div className="ml-auto font-extrabold text-gray-900">{brl(it.preco * it.qtd)}</div>
+                        </div>
+
+                        {est > 0 && it.qtd >= est ? (
+                          <div className="mt-2 text-xs font-bold text-yellow-700">Limite do estoque atingido.</div>
+                        ) : null}
                       </div>
                     </div>
                   </div>
@@ -617,15 +690,16 @@ function CartModal({
           )}
         </div>
 
-        <div className="p-4 border-t">
+        {/* TOTAIS + FINALIZAR */}
+        <div className="p-4 bg-white border-t">
           <div className="flex items-center justify-between">
-            <div className="text-sm text-gray-600">Subtotal</div>
-            <div className="text-lg font-extrabold text-blue-900">{brl(cart.subtotal)}</div>
+            <div className="text-sm text-gray-600 font-bold">Subtotal</div>
+            <div className="text-xl font-extrabold text-blue-900">{brl(cart.subtotal)}</div>
           </div>
 
           <div className="mt-3 grid grid-cols-2 gap-2">
             <button
-              onClick={() => cart.clear()}
+              onClick={clearCart}
               className="px-4 py-3 rounded-2xl border bg-white hover:bg-gray-50 font-extrabold"
               disabled={!cart.items.length}
             >
@@ -634,7 +708,7 @@ function CartModal({
 
             <a
               className={`px-4 py-3 rounded-2xl font-extrabold text-center ${
-                cart.items.length ? "bg-green-500 hover:bg-green-600 text-white" : "bg-gray-200 text-gray-500 pointer-events-none"
+                cart.items.length ? "bg-green-600 hover:bg-green-700 text-white" : "bg-gray-200 text-gray-500 pointer-events-none"
               }`}
               href={waLink(whats, mensagem)}
               target="_blank"
@@ -644,11 +718,16 @@ function CartModal({
               Finalizar no WhatsApp
             </a>
           </div>
+
+          {!cart.items.length ? (
+            <div className="mt-2 text-xs text-gray-500">Adicione itens para liberar o botão de finalizar.</div>
+          ) : null}
         </div>
       </div>
     </div>
   );
 }
+
 
 /* =========================
    PRODUTO CARD (com estoque/indisponível/encomendar)
