@@ -1,15 +1,14 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import { useCart } from "../../_components/cart";
-import { ToastProvider, useToast } from "../../_components/toast";
+import { useToast } from "../../_components/toast";
 
-const WHATSAPP = "5511948343725";
-const TAXA_ENTREGA = 10;
+const LS_OPEN_CART = "fv_open_cart";
 
 type FVProduto = {
   id: string;
@@ -36,32 +35,13 @@ function firstImg(imagens?: string[] | null) {
   return "/produtos/caixa-padrao.png";
 }
 
-function calcOff(pmc?: number | null, promo?: number | null) {
-  const a = Number(pmc || 0);
-  const b = Number(promo || 0);
-  if (!a || !b || b >= a) return 0;
-  return Math.round(((a - b) / a) * 100);
-}
-
-function buildWhatsAppLink(numeroE164: string, msg: string) {
-  const clean = numeroE164.replace(/\D/g, "");
-  const text = encodeURIComponent(msg);
-  return `https://wa.me/${clean}?text=${text}`;
-}
-
-export default function ProdutoPage() {
-  return (
-    <ToastProvider>
-      <FVProdutoPage />
-    </ToastProvider>
-  );
-}
-
-function FVProdutoPage() {
+export default function FVProdutoPage() {
   const params = useParams<{ ean: string }>();
-  const ean = decodeURIComponent(String(params?.ean || ""));
+  const router = useRouter();
 
-  const { addItem } = useCart();
+  const ean = decodeURIComponent(params.ean || "");
+
+  const cart = useCart();
   const { push } = useToast();
 
   const [loading, setLoading] = useState(true);
@@ -70,12 +50,6 @@ function FVProdutoPage() {
 
   useEffect(() => {
     async function load() {
-      if (!ean) {
-        setP(null);
-        setLoading(false);
-        return;
-      }
-
       setLoading(true);
       try {
         const { data, error } = await supabase
@@ -97,132 +71,156 @@ function FVProdutoPage() {
     load();
   }, [ean]);
 
-  const precos = useMemo(() => {
+  const precoFinal = useMemo(() => {
     if (!p) return null;
-    const pmc = Number(p.pmc || 0);
-    const promo = Number(p.preco_promocional || 0);
-    const emPromo = !!p.em_promocao && promo > 0 && (!pmc || promo < pmc);
-    const final = emPromo ? promo : pmc;
-
-    const offFromDb = Number(p.percentual_off || 0);
-    const off = emPromo ? (offFromDb > 0 ? offFromDb : calcOff(pmc, promo)) : 0;
-
-    return { pmc, promo, emPromo, final, off };
+    if (p.em_promocao && p.preco_promocional && Number(p.preco_promocional) > 0) return Number(p.preco_promocional);
+    return p.pmc != null ? Number(p.pmc) : null;
   }, [p]);
 
-  if (loading) return <div className="p-6 text-gray-600">Carregando…</div>;
+  function adicionar(abrirCarrinho: boolean) {
+    if (!p) return;
 
-  if (!p || !precos) {
-    return (
-      <div className="p-6">
-        <Link href="/fv" className="text-blue-700 hover:underline">← Voltar</Link>
-        <p className="mt-4 text-gray-600">Produto não encontrado.</p>
-      </div>
-    );
-  }
+    const price = Number(precoFinal || 0);
+    if (!price) {
+      push({ title: "Preço indisponível", desc: "Não foi possível adicionar este item." });
+      return;
+    }
 
-  const msg = `Olá! Quero finalizar este pedido:
-• Produto: ${p.nome}
-• EAN: ${p.ean}
-• Quantidade: ${qtd}
-• Preço unitário: ${brl(precos.final)}
-• Entrega: taxa fixa ${brl(TAXA_ENTREGA)}
+    const q = Math.max(1, Math.floor(Number(qtd || 1)));
 
-Pode confirmar a disponibilidade?`;
-
-  function addCarrinho() {
-    addItem(
+    cart.addItem(
       {
         ean: p.ean,
         nome: p.nome,
         laboratorio: p.laboratorio,
         apresentacao: p.apresentacao,
         imagem: firstImg(p.imagens),
-        preco: precos.final || 0,
+        preco: price,
       },
-      qtd
+      q
     );
-    push({ title: "Adicionado ao carrinho ✅", desc: `${p.nome} • ${qtd}x` });
+
+    push({ title: "Adicionado ✅", desc: `${p.nome} • ${q}x` });
     setQtd(1);
+
+    if (abrirCarrinho) {
+      localStorage.setItem(LS_OPEN_CART, "1");
+      router.push("/fv/produtos");
+    }
+  }
+
+  if (loading) {
+    return <div className="p-6 text-gray-600">Carregando…</div>;
+  }
+
+  if (!p) {
+    return (
+      <div className="p-6">
+        <Link href="/fv/produtos" className="text-blue-700 underline">
+          ← Voltar
+        </Link>
+        <p className="mt-4 text-gray-600">Produto não encontrado.</p>
+      </div>
+    );
   }
 
   return (
     <main className="bg-gray-50 min-h-screen pb-24">
       <div className="max-w-6xl mx-auto px-4 pt-6">
-        <Link href="/fv" className="text-sm text-blue-700 hover:underline">← Voltar</Link>
+        <Link href="/fv/produtos" className="text-sm text-blue-700 underline">
+          ← Voltar
+        </Link>
 
         <div className="grid md:grid-cols-2 gap-6 mt-4">
-          <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-4">
-            <div className="relative bg-gray-50 rounded-2xl p-3">
-              <Image
-                src={firstImg(p.imagens)}
-                alt={p.nome}
-                width={720}
-                height={720}
-                className="w-full h-[300px] md:h-[440px] object-contain"
-              />
-              {precos.emPromo && precos.off > 0 && (
-                <span className="absolute top-4 right-4 bg-red-600 text-white text-sm px-3 py-1 rounded-full font-extrabold shadow-sm">
-                  {precos.off}% OFF
+          {/* Imagem */}
+          <div className="bg-white rounded-2xl shadow p-4">
+            <div className="relative">
+              <Image src={firstImg(p.imagens)} alt={p.nome} width={520} height={520} className="w-full h-[280px] md:h-[420px] object-contain" />
+              {p.em_promocao && p.percentual_off != null && p.percentual_off > 0 && (
+                <span className="absolute top-3 right-3 bg-red-600 text-white text-sm px-3 py-1 rounded-full">
+                  {p.percentual_off}% OFF
                 </span>
               )}
             </div>
           </div>
 
-          <div className="bg-white rounded-3xl border border-gray-100 shadow-sm p-5 md:p-6">
+          {/* Info */}
+          <div className="bg-white rounded-2xl shadow p-4">
             <div className="text-sm text-gray-500">{p.laboratorio || "—"}</div>
-            <h1 className="text-xl md:text-3xl font-extrabold text-blue-950 mt-1">{p.nome}</h1>
+            <h1 className="text-xl md:text-2xl font-bold text-blue-900 mt-1">{p.nome}</h1>
 
             <div className="mt-2 text-sm text-gray-600">
-              <div><b>EAN:</b> <span className="font-mono">{p.ean}</span></div>
-              {p.apresentacao && <div><b>Apresentação:</b> {p.apresentacao}</div>}
-              {p.categoria && <div><b>Categoria:</b> {p.categoria}</div>}
+              <div>
+                <b>EAN:</b> <span className="font-mono">{p.ean}</span>
+              </div>
+              {p.apresentacao && (
+                <div>
+                  <b>Apresentação:</b> {p.apresentacao}
+                </div>
+              )}
+              {p.categoria && (
+                <div>
+                  <b>Categoria:</b> {p.categoria}
+                </div>
+              )}
             </div>
 
+            {/* Preço */}
             <div className="mt-5 border-t pt-4">
-              {precos.emPromo ? (
+              {p.em_promocao && p.preco_promocional ? (
                 <>
                   <div className="text-sm text-gray-500">
-                    De <span className="line-through">{brl(precos.pmc)}</span>
+                    De <span className="line-through">{brl(p.pmc)}</span>
                   </div>
                   <div className="flex items-center gap-2 mt-1">
-                    <div className="text-3xl font-extrabold text-blue-950">Por {brl(precos.final)}</div>
-                    {precos.off > 0 && (
-                      <span className="bg-red-600 text-white text-xs px-2 py-1 rounded font-bold">
-                        {precos.off}% off
-                      </span>
+                    <div className="text-2xl font-extrabold text-blue-900">Por {brl(p.preco_promocional)}</div>
+                    {p.percentual_off != null && p.percentual_off > 0 && (
+                      <span className="bg-red-600 text-white text-xs px-2 py-1 rounded">{p.percentual_off}% off</span>
                     )}
                   </div>
                 </>
               ) : (
-                <div className="text-3xl font-extrabold text-blue-950">{brl(precos.final)}</div>
+                <div className="text-2xl font-extrabold text-blue-900">{brl(p.pmc)}</div>
               )}
 
-              {/* stepper */}
-              <div className="mt-4 flex items-center gap-2">
-                <div className="flex items-center border rounded-2xl overflow-hidden">
-                  <button onClick={() => setQtd((x) => Math.max(1, x - 1))} className="w-11 h-11 bg-white hover:bg-gray-50 font-extrabold">–</button>
-                  <div className="w-14 text-center font-extrabold">{qtd}</div>
-                  <button onClick={() => setQtd((x) => x + 1)} className="w-11 h-11 bg-white hover:bg-gray-50 font-extrabold">+</button>
-                </div>
+              <div className="text-xs text-gray-500 mt-2">
+                Finalização do pedido: você preenche seus dados no carrinho e só então finaliza no WhatsApp.
+              </div>
 
+              {/* Quantidade */}
+              <div className="mt-4 flex items-center gap-3">
+                <div className="flex items-center border rounded-xl overflow-hidden">
+                  <button
+                    onClick={() => setQtd((x) => Math.max(1, x - 1))}
+                    className="w-10 h-10 bg-white hover:bg-gray-50 font-extrabold"
+                  >
+                    –
+                  </button>
+                  <div className="w-12 text-center font-extrabold">{qtd}</div>
+                  <button
+                    onClick={() => setQtd((x) => x + 1)}
+                    className="w-10 h-10 bg-white hover:bg-gray-50 font-extrabold"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+
+              {/* Botões */}
+              <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <button
-                  onClick={addCarrinho}
-                  className="flex-1 bg-blue-700 hover:bg-blue-800 text-white py-3 rounded-2xl font-extrabold"
+                  onClick={() => adicionar(false)}
+                  className="w-full bg-white border border-blue-700 text-blue-700 hover:bg-blue-50 py-3 rounded-xl font-extrabold"
                 >
                   Adicionar ao carrinho
                 </button>
-              </div>
 
-              <a
-                href={buildWhatsAppLink(WHATSAPP, msg)}
-                className="mt-3 block text-center bg-green-600 hover:bg-green-700 text-white py-3 rounded-2xl font-extrabold"
-              >
-                Comprar agora
-              </a>
-
-              <div className="text-xs text-gray-500 mt-3">
-                Entrega São Paulo capital • prazo até 24h • taxa fixa {brl(TAXA_ENTREGA)}.
+                <button
+                  onClick={() => adicionar(true)}
+                  className="w-full bg-blue-700 hover:bg-blue-800 text-white py-3 rounded-xl font-extrabold"
+                >
+                  Comprar
+                </button>
               </div>
             </div>
           </div>
