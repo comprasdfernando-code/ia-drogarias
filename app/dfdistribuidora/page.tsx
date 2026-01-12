@@ -46,6 +46,9 @@ const WHATS_DF = "5511952068432";
 const BRAND_TOP = "IA Drogarias";
 const BRAND_SUB = "• DF Distribuidora";
 
+const TAXA_ENTREGA_FIXA = 10;
+
+
 const HOME_LIMIT = 100;
 const SEARCH_LIMIT = 180;
 const SEARCH_DEBOUNCE = 350;
@@ -488,10 +491,7 @@ function DFDistribuidoraHome({ onSair }: { onSair: () => void }) {
 }
 
 /* =========================
-   CART MODAL (com trava de estoque)
-========================= */
-/* =========================
-   CART MODAL (ESTILO PDV + trava de estoque)
+   CART MODAL (ESTILO PDV + dados entrega/pagamento)
 ========================= */
 function CartModal({
   open,
@@ -505,6 +505,20 @@ function CartModal({
   estoqueByEan: Map<string, number>;
 }) {
   const cart = useCart();
+
+  // ✅ checkout (igual PDV)
+  const [clienteNome, setClienteNome] = useState("");
+  const [clienteTelefone, setClienteTelefone] = useState("");
+
+  const [tipoEntrega, setTipoEntrega] = useState<"ENTREGA" | "RETIRADA">("ENTREGA");
+  const [endereco, setEndereco] = useState("");
+  const [numero, setNumero] = useState("");
+  const [bairro, setBairro] = useState("");
+
+  const [pagamento, setPagamento] = useState<"PIX" | "CARTAO" | "DINHEIRO" | "COMBINAR">("PIX");
+
+  const taxaEntrega = tipoEntrega === "ENTREGA" ? TAXA_ENTREGA_FIXA : 0;
+  const total = cart.subtotal + taxaEntrega;
 
   function incSafe(ean: string) {
     const est = Number(estoqueByEan.get(ean) ?? 0);
@@ -529,18 +543,39 @@ function CartModal({
     }
   }
 
-  function clearCart() {
-    if (!cart.items.length) return;
-    if (!confirm("Limpar carrinho?")) return;
-    cart.clear();
-  }
+  const canCheckout = useMemo(() => {
+    if (cart.items.length === 0) return false;
+    if (!clienteNome.trim()) return false;
+    if (onlyDigits(clienteTelefone).length < 10) return false;
+
+    if (tipoEntrega === "ENTREGA") {
+      if (!endereco.trim() || !numero.trim() || !bairro.trim()) return false;
+    }
+    return true;
+  }, [cart.items.length, clienteNome, clienteTelefone, tipoEntrega, endereco, numero, bairro]);
 
   const mensagem = useMemo(() => {
-    if (!cart.items.length) return "Olá! Quero fazer um pedido da DF Distribuidora.";
-    const linhas = cart.items.map((it) => `• ${it.nome} (${it.ean}) — ${it.qtd}x — ${brl(it.preco * it.qtd)}`);
-    const total = brl(cart.subtotal);
-    return `Olá! Quero finalizar meu pedido:\n\n${linhas.join("\n")}\n\nTotal: ${total}\n\nPode confirmar disponibilidade e prazo?`;
-  }, [cart.items, cart.subtotal]);
+    let msg = `🧾 *Pedido DF Distribuidora*\n\n`;
+    msg += `👤 Cliente: ${clienteNome || "—"}\n`;
+    msg += `📞 WhatsApp: ${clienteTelefone || "—"}\n\n`;
+
+    msg +=
+      tipoEntrega === "ENTREGA"
+        ? `🚚 *Entrega*\n${endereco}, ${numero} - ${bairro}\nTaxa: ${brl(taxaEntrega)}\n\n`
+        : `🏪 *Retirada na loja*\n\n`;
+
+    msg += `💳 Pagamento: ${pagamento}\n\n🛒 *Itens:*\n`;
+    cart.items.forEach((i) => {
+      msg += `• ${i.nome} (${i.ean}) — ${i.qtd}x — ${brl(i.preco * i.qtd)}\n`;
+    });
+
+    msg += `\nSubtotal: ${brl(cart.subtotal)}\n`;
+    msg += `Taxa: ${brl(taxaEntrega)}\n`;
+    msg += `Total: ${brl(total)}\n\n`;
+    msg += `Pode confirmar disponibilidade e prazo?`;
+
+    return msg;
+  }, [cart.items, clienteNome, clienteTelefone, tipoEntrega, endereco, numero, bairro, pagamento, taxaEntrega, total, cart.subtotal]);
 
   if (!open) return null;
 
@@ -548,185 +583,204 @@ function CartModal({
     <div className="fixed inset-0 z-[60]">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
 
-      <div className="absolute right-0 top-0 h-full w-full sm:w-[520px] bg-gray-50 shadow-2xl flex flex-col">
-        {/* HEADER */}
-        <div className="p-4 bg-white border-b flex items-center justify-between gap-2">
-          <div>
-            <div className="text-xs font-bold text-gray-500">Carrinho</div>
-            <div className="text-lg font-extrabold text-gray-900">
-              Itens: {cart.items.reduce((a, b) => a + (b.qtd || 0), 0)}
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <button
-              onClick={clearCart}
-              disabled={!cart.items.length}
-              className={`px-3 py-2 rounded-2xl font-extrabold text-sm border ${
-                !cart.items.length ? "bg-gray-100 text-gray-400" : "bg-white hover:bg-gray-50"
-              }`}
-              title="Limpar carrinho"
-            >
-              Limpar
-            </button>
-
-            <button
-              onClick={onClose}
-              className="px-3 py-2 rounded-2xl border bg-white hover:bg-gray-50 font-extrabold text-sm"
-              title="Continuar comprando"
-            >
-              Voltar
-            </button>
-          </div>
+      <div className="absolute right-0 top-0 h-full w-full sm:w-[520px] bg-white p-4 overflow-auto">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-extrabold">Carrinho</h2>
+          <button onClick={onClose} className="px-3 py-2 rounded-xl border font-extrabold">
+            Continuar comprando
+          </button>
         </div>
 
         {/* ITENS */}
-        <div className="p-4 flex-1 overflow-auto">
+        <div className="mt-4">
           {cart.items.length === 0 ? (
-            <div className="bg-white border rounded-3xl p-6 text-gray-600">
-              Seu carrinho está vazio.
-              <div className="text-xs text-gray-500 mt-1">Adicione produtos para finalizar no WhatsApp.</div>
-            </div>
+            <div className="text-gray-600 bg-gray-50 border rounded-2xl p-4">Seu carrinho está vazio.</div>
           ) : (
-            <div className="space-y-3">
-              {cart.items.map((it) => {
-                const est = Number(estoqueByEan.get(it.ean) ?? 0);
-                const max = Math.max(1, est || 1);
-                const travado = est > 0 ? Math.min(it.qtd, est) : it.qtd;
+            cart.items.map((it) => {
+              const est = Number(estoqueByEan.get(it.ean) ?? 0);
+              const max = Math.max(1, est || 1);
+              const travado = est > 0 ? Math.min(it.qtd, est) : it.qtd;
 
-                const badge =
-                  est <= 0 ? (
-                    <span className="text-[11px] font-extrabold bg-gray-200 text-gray-700 px-2 py-1 rounded-full">
-                      Estoque 0
-                    </span>
-                  ) : est <= 5 ? (
-                    <span className="text-[11px] font-extrabold bg-yellow-100 text-yellow-800 px-2 py-1 rounded-full">
-                      Baixo: {est}
-                    </span>
-                  ) : (
-                    <span className="text-[11px] font-bold text-gray-500">Disp: {est}</span>
-                  );
+              return (
+                <div key={it.ean} className="border rounded-2xl p-3 mb-2">
+                  <div className="flex gap-3">
+                    <div className="h-14 w-14 bg-gray-50 rounded-xl overflow-hidden flex items-center justify-center">
+                      <Image
+                        src={it.imagem || "/produtos/caixa-padrao.png"}
+                        alt={it.nome}
+                        width={64}
+                        height={64}
+                        className="object-contain"
+                      />
+                    </div>
 
-                return (
-                  <div key={it.ean} className="bg-white border rounded-3xl p-3">
-                    <div className="flex gap-3">
-                      <div className="h-14 w-14 rounded-2xl bg-gray-50 border overflow-hidden flex items-center justify-center shrink-0">
-                        <Image
-                          src={it.imagem || "/produtos/caixa-padrao.png"}
-                          alt={it.nome}
-                          width={56}
-                          height={56}
-                          className="object-contain"
+                    <div className="flex-1">
+                      <div className="font-extrabold">{it.nome}</div>
+                      <div className="text-xs text-gray-500">EAN: {it.ean}</div>
+
+                      <div className="mt-1 text-sm font-extrabold text-blue-900">{brl(it.preco)}</div>
+
+                      <div className="mt-2 flex items-center gap-2">
+                        <button
+                          onClick={() => cart.dec(it.ean)}
+                          className="px-3 py-1 bg-gray-200 rounded font-extrabold"
+                        >
+                          -
+                        </button>
+
+                        <input
+                          type="number"
+                          min={1}
+                          max={max}
+                          value={travado}
+                          onChange={(e) => setQtdSafe(it.ean, Number(e.target.value))}
+                          className="w-16 border rounded px-2 py-1 text-center font-extrabold"
                         />
+
+                        <button
+                          onClick={() => incSafe(it.ean)}
+                          disabled={est > 0 ? it.qtd >= est : false}
+                          className={`px-3 py-1 rounded font-extrabold ${
+                            est > 0 && it.qtd >= est ? "bg-gray-200 text-gray-500 cursor-not-allowed" : "bg-blue-600 text-white"
+                          }`}
+                        >
+                          +
+                        </button>
+
+                        <button onClick={() => cart.remove(it.ean)} className="ml-auto text-red-600 font-extrabold">
+                          Excluir
+                        </button>
                       </div>
 
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <div className="font-extrabold text-gray-900 line-clamp-2">{it.nome}</div>
-                            <div className="text-[11px] text-gray-500">
-                              EAN: <b>{it.ean}</b>
-                            </div>
-                          </div>
-
-                          <button
-                            onClick={() => cart.remove(it.ean)}
-                            className="text-red-600 font-extrabold text-sm hover:underline"
-                            title="Remover item"
-                          >
-                            Remover
-                          </button>
-                        </div>
-
-                        <div className="mt-2 flex items-center justify-between gap-2">
-                          <div className="text-sm font-extrabold text-blue-900">{brl(it.preco)}</div>
-                          {badge}
-                        </div>
-
-                        <div className="mt-3 flex items-center gap-2">
-                          <button
-                            onClick={() => cart.dec(it.ean)}
-                            className="w-10 h-10 rounded-2xl bg-gray-100 hover:bg-gray-200 font-extrabold"
-                            title="Diminuir"
-                          >
-                            −
-                          </button>
-
-                          <input
-                            type="number"
-                            min={1}
-                            max={max}
-                            value={travado}
-                            onChange={(e) => setQtdSafe(it.ean, Number(e.target.value))}
-                            className="w-20 h-10 rounded-2xl border text-center font-extrabold outline-none focus:ring-4 focus:ring-blue-100"
-                            title="Quantidade"
-                          />
-
-                          <button
-                            onClick={() => incSafe(it.ean)}
-                            disabled={est > 0 && it.qtd >= est}
-                            className={`w-10 h-10 rounded-2xl font-extrabold ${
-                              est > 0 && it.qtd >= est
-                                ? "bg-gray-100 text-gray-400 cursor-not-allowed"
-                                : "bg-blue-700 hover:bg-blue-800 text-white"
-                            }`}
-                            title="Aumentar"
-                          >
-                            +
-                          </button>
-
-                          <div className="ml-auto font-extrabold text-gray-900">{brl(it.preco * it.qtd)}</div>
-                        </div>
-
-                        {est > 0 && it.qtd >= est ? (
-                          <div className="mt-2 text-xs font-bold text-yellow-700">Limite do estoque atingido.</div>
-                        ) : null}
+                      <div className="mt-2 text-xs text-gray-600">
+                        {est > 0 ? (
+                          <span>
+                            Disponível: <b>{est}</b>
+                          </span>
+                        ) : (
+                          <span className="text-red-600 font-bold">Atenção: estoque não encontrado (0)</span>
+                        )}
                       </div>
+
+                      <div className="mt-2 font-extrabold text-blue-900">Total item: {brl(it.preco * it.qtd)}</div>
                     </div>
                   </div>
-                );
-              })}
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* DADOS CLIENTE */}
+        <div className="mt-4 space-y-2">
+          <input
+            placeholder="Nome do cliente"
+            value={clienteNome}
+            onChange={(e) => setClienteNome(e.target.value)}
+            className="w-full border p-2 rounded"
+          />
+          <input
+            placeholder="WhatsApp"
+            value={clienteTelefone}
+            onChange={(e) => setClienteTelefone(e.target.value)}
+            className="w-full border p-2 rounded"
+          />
+          <div className="text-[11px] text-gray-500">Dica: informe com DDD (ex: 11999999999)</div>
+        </div>
+
+        {/* ENTREGA */}
+        <div className="mt-4">
+          <div className="font-bold mb-2">Entrega</div>
+
+          <div className="flex gap-2">
+            <button
+              onClick={() => setTipoEntrega("ENTREGA")}
+              className={`px-3 py-2 rounded flex-1 ${tipoEntrega === "ENTREGA" ? "bg-blue-600 text-white" : "bg-gray-200"}`}
+            >
+              Entrega
+            </button>
+
+            <button
+              onClick={() => setTipoEntrega("RETIRADA")}
+              className={`px-3 py-2 rounded flex-1 ${tipoEntrega === "RETIRADA" ? "bg-blue-600 text-white" : "bg-gray-200"}`}
+            >
+              Retirada
+            </button>
+          </div>
+
+          {tipoEntrega === "ENTREGA" && (
+            <div className="mt-3 space-y-2">
+              <input
+                placeholder="Endereço"
+                value={endereco}
+                onChange={(e) => setEndereco(e.target.value)}
+                className="w-full border p-2 rounded"
+              />
+              <input
+                placeholder="Número"
+                value={numero}
+                onChange={(e) => setNumero(e.target.value)}
+                className="w-full border p-2 rounded"
+              />
+              <input
+                placeholder="Bairro"
+                value={bairro}
+                onChange={(e) => setBairro(e.target.value)}
+                className="w-full border p-2 rounded"
+              />
+              <div className="text-sm font-bold">Taxa fixa: {brl(taxaEntrega)}</div>
             </div>
           )}
         </div>
 
-        {/* TOTAIS + FINALIZAR */}
-        <div className="p-4 bg-white border-t">
-          <div className="flex items-center justify-between">
-            <div className="text-sm text-gray-600 font-bold">Subtotal</div>
-            <div className="text-xl font-extrabold text-blue-900">{brl(cart.subtotal)}</div>
+        {/* PAGAMENTO */}
+        <div className="mt-4">
+          <div className="font-bold mb-2">Pagamento</div>
+
+          <div className="flex flex-wrap gap-2">
+            {(["PIX", "CARTAO", "DINHEIRO", "COMBINAR"] as const).map((p) => (
+              <button
+                key={p}
+                onClick={() => setPagamento(p)}
+                className={`px-3 py-2 rounded ${pagamento === p ? "bg-blue-600 text-white" : "bg-gray-200"}`}
+              >
+                {p}
+              </button>
+            ))}
           </div>
-
-          <div className="mt-3 grid grid-cols-2 gap-2">
-            <button
-              onClick={clearCart}
-              className="px-4 py-3 rounded-2xl border bg-white hover:bg-gray-50 font-extrabold"
-              disabled={!cart.items.length}
-            >
-              Limpar
-            </button>
-
-            <a
-              className={`px-4 py-3 rounded-2xl font-extrabold text-center ${
-                cart.items.length ? "bg-green-600 hover:bg-green-700 text-white" : "bg-gray-200 text-gray-500 pointer-events-none"
-              }`}
-              href={waLink(whats, mensagem)}
-              target="_blank"
-              rel="noreferrer"
-              title="Finalizar no WhatsApp"
-            >
-              Finalizar no WhatsApp
-            </a>
-          </div>
-
-          {!cart.items.length ? (
-            <div className="mt-2 text-xs text-gray-500">Adicione itens para liberar o botão de finalizar.</div>
-          ) : null}
         </div>
+
+        {/* TOTAL */}
+        <div className="mt-4 border-t pt-3">
+          <div>Subtotal: {brl(cart.subtotal)}</div>
+          <div>Taxa: {brl(taxaEntrega)}</div>
+          <div className="font-extrabold text-lg">Total: {brl(total)}</div>
+        </div>
+
+        {/* FINALIZAR */}
+        <a
+          href={waLink(whats, mensagem)}
+          target="_blank"
+          rel="noreferrer"
+          className={`block mt-4 text-center py-3 rounded-xl font-extrabold ${
+            canCheckout ? "bg-green-600 hover:bg-green-700 text-white" : "bg-gray-200 text-gray-500 pointer-events-none"
+          }`}
+          title={canCheckout ? "Finalizar no WhatsApp" : "Preencha nome/Whats e itens (e endereço se entrega)."}
+        >
+          Finalizar no WhatsApp
+        </a>
+
+        {!canCheckout ? (
+          <div className="mt-2 text-xs text-gray-500">
+            Para liberar o botão: informe <b>Nome</b>, <b>WhatsApp</b>, e adicione itens. Se escolher <b>Entrega</b>, preencha{" "}
+            <b>Endereço/Número/Bairro</b>.
+          </div>
+        ) : null}
       </div>
     </div>
   );
 }
+
 
 
 /* =========================
