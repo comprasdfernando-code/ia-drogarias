@@ -40,7 +40,7 @@ const WHATS_DF = "5511952068432";
 const BRAND_TOP = "IA Drogarias";
 const BRAND_SUB = "• DF Distribuidora";
 
-const HOME_LIMIT = 10; // ✅ leve (vitrine)
+const HOME_LIMIT = 30; // ✅ vitrine (só disponíveis) — aumente se quiser
 const SEARCH_LIMIT = 80;
 const SEARCH_DEBOUNCE = 350;
 
@@ -138,7 +138,7 @@ function DFDistribuidoraHome() {
   }, [homeProdutos, resultado]);
 
   /* =========================
-     HOME (leve: 10 itens)
+     HOME (MOSTRAR SÓ DISPONÍVEIS)
   ========================= */
   useEffect(() => {
     async function loadHome() {
@@ -151,8 +151,10 @@ function DFDistribuidoraHome() {
             "id,ean,nome,laboratorio,categoria,apresentacao,pmc,em_promocao,preco_promocional,percentual_off,destaque_home,ativo,imagens,estoque"
           )
           .eq("ativo", true)
+          .gt("estoque", 0) // ✅ só produtos disponíveis
           .order("destaque_home", { ascending: false })
           .order("em_promocao", { ascending: false })
+          .order("estoque", { ascending: false })
           .order("nome", { ascending: true })
           .limit(HOME_LIMIT);
 
@@ -172,6 +174,7 @@ function DFDistribuidoraHome() {
 
   /* =========================
      BUSCA REMOTA (todo banco)
+     (mantida)
   ========================= */
   useEffect(() => {
     async function search() {
@@ -224,23 +227,6 @@ function DFDistribuidoraHome() {
     const timer = setTimeout(search, SEARCH_DEBOUNCE);
     return () => clearTimeout(timer);
   }, [busca]);
-
-  /* =========================
-     CATEGORIAS (para manter visual parecido)
-     OBS: como HOME_LIMIT é 10, isso vira só uma "vitrine" leve.
-     Se quiser categorias iguais FV, aumente HOME_LIMIT.
-  ========================= */
-  const categoriasHome = useMemo(() => {
-    if (busca.trim()) return [];
-    const map = new Map<string, DFProduto[]>();
-    for (const p of homeProdutos) {
-      const cat = (p.categoria || "Outros").trim() || "Outros";
-      if (!map.has(cat)) map.set(cat, []);
-      const arr = map.get(cat)!;
-      if (arr.length < 6) arr.push(p);
-    }
-    return Array.from(map.entries()).slice(0, 6);
-  }, [homeProdutos, busca]);
 
   return (
     <main className="min-h-screen bg-gray-50 pb-24">
@@ -369,31 +355,41 @@ function DFDistribuidoraHome() {
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-5">
                 {resultado.map((p) => (
-                  <ProdutoCardUltra key={p.id} p={p} prefix={PREFIX} onEncomendar={() => encomendarDF(p)} estoqueByEan={estoqueByEan} />
+                  <ProdutoCardUltra
+                    key={p.id}
+                    p={p}
+                    prefix={PREFIX}
+                    onEncomendar={() => encomendarDF(p)}
+                    estoqueByEan={estoqueByEan}
+                  />
                 ))}
               </div>
             )}
           </div>
         ) : (
-          <div className="mt-8 space-y-10">
+          <div className="mt-8">
+            <h2 className="text-lg font-extrabold text-gray-900 mb-3">
+              Produtos disponíveis <span className="text-gray-500">({homeProdutos.length})</span>
+            </h2>
+
             {loadingHome ? (
               <GridSkeleton />
+            ) : homeProdutos.length === 0 ? (
+              <div className="bg-white border rounded-2xl p-6 text-gray-600">
+                Nenhum produto com estoque disponível no momento.
+              </div>
             ) : (
-              categoriasHome.map(([cat, itens]) => (
-                <div key={cat}>
-                  <div className="flex justify-end mb-2">
-                    <Link href={`${PREFIX}/categoria/${encodeURIComponent(cat)}`} className="text-sm text-blue-700 hover:underline">
-                      Ver todos →
-                    </Link>
-                  </div>
-
-                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-5">
-                    {itens.map((p) => (
-                      <ProdutoCardUltra key={p.id} p={p} prefix={PREFIX} onEncomendar={() => encomendarDF(p)} estoqueByEan={estoqueByEan} />
-                    ))}
-                  </div>
-                </div>
-              ))
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-5">
+                {homeProdutos.map((p) => (
+                  <ProdutoCardUltra
+                    key={p.id}
+                    p={p}
+                    prefix={PREFIX}
+                    onEncomendar={() => encomendarDF(p)}
+                    estoqueByEan={estoqueByEan}
+                  />
+                ))}
+              </div>
             )}
           </div>
         )}
@@ -439,12 +435,7 @@ function DFDistribuidoraHome() {
       </section>
 
       {/* ✅ MODAL DO CARRINHO */}
-      <CartModal
-        open={cartOpen}
-        onClose={() => setCartOpen(false)}
-        whats={WHATS_DF}
-        estoqueByEan={estoqueByEan}
-      />
+      <CartModal open={cartOpen} onClose={() => setCartOpen(false)} whats={WHATS_DF} estoqueByEan={estoqueByEan} />
     </main>
   );
 
@@ -489,7 +480,6 @@ function CartModal({
     const alvo = Math.max(1, Math.floor(Number(qtd || 1)));
     const final = est > 0 ? Math.min(alvo, est) : alvo;
 
-    // ✅ ajusta no carrinho usando inc/dec (não depende de setQty existir)
     const it = cart.items.find((x) => x.ean === ean);
     if (!it) return;
 
@@ -533,13 +523,7 @@ function CartModal({
                 return (
                   <div key={it.ean} className="border rounded-2xl p-3 flex gap-3">
                     <div className="h-14 w-14 bg-gray-50 rounded-xl overflow-hidden flex items-center justify-center">
-                      <Image
-                        src={it.imagem || "/produtos/caixa-padrao.png"}
-                        alt={it.nome}
-                        width={64}
-                        height={64}
-                        className="object-contain"
-                      />
+                      <Image src={it.imagem || "/produtos/caixa-padrao.png"} alt={it.nome} width={64} height={64} className="object-contain" />
                     </div>
 
                     <div className="flex-1">
@@ -548,10 +532,7 @@ function CartModal({
                       <div className="mt-1 font-extrabold text-blue-900">{brl(it.preco)}</div>
 
                       <div className="mt-2 flex items-center gap-2">
-                        <button
-                          onClick={() => cart.dec(it.ean)}
-                          className="w-9 h-9 bg-white hover:bg-gray-50 font-extrabold border rounded-xl"
-                        >
+                        <button onClick={() => cart.dec(it.ean)} className="w-9 h-9 bg-white hover:bg-gray-50 font-extrabold border rounded-xl">
                           –
                         </button>
 
@@ -658,9 +639,9 @@ function ProdutoCardUltra({
   function add() {
     if (indisponivel) return;
 
-    // ✅ trava pra não passar do estoque
     const already = cart.items.find((x) => x.ean === p.ean)?.qtd ?? 0;
     const want = Math.max(1, qtd);
+
     if (estoqueAtual > 0 && already + want > estoqueAtual) {
       const canAdd = Math.max(0, estoqueAtual - already);
       if (canAdd <= 0) {
@@ -745,19 +726,11 @@ function ProdutoCardUltra({
 
         <div className="mt-3 flex items-center gap-2">
           <div className="flex items-center border rounded-xl overflow-hidden">
-            <button
-              onClick={() => setQtd((x) => Math.max(1, x - 1))}
-              className="w-9 h-9 bg-white hover:bg-gray-50 font-extrabold"
-              disabled={indisponivel}
-            >
+            <button onClick={() => setQtd((x) => Math.max(1, x - 1))} className="w-9 h-9 bg-white hover:bg-gray-50 font-extrabold" disabled={indisponivel}>
               –
             </button>
             <div className="w-10 text-center font-extrabold text-sm">{qtd}</div>
-            <button
-              onClick={() => setQtd((x) => x + 1)}
-              className="w-9 h-9 bg-white hover:bg-gray-50 font-extrabold"
-              disabled={indisponivel}
-            >
+            <button onClick={() => setQtd((x) => x + 1)} className="w-9 h-9 bg-white hover:bg-gray-50 font-extrabold" disabled={indisponivel}>
               +
             </button>
           </div>
