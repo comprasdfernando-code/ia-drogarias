@@ -5,8 +5,9 @@ import { useParams, useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
-import { useCart } from "../../_components/cart";
-import { useToast } from "../../_components/toast";
+
+import { CartProvider, useCart } from "../../_components/cart";
+import { ToastProvider, useToast } from "../../_components/toast";
 
 const LS_OPEN_CART = "fv_open_cart";
 
@@ -35,14 +36,24 @@ function firstImg(imagens?: string[] | null) {
   return "/produtos/caixa-padrao.png";
 }
 
-export default function FVProdutoPage() {
+/* ✅ WRAPPER GARANTINDO PROVIDERS NA ROTA /fv/produtos/[ean] */
+export default function FVProdutoPageWrapper() {
+  return (
+    <CartProvider>
+      <ToastProvider>
+        <FVProdutoPage />
+      </ToastProvider>
+    </CartProvider>
+  );
+}
+
+function FVProdutoPage() {
   const params = useParams<{ ean: string }>();
   const router = useRouter();
+  const { push } = useToast();
+  const cart = useCart();
 
   const ean = decodeURIComponent(params.ean || "");
-
-  const cart = useCart();
-  const { push } = useToast();
 
   const [loading, setLoading] = useState(true);
   const [p, setP] = useState<FVProduto | null>(null);
@@ -103,15 +114,14 @@ export default function FVProdutoPage() {
     push({ title: "Adicionado ✅", desc: `${p.nome} • ${q}x` });
     setQtd(1);
 
+    // ✅ "Comprar" = abre carrinho no /fv/produtos
     if (abrirCarrinho) {
       localStorage.setItem(LS_OPEN_CART, "1");
       router.push("/fv/produtos");
     }
   }
 
-  if (loading) {
-    return <div className="p-6 text-gray-600">Carregando…</div>;
-  }
+  if (loading) return <div className="p-6 text-gray-600">Carregando…</div>;
 
   if (!p) {
     return (
@@ -165,7 +175,6 @@ export default function FVProdutoPage() {
               )}
             </div>
 
-            {/* Preço */}
             <div className="mt-5 border-t pt-4">
               {p.em_promocao && p.preco_promocional ? (
                 <>
@@ -184,29 +193,23 @@ export default function FVProdutoPage() {
               )}
 
               <div className="text-xs text-gray-500 mt-2">
-                Finalização do pedido: você preenche seus dados no carrinho e só então finaliza no WhatsApp.
+                Você adiciona no carrinho, preenche seus dados e só então finaliza no WhatsApp.
               </div>
 
               {/* Quantidade */}
               <div className="mt-4 flex items-center gap-3">
                 <div className="flex items-center border rounded-xl overflow-hidden">
-                  <button
-                    onClick={() => setQtd((x) => Math.max(1, x - 1))}
-                    className="w-10 h-10 bg-white hover:bg-gray-50 font-extrabold"
-                  >
+                  <button onClick={() => setQtd((x) => Math.max(1, x - 1))} className="w-10 h-10 bg-white hover:bg-gray-50 font-extrabold">
                     –
                   </button>
                   <div className="w-12 text-center font-extrabold">{qtd}</div>
-                  <button
-                    onClick={() => setQtd((x) => x + 1)}
-                    className="w-10 h-10 bg-white hover:bg-gray-50 font-extrabold"
-                  >
+                  <button onClick={() => setQtd((x) => x + 1)} className="w-10 h-10 bg-white hover:bg-gray-50 font-extrabold">
                     +
                   </button>
                 </div>
               </div>
 
-              {/* Botões */}
+              {/* ✅ 2 BOTÕES COMO VOCÊ PEDIU */}
               <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-2">
                 <button
                   onClick={() => adicionar(false)}
@@ -215,10 +218,7 @@ export default function FVProdutoPage() {
                   Adicionar ao carrinho
                 </button>
 
-                <button
-                  onClick={() => adicionar(true)}
-                  className="w-full bg-blue-700 hover:bg-blue-800 text-white py-3 rounded-xl font-extrabold"
-                >
+                <button onClick={() => adicionar(true)} className="w-full bg-blue-700 hover:bg-blue-800 text-white py-3 rounded-xl font-extrabold">
                   Comprar
                 </button>
               </div>
