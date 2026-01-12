@@ -49,7 +49,7 @@ const BRAND_SUB = "• DF Distribuidora";
 const TAXA_ENTREGA_FIXA = 10;
 
 
-const HOME_LIMIT = 100;
+const HOME_LIMIT = 150;
 const SEARCH_LIMIT = 180;
 const SEARCH_DEBOUNCE = 350;
 
