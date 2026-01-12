@@ -43,8 +43,8 @@ const PREFIX = "/dfdistribuidora";
 
 const WHATS_DF = "5511952068432";
 
-const BRAND_TOP = "IA Drogarias";
-const BRAND_SUB = "• DF Distribuidora";
+const BRAND_TOP = "IA";
+const BRAND_SUB = "• DF";
 
 const TAXA_ENTREGA_FIXA = 10;
 
