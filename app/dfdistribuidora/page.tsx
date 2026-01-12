@@ -46,8 +46,8 @@ const WHATS_DF = "5511952068432";
 const BRAND_TOP = "IA Drogarias";
 const BRAND_SUB = "• DF Distribuidora";
 
-const HOME_LIMIT = 30;
-const SEARCH_LIMIT = 80;
+const HOME_LIMIT = 100;
+const SEARCH_LIMIT = 180;
 const SEARCH_DEBOUNCE = 350;
 
 /* =========================
