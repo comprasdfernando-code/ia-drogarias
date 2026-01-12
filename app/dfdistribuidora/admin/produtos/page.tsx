@@ -20,7 +20,7 @@ import { supabase } from "@/lib/supabaseClient";
  * - estoque numeric/int (default 0)
  */
 
-const SENHA_ADMIN = "102030"; // 🔴 troque
+const SENHA_ADMIN = "021185"; // 🔴 troque
 const TABLE = "df_produtos";
 const PAGE_SIZE = 50;
 
@@ -38,7 +38,7 @@ type DFProduto = {
   destaque_home: boolean | null;
   ativo: boolean | null;
   imagens: string[] | null;
-  estoque: number | null; // ✅ NOVO
+  estoque: number | null; // ✅
 };
 
 function brl(v: number | null | undefined) {
@@ -154,6 +154,10 @@ function AdminProdutosInner({ onSair }: { onSair: () => void }) {
   const [q, setQ] = useState("");
   const [page, setPage] = useState(1);
 
+  // ✅ filtro estoque
+  const [onlyWithStock, setOnlyWithStock] = useState(false);
+  const [stockMode, setStockMode] = useState<"all" | "gt0" | "eq0" | "lt0">("all");
+
   const [rows, setRows] = useState<DFProduto[]>([]);
   const [total, setTotal] = useState(0);
 
@@ -180,6 +184,7 @@ function AdminProdutosInner({ onSair }: { onSair: () => void }) {
           { count: "exact" }
         );
 
+      // busca
       const raw = q.trim();
       if (raw) {
         const digits = onlyDigits(raw);
@@ -187,7 +192,17 @@ function AdminProdutosInner({ onSair }: { onSair: () => void }) {
         else query = query.ilike("nome", `%${raw}%`);
       }
 
-      query = query.order("nome", { ascending: true });
+      // ✅ filtro por estoque
+      if (onlyWithStock) {
+        query = query.gt("estoque", 0);
+      } else {
+        if (stockMode === "gt0") query = query.gt("estoque", 0);
+        if (stockMode === "eq0") query = query.eq("estoque", 0);
+        if (stockMode === "lt0") query = query.lt("estoque", 0);
+      }
+
+      // ✅ ordena com estoque primeiro
+      query = query.order("estoque", { ascending: false }).order("nome", { ascending: true });
 
       const from = (page - 1) * PAGE_SIZE;
       const to = from + PAGE_SIZE - 1;
@@ -217,7 +232,7 @@ function AdminProdutosInner({ onSair }: { onSair: () => void }) {
     }, 350);
     return () => clearTimeout(t);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q]);
+  }, [q, onlyWithStock, stockMode]);
 
   const pages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
@@ -282,7 +297,7 @@ function AdminProdutosInner({ onSair }: { onSair: () => void }) {
         destaque_home: !!editing.destaque_home,
         ativo: !!editing.ativo,
         imagens: Array.isArray(editing.imagens) ? editing.imagens.filter(Boolean) : null,
-        estoque: Math.max(0, Number(toInt(editing.estoque) ?? 0)), // ✅
+        estoque: Math.max(0, Number(toInt(editing.estoque) ?? 0)),
       };
 
       if (!payload.ean || payload.ean.length < 8) {
@@ -324,7 +339,7 @@ function AdminProdutosInner({ onSair }: { onSair: () => void }) {
         destaque_home: !!novo.destaque_home,
         ativo: novo.ativo ?? true,
         imagens: Array.isArray(novo.imagens) ? (novo.imagens as any) : null,
-        estoque: Math.max(0, Number(toInt(novo.estoque) ?? 0)), // ✅ já cria com estoque
+        estoque: Math.max(0, Number(toInt(novo.estoque) ?? 0)),
       };
 
       if (!payload.ean || payload.ean.length < 8) {
@@ -413,6 +428,32 @@ function AdminProdutosInner({ onSair }: { onSair: () => void }) {
                 placeholder="Nome ou EAN..."
                 className="mt-1 w-full rounded-2xl border px-4 py-2.5 outline-none focus:ring-4 focus:ring-blue-100"
               />
+
+              {/* ✅ filtro estoque (lugar certo: busca) */}
+              <div className="mt-3 flex flex-wrap gap-2 items-center">
+                <label className="flex items-center gap-2 text-sm font-bold text-gray-700">
+                  <input
+                    type="checkbox"
+                    checked={onlyWithStock}
+                    onChange={(e) => setOnlyWithStock(e.target.checked)}
+                    className="h-4 w-4"
+                  />
+                  Somente com estoque
+                </label>
+
+                <select
+                  value={stockMode}
+                  onChange={(e) => setStockMode(e.target.value as any)}
+                  className="rounded-xl border px-3 py-2 text-sm font-bold bg-white"
+                  disabled={onlyWithStock}
+                  title="Filtro de estoque"
+                >
+                  <option value="all">Estoque: todos</option>
+                  <option value="gt0">Somente &gt; 0</option>
+                  <option value="eq0">Somente = 0</option>
+                  <option value="lt0">Somente &lt; 0</option>
+                </select>
+              </div>
             </div>
 
             <div className="flex gap-3">
