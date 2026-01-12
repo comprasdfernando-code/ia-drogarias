@@ -1,3 +1,7 @@
+// app/fv/page.tsx  (ou app/farmaciavirtual/page.tsx)
+// ✅ Carrinho estilo PDV (drawer) + checkout completo (Nome/Whats + Entrega/Retirada + Pagamento + taxa)
+// ✅ Mantém sua lógica atual de vitrine/busca/cards. Só trocamos o CartModal.
+
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -27,6 +31,10 @@ type FVProduto = {
 function brl(v: number | null | undefined) {
   if (v === null || v === undefined || Number.isNaN(v)) return "—";
   return Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+function onlyDigits(v: string) {
+  return (v || "").replace(/\D/g, "");
 }
 
 function calcOff(pmc?: number | null, promo?: number | null) {
@@ -77,7 +85,7 @@ function FarmaciaVirtualHome() {
   const [homeProdutos, setHomeProdutos] = useState<FVProduto[]>([]);
   const [resultado, setResultado] = useState<FVProduto[]>([]);
 
-  // ✅ Modal do carrinho local
+  // ✅ Drawer do carrinho
   const [cartOpen, setCartOpen] = useState(false);
 
   const cart = useCart();
@@ -139,14 +147,12 @@ function FarmaciaVirtualHome() {
       setLoadingBusca(true);
 
       try {
-        // ✅ normaliza: "300mg" -> "300 mg"
         const normalized = raw
           .toLowerCase()
           .replace(/(\d+)\s*(mg|ml|mcg|g|ui|iu)/gi, "$1 $2")
           .replace(/\s+/g, " ")
           .trim();
 
-        // ✅ RPC retorna já ordenado (mais barato -> mais caro)
         const { data, error } = await supabase.rpc("fv_search_produtos", {
           q: normalized,
           lim: 100,
@@ -158,7 +164,7 @@ function FarmaciaVirtualHome() {
       } catch (e) {
         console.error("Erro search (RPC):", e);
 
-        // ✅ fallback simples (não quebra se RPC não existir/der erro)
+        // ✅ fallback
         try {
           const digits = raw.replace(/\D/g, "");
           let query = supabase
@@ -212,10 +218,9 @@ function FarmaciaVirtualHome() {
 
   return (
     <main className="min-h-screen bg-gray-50 pb-24">
-      {/* ✅ HEADER AZUL STICKY (DESKTOP 1 LINHA / MOBILE 2 LINHAS) */}
       <header className="sticky top-0 z-40 bg-blue-700 shadow">
         <div className="mx-auto max-w-6xl px-4 py-3">
-          {/* MOBILE: linha 1 (logo + carrinho) */}
+          {/* MOBILE */}
           <div className="flex items-center justify-between gap-3 md:hidden">
             <div className="text-white font-extrabold whitespace-nowrap">
               IA Drogarias <span className="opacity-80">• FV</span>
@@ -235,7 +240,6 @@ function FarmaciaVirtualHome() {
             </button>
           </div>
 
-          {/* MOBILE: linha 2 (busca grande) */}
           <div className="mt-3 md:hidden">
             <div className="relative">
               <input
@@ -255,9 +259,7 @@ function FarmaciaVirtualHome() {
                     Limpar
                   </button>
                 ) : null}
-                <span className="text-blue-900 bg-green-400/90 px-2 py-1 rounded-full text-xs font-extrabold">
-                  🔎
-                </span>
+                <span className="text-blue-900 bg-green-400/90 px-2 py-1 rounded-full text-xs font-extrabold">🔎</span>
               </div>
             </div>
 
@@ -268,7 +270,7 @@ function FarmaciaVirtualHome() {
             )}
           </div>
 
-          {/* DESKTOP: tudo na mesma linha */}
+          {/* DESKTOP */}
           <div className="hidden md:flex items-center gap-3">
             <div className="text-white font-extrabold whitespace-nowrap">
               IA Drogarias <span className="opacity-80">• FV</span>
@@ -293,9 +295,7 @@ function FarmaciaVirtualHome() {
                       Limpar
                     </button>
                   ) : null}
-                  <span className="text-blue-900 bg-green-400/90 px-2 py-1 rounded-full text-xs font-extrabold">
-                    🔎
-                  </span>
+                  <span className="text-blue-900 bg-green-400/90 px-2 py-1 rounded-full text-xs font-extrabold">🔎</span>
                 </div>
               </div>
 
@@ -313,7 +313,6 @@ function FarmaciaVirtualHome() {
             >
               🛒 <span className="hidden lg:inline">Carrinho • </span>
               {brl(totalCarrinho)}
-
               {qtdCarrinho > 0 && (
                 <span className="absolute -top-2 -right-2 h-6 min-w-[24px] px-1 rounded-full bg-green-400 text-blue-900 text-xs font-extrabold flex items-center justify-center border-2 border-blue-700">
                   {qtdCarrinho}
@@ -324,12 +323,10 @@ function FarmaciaVirtualHome() {
         </div>
       </header>
 
-      {/* ✅ BANNERS */}
       <div className="mt-4">
         <FVBanners />
       </div>
 
-      {/* CONTEÚDO */}
       <section className="max-w-6xl mx-auto px-4">
         {isSearching ? (
           <div className="mt-6">
@@ -356,7 +353,6 @@ function FarmaciaVirtualHome() {
             ) : (
               categoriasHome.map(([cat, itens]) => (
                 <div key={cat}>
-                  {/* ✅ sem título gigante, só o "ver todos" */}
                   <div className="flex justify-end mb-2">
                     <Link href={`/fv/categoria/${encodeURIComponent(cat)}`} className="text-sm text-blue-700 hover:underline">
                       Ver todos →
@@ -375,7 +371,6 @@ function FarmaciaVirtualHome() {
         )}
       </section>
 
-      {/* ✅ “COMPRA RÁPIDA” SOMENTE NO FINAL */}
       <section className="max-w-6xl mx-auto px-4 mt-12 pb-12">
         <div className="bg-white rounded-3xl border shadow-sm p-6">
           <h3 className="text-xl md:text-2xl font-extrabold text-gray-900">Compra rápida</h3>
@@ -386,7 +381,7 @@ function FarmaciaVirtualHome() {
               <div className="h-11 w-11 rounded-2xl bg-gray-100 flex items-center justify-center text-lg">⚡</div>
               <div>
                 <div className="font-extrabold">Rápido</div>
-                <div className="text-sm text-gray-600">Carrinho modal para melhor agilidade</div>
+                <div className="text-sm text-gray-600">Carrinho estilo PDV</div>
               </div>
             </div>
 
@@ -414,39 +409,106 @@ function FarmaciaVirtualHome() {
         </div>
       </section>
 
-      {/* ✅ MODAL DO CARRINHO */}
-      <CartModal open={cartOpen} onClose={() => setCartOpen(false)} />
+      {/* ✅ CART DRAWER COMPLETO */}
+      <CartModalPDV open={cartOpen} onClose={() => setCartOpen(false)} />
     </main>
   );
 }
 
-function CartModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+/* =========================================
+   CART MODAL (ESTILO PDV) + CHECKOUT COMPLETO
+   - Nome / Whats
+   - Entrega / Retirada
+   - Endereço/Número/Bairro
+   - Pagamento
+   - Taxa fixa
+   - Mensagem Whats com tudo
+========================================= */
+function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void }) {
   const cart = useCart();
 
-  // ✅ WhatsApp da farmácia
+  // ✅ ajuste aqui
   const WHATS = "5511952068432";
+  const TAXA_ENTREGA_FIXA = 10;
+
+  const [clienteNome, setClienteNome] = useState("");
+  const [clienteTelefone, setClienteTelefone] = useState("");
+
+  const [tipoEntrega, setTipoEntrega] = useState<"ENTREGA" | "RETIRADA">("ENTREGA");
+  const [endereco, setEndereco] = useState("");
+  const [numero, setNumero] = useState("");
+  const [bairro, setBairro] = useState("");
+
+  const [pagamento, setPagamento] = useState<"PIX" | "CARTAO" | "DINHEIRO" | "COMBINAR">("PIX");
+
+  const taxaEntrega = tipoEntrega === "ENTREGA" ? TAXA_ENTREGA_FIXA : 0;
+
+  // ✅ subtotal real (se seu cart.subtotal já for total, mantém ele; aqui calculo pra ficar 100% correto)
+  const subtotal = useMemo(() => {
+    return cart.items.reduce((acc, it) => acc + Number(it.preco || 0) * Number(it.qtd || 0), 0);
+  }, [cart.items]);
+
+  const total = subtotal + taxaEntrega;
+
+  const canCheckout = useMemo(() => {
+    if (!cart.items.length) return false;
+    if (!clienteNome.trim()) return false;
+    if (onlyDigits(clienteTelefone).length < 10) return false;
+
+    if (tipoEntrega === "ENTREGA") {
+      if (!endereco.trim() || !numero.trim() || !bairro.trim()) return false;
+    }
+    return true;
+  }, [cart.items.length, clienteNome, clienteTelefone, tipoEntrega, endereco, numero, bairro]);
 
   const mensagem = useMemo(() => {
-    if (!cart.items.length) return "Olá! Quero fazer um pedido da Farmácia Virtual.";
-    const linhas = cart.items.map((it) => `• ${it.nome} (${it.ean}) — ${it.qtd}x — ${brl(it.preco)}`);
-    const total = brl(cart.subtotal);
-    return `Olá! Quero finalizar meu pedido:\n\n${linhas.join("\n")}\n\nTotal: ${total}\n\nPode confirmar disponibilidade e prazo?`;
-  }, [cart.items, cart.subtotal]);
+    let msg = `🧾 *Pedido - Farmácia Virtual*\n\n`;
+    msg += `👤 Cliente: ${clienteNome || "—"}\n`;
+    msg += `📞 WhatsApp: ${clienteTelefone || "—"}\n\n`;
+
+    msg +=
+      tipoEntrega === "ENTREGA"
+        ? `🚚 *Entrega*\n${endereco || "—"}, ${numero || "—"} - ${bairro || "—"}\nTaxa: ${brl(taxaEntrega)}\n\n`
+        : `🏪 *Retirada na loja*\n\n`;
+
+    msg += `💳 Pagamento: ${pagamento}\n\n🛒 *Itens:*\n`;
+
+    cart.items.forEach((i) => {
+      const totalItem = Number(i.preco || 0) * Number(i.qtd || 0);
+      msg += `• ${i.nome} (${i.ean}) — ${i.qtd}x — ${brl(totalItem)}\n`;
+    });
+
+    msg += `\nSubtotal: ${brl(subtotal)}\n`;
+    msg += `Total: ${brl(total)}\n\n`;
+    msg += `Pode confirmar disponibilidade e prazo?`;
+
+    return msg;
+  }, [cart.items, clienteNome, clienteTelefone, tipoEntrega, endereco, numero, bairro, pagamento, subtotal, total, taxaEntrega]);
+
+  // ✅ reset quando fechar (opcional)
+  useEffect(() => {
+    if (!open) return;
+    // quando abrir, nada
+  }, [open]);
 
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-[60]">
+    <div className="fixed inset-0 z-[70]">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+
       <div className="absolute right-0 top-0 h-full w-full sm:w-[480px] bg-white shadow-2xl flex flex-col">
+        {/* HEADER */}
         <div className="p-4 border-b flex items-center justify-between">
-          <div className="font-extrabold text-lg">🛒 Seu carrinho</div>
-          <button onClick={onClose} className="px-3 py-2 rounded-xl border bg-white hover:bg-gray-50 font-extrabold">
-            Fechar
+          <div className="font-extrabold text-lg">🛒 Carrinho</div>
+          <button onClick={onClose} className="px-3 py-2 rounded-xl border font-extrabold bg-white hover:bg-gray-50">
+            Continuar comprando
           </button>
         </div>
 
+        {/* BODY */}
         <div className="p-4 flex-1 overflow-auto">
+          {/* ITENS */}
           {cart.items.length === 0 ? (
             <div className="text-gray-600 bg-gray-50 border rounded-2xl p-4">Seu carrinho está vazio. Adicione itens 😊</div>
           ) : (
@@ -454,37 +516,45 @@ function CartModal({ open, onClose }: { open: boolean; onClose: () => void }) {
               {cart.items.map((it) => (
                 <div key={it.ean} className="border rounded-2xl p-3 flex gap-3">
                   <div className="h-14 w-14 bg-gray-50 rounded-xl overflow-hidden flex items-center justify-center">
-                    <Image
-                      src={it.imagem || "/produtos/caixa-padrao.png"}
-                      alt={it.nome}
-                      width={64}
-                      height={64}
-                      className="object-contain"
-                    />
+                    <Image src={it.imagem || "/produtos/caixa-padrao.png"} alt={it.nome} width={64} height={64} className="object-contain" />
                   </div>
 
-                  <div className="flex-1">
+                  <div className="flex-1 min-w-0">
                     <div className="font-extrabold text-sm line-clamp-2">{it.nome}</div>
                     <div className="text-xs text-gray-500">EAN: {it.ean}</div>
-                    <div className="mt-1 font-extrabold text-blue-900">{brl(it.preco)}</div>
+
+                    <div className="mt-1 flex items-center justify-between gap-2">
+                      <div className="font-extrabold text-blue-900">{brl(it.preco)}</div>
+                      <div className="text-xs font-bold text-gray-600">Item: {brl(Number(it.preco || 0) * Number(it.qtd || 0))}</div>
+                    </div>
 
                     <div className="mt-2 flex items-center gap-2">
-                      <div className="flex items-center border rounded-xl overflow-hidden">
-                        <button onClick={() => cart.dec(it.ean)} className="w-9 h-9 bg-white hover:bg-gray-50 font-extrabold">
-                          –
-                        </button>
-                        <div className="w-10 text-center font-extrabold text-sm">{it.qtd}</div>
-                        <button onClick={() => cart.inc(it.ean)} className="w-9 h-9 bg-white hover:bg-gray-50 font-extrabold">
-                          +
-                        </button>
+                      <button
+                        onClick={() => cart.dec(it.ean)}
+                        className="w-10 h-10 rounded-xl border bg-white hover:bg-gray-50 font-extrabold"
+                        title="Diminuir"
+                      >
+                        –
+                      </button>
+
+                      <div className="w-10 h-10 rounded-xl border bg-gray-50 flex items-center justify-center font-extrabold">
+                        {it.qtd}
                       </div>
 
                       <button
+                        onClick={() => cart.inc(it.ean)}
+                        className="w-10 h-10 rounded-xl border bg-white hover:bg-gray-50 font-extrabold"
+                        title="Aumentar"
+                      >
+                        +
+                      </button>
+
+                      <button
                         onClick={() => cart.remove(it.ean)}
-                        className="px-3 py-2 rounded-xl border bg-white hover:bg-gray-50 text-sm font-extrabold"
+                        className="ml-auto px-3 py-2 rounded-xl border bg-white hover:bg-gray-50 text-sm font-extrabold text-red-600"
                         title="Remover item"
                       >
-                        Remover
+                        Excluir
                       </button>
                     </div>
                   </div>
@@ -492,12 +562,119 @@ function CartModal({ open, onClose }: { open: boolean; onClose: () => void }) {
               ))}
             </div>
           )}
+
+          {/* DADOS DO CLIENTE */}
+          <div className="mt-5 bg-gray-50 border rounded-2xl p-4">
+            <div className="font-extrabold text-gray-900">Dados</div>
+
+            <div className="mt-3 space-y-2">
+              <input
+                placeholder="Nome do cliente"
+                value={clienteNome}
+                onChange={(e) => setClienteNome(e.target.value)}
+                className="w-full border bg-white px-3 py-2.5 rounded-xl outline-none focus:ring-4 focus:ring-blue-100"
+              />
+              <input
+                placeholder="WhatsApp com DDD (ex: 11999999999)"
+                value={clienteTelefone}
+                onChange={(e) => setClienteTelefone(e.target.value)}
+                className="w-full border bg-white px-3 py-2.5 rounded-xl outline-none focus:ring-4 focus:ring-blue-100"
+              />
+              <div className="text-[11px] text-gray-500">Dica: informe com DDD. Ex: 11999999999</div>
+            </div>
+          </div>
+
+          {/* ENTREGA / RETIRADA */}
+          <div className="mt-4 bg-white border rounded-2xl p-4">
+            <div className="font-extrabold text-gray-900">Entrega</div>
+
+            <div className="mt-3 flex gap-2">
+              <button
+                onClick={() => setTipoEntrega("ENTREGA")}
+                className={`flex-1 px-3 py-2.5 rounded-xl font-extrabold ${
+                  tipoEntrega === "ENTREGA" ? "bg-blue-700 text-white" : "bg-gray-100 hover:bg-gray-200"
+                }`}
+              >
+                Entrega
+              </button>
+
+              <button
+                onClick={() => setTipoEntrega("RETIRADA")}
+                className={`flex-1 px-3 py-2.5 rounded-xl font-extrabold ${
+                  tipoEntrega === "RETIRADA" ? "bg-blue-700 text-white" : "bg-gray-100 hover:bg-gray-200"
+                }`}
+              >
+                Retirada
+              </button>
+            </div>
+
+            {tipoEntrega === "ENTREGA" ? (
+              <div className="mt-3 space-y-2">
+                <input
+                  placeholder="Endereço"
+                  value={endereco}
+                  onChange={(e) => setEndereco(e.target.value)}
+                  className="w-full border bg-white px-3 py-2.5 rounded-xl outline-none focus:ring-4 focus:ring-blue-100"
+                />
+                <div className="grid grid-cols-2 gap-2">
+                  <input
+                    placeholder="Número"
+                    value={numero}
+                    onChange={(e) => setNumero(e.target.value)}
+                    className="w-full border bg-white px-3 py-2.5 rounded-xl outline-none focus:ring-4 focus:ring-blue-100"
+                  />
+                  <input
+                    placeholder="Bairro"
+                    value={bairro}
+                    onChange={(e) => setBairro(e.target.value)}
+                    className="w-full border bg-white px-3 py-2.5 rounded-xl outline-none focus:ring-4 focus:ring-blue-100"
+                  />
+                </div>
+
+                <div className="text-sm font-extrabold text-blue-900">Taxa fixa: {brl(taxaEntrega)}</div>
+              </div>
+            ) : (
+              <div className="mt-3 text-sm text-gray-600">
+                Você pode retirar na loja. Assim que confirmar, enviamos o endereço/horário.
+              </div>
+            )}
+          </div>
+
+          {/* PAGAMENTO */}
+          <div className="mt-4 bg-white border rounded-2xl p-4">
+            <div className="font-extrabold text-gray-900">Pagamento</div>
+
+            <div className="mt-3 flex flex-wrap gap-2">
+              {(["PIX", "CARTAO", "DINHEIRO", "COMBINAR"] as const).map((p) => (
+                <button
+                  key={p}
+                  onClick={() => setPagamento(p)}
+                  className={`px-3 py-2 rounded-xl font-extrabold ${
+                    pagamento === p ? "bg-blue-700 text-white" : "bg-gray-100 hover:bg-gray-200"
+                  }`}
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
+          </div>
         </div>
 
+        {/* FOOTER */}
         <div className="p-4 border-t">
           <div className="flex items-center justify-between">
             <div className="text-sm text-gray-600">Subtotal</div>
-            <div className="text-lg font-extrabold text-blue-900">{brl(cart.subtotal)}</div>
+            <div className="text-lg font-extrabold text-blue-900">{brl(subtotal)}</div>
+          </div>
+
+          <div className="mt-1 flex items-center justify-between">
+            <div className="text-sm text-gray-600">Taxa</div>
+            <div className="text-sm font-extrabold">{brl(taxaEntrega)}</div>
+          </div>
+
+          <div className="mt-2 flex items-center justify-between">
+            <div className="text-base font-extrabold text-gray-900">Total</div>
+            <div className="text-xl font-extrabold text-green-700">{brl(total)}</div>
           </div>
 
           <div className="mt-3 grid grid-cols-2 gap-2">
@@ -511,16 +688,27 @@ function CartModal({ open, onClose }: { open: boolean; onClose: () => void }) {
 
             <a
               className={`px-4 py-3 rounded-2xl font-extrabold text-center ${
-                cart.items.length ? "bg-green-500 hover:bg-green-600 text-white" : "bg-gray-200 text-gray-500 pointer-events-none"
+                canCheckout ? "bg-green-600 hover:bg-green-700 text-white" : "bg-gray-200 text-gray-500 pointer-events-none"
               }`}
               href={waLink(WHATS, mensagem)}
               target="_blank"
               rel="noreferrer"
-              title="Finalizar no WhatsApp"
+              title={
+                canCheckout
+                  ? "Finalizar no WhatsApp"
+                  : "Preencha Nome/Whats e itens (e endereço se Entrega)."
+              }
             >
               Finalizar no WhatsApp
             </a>
           </div>
+
+          {!canCheckout ? (
+            <div className="mt-2 text-xs text-gray-500">
+              Para liberar: informe <b>Nome</b>, <b>WhatsApp</b> e adicione itens. Se escolher <b>Entrega</b>, preencha{" "}
+              <b>Endereço/Número/Bairro</b>.
+            </div>
+          ) : null}
         </div>
       </div>
     </div>
@@ -557,11 +745,7 @@ function ProdutoCardUltra({ p }: { p: FVProduto }) {
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition overflow-hidden flex flex-col">
       <div className="relative p-3">
-        {/* ✅ imagem clicável igual o nome */}
-        <Link
-          href={`/fv/produtos/${p.ean}`}
-          className="bg-gray-50 rounded-xl p-2 flex items-center justify-center hover:opacity-95 transition"
-        >
+        <Link href={`/fv/produtos/${p.ean}`} className="bg-gray-50 rounded-xl p-2 flex items-center justify-center hover:opacity-95 transition">
           <Image
             src={firstImg(p.imagens)}
             alt={p.nome || "Produto"}
@@ -581,10 +765,7 @@ function ProdutoCardUltra({ p }: { p: FVProduto }) {
       <div className="px-3 pb-3 flex-1 flex flex-col">
         <div className="text-[11px] text-gray-500 line-clamp-1">{p.laboratorio || "—"}</div>
 
-        <Link
-          href={`/fv/produtos/${p.ean}`}
-          className="mt-1 font-semibold text-blue-950 text-xs sm:text-sm line-clamp-2 hover:underline"
-        >
+        <Link href={`/fv/produtos/${p.ean}`} className="mt-1 font-semibold text-blue-950 text-xs sm:text-sm line-clamp-2 hover:underline">
           {p.nome}
         </Link>
 
@@ -614,10 +795,7 @@ function ProdutoCardUltra({ p }: { p: FVProduto }) {
             </button>
           </div>
 
-          <button
-            onClick={add}
-            className="flex-1 bg-blue-700 hover:bg-blue-800 text-white py-2.5 rounded-xl text-xs sm:text-sm font-extrabold"
-          >
+          <button onClick={add} className="flex-1 bg-blue-700 hover:bg-blue-800 text-white py-2.5 rounded-xl text-xs sm:text-sm font-extrabold">
             Comprar
           </button>
         </div>
