@@ -1,26 +1,20 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { createClient } from "@supabase/supabase-js";
 import Image from "next/image";
 import Link from "next/link";
-import Slider from "react-slick";
+import { supabase } from "@/lib/supabaseClient";
+import { CartProvider, useCart } from "./_components/cart";
+import { ToastProvider, useToast } from "./_components/toast";
+import FVBanners from "./_components/FVBanners";
 
-import "slick-carousel/slick/slick.css";
-import "slick-carousel/slick/slick-theme.css";
+/* =========================
+   CONFIG
+========================= */
+const SENHA_DF = "102030"; // 🔴 troque se quiser (senha simples)
+const LS_KEY = "df_public_ok";
 
-// 🔌 Supabase
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
-
-// ⚙️ Constantes
-const LOJA_SLUG = "drogariaredefabiano";
-const CARRINHO_KEY = "carrinhoFabiano";
-
-// 🧩 Tipos (Catálogo Global)
-type FVProduto = {
+type DFProduto = {
   id: string;
   ean: string;
   nome: string;
@@ -31,321 +25,831 @@ type FVProduto = {
   em_promocao: boolean | null;
   preco_promocional: number | null;
   percentual_off: number | null;
+  destaque_home: boolean | null;
+  ativo: boolean | null;
   imagens: string[] | null;
-  ativo: boolean | null;
-};
-
-// 🧩 Tipos (Estoque por Loja)
-type LojaProduto = {
-  produto_id: string;
-  loja_slug: string;
   estoque: number | null;
-  preco_venda: number | null;
-  ativo: boolean | null;
 };
 
-// ✅ Produto final da tela (join)
-type ProdutoTela = FVProduto & {
-  loja_estoque: number;
-  loja_preco: number | null;
-  loja_ativo: boolean;
-  disponivel: boolean;
-};
+const PROD_TABLE = "df_produtos";
+const RPC_SEARCH = "df_search_produtos"; // se não existir, cai no fallback
+const PREFIX = "/dfdistribuidora";
 
-type ItemCarrinho = {
-  id: string;
-  ean: string;
-  nome: string;
-  preco: number;
-  imagem: string;
-  quantidade: number;
-};
+// WhatsApp da DF
+const WHATS_DF = "5511952068432";
 
-// 📸 helpers
+// Branding
+const BRAND_TOP = "IA Drogarias";
+const BRAND_SUB = "• DF Distribuidora";
+
+const HOME_LIMIT = 40; // ✅ agora é “vitrine de disponíveis”
+const SEARCH_LIMIT = 80;
+const SEARCH_DEBOUNCE = 350;
+
+/* =========================
+   HELPERS
+========================= */
 function brl(v: number | null | undefined) {
   if (v === null || v === undefined || Number.isNaN(v)) return "—";
   return Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
-function firstImg(imagens?: string[] | null) {
-  if (Array.isArray(imagens) && imagens.length > 0) return imagens[0];
-  return "/produtos/caixa-padrao.png";
-}
+
 function calcOff(pmc?: number | null, promo?: number | null) {
   const a = Number(pmc || 0);
   const b = Number(promo || 0);
   if (!a || !b || b >= a) return 0;
   return Math.round(((a - b) / a) * 100);
 }
-function precoFinalGlobal(p: FVProduto) {
+
+function precoFinal(p: {
+  pmc?: number | null;
+  em_promocao?: boolean | null;
+  preco_promocional?: number | null;
+  percentual_off?: number | null;
+}) {
   const pmc = Number(p.pmc || 0);
   const promo = Number(p.preco_promocional || 0);
   const emPromo = !!p.em_promocao && promo > 0 && (!pmc || promo < pmc);
   const final = emPromo ? promo : pmc;
-  const offDb = Number(p.percentual_off || 0);
-  const off = emPromo ? (offDb > 0 ? offDb : calcOff(pmc, promo)) : 0;
-  return { pmc, promo, emPromo, final, off };
+  const offFromDb = Number(p.percentual_off || 0);
+  const off = emPromo ? (offFromDb > 0 ? offFromDb : calcOff(pmc, promo)) : 0;
+  return { emPromo, pmc, promo, final, off };
 }
 
-// 🔥 Promoções (mock) — pode trocar depois por promos reais do banco
-const promocoes = [
-  { id: 1, nome: "Amoxicilina 500mg", preco: "R$ 9,99", imagem: "/promocoes/amoxicilina.png" },
-  { id: 2, nome: "Dipirona 500mg", preco: "R$ 4,99", imagem: "/promocoes/dipirona.png" },
-  { id: 3, nome: "Vitamina C", preco: "R$ 12,90", imagem: "/promocoes/vitamina-c.png" },
-];
+function firstImg(imagens?: string[] | null) {
+  if (Array.isArray(imagens) && imagens.length > 0 && imagens[0]) return imagens[0];
+  return "/produtos/caixa-padrao.png";
+}
 
-export default function DrogariaRedeFabianoPage() {
-  const [produtos, setProdutos] = useState<ProdutoTela[]>([]);
-  const [carregando, setCarregando] = useState(true);
+function waLink(phone: string, msg: string) {
+  const clean = phone.replace(/\D/g, "");
+  return `https://wa.me/${clean}?text=${encodeURIComponent(msg)}`;
+}
+
+function onlyDigits(v: string) {
+  return (v || "").replace(/\D/g, "");
+}
+
+function normalizeSearch(raw: string) {
+  return raw
+    .toLowerCase()
+    .replace(/(\d+)\s*(mg|ml|mcg|g|ui|iu)/gi, "$1 $2")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/* =========================
+   PAGE WRAPPER
+========================= */
+export default function DFDistribuidoraHomePage() {
+  return (
+    <CartProvider>
+      <ToastProvider>
+        <DFGate>
+          <DFDistribuidoraHome />
+        </DFGate>
+      </ToastProvider>
+    </CartProvider>
+  );
+}
+
+/* =========================
+   SIMPLE PASSWORD GATE
+========================= */
+function DFGate({ children }: { children: React.ReactNode }) {
+  const [ok, setOk] = useState(false);
+  const [senha, setSenha] = useState("");
+
+  useEffect(() => {
+    const saved = typeof window !== "undefined" && localStorage.getItem(LS_KEY) === "1";
+    if (saved) setOk(true);
+  }, []);
+
+  function entrar() {
+    if (senha === SENHA_DF) {
+      localStorage.setItem(LS_KEY, "1");
+      setOk(true);
+    } else {
+      alert("Senha incorreta.");
+    }
+  }
+
+  function sair() {
+    localStorage.removeItem(LS_KEY);
+    setOk(false);
+    setSenha("");
+  }
+
+  if (!ok) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+        <div className="w-full max-w-md bg-white border rounded-3xl shadow-sm p-6">
+          <div className="text-xl font-extrabold text-gray-900">Acesso • DF Distribuidora</div>
+          <div className="text-sm text-gray-600 mt-1">Digite a senha para entrar.</div>
+
+          <input
+            value={senha}
+            onChange={(e) => setSenha(e.target.value)}
+            type="password"
+            placeholder="Senha"
+            className="mt-4 w-full border rounded-2xl px-4 py-3 outline-none focus:ring-4 focus:ring-blue-100"
+          />
+
+          <button
+            onClick={entrar}
+            className="mt-4 w-full bg-blue-700 hover:bg-blue-800 text-white rounded-2xl py-3 font-extrabold"
+          >
+            Entrar
+          </button>
+
+          <div className="mt-3 text-[11px] text-gray-500">
+            Dica: depois de entrar, fica salvo no navegador (localStorage).
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen">
+      {/* botao sair discreto */}
+      <div className="fixed bottom-4 right-4 z-[80]">
+        <button onClick={sair} className="px-4 py-2 rounded-full border bg-white shadow-sm font-extrabold text-sm hover:bg-gray-50">
+          Sair
+        </button>
+      </div>
+      {children}
+    </div>
+  );
+}
+
+/* =========================
+   PAGE
+========================= */
+function DFDistribuidoraHome() {
+  const [loadingHome, setLoadingHome] = useState(true);
+  const [loadingBusca, setLoadingBusca] = useState(false);
   const [busca, setBusca] = useState("");
-  const [carrinho, setCarrinho] = useState<ItemCarrinho[]>([]);
 
-  // 🔄 Produtos (agora lendo da VIEW loja x catálogo)
-useEffect(() => {
-  async function carregarProdutos() {
-    const { data, error } = await supabase
-      .from("fv_produtos_loja_view")
-      .select(`
-        produto_id,
-        ean,
-        nome,
-        categoria,
-        imagens,
-        pmc,
-        em_promocao,
-        preco_promocional,
-        percentual_off,
-        estoque,
-        disponivel_farmacia
-      `)
-      .eq("farmacia_slug", LOJA_SLUG)                 // <- 'drogariaredefabiano'
-      .eq("disponivel_farmacia", true)          // ativo da loja
-      .gt("estoque", 0)                          // estoque da loja
-      .order("nome", { ascending: true });
+  const [homeProdutos, setHomeProdutos] = useState<DFProduto[]>([]);
+  const [resultado, setResultado] = useState<DFProduto[]>([]);
 
-    if (error) {
-      console.error(error);
-      setProdutos([]);
-      setCarregando(false);
+  // Modal do carrinho
+  const [cartOpen, setCartOpen] = useState(false);
+
+  const cart = useCart();
+  const totalCarrinho = cart.subtotal;
+  const qtdCarrinho = cart.countItems;
+
+  const isSearching = !!busca.trim();
+
+  // mapa estoque pra travar carrinho
+  const estoqueByEan = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const p of homeProdutos) m.set(p.ean, Number(p.estoque ?? 0));
+    for (const p of resultado) m.set(p.ean, Number(p.estoque ?? 0));
+    return m;
+  }, [homeProdutos, resultado]);
+
+  /* =========================
+     HOME (somente disponíveis)
+  ========================= */
+  useEffect(() => {
+    async function loadHome() {
+      try {
+        setLoadingHome(true);
+
+        const { data, error } = await supabase
+          .from(PROD_TABLE)
+          .select(
+            "id,ean,nome,laboratorio,categoria,apresentacao,pmc,em_promocao,preco_promocional,percentual_off,destaque_home,ativo,imagens,estoque"
+          )
+          .eq("ativo", true)
+          .gt("estoque", 0) // ✅ SOMENTE DISPONÍVEIS
+          .order("destaque_home", { ascending: false })
+          .order("em_promocao", { ascending: false })
+          .order("nome", { ascending: true })
+          .limit(HOME_LIMIT);
+
+        if (error) throw error;
+
+        setHomeProdutos(((data || []) as DFProduto[]) ?? []);
+      } catch (e) {
+        console.error("Erro loadHome DF:", e);
+        setHomeProdutos([]);
+      } finally {
+        setLoadingHome(false);
+      }
+    }
+
+    loadHome();
+  }, []);
+
+  /* =========================
+     BUSCA REMOTA (mantém busca)
+     - aqui eu NÃO filtro por estoque, pra você ver também indisponíveis e poder “Encomendar”
+  ========================= */
+  useEffect(() => {
+    async function search() {
+      const raw = busca.trim();
+      if (!raw) {
+        setResultado([]);
+        return;
+      }
+
+      setLoadingBusca(true);
+
+      try {
+        const normalized = normalizeSearch(raw);
+        const { data, error } = await supabase.rpc(RPC_SEARCH, { q: normalized, lim: SEARCH_LIMIT });
+        if (error) throw error;
+
+        setResultado(((data || []) as DFProduto[]) ?? []);
+      } catch (e) {
+        // fallback
+        try {
+          const digits = onlyDigits(raw);
+
+          let query = supabase
+            .from(PROD_TABLE)
+            .select(
+              "id,ean,nome,laboratorio,categoria,apresentacao,pmc,em_promocao,preco_promocional,percentual_off,destaque_home,ativo,imagens,estoque"
+            )
+            .eq("ativo", true)
+            .limit(SEARCH_LIMIT);
+
+          if (digits.length >= 8 && digits.length <= 14) query = query.or(`ean.eq.${digits},nome.ilike.%${raw}%`);
+          else query = query.ilike("nome", `%${raw}%`);
+
+          const { data, error } = await query
+            .order("em_promocao", { ascending: false })
+            .order("nome", { ascending: true });
+
+          if (error) throw error;
+
+          setResultado(((data || []) as DFProduto[]) ?? []);
+        } catch (e2) {
+          console.error("Erro fallback search DF:", e2);
+          setResultado([]);
+        }
+      } finally {
+        setLoadingBusca(false);
+      }
+    }
+
+    const timer = setTimeout(search, SEARCH_DEBOUNCE);
+    return () => clearTimeout(timer);
+  }, [busca]);
+
+  return (
+    <main className="min-h-screen bg-gray-50 pb-24">
+      {/* HEADER */}
+      <header className="sticky top-0 z-40 bg-blue-700 shadow">
+        <div className="mx-auto max-w-6xl px-4 py-3">
+          {/* MOBILE */}
+          <div className="flex items-center justify-between gap-3 md:hidden">
+            <div className="text-white font-extrabold whitespace-nowrap">
+              {BRAND_TOP} <span className="opacity-80">{BRAND_SUB}</span>
+            </div>
+
+            <button
+              onClick={() => setCartOpen(true)}
+              className="relative text-white font-extrabold whitespace-nowrap bg-white/10 hover:bg-white/15 px-4 py-2 rounded-full"
+              title="Abrir carrinho"
+            >
+              🛒 {brl(totalCarrinho)}
+              {qtdCarrinho > 0 && (
+                <span className="absolute -top-2 -right-2 h-6 min-w-[24px] px-1 rounded-full bg-green-400 text-blue-900 text-xs font-extrabold flex items-center justify-center border-2 border-blue-700">
+                  {qtdCarrinho}
+                </span>
+              )}
+            </button>
+          </div>
+
+          <div className="mt-3 md:hidden">
+            <div className="relative">
+              <input
+                value={busca}
+                onChange={(e) => setBusca(e.target.value)}
+                placeholder="Digite o nome do produto ou EAN..."
+                className="w-full rounded-full bg-white/95 px-4 py-3 text-sm outline-none focus:ring-4 focus:ring-white/20"
+              />
+              <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                {busca.trim() ? (
+                  <button
+                    onClick={() => setBusca("")}
+                    className="text-xs font-extrabold px-2 py-1 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700"
+                    title="Limpar"
+                  >
+                    Limpar
+                  </button>
+                ) : null}
+                <span className="text-blue-900 bg-green-400/90 px-2 py-1 rounded-full text-xs font-extrabold">🔎</span>
+              </div>
+            </div>
+
+            {isSearching && (
+              <div className="mt-1 text-[11px] text-white/80">
+                {loadingBusca ? "Buscando…" : resultado.length ? `${resultado.length} resultado(s)` : " "}
+              </div>
+            )}
+          </div>
+
+          {/* DESKTOP */}
+          <div className="hidden md:flex items-center gap-3">
+            <div className="text-white font-extrabold whitespace-nowrap">
+              {BRAND_TOP} <span className="opacity-80">{BRAND_SUB}</span>
+            </div>
+
+            <div className="flex-1">
+              <div className="relative">
+                <input
+                  value={busca}
+                  onChange={(e) => setBusca(e.target.value)}
+                  placeholder="Digite o nome do produto ou EAN..."
+                  className="w-full rounded-full bg-white/95 px-4 py-2.5 text-sm outline-none focus:ring-4 focus:ring-white/20"
+                />
+                <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
+                  {busca.trim() ? (
+                    <button
+                      onClick={() => setBusca("")}
+                      className="text-xs font-extrabold px-2 py-1 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700"
+                      title="Limpar"
+                    >
+                      Limpar
+                    </button>
+                  ) : null}
+                  <span className="text-blue-900 bg-green-400/90 px-2 py-1 rounded-full text-xs font-extrabold">🔎</span>
+                </div>
+              </div>
+
+              {isSearching && (
+                <div className="mt-1 text-[11px] text-white/80">
+                  {loadingBusca ? "Buscando…" : resultado.length ? `${resultado.length} resultado(s)` : " "}
+                </div>
+              )}
+            </div>
+
+            <button
+              onClick={() => setCartOpen(true)}
+              className="relative text-white font-extrabold whitespace-nowrap bg-white/10 hover:bg-white/15 px-4 py-2 rounded-full"
+              title="Abrir carrinho"
+            >
+              🛒 <span className="hidden lg:inline">Carrinho • </span>
+              {brl(totalCarrinho)}
+              {qtdCarrinho > 0 && (
+                <span className="absolute -top-2 -right-2 h-6 min-w-[24px] px-1 rounded-full bg-green-400 text-blue-900 text-xs font-extrabold flex items-center justify-center border-2 border-blue-700">
+                  {qtdCarrinho}
+                </span>
+              )}
+            </button>
+          </div>
+        </div>
+      </header>
+
+      {/* BANNERS */}
+      <div className="mt-4">
+        <FVBanners />
+      </div>
+
+      {/* CONTEÚDO */}
+      <section className="max-w-6xl mx-auto px-4">
+        {isSearching ? (
+          <div className="mt-6">
+            <h2 className="text-lg font-extrabold text-gray-900 mb-3">
+              Resultados <span className="text-gray-500">({resultado.length})</span>
+            </h2>
+
+            {loadingBusca ? (
+              <GridSkeleton />
+            ) : resultado.length === 0 ? (
+              <div className="bg-white border rounded-2xl p-6 text-gray-600">Nenhum produto encontrado.</div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-5">
+                {resultado.map((p) => (
+                  <ProdutoCardUltra
+                    key={p.id}
+                    p={p}
+                    prefix={PREFIX}
+                    onEncomendar={() => encomendarDF(p)}
+                    estoqueByEan={estoqueByEan}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="mt-8">
+            <h2 className="text-lg font-extrabold text-gray-900 mb-3">
+              Disponíveis agora <span className="text-gray-500">({homeProdutos.length})</span>
+            </h2>
+
+            {loadingHome ? (
+              <GridSkeleton />
+            ) : homeProdutos.length === 0 ? (
+              <div className="bg-white border rounded-2xl p-6 text-gray-600">Sem itens disponíveis no momento.</div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-5">
+                {homeProdutos.map((p) => (
+                  <ProdutoCardUltra
+                    key={p.id}
+                    p={p}
+                    prefix={PREFIX}
+                    onEncomendar={() => encomendarDF(p)}
+                    estoqueByEan={estoqueByEan}
+                  />
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+      </section>
+
+      {/* COMPRA RÁPIDA */}
+      <section className="max-w-6xl mx-auto px-4 mt-12 pb-12">
+        <div className="bg-white rounded-3xl border shadow-sm p-6">
+          <h3 className="text-xl md:text-2xl font-extrabold text-gray-900">Compra rápida</h3>
+          <p className="text-gray-600 mt-1">Adicione no carrinho e finalize no WhatsApp em poucos cliques.</p>
+
+          <div className="grid md:grid-cols-3 gap-4 mt-6">
+            <div className="flex gap-3 items-start">
+              <div className="h-11 w-11 rounded-2xl bg-gray-100 flex items-center justify-center text-lg">⚡</div>
+              <div>
+                <div className="font-extrabold">Rápido</div>
+                <div className="text-sm text-gray-600">Carrinho modal para melhor agilidade</div>
+              </div>
+            </div>
+
+            <div className="flex gap-3 items-start">
+              <div className="h-11 w-11 rounded-2xl bg-gray-100 flex items-center justify-center text-lg">✅</div>
+              <div>
+                <div className="font-extrabold">Confirmação</div>
+                <div className="text-sm text-gray-600">Checamos disponibilidade e retornamos</div>
+              </div>
+            </div>
+
+            <div className="flex gap-3 items-start">
+              <div className="h-11 w-11 rounded-2xl bg-gray-100 flex items-center justify-center text-lg">🚚</div>
+              <div>
+                <div className="font-extrabold">Entrega</div>
+                <div className="text-sm text-gray-600">Prazo e taxa conforme região</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-6 rounded-3xl border p-4 bg-gray-50">
+            <div className="text-xs uppercase tracking-wide text-gray-500 font-bold">Dica</div>
+            <div className="font-extrabold text-gray-900">Pesquise pelo nome ou EAN pra achar rapidinho.</div>
+          </div>
+        </div>
+      </section>
+
+      {/* MODAL DO CARRINHO */}
+      <CartModal open={cartOpen} onClose={() => setCartOpen(false)} whats={WHATS_DF} estoqueByEan={estoqueByEan} />
+    </main>
+  );
+
+  function encomendarDF(p: DFProduto) {
+    const msg =
+      `Olá! Quero encomendar este item:\n\n` +
+      `• ${p.nome} (EAN: ${p.ean})\n` +
+      (p.apresentacao ? `• Apresentação: ${p.apresentacao}\n` : "") +
+      (p.laboratorio ? `• Laboratório: ${p.laboratorio}\n` : "") +
+      `\nPode me avisar prazo e valor?`;
+    window.open(waLink(WHATS_DF, msg), "_blank");
+  }
+}
+
+/* =========================
+   CART MODAL (com trava de estoque)
+========================= */
+function CartModal({
+  open,
+  onClose,
+  whats,
+  estoqueByEan,
+}: {
+  open: boolean;
+  onClose: () => void;
+  whats: string;
+  estoqueByEan: Map<string, number>;
+}) {
+  const cart = useCart();
+
+  function incSafe(ean: string) {
+    const est = Number(estoqueByEan.get(ean) ?? 0);
+    const it = cart.items.find((x) => x.ean === ean);
+    if (!it) return;
+    if (est > 0 && it.qtd >= est) return;
+    cart.inc(ean);
+  }
+
+  function setQtdSafe(ean: string, qtd: number) {
+    const est = Number(estoqueByEan.get(ean) ?? 0);
+    const alvo = Math.max(1, Math.floor(Number(qtd || 1)));
+    const final = est > 0 ? Math.min(alvo, est) : alvo;
+
+    const it = cart.items.find((x) => x.ean === ean);
+    if (!it) return;
+
+    if (final > it.qtd) {
+      for (let i = 0; i < final - it.qtd; i++) incSafe(ean);
+    } else if (final < it.qtd) {
+      for (let i = 0; i < it.qtd - final; i++) cart.dec(ean);
+    }
+  }
+
+  const mensagem = useMemo(() => {
+    if (!cart.items.length) return "Olá! Quero fazer um pedido da DF Distribuidora.";
+    const linhas = cart.items.map((it) => `• ${it.nome} (${it.ean}) — ${it.qtd}x — ${brl(it.preco)}`);
+    const total = brl(cart.subtotal);
+    return `Olá! Quero finalizar meu pedido:\n\n${linhas.join("\n")}\n\nTotal: ${total}\n\nPode confirmar disponibilidade e prazo?`;
+  }, [cart.items, cart.subtotal]);
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-[60]">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="absolute right-0 top-0 h-full w-full sm:w-[480px] bg-white shadow-2xl flex flex-col">
+        <div className="p-4 border-b flex items-center justify-between">
+          <div className="font-extrabold text-lg">🛒 Seu carrinho</div>
+          <button onClick={onClose} className="px-3 py-2 rounded-xl border bg-white hover:bg-gray-50 font-extrabold">
+            Continuar comprando
+          </button>
+        </div>
+
+        <div className="p-4 flex-1 overflow-auto">
+          {cart.items.length === 0 ? (
+            <div className="text-gray-600 bg-gray-50 border rounded-2xl p-4">Seu carrinho está vazio. Adicione itens 😊</div>
+          ) : (
+            <div className="space-y-3">
+              {cart.items.map((it) => {
+                const est = Number(estoqueByEan.get(it.ean) ?? 0);
+                const max = Math.max(1, est || 1);
+                const travado = est > 0 ? Math.min(it.qtd, est) : it.qtd;
+
+                return (
+                  <div key={it.ean} className="border rounded-2xl p-3 flex gap-3">
+                    <div className="h-14 w-14 bg-gray-50 rounded-xl overflow-hidden flex items-center justify-center">
+                      <Image
+                        src={it.imagem || "/produtos/caixa-padrao.png"}
+                        alt={it.nome}
+                        width={64}
+                        height={64}
+                        className="object-contain"
+                      />
+                    </div>
+
+                    <div className="flex-1">
+                      <div className="font-extrabold text-sm line-clamp-2">{it.nome}</div>
+                      <div className="text-xs text-gray-500">EAN: {it.ean}</div>
+                      <div className="mt-1 font-extrabold text-blue-900">{brl(it.preco)}</div>
+
+                      <div className="mt-2 flex items-center gap-2">
+                        <button onClick={() => cart.dec(it.ean)} className="w-9 h-9 bg-white hover:bg-gray-50 font-extrabold border rounded-xl">
+                          –
+                        </button>
+
+                        <input
+                          type="number"
+                          min={1}
+                          max={max}
+                          value={travado}
+                          onChange={(e) => setQtdSafe(it.ean, Number(e.target.value))}
+                          className="w-16 h-9 border rounded-xl text-center font-extrabold"
+                        />
+
+                        <button
+                          onClick={() => incSafe(it.ean)}
+                          disabled={est > 0 && it.qtd >= est}
+                          className={`w-9 h-9 font-extrabold border rounded-xl ${
+                            est > 0 && it.qtd >= est ? "bg-gray-100 text-gray-400 cursor-not-allowed" : "bg-white hover:bg-gray-50"
+                          }`}
+                        >
+                          +
+                        </button>
+
+                        <button
+                          onClick={() => cart.remove(it.ean)}
+                          className="px-3 py-2 rounded-xl border bg-white hover:bg-gray-50 text-sm font-extrabold ml-auto"
+                          title="Remover item"
+                        >
+                          Remover
+                        </button>
+                      </div>
+
+                      <div className="mt-2 text-[11px] text-gray-500">
+                        {est > 0 ? (
+                          <>
+                            Disponível: <b>{est}</b>
+                          </>
+                        ) : (
+                          <span className="text-red-600 font-bold">Sem estoque / indisponível</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        <div className="p-4 border-t">
+          <div className="flex items-center justify-between">
+            <div className="text-sm text-gray-600">Subtotal</div>
+            <div className="text-lg font-extrabold text-blue-900">{brl(cart.subtotal)}</div>
+          </div>
+
+          <div className="mt-3 grid grid-cols-2 gap-2">
+            <button
+              onClick={() => cart.clear()}
+              className="px-4 py-3 rounded-2xl border bg-white hover:bg-gray-50 font-extrabold"
+              disabled={!cart.items.length}
+            >
+              Limpar
+            </button>
+
+            <a
+              className={`px-4 py-3 rounded-2xl font-extrabold text-center ${
+                cart.items.length ? "bg-green-500 hover:bg-green-600 text-white" : "bg-gray-200 text-gray-500 pointer-events-none"
+              }`}
+              href={waLink(whats, mensagem)}
+              target="_blank"
+              rel="noreferrer"
+              title="Finalizar no WhatsApp"
+            >
+              Finalizar no WhatsApp
+            </a>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* =========================
+   PRODUTO CARD
+========================= */
+function ProdutoCardUltra({
+  p,
+  prefix,
+  onEncomendar,
+  estoqueByEan,
+}: {
+  p: DFProduto;
+  prefix: string;
+  onEncomendar: () => void;
+  estoqueByEan: Map<string, number>;
+}) {
+  const pr = precoFinal(p);
+  const cart = useCart();
+  const { push } = useToast();
+  const [qtd, setQtd] = useState(1);
+
+  const estoqueAtual = Number(estoqueByEan.get(p.ean) ?? p.estoque ?? 0);
+  const indisponivel = estoqueAtual <= 0;
+
+  function add() {
+    if (indisponivel) return;
+
+    const already = cart.items.find((x) => x.ean === p.ean)?.qtd ?? 0;
+    const want = Math.max(1, qtd);
+
+    if (estoqueAtual > 0 && already + want > estoqueAtual) {
+      const canAdd = Math.max(0, estoqueAtual - already);
+      if (canAdd <= 0) {
+        push({ title: "Sem estoque 😕", desc: "Você já atingiu o limite disponível." });
+        return;
+      }
+      cart.addItem(
+        {
+          ean: p.ean,
+          nome: p.nome,
+          laboratorio: p.laboratorio,
+          apresentacao: p.apresentacao,
+          imagem: firstImg(p.imagens),
+          preco: pr.final || 0,
+        },
+        canAdd
+      );
+      push({ title: "Adicionado ao carrinho ✅", desc: `${p.nome} • ${canAdd}x (limite do estoque)` });
+      setQtd(1);
       return;
     }
 
-    // mapeia pra estrutura que seu card já usa
-    const mapped = (data || []).map((r: any) => ({
-      id: r.produto_id,
-      nome: r.nome,
-      preco_venda: Number(
-        r.em_promocao && r.preco_promocional ? r.preco_promocional : (r.pmc || 0)
-      ),
-      estoque: Number(r.estoque || 0),
-      imagem: Array.isArray(r.imagens) && r.imagens.length ? r.imagens[0] : null,
-      categoria: r.categoria || null,
-      ean: r.ean,
-    }));
+    cart.addItem(
+      {
+        ean: p.ean,
+        nome: p.nome,
+        laboratorio: p.laboratorio,
+        apresentacao: p.apresentacao,
+        imagem: firstImg(p.imagens),
+        preco: pr.final || 0,
+      },
+      want
+    );
 
-   
-    setCarregando(false);
+    push({ title: "Adicionado ao carrinho ✅", desc: `${p.nome} • ${want}x` });
+    setQtd(1);
   }
-
-  carregarProdutos();
-}, []);
-
-
-  // 🛒 Carrinho — leitura
-  useEffect(() => {
-    const salvo = localStorage.getItem(CARRINHO_KEY);
-    if (salvo) setCarrinho(JSON.parse(salvo));
-  }, []);
-
-  // 🛒 Carrinho — gravação
-  useEffect(() => {
-    localStorage.setItem(CARRINHO_KEY, JSON.stringify(carrinho));
-  }, [carrinho]);
-
-  function adicionarAoCarrinho(p: ProdutoTela) {
-    if (!p.disponivel) return;
-
-    const global = precoFinalGlobal(p);
-    const preco = p.loja_preco != null && p.loja_preco > 0 ? p.loja_preco : global.final;
-
-    setCarrinho((prev) => {
-      const existe = prev.find((i) => i.id === p.id);
-      if (existe) {
-        return prev.map((i) => (i.id === p.id ? { ...i, quantidade: i.quantidade + 1 } : i));
-      }
-      return [
-        ...prev,
-        {
-          id: p.id,
-          ean: p.ean,
-          nome: p.nome,
-          preco: preco || 0,
-          imagem: firstImg(p.imagens),
-          quantidade: 1,
-        },
-      ];
-    });
-  }
-
-  const produtosFiltrados = useMemo(() => {
-    const t = busca.trim().toLowerCase();
-    if (!t) return produtos;
-    return produtos.filter((p) => {
-      const nome = (p.nome || "").toLowerCase();
-      const ean = (p.ean || "").toLowerCase();
-      const cat = (p.categoria || "").toLowerCase();
-      const lab = (p.laboratorio || "").toLowerCase();
-      return nome.includes(t) || ean.includes(t) || cat.includes(t) || lab.includes(t);
-    });
-  }, [produtos, busca]);
-
-  const totalItens = carrinho.reduce((acc, i) => acc + i.quantidade, 0);
 
   return (
-    <main className="min-h-screen bg-gray-100 pb-16">
-      {/* HERO */}
-      <section className="relative h-[320px]">
-        <div
-          className="absolute inset-0 bg-cover bg-center"
-          style={{ backgroundImage: "url('/banners/hero-drogaria-rede-fabiano.png')" }}
-        />
-        <div className="absolute inset-0 bg-white/80 backdrop-blur-sm" />
-        <div className="relative z-10 h-full flex flex-col items-center justify-center text-center px-4">
-          <h1 className="text-4xl font-extrabold text-blue-700">Drogaria Rede Fabiano</h1>
-          <p className="text-gray-600 mt-2">Saúde, confiança e economia perto de você</p>
-        </div>
-      </section>
+    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition overflow-hidden flex flex-col">
+      <div className="relative p-3">
+        <Link href={`${prefix}/produtos/${p.ean}`} className="bg-gray-50 rounded-xl p-2 flex items-center justify-center hover:opacity-95 transition">
+          <Image src={firstImg(p.imagens)} alt={p.nome || "Produto"} width={240} height={240} className="rounded object-contain h-24 sm:h-28" />
+        </Link>
 
-      {/* HEADER BUSCA + CARRINHO */}
-      <div className="sticky top-0 z-50 bg-white shadow-md">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center gap-4">
-          <div className="flex-1 bg-gray-100 rounded-full px-4 py-2 flex items-center">
-            <input
-              value={busca}
-              onChange={(e) => setBusca(e.target.value)}
-              placeholder="Buscar medicamentos, marcas, EAN ou categorias..."
-              className="flex-1 bg-transparent outline-none text-sm"
-            />
-            <span className="text-blue-600 font-bold">🔍</span>
-          </div>
-
-          <Link href="/drogarias/drogariaredefabiano/carrinho" className="relative">
-            <span className="text-2xl">🛒</span>
-            {totalItens > 0 && (
-              <span className="absolute -top-2 -right-2 bg-red-600 text-white text-xs font-bold px-2 py-0.5 rounded-full">
-                {totalItens}
-              </span>
-            )}
-          </Link>
-        </div>
+        {pr.emPromo && pr.off > 0 && (
+          <span className="absolute top-3 right-3 text-[11px] font-extrabold bg-red-600 text-white px-2 py-1 rounded-full shadow-sm">
+            {pr.off}% OFF
+          </span>
+        )}
       </div>
 
-      {/* PROMOÇÕES */}
-      <section className="max-w-6xl mx-auto px-4 mt-8">
-        <h2 className="font-semibold text-lg mb-3">🔥 Promoções da Semana</h2>
+      <div className="px-3 pb-3 flex-1 flex flex-col">
+        <div className="text-[11px] text-gray-500 line-clamp-1">{p.laboratorio || "—"}</div>
 
-        <Slider
-          infinite
-          speed={500}
-          slidesToShow={3}
-          slidesToScroll={1}
-          responsive={[
-            { breakpoint: 1024, settings: { slidesToShow: 3 } },
-            { breakpoint: 768, settings: { slidesToShow: 2 } },
-            { breakpoint: 480, settings: { slidesToShow: 1 } },
-          ]}
-        >
-          {promocoes.map((p) => (
-            <div key={p.id} className="px-2">
-              <div className="bg-white rounded-lg shadow p-4 text-center">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={p.imagem} alt={p.nome} className="h-32 mx-auto object-contain mb-2" />
-                <div className="text-sm font-medium">{p.nome}</div>
-                <div className="text-green-600 font-bold">{p.preco}</div>
+        <Link href={`${prefix}/produtos/${p.ean}`} className="mt-1 font-semibold text-blue-950 text-xs sm:text-sm line-clamp-2 hover:underline">
+          {p.nome}
+        </Link>
+
+        {p.apresentacao && <div className="text-[11px] text-gray-600 mt-1 line-clamp-1">{p.apresentacao}</div>}
+
+        <div className="mt-2">
+          {pr.emPromo ? (
+            <>
+              <div className="text-xs text-gray-500">
+                De <span className="line-through">{brl(pr.pmc)}</span>
               </div>
-            </div>
-          ))}
-        </Slider>
-      </section>
+              <div className="text-base font-extrabold text-blue-900">Por {brl(pr.final)}</div>
+            </>
+          ) : (
+            <div className="text-base font-extrabold text-blue-900">{brl(pr.final)}</div>
+          )}
+        </div>
 
-      {/* PRODUTOS */}
-      <section className="max-w-6xl mx-auto px-4 py-10 grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-5 gap-4">
-        {carregando ? (
-          <div className="col-span-full text-gray-600">Carregando produtos...</div>
-        ) : produtosFiltrados.length === 0 ? (
-          <div className="col-span-full text-gray-600">Nenhum produto encontrado.</div>
-        ) : (
-          produtosFiltrados.map((p) => {
-            const global = precoFinalGlobal(p);
-            const preco = p.loja_preco != null && p.loja_preco > 0 ? p.loja_preco : global.final;
+        <div className="mt-2 text-[11px]">
+          {indisponivel ? (
+            <span className="font-extrabold text-gray-500">Sem estoque</span>
+          ) : (
+            <span className="font-bold text-gray-500">Estoque: {estoqueAtual}</span>
+          )}
+        </div>
 
-            return (
-              <div
-                key={p.id}
-                className={`bg-white rounded shadow p-3 border ${
-                  p.disponivel ? "border-transparent" : "border-gray-200 opacity-80"
-                }`}
-              >
-                <Image
-                  src={firstImg(p.imagens)}
-                  alt={p.nome}
-                  width={150}
-                  height={150}
-                  className="mx-auto h-32 object-contain"
-                />
+        <div className="mt-3 flex items-center gap-2">
+          <div className="flex items-center border rounded-xl overflow-hidden">
+            <button onClick={() => setQtd((x) => Math.max(1, x - 1))} className="w-9 h-9 bg-white hover:bg-gray-50 font-extrabold" disabled={indisponivel}>
+              –
+            </button>
+            <div className="w-10 text-center font-extrabold text-sm">{qtd}</div>
+            <button onClick={() => setQtd((x) => x + 1)} className="w-9 h-9 bg-white hover:bg-gray-50 font-extrabold" disabled={indisponivel}>
+              +
+            </button>
+          </div>
 
-                <div className="text-sm font-medium mt-2 line-clamp-2">{p.nome}</div>
+          <button
+            onClick={add}
+            disabled={indisponivel}
+            className={`flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold ${
+              indisponivel ? "bg-gray-200 text-gray-500 cursor-not-allowed" : "bg-blue-700 hover:bg-blue-800 text-white"
+            }`}
+          >
+            {indisponivel ? "Indisponível" : "Comprar"}
+          </button>
+        </div>
 
-                {/* Info menor */}
-                <div className="text-[11px] text-gray-500 mt-1 line-clamp-1">
-                  {p.laboratorio || "—"} • {p.categoria || "—"}
-                </div>
+        {indisponivel ? (
+          <button onClick={onEncomendar} className="mt-2 w-full bg-green-600 hover:bg-green-700 text-white py-2.5 rounded-xl text-xs sm:text-sm font-extrabold">
+            Encomendar
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+}
 
-                {/* Preço (loja > global) */}
-                <div className="mt-2">
-                  {global.emPromo ? (
-                    <>
-                      <div className="text-xs text-gray-500">
-                        De <span className="line-through">{brl(global.pmc)}</span>
-                      </div>
-                      <div className="text-green-600 font-extrabold">
-                        Por {brl(preco)}
-                        {global.off > 0 ? (
-                          <span className="ml-2 inline-block bg-red-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
-                            {global.off}% OFF
-                          </span>
-                        ) : null}
-                      </div>
-                    </>
-                  ) : (
-                    <div className="text-green-600 font-extrabold">{brl(preco)}</div>
-                  )}
-                </div>
-
-                {/* Status estoque */}
-                <div className="mt-2 text-xs">
-                  {p.disponivel ? (
-                    <span className="text-emerald-700 font-bold">Disponível</span>
-                  ) : (
-                    <span className="text-red-600 font-bold">Indisponível</span>
-                  )}
-                </div>
-
-                <button
-                  onClick={() => adicionarAoCarrinho(p)}
-                  disabled={!p.disponivel}
-                  className={`w-full mt-2 py-1 rounded font-semibold ${
-                    p.disponivel
-                      ? "bg-blue-600 hover:bg-blue-700 text-white"
-                      : "bg-gray-200 text-gray-500 cursor-not-allowed"
-                  }`}
-                >
-                  {p.disponivel ? "Adicionar" : "Sem estoque"}
-                </button>
-              </div>
-            );
-          })
-        )}
-      </section>
-    </main>
+/* =========================
+   SKELETON
+========================= */
+function GridSkeleton() {
+  return (
+    <div className="mt-6 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-5">
+      {Array.from({ length: 10 }).map((_, i) => (
+        <div key={i} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="p-3">
+            <div className="h-28 bg-gray-100 rounded-xl animate-pulse" />
+          </div>
+          <div className="px-3 pb-3">
+            <div className="h-3 w-16 bg-gray-100 rounded animate-pulse" />
+            <div className="mt-2 h-4 w-40 bg-gray-100 rounded animate-pulse" />
+            <div className="mt-2 h-4 w-28 bg-gray-100 rounded animate-pulse" />
+            <div className="mt-3 h-10 bg-gray-100 rounded-xl animate-pulse" />
+          </div>
+        </div>
+      ))}
+    </div>
   );
 }
