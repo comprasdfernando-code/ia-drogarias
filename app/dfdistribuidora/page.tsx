@@ -151,7 +151,10 @@ export default function DFDistribuidoraHomePage() {
             className="mt-4 w-full border rounded-2xl px-4 py-3 outline-none focus:ring-4 focus:ring-blue-100"
           />
 
-          <button onClick={entrar} className="mt-4 w-full bg-blue-700 hover:bg-blue-800 text-white rounded-2xl py-3 font-extrabold">
+          <button
+            onClick={entrar}
+            className="mt-4 w-full bg-blue-700 hover:bg-blue-800 text-white rounded-2xl py-3 font-extrabold"
+          >
             Entrar
           </button>
 
@@ -162,9 +165,8 @@ export default function DFDistribuidoraHomePage() {
   }
 
   return <DFDistribuidoraHome onSair={sair} />;
-
-
-}/* =========================
+} // ✅ ESSE FECHAMENTO TAVA FALTANDO
+/* =========================
    PAGE
 ========================= */
 function DFDistribuidoraHome({ onSair }: { onSair: () => void }) {
@@ -475,7 +477,7 @@ function DFDistribuidoraHome({ onSair }: { onSair: () => void }) {
         </div>
       </section>
 
-            <CartModal
+                  <CartModal
         open={cartOpen}
         onClose={closeCart}
         whats={WHATS_DF}
@@ -512,7 +514,6 @@ function CartModal({
 }) {
   const cart = useCart();
 
-  // ✅ checkout (igual PDV)
   const [clienteNome, setClienteNome] = useState("");
   const [clienteTelefone, setClienteTelefone] = useState("");
 
@@ -581,19 +582,7 @@ function CartModal({
     msg += `Pode confirmar disponibilidade e prazo?`;
 
     return msg;
-  }, [
-    cart.items,
-    clienteNome,
-    clienteTelefone,
-    tipoEntrega,
-    endereco,
-    numero,
-    bairro,
-    pagamento,
-    taxaEntrega,
-    total,
-    cart.subtotal,
-  ]);
+  }, [cart.items, clienteNome, clienteTelefone, tipoEntrega, endereco, numero, bairro, pagamento, taxaEntrega, total, cart.subtotal]);
 
   if (!open) return null;
 
@@ -639,7 +628,10 @@ function CartModal({
                       <div className="mt-1 text-sm font-extrabold text-blue-900">{brl(it.preco)}</div>
 
                       <div className="mt-2 flex items-center gap-2">
-                        <button onClick={() => cart.dec(it.ean)} className="px-3 py-1 bg-gray-200 rounded font-extrabold">
+                        <button
+                          onClick={() => cart.dec(it.ean)}
+                          className="px-3 py-1 bg-gray-200 rounded font-extrabold"
+                        >
                           -
                         </button>
 
@@ -656,9 +648,7 @@ function CartModal({
                           onClick={() => incSafe(it.ean)}
                           disabled={est > 0 ? it.qtd >= est : false}
                           className={`px-3 py-1 rounded font-extrabold ${
-                            est > 0 && it.qtd >= est
-                              ? "bg-gray-200 text-gray-500 cursor-not-allowed"
-                              : "bg-blue-600 text-white"
+                            est > 0 && it.qtd >= est ? "bg-gray-200 text-gray-500 cursor-not-allowed" : "bg-blue-600 text-white"
                           }`}
                         >
                           +
@@ -869,8 +859,17 @@ function ProdutoCardUltra({
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition overflow-hidden flex flex-col">
       <div className="relative p-3">
-        <Link href={`${prefix}/produtos/${p.ean}`} className="bg-gray-50 rounded-xl p-2 flex items-center justify-center hover:opacity-95 transition">
-          <Image src={firstImg(p.imagens)} alt={p.nome || "Produto"} width={240} height={240} className="rounded object-contain h-24 sm:h-28" />
+        <Link
+          href={`${prefix}/produtos/${p.ean}`}
+          className="bg-gray-50 rounded-xl p-2 flex items-center justify-center hover:opacity-95 transition"
+        >
+          <Image
+            src={firstImg(p.imagens)}
+            alt={p.nome || "Produto"}
+            width={240}
+            height={240}
+            className="rounded object-contain h-24 sm:h-28"
+          />
         </Link>
 
         {pr.emPromo && pr.off > 0 && (
@@ -912,11 +911,19 @@ function ProdutoCardUltra({
 
         <div className="mt-3 flex items-center gap-2">
           <div className="flex items-center border rounded-xl overflow-hidden">
-            <button onClick={() => setQtd((x) => Math.max(1, x - 1))} className="w-9 h-9 bg-white hover:bg-gray-50 font-extrabold" disabled={indisponivel}>
+            <button
+              onClick={() => setQtd((x) => Math.max(1, x - 1))}
+              className="w-9 h-9 bg-white hover:bg-gray-50 font-extrabold"
+              disabled={indisponivel}
+            >
               –
             </button>
             <div className="w-10 text-center font-extrabold text-sm">{qtd}</div>
-            <button onClick={() => setQtd((x) => x + 1)} className="w-9 h-9 bg-white hover:bg-gray-50 font-extrabold" disabled={indisponivel}>
+            <button
+              onClick={() => setQtd((x) => x + 1)}
+              className="w-9 h-9 bg-white hover:bg-gray-50 font-extrabold"
+              disabled={indisponivel}
+            >
               +
             </button>
           </div>
@@ -933,7 +940,10 @@ function ProdutoCardUltra({
         </div>
 
         {indisponivel ? (
-          <button onClick={onEncomendar} className="mt-2 w-full bg-green-600 hover:bg-green-700 text-white py-2.5 rounded-xl text-xs sm:text-sm font-extrabold">
+          <button
+            onClick={onEncomendar}
+            className="mt-2 w-full bg-green-600 hover:bg-green-700 text-white py-2.5 rounded-xl text-xs sm:text-sm font-extrabold"
+          >
             Encomendar
           </button>
         ) : null}
