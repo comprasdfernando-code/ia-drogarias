@@ -5,8 +5,11 @@ import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
-import { CartProvider, useCart } from "./_components/cart";
-import { ToastProvider, useToast } from "./_components/toast";
+import { useCart } from "./_components/cart";
+import { useToast } from "./_components/toast";
+import { useCartUI } from "./_components/cart-ui";
+
+
 import FVBanners from "./_components/FVBanners";
 
 /* =========================
@@ -158,16 +161,10 @@ export default function DFDistribuidoraHomePage() {
     );
   }
 
-  return (
-    <CartProvider>
-      <ToastProvider>
-        <DFDistribuidoraHome onSair={sair} />
-      </ToastProvider>
-    </CartProvider>
-  );
-}
+  return <DFDistribuidoraHome onSair={sair} />;
 
-/* =========================
+
+}/* =========================
    PAGE
 ========================= */
 function DFDistribuidoraHome({ onSair }: { onSair: () => void }) {
@@ -178,7 +175,8 @@ function DFDistribuidoraHome({ onSair }: { onSair: () => void }) {
   const [homeProdutos, setHomeProdutos] = useState<DFProduto[]>([]);
   const [resultado, setResultado] = useState<DFProduto[]>([]);
 
-  const [cartOpen, setCartOpen] = useState(false);
+  const { cartOpen, openCart, closeCart } = useCartUI();
+
 
   const cart = useCart();
   const totalCarrinho = cart.subtotal;
@@ -286,7 +284,8 @@ function DFDistribuidoraHome({ onSair }: { onSair: () => void }) {
 
             <div className="flex items-center gap-2">
               <button
-                onClick={() => setCartOpen(true)}
+                onClick={openCart}
+
                 className="relative text-white font-extrabold whitespace-nowrap bg-white/10 hover:bg-white/15 px-4 py-2 rounded-full"
                 title="Abrir carrinho"
               >
@@ -373,7 +372,8 @@ function DFDistribuidoraHome({ onSair }: { onSair: () => void }) {
             </div>
 
             <button
-              onClick={() => setCartOpen(true)}
+              onClick={openCart}
+
               className="relative text-white font-extrabold whitespace-nowrap bg-white/10 hover:bg-white/15 px-4 py-2 rounded-full"
               title="Abrir carrinho"
             >
@@ -475,7 +475,12 @@ function DFDistribuidoraHome({ onSair }: { onSair: () => void }) {
         </div>
       </section>
 
-      <CartModal open={cartOpen} onClose={() => setCartOpen(false)} whats={WHATS_DF} estoqueByEan={estoqueByEan} />
+            <CartModal
+        open={cartOpen}
+        onClose={closeCart}
+        whats={WHATS_DF}
+        estoqueByEan={estoqueByEan}
+      />
     </main>
   );
 
@@ -486,6 +491,7 @@ function DFDistribuidoraHome({ onSair }: { onSair: () => void }) {
       (p.apresentacao ? `• Apresentação: ${p.apresentacao}\n` : "") +
       (p.laboratorio ? `• Laboratório: ${p.laboratorio}\n` : "") +
       `\nPode me avisar prazo e valor?`;
+
     window.open(waLink(WHATS_DF, msg), "_blank");
   }
 }
@@ -575,7 +581,19 @@ function CartModal({
     msg += `Pode confirmar disponibilidade e prazo?`;
 
     return msg;
-  }, [cart.items, clienteNome, clienteTelefone, tipoEntrega, endereco, numero, bairro, pagamento, taxaEntrega, total, cart.subtotal]);
+  }, [
+    cart.items,
+    clienteNome,
+    clienteTelefone,
+    tipoEntrega,
+    endereco,
+    numero,
+    bairro,
+    pagamento,
+    taxaEntrega,
+    total,
+    cart.subtotal,
+  ]);
 
   if (!open) return null;
 
@@ -621,10 +639,7 @@ function CartModal({
                       <div className="mt-1 text-sm font-extrabold text-blue-900">{brl(it.preco)}</div>
 
                       <div className="mt-2 flex items-center gap-2">
-                        <button
-                          onClick={() => cart.dec(it.ean)}
-                          className="px-3 py-1 bg-gray-200 rounded font-extrabold"
-                        >
+                        <button onClick={() => cart.dec(it.ean)} className="px-3 py-1 bg-gray-200 rounded font-extrabold">
                           -
                         </button>
 
@@ -641,7 +656,9 @@ function CartModal({
                           onClick={() => incSafe(it.ean)}
                           disabled={est > 0 ? it.qtd >= est : false}
                           className={`px-3 py-1 rounded font-extrabold ${
-                            est > 0 && it.qtd >= est ? "bg-gray-200 text-gray-500 cursor-not-allowed" : "bg-blue-600 text-white"
+                            est > 0 && it.qtd >= est
+                              ? "bg-gray-200 text-gray-500 cursor-not-allowed"
+                              : "bg-blue-600 text-white"
                           }`}
                         >
                           +
@@ -781,8 +798,6 @@ function CartModal({
   );
 }
 
-
-
 /* =========================
    PRODUTO CARD (com estoque/indisponível/encomendar)
 ========================= */
@@ -817,6 +832,7 @@ function ProdutoCardUltra({
         push({ title: "Sem estoque 😕", desc: "Você já atingiu o limite disponível." });
         return;
       }
+
       cart.addItem(
         {
           ean: p.ean,
@@ -828,6 +844,7 @@ function ProdutoCardUltra({
         },
         canAdd
       );
+
       push({ title: "Adicionado ao carrinho ✅", desc: `${p.nome} • ${canAdd}x (limite do estoque)` });
       setQtd(1);
       return;
@@ -886,7 +903,11 @@ function ProdutoCardUltra({
         </div>
 
         <div className="mt-2 text-[11px]">
-          {indisponivel ? <span className="font-extrabold text-gray-500">Sem estoque</span> : <span className="font-bold text-gray-500">Estoque: {estoqueAtual}</span>}
+          {indisponivel ? (
+            <span className="font-extrabold text-gray-500">Sem estoque</span>
+          ) : (
+            <span className="font-bold text-gray-500">Estoque: {estoqueAtual}</span>
+          )}
         </div>
 
         <div className="mt-3 flex items-center gap-2">
