@@ -1,23 +1,22 @@
 // app/dfdistribuidora/_components/cart.tsx
 "use client";
 
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 
-export type CartItem = {
+type CartItem = {
   ean: string;
   nome: string;
   laboratorio?: string | null;
   apresentacao?: string | null;
   imagem?: string | null;
-  preco: number; // preço unitário
+  preco: number;
   qtd: number;
 };
 
 type CartCtx = {
   items: CartItem[];
-  countItems: number;
   subtotal: number;
-
+  countItems: number;
   addItem: (item: Omit<CartItem, "qtd">, qtd?: number) => void;
   inc: (ean: string) => void;
   dec: (ean: string) => void;
@@ -25,89 +24,88 @@ type CartCtx = {
   clear: () => void;
 };
 
-const KEY = "df_cart_v1";
-const Ctx = createContext<CartCtx | null>(null);
+const CartContext = createContext<CartCtx | null>(null);
 
-function safeJsonParse<T>(v: string | null, fallback: T): T {
-  if (!v) return fallback;
-  try {
-    return JSON.parse(v) as T;
-  } catch {
-    return fallback;
-  }
-}
-
-export function CartProvider({ children }: { children: React.ReactNode }) {
+export function CartProvider({
+  children,
+  storageKey = "cart_default",
+}: {
+  children: React.ReactNode;
+  storageKey?: string;
+}) {
   const [items, setItems] = useState<CartItem[]>([]);
 
-  // carregar do localStorage
+  // load
   useEffect(() => {
-    const data = safeJsonParse<CartItem[]>(typeof window !== "undefined" ? localStorage.getItem(KEY) : null, []);
-    setItems(Array.isArray(data) ? data : []);
-  }, []);
+    try {
+      const raw = localStorage.getItem(storageKey);
+      if (raw) setItems(JSON.parse(raw));
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [storageKey]);
 
-  // persistir
+  // save
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    localStorage.setItem(KEY, JSON.stringify(items));
-  }, [items]);
+    try {
+      localStorage.setItem(storageKey, JSON.stringify(items));
+    } catch {}
+  }, [items, storageKey]);
 
-  const addItem = useCallback((item: Omit<CartItem, "qtd">, qtd = 1) => {
-    const q = Math.max(1, Number(qtd || 1));
+  const subtotal = useMemo(() => items.reduce((acc, it) => acc + it.preco * it.qtd, 0), [items]);
+  const countItems = useMemo(() => items.reduce((acc, it) => acc + it.qtd, 0), [items]);
+
+  function addItem(item: Omit<CartItem, "qtd">, qtd = 1) {
+    const q = Math.max(1, Math.floor(Number(qtd || 1)));
     setItems((prev) => {
       const idx = prev.findIndex((x) => x.ean === item.ean);
       if (idx >= 0) {
         const copy = [...prev];
-        copy[idx] = { ...copy[idx], qtd: copy[idx].qtd + q, preco: Number(item.preco || copy[idx].preco) };
+        copy[idx] = { ...copy[idx], qtd: copy[idx].qtd + q };
         return copy;
       }
-      return [{ ...item, qtd: q }, ...prev];
+      return [...prev, { ...item, qtd: q }];
     });
-  }, []);
+  }
 
-  const inc = useCallback((ean: string) => {
-    setItems((prev) => prev.map((x) => (x.ean === ean ? { ...x, qtd: x.qtd + 1 } : x)));
-  }, []);
+  function inc(ean: string) {
+    setItems((prev) => prev.map((it) => (it.ean === ean ? { ...it, qtd: it.qtd + 1 } : it)));
+  }
 
-  const dec = useCallback((ean: string) => {
+  function dec(ean: string) {
     setItems((prev) =>
       prev
-        .map((x) => (x.ean === ean ? { ...x, qtd: Math.max(1, x.qtd - 1) } : x))
-        .filter((x) => x.qtd > 0)
+        .map((it) => (it.ean === ean ? { ...it, qtd: Math.max(1, it.qtd - 1) } : it))
+        .filter((it) => it.qtd >= 1)
     );
-  }, []);
+  }
 
-  const remove = useCallback((ean: string) => {
-    setItems((prev) => prev.filter((x) => x.ean !== ean));
-  }, []);
+  function remove(ean: string) {
+    setItems((prev) => prev.filter((it) => it.ean !== ean));
+  }
 
-  const clear = useCallback(() => setItems([]), []);
+  function clear() {
+    setItems([]);
+    try {
+      localStorage.removeItem(storageKey);
+    } catch {}
+  }
 
-  const subtotal = useMemo(() => items.reduce((acc, it) => acc + Number(it.preco || 0) * Number(it.qtd || 0), 0), [items]);
-  const countItems = useMemo(() => items.reduce((acc, it) => acc + Number(it.qtd || 0), 0), [items]);
+  const value: CartCtx = {
+    items,
+    subtotal,
+    countItems,
+    addItem,
+    inc,
+    dec,
+    remove,
+    clear,
+  };
 
-  const value = useMemo<CartCtx>(
-    () => ({ items, countItems, subtotal, addItem, inc, dec, remove, clear }),
-    [items, countItems, subtotal, addItem, inc, dec, remove, clear]
-  );
-
-  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+  return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
 }
 
 export function useCart() {
-  const ctx = useContext(Ctx);
-  if (!ctx) {
-    // não quebrar se esquecer do provider
-    return {
-      items: [],
-      countItems: 0,
-      subtotal: 0,
-      addItem: () => {},
-      inc: () => {},
-      dec: () => {},
-      remove: () => {},
-      clear: () => {},
-    } as CartCtx;
-  }
+  const ctx = useContext(CartContext);
+  if (!ctx) throw new Error("useCart must be used within CartProvider");
   return ctx;
 }
