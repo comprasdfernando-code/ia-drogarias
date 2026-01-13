@@ -1,3 +1,4 @@
+// app/dfdistribuidora/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -9,11 +10,16 @@ import { ToastProvider, useToast } from "./_components/toast";
 import FVBanners from "./_components/FVBanners";
 
 /* =========================
-   CONFIG
+   SENHA SIMPLES (LOCAL)
+   - fica salva no navegador (localStorage)
+   - 🔴 troque DF_SENHA
 ========================= */
-const SENHA_DF = "102030"; // 🔴 troque se quiser (senha simples)
+const DF_SENHA = "102030"; // 🔴 troque
 const LS_KEY = "df_public_ok";
 
+/* =========================
+   CONFIG
+========================= */
 type DFProduto = {
   id: string;
   ean: string;
@@ -32,18 +38,19 @@ type DFProduto = {
 };
 
 const PROD_TABLE = "df_produtos";
-const RPC_SEARCH = "df_search_produtos"; // se não existir, cai no fallback
+const RPC_SEARCH = "df_search_produtos";
 const PREFIX = "/dfdistribuidora";
 
-// WhatsApp da DF
 const WHATS_DF = "5511952068432";
 
-// Branding
-const BRAND_TOP = "IA Drogarias";
-const BRAND_SUB = "• DF Distribuidora";
+const BRAND_TOP = "IA";
+const BRAND_SUB = "• DF";
 
-const HOME_LIMIT = 40; // ✅ agora é “vitrine de disponíveis”
-const SEARCH_LIMIT = 80;
+const TAXA_ENTREGA_FIXA = 10;
+
+
+const HOME_LIMIT = 150;
+const SEARCH_LIMIT = 180;
 const SEARCH_DEBOUNCE = 350;
 
 /* =========================
@@ -102,21 +109,6 @@ function normalizeSearch(raw: string) {
    PAGE WRAPPER
 ========================= */
 export default function DFDistribuidoraHomePage() {
-  return (
-    <CartProvider>
-      <ToastProvider>
-        <DFGate>
-          <DFDistribuidoraHome />
-        </DFGate>
-      </ToastProvider>
-    </CartProvider>
-  );
-}
-
-/* =========================
-   SIMPLE PASSWORD GATE
-========================= */
-function DFGate({ children }: { children: React.ReactNode }) {
   const [ok, setOk] = useState(false);
   const [senha, setSenha] = useState("");
 
@@ -126,7 +118,7 @@ function DFGate({ children }: { children: React.ReactNode }) {
   }, []);
 
   function entrar() {
-    if (senha === SENHA_DF) {
+    if (senha === DF_SENHA) {
       localStorage.setItem(LS_KEY, "1");
       setOk(true);
     } else {
@@ -150,43 +142,35 @@ function DFGate({ children }: { children: React.ReactNode }) {
           <input
             value={senha}
             onChange={(e) => setSenha(e.target.value)}
+            onKeyDown={(e) => (e.key === "Enter" ? entrar() : null)}
             type="password"
             placeholder="Senha"
             className="mt-4 w-full border rounded-2xl px-4 py-3 outline-none focus:ring-4 focus:ring-blue-100"
           />
 
-          <button
-            onClick={entrar}
-            className="mt-4 w-full bg-blue-700 hover:bg-blue-800 text-white rounded-2xl py-3 font-extrabold"
-          >
+          <button onClick={entrar} className="mt-4 w-full bg-blue-700 hover:bg-blue-800 text-white rounded-2xl py-3 font-extrabold">
             Entrar
           </button>
 
-          <div className="mt-3 text-[11px] text-gray-500">
-            Dica: depois de entrar, fica salvo no navegador (localStorage).
-          </div>
+          <div className="mt-3 text-[11px] text-gray-500">Fica salvo neste navegador (localStorage).</div>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen">
-      {/* botao sair discreto */}
-      <div className="fixed bottom-4 right-4 z-[80]">
-        <button onClick={sair} className="px-4 py-2 rounded-full border bg-white shadow-sm font-extrabold text-sm hover:bg-gray-50">
-          Sair
-        </button>
-      </div>
-      {children}
-    </div>
+    <CartProvider>
+      <ToastProvider>
+        <DFDistribuidoraHome onSair={sair} />
+      </ToastProvider>
+    </CartProvider>
   );
 }
 
 /* =========================
    PAGE
 ========================= */
-function DFDistribuidoraHome() {
+function DFDistribuidoraHome({ onSair }: { onSair: () => void }) {
   const [loadingHome, setLoadingHome] = useState(true);
   const [loadingBusca, setLoadingBusca] = useState(false);
   const [busca, setBusca] = useState("");
@@ -194,7 +178,6 @@ function DFDistribuidoraHome() {
   const [homeProdutos, setHomeProdutos] = useState<DFProduto[]>([]);
   const [resultado, setResultado] = useState<DFProduto[]>([]);
 
-  // Modal do carrinho
   const [cartOpen, setCartOpen] = useState(false);
 
   const cart = useCart();
@@ -203,7 +186,6 @@ function DFDistribuidoraHome() {
 
   const isSearching = !!busca.trim();
 
-  // mapa estoque pra travar carrinho
   const estoqueByEan = useMemo(() => {
     const m = new Map<string, number>();
     for (const p of homeProdutos) m.set(p.ean, Number(p.estoque ?? 0));
@@ -211,9 +193,6 @@ function DFDistribuidoraHome() {
     return m;
   }, [homeProdutos, resultado]);
 
-  /* =========================
-     HOME (somente disponíveis)
-  ========================= */
   useEffect(() => {
     async function loadHome() {
       try {
@@ -225,9 +204,10 @@ function DFDistribuidoraHome() {
             "id,ean,nome,laboratorio,categoria,apresentacao,pmc,em_promocao,preco_promocional,percentual_off,destaque_home,ativo,imagens,estoque"
           )
           .eq("ativo", true)
-          .gt("estoque", 0) // ✅ SOMENTE DISPONÍVEIS
+          .gt("estoque", 0)
           .order("destaque_home", { ascending: false })
           .order("em_promocao", { ascending: false })
+          .order("estoque", { ascending: false })
           .order("nome", { ascending: true })
           .limit(HOME_LIMIT);
 
@@ -245,10 +225,6 @@ function DFDistribuidoraHome() {
     loadHome();
   }, []);
 
-  /* =========================
-     BUSCA REMOTA (mantém busca)
-     - aqui eu NÃO filtro por estoque, pra você ver também indisponíveis e poder “Encomendar”
-  ========================= */
   useEffect(() => {
     async function search() {
       const raw = busca.trim();
@@ -266,7 +242,6 @@ function DFDistribuidoraHome() {
 
         setResultado(((data || []) as DFProduto[]) ?? []);
       } catch (e) {
-        // fallback
         try {
           const digits = onlyDigits(raw);
 
@@ -281,9 +256,7 @@ function DFDistribuidoraHome() {
           if (digits.length >= 8 && digits.length <= 14) query = query.or(`ean.eq.${digits},nome.ilike.%${raw}%`);
           else query = query.ilike("nome", `%${raw}%`);
 
-          const { data, error } = await query
-            .order("em_promocao", { ascending: false })
-            .order("nome", { ascending: true });
+          const { data, error } = await query.order("em_promocao", { ascending: false }).order("nome", { ascending: true });
 
           if (error) throw error;
 
@@ -303,7 +276,6 @@ function DFDistribuidoraHome() {
 
   return (
     <main className="min-h-screen bg-gray-50 pb-24">
-      {/* HEADER */}
       <header className="sticky top-0 z-40 bg-blue-700 shadow">
         <div className="mx-auto max-w-6xl px-4 py-3">
           {/* MOBILE */}
@@ -312,18 +284,28 @@ function DFDistribuidoraHome() {
               {BRAND_TOP} <span className="opacity-80">{BRAND_SUB}</span>
             </div>
 
-            <button
-              onClick={() => setCartOpen(true)}
-              className="relative text-white font-extrabold whitespace-nowrap bg-white/10 hover:bg-white/15 px-4 py-2 rounded-full"
-              title="Abrir carrinho"
-            >
-              🛒 {brl(totalCarrinho)}
-              {qtdCarrinho > 0 && (
-                <span className="absolute -top-2 -right-2 h-6 min-w-[24px] px-1 rounded-full bg-green-400 text-blue-900 text-xs font-extrabold flex items-center justify-center border-2 border-blue-700">
-                  {qtdCarrinho}
-                </span>
-              )}
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setCartOpen(true)}
+                className="relative text-white font-extrabold whitespace-nowrap bg-white/10 hover:bg-white/15 px-4 py-2 rounded-full"
+                title="Abrir carrinho"
+              >
+                🛒 {brl(totalCarrinho)}
+                {qtdCarrinho > 0 && (
+                  <span className="absolute -top-2 -right-2 h-6 min-w-[24px] px-1 rounded-full bg-green-400 text-blue-900 text-xs font-extrabold flex items-center justify-center border-2 border-blue-700">
+                    {qtdCarrinho}
+                  </span>
+                )}
+              </button>
+
+              <button
+                onClick={onSair}
+                className="text-white font-extrabold bg-white/10 hover:bg-white/15 px-3 py-2 rounded-full"
+                title="Sair"
+              >
+                Sair
+              </button>
+            </div>
           </div>
 
           <div className="mt-3 md:hidden">
@@ -403,16 +385,18 @@ function DFDistribuidoraHome() {
                 </span>
               )}
             </button>
+
+            <button onClick={onSair} className="text-white font-extrabold bg-white/10 hover:bg-white/15 px-4 py-2 rounded-full" title="Sair">
+              Sair
+            </button>
           </div>
         </div>
       </header>
 
-      {/* BANNERS */}
       <div className="mt-4">
         <FVBanners />
       </div>
 
-      {/* CONTEÚDO */}
       <section className="max-w-6xl mx-auto px-4">
         {isSearching ? (
           <div className="mt-6">
@@ -427,13 +411,7 @@ function DFDistribuidoraHome() {
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-5">
                 {resultado.map((p) => (
-                  <ProdutoCardUltra
-                    key={p.id}
-                    p={p}
-                    prefix={PREFIX}
-                    onEncomendar={() => encomendarDF(p)}
-                    estoqueByEan={estoqueByEan}
-                  />
+                  <ProdutoCardUltra key={p.id} p={p} prefix={PREFIX} onEncomendar={() => encomendarDF(p)} estoqueByEan={estoqueByEan} />
                 ))}
               </div>
             )}
@@ -441,23 +419,17 @@ function DFDistribuidoraHome() {
         ) : (
           <div className="mt-8">
             <h2 className="text-lg font-extrabold text-gray-900 mb-3">
-              Disponíveis agora <span className="text-gray-500">({homeProdutos.length})</span>
+              Produtos disponíveis <span className="text-gray-500">({homeProdutos.length})</span>
             </h2>
 
             {loadingHome ? (
               <GridSkeleton />
             ) : homeProdutos.length === 0 ? (
-              <div className="bg-white border rounded-2xl p-6 text-gray-600">Sem itens disponíveis no momento.</div>
+              <div className="bg-white border rounded-2xl p-6 text-gray-600">Nenhum produto com estoque disponível no momento.</div>
             ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-5">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-5">
                 {homeProdutos.map((p) => (
-                  <ProdutoCardUltra
-                    key={p.id}
-                    p={p}
-                    prefix={PREFIX}
-                    onEncomendar={() => encomendarDF(p)}
-                    estoqueByEan={estoqueByEan}
-                  />
+                  <ProdutoCardUltra key={p.id} p={p} prefix={PREFIX} onEncomendar={() => encomendarDF(p)} estoqueByEan={estoqueByEan} />
                 ))}
               </div>
             )}
@@ -465,7 +437,6 @@ function DFDistribuidoraHome() {
         )}
       </section>
 
-      {/* COMPRA RÁPIDA */}
       <section className="max-w-6xl mx-auto px-4 mt-12 pb-12">
         <div className="bg-white rounded-3xl border shadow-sm p-6">
           <h3 className="text-xl md:text-2xl font-extrabold text-gray-900">Compra rápida</h3>
@@ -504,7 +475,6 @@ function DFDistribuidoraHome() {
         </div>
       </section>
 
-      {/* MODAL DO CARRINHO */}
       <CartModal open={cartOpen} onClose={() => setCartOpen(false)} whats={WHATS_DF} estoqueByEan={estoqueByEan} />
     </main>
   );
@@ -521,7 +491,7 @@ function DFDistribuidoraHome() {
 }
 
 /* =========================
-   CART MODAL (com trava de estoque)
+   CART MODAL (ESTILO PDV + dados entrega/pagamento)
 ========================= */
 function CartModal({
   open,
@@ -535,6 +505,20 @@ function CartModal({
   estoqueByEan: Map<string, number>;
 }) {
   const cart = useCart();
+
+  // ✅ checkout (igual PDV)
+  const [clienteNome, setClienteNome] = useState("");
+  const [clienteTelefone, setClienteTelefone] = useState("");
+
+  const [tipoEntrega, setTipoEntrega] = useState<"ENTREGA" | "RETIRADA">("ENTREGA");
+  const [endereco, setEndereco] = useState("");
+  const [numero, setNumero] = useState("");
+  const [bairro, setBairro] = useState("");
+
+  const [pagamento, setPagamento] = useState<"PIX" | "CARTAO" | "DINHEIRO" | "COMBINAR">("PIX");
+
+  const taxaEntrega = tipoEntrega === "ENTREGA" ? TAXA_ENTREGA_FIXA : 0;
+  const total = cart.subtotal + taxaEntrega;
 
   function incSafe(ean: string) {
     const est = Number(estoqueByEan.get(ean) ?? 0);
@@ -559,38 +543,67 @@ function CartModal({
     }
   }
 
+  const canCheckout = useMemo(() => {
+    if (cart.items.length === 0) return false;
+    if (!clienteNome.trim()) return false;
+    if (onlyDigits(clienteTelefone).length < 10) return false;
+
+    if (tipoEntrega === "ENTREGA") {
+      if (!endereco.trim() || !numero.trim() || !bairro.trim()) return false;
+    }
+    return true;
+  }, [cart.items.length, clienteNome, clienteTelefone, tipoEntrega, endereco, numero, bairro]);
+
   const mensagem = useMemo(() => {
-    if (!cart.items.length) return "Olá! Quero fazer um pedido da DF Distribuidora.";
-    const linhas = cart.items.map((it) => `• ${it.nome} (${it.ean}) — ${it.qtd}x — ${brl(it.preco)}`);
-    const total = brl(cart.subtotal);
-    return `Olá! Quero finalizar meu pedido:\n\n${linhas.join("\n")}\n\nTotal: ${total}\n\nPode confirmar disponibilidade e prazo?`;
-  }, [cart.items, cart.subtotal]);
+    let msg = `🧾 *Pedido DF Distribuidora*\n\n`;
+    msg += `👤 Cliente: ${clienteNome || "—"}\n`;
+    msg += `📞 WhatsApp: ${clienteTelefone || "—"}\n\n`;
+
+    msg +=
+      tipoEntrega === "ENTREGA"
+        ? `🚚 *Entrega*\n${endereco}, ${numero} - ${bairro}\nTaxa: ${brl(taxaEntrega)}\n\n`
+        : `🏪 *Retirada na loja*\n\n`;
+
+    msg += `💳 Pagamento: ${pagamento}\n\n🛒 *Itens:*\n`;
+    cart.items.forEach((i) => {
+      msg += `• ${i.nome} (${i.ean}) — ${i.qtd}x — ${brl(i.preco * i.qtd)}\n`;
+    });
+
+    msg += `\nSubtotal: ${brl(cart.subtotal)}\n`;
+    msg += `Taxa: ${brl(taxaEntrega)}\n`;
+    msg += `Total: ${brl(total)}\n\n`;
+    msg += `Pode confirmar disponibilidade e prazo?`;
+
+    return msg;
+  }, [cart.items, clienteNome, clienteTelefone, tipoEntrega, endereco, numero, bairro, pagamento, taxaEntrega, total, cart.subtotal]);
 
   if (!open) return null;
 
   return (
     <div className="fixed inset-0 z-[60]">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="absolute right-0 top-0 h-full w-full sm:w-[480px] bg-white shadow-2xl flex flex-col">
-        <div className="p-4 border-b flex items-center justify-between">
-          <div className="font-extrabold text-lg">🛒 Seu carrinho</div>
-          <button onClick={onClose} className="px-3 py-2 rounded-xl border bg-white hover:bg-gray-50 font-extrabold">
+
+      <div className="absolute right-0 top-0 h-full w-full sm:w-[520px] bg-white p-4 overflow-auto">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-extrabold">Carrinho</h2>
+          <button onClick={onClose} className="px-3 py-2 rounded-xl border font-extrabold">
             Continuar comprando
           </button>
         </div>
 
-        <div className="p-4 flex-1 overflow-auto">
+        {/* ITENS */}
+        <div className="mt-4">
           {cart.items.length === 0 ? (
-            <div className="text-gray-600 bg-gray-50 border rounded-2xl p-4">Seu carrinho está vazio. Adicione itens 😊</div>
+            <div className="text-gray-600 bg-gray-50 border rounded-2xl p-4">Seu carrinho está vazio.</div>
           ) : (
-            <div className="space-y-3">
-              {cart.items.map((it) => {
-                const est = Number(estoqueByEan.get(it.ean) ?? 0);
-                const max = Math.max(1, est || 1);
-                const travado = est > 0 ? Math.min(it.qtd, est) : it.qtd;
+            cart.items.map((it) => {
+              const est = Number(estoqueByEan.get(it.ean) ?? 0);
+              const max = Math.max(1, est || 1);
+              const travado = est > 0 ? Math.min(it.qtd, est) : it.qtd;
 
-                return (
-                  <div key={it.ean} className="border rounded-2xl p-3 flex gap-3">
+              return (
+                <div key={it.ean} className="border rounded-2xl p-3 mb-2">
+                  <div className="flex gap-3">
                     <div className="h-14 w-14 bg-gray-50 rounded-xl overflow-hidden flex items-center justify-center">
                       <Image
                         src={it.imagem || "/produtos/caixa-padrao.png"}
@@ -602,13 +615,17 @@ function CartModal({
                     </div>
 
                     <div className="flex-1">
-                      <div className="font-extrabold text-sm line-clamp-2">{it.nome}</div>
+                      <div className="font-extrabold">{it.nome}</div>
                       <div className="text-xs text-gray-500">EAN: {it.ean}</div>
-                      <div className="mt-1 font-extrabold text-blue-900">{brl(it.preco)}</div>
+
+                      <div className="mt-1 text-sm font-extrabold text-blue-900">{brl(it.preco)}</div>
 
                       <div className="mt-2 flex items-center gap-2">
-                        <button onClick={() => cart.dec(it.ean)} className="w-9 h-9 bg-white hover:bg-gray-50 font-extrabold border rounded-xl">
-                          –
+                        <button
+                          onClick={() => cart.dec(it.ean)}
+                          className="px-3 py-1 bg-gray-200 rounded font-extrabold"
+                        >
+                          -
                         </button>
 
                         <input
@@ -617,80 +634,157 @@ function CartModal({
                           max={max}
                           value={travado}
                           onChange={(e) => setQtdSafe(it.ean, Number(e.target.value))}
-                          className="w-16 h-9 border rounded-xl text-center font-extrabold"
+                          className="w-16 border rounded px-2 py-1 text-center font-extrabold"
                         />
 
                         <button
                           onClick={() => incSafe(it.ean)}
-                          disabled={est > 0 && it.qtd >= est}
-                          className={`w-9 h-9 font-extrabold border rounded-xl ${
-                            est > 0 && it.qtd >= est ? "bg-gray-100 text-gray-400 cursor-not-allowed" : "bg-white hover:bg-gray-50"
+                          disabled={est > 0 ? it.qtd >= est : false}
+                          className={`px-3 py-1 rounded font-extrabold ${
+                            est > 0 && it.qtd >= est ? "bg-gray-200 text-gray-500 cursor-not-allowed" : "bg-blue-600 text-white"
                           }`}
                         >
                           +
                         </button>
 
-                        <button
-                          onClick={() => cart.remove(it.ean)}
-                          className="px-3 py-2 rounded-xl border bg-white hover:bg-gray-50 text-sm font-extrabold ml-auto"
-                          title="Remover item"
-                        >
-                          Remover
+                        <button onClick={() => cart.remove(it.ean)} className="ml-auto text-red-600 font-extrabold">
+                          Excluir
                         </button>
                       </div>
 
-                      <div className="mt-2 text-[11px] text-gray-500">
+                      <div className="mt-2 text-xs text-gray-600">
                         {est > 0 ? (
-                          <>
+                          <span>
                             Disponível: <b>{est}</b>
-                          </>
+                          </span>
                         ) : (
-                          <span className="text-red-600 font-bold">Sem estoque / indisponível</span>
+                          <span className="text-red-600 font-bold">Atenção: estoque não encontrado (0)</span>
                         )}
                       </div>
+
+                      <div className="mt-2 font-extrabold text-blue-900">Total item: {brl(it.preco * it.qtd)}</div>
                     </div>
                   </div>
-                );
-              })}
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* DADOS CLIENTE */}
+        <div className="mt-4 space-y-2">
+          <input
+            placeholder="Nome do cliente"
+            value={clienteNome}
+            onChange={(e) => setClienteNome(e.target.value)}
+            className="w-full border p-2 rounded"
+          />
+          <input
+            placeholder="WhatsApp"
+            value={clienteTelefone}
+            onChange={(e) => setClienteTelefone(e.target.value)}
+            className="w-full border p-2 rounded"
+          />
+          <div className="text-[11px] text-gray-500">Dica: informe com DDD (ex: 11999999999)</div>
+        </div>
+
+        {/* ENTREGA */}
+        <div className="mt-4">
+          <div className="font-bold mb-2">Entrega</div>
+
+          <div className="flex gap-2">
+            <button
+              onClick={() => setTipoEntrega("ENTREGA")}
+              className={`px-3 py-2 rounded flex-1 ${tipoEntrega === "ENTREGA" ? "bg-blue-600 text-white" : "bg-gray-200"}`}
+            >
+              Entrega
+            </button>
+
+            <button
+              onClick={() => setTipoEntrega("RETIRADA")}
+              className={`px-3 py-2 rounded flex-1 ${tipoEntrega === "RETIRADA" ? "bg-blue-600 text-white" : "bg-gray-200"}`}
+            >
+              Retirada
+            </button>
+          </div>
+
+          {tipoEntrega === "ENTREGA" && (
+            <div className="mt-3 space-y-2">
+              <input
+                placeholder="Endereço"
+                value={endereco}
+                onChange={(e) => setEndereco(e.target.value)}
+                className="w-full border p-2 rounded"
+              />
+              <input
+                placeholder="Número"
+                value={numero}
+                onChange={(e) => setNumero(e.target.value)}
+                className="w-full border p-2 rounded"
+              />
+              <input
+                placeholder="Bairro"
+                value={bairro}
+                onChange={(e) => setBairro(e.target.value)}
+                className="w-full border p-2 rounded"
+              />
+              <div className="text-sm font-bold">Taxa fixa: {brl(taxaEntrega)}</div>
             </div>
           )}
         </div>
 
-        <div className="p-4 border-t">
-          <div className="flex items-center justify-between">
-            <div className="text-sm text-gray-600">Subtotal</div>
-            <div className="text-lg font-extrabold text-blue-900">{brl(cart.subtotal)}</div>
-          </div>
+        {/* PAGAMENTO */}
+        <div className="mt-4">
+          <div className="font-bold mb-2">Pagamento</div>
 
-          <div className="mt-3 grid grid-cols-2 gap-2">
-            <button
-              onClick={() => cart.clear()}
-              className="px-4 py-3 rounded-2xl border bg-white hover:bg-gray-50 font-extrabold"
-              disabled={!cart.items.length}
-            >
-              Limpar
-            </button>
-
-            <a
-              className={`px-4 py-3 rounded-2xl font-extrabold text-center ${
-                cart.items.length ? "bg-green-500 hover:bg-green-600 text-white" : "bg-gray-200 text-gray-500 pointer-events-none"
-              }`}
-              href={waLink(whats, mensagem)}
-              target="_blank"
-              rel="noreferrer"
-              title="Finalizar no WhatsApp"
-            >
-              Finalizar no WhatsApp
-            </a>
+          <div className="flex flex-wrap gap-2">
+            {(["PIX", "CARTAO", "DINHEIRO", "COMBINAR"] as const).map((p) => (
+              <button
+                key={p}
+                onClick={() => setPagamento(p)}
+                className={`px-3 py-2 rounded ${pagamento === p ? "bg-blue-600 text-white" : "bg-gray-200"}`}
+              >
+                {p}
+              </button>
+            ))}
           </div>
         </div>
+
+        {/* TOTAL */}
+        <div className="mt-4 border-t pt-3">
+          <div>Subtotal: {brl(cart.subtotal)}</div>
+          <div>Taxa: {brl(taxaEntrega)}</div>
+          <div className="font-extrabold text-lg">Total: {brl(total)}</div>
+        </div>
+
+        {/* FINALIZAR */}
+        <a
+          href={waLink(whats, mensagem)}
+          target="_blank"
+          rel="noreferrer"
+          className={`block mt-4 text-center py-3 rounded-xl font-extrabold ${
+            canCheckout ? "bg-green-600 hover:bg-green-700 text-white" : "bg-gray-200 text-gray-500 pointer-events-none"
+          }`}
+          title={canCheckout ? "Finalizar no WhatsApp" : "Preencha nome/Whats e itens (e endereço se entrega)."}
+        >
+          Finalizar no WhatsApp
+        </a>
+
+        {!canCheckout ? (
+          <div className="mt-2 text-xs text-gray-500">
+            Para liberar o botão: informe <b>Nome</b>, <b>WhatsApp</b>, e adicione itens. Se escolher <b>Entrega</b>, preencha{" "}
+            <b>Endereço/Número/Bairro</b>.
+          </div>
+        ) : null}
       </div>
     </div>
   );
 }
 
+
+
 /* =========================
-   PRODUTO CARD
+   PRODUTO CARD (com estoque/indisponível/encomendar)
 ========================= */
 function ProdutoCardUltra({
   p,
@@ -792,11 +886,7 @@ function ProdutoCardUltra({
         </div>
 
         <div className="mt-2 text-[11px]">
-          {indisponivel ? (
-            <span className="font-extrabold text-gray-500">Sem estoque</span>
-          ) : (
-            <span className="font-bold text-gray-500">Estoque: {estoqueAtual}</span>
-          )}
+          {indisponivel ? <span className="font-extrabold text-gray-500">Sem estoque</span> : <span className="font-bold text-gray-500">Estoque: {estoqueAtual}</span>}
         </div>
 
         <div className="mt-3 flex items-center gap-2">
@@ -831,9 +921,6 @@ function ProdutoCardUltra({
   );
 }
 
-/* =========================
-   SKELETON
-========================= */
 function GridSkeleton() {
   return (
     <div className="mt-6 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-5">
