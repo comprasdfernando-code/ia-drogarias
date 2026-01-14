@@ -1,7 +1,3 @@
-// app/fv/page.tsx  (ou app/farmaciavirtual/page.tsx)
-// ✅ Carrinho estilo PDV (drawer) + checkout completo (Nome/Whats + Entrega/Retirada + Pagamento + taxa)
-// ✅ Mantém sua lógica atual de vitrine/busca/cards. Só trocamos o CartModal.
-
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -64,6 +60,7 @@ function firstImg(imagens?: string[] | null) {
   return "/produtos/caixa-padrao.png";
 }
 
+// ✅ opcional (somente para o botão "Enviar no WhatsApp também")
 function waLink(phone: string, msg: string) {
   const clean = phone.replace(/\D/g, "");
   return `https://wa.me/${clean}?text=${encodeURIComponent(msg)}`;
@@ -376,7 +373,6 @@ function FarmaciaVirtualHome() {
           <h3 className="text-xl md:text-2xl font-extrabold text-gray-900">Compra rápida</h3>
           <p className="text-gray-600 mt-1">Adicione no carrinho e finalize o pedido em poucos cliques.</p>
 
-
           <div className="grid md:grid-cols-3 gap-4 mt-6">
             <div className="flex gap-3 items-start">
               <div className="h-11 w-11 rounded-2xl bg-gray-100 flex items-center justify-center text-lg">⚡</div>
@@ -424,15 +420,17 @@ function FarmaciaVirtualHome() {
    - Pagamento
    - Taxa fixa
    - Salva pedido em fv_pedidos
-   - (Opcional) botão “Enviar no WhatsApp também”
+   - ✅ NÃO abre WhatsApp automaticamente
 ========================================= */
 function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void }) {
   const cart = useCart();
 
   // ✅ AJUSTE AQUI
-  const WHATS = "5511952068432"; // opcional (pra botão extra)
   const TAXA_ENTREGA_FIXA = 10;
-  const PEDIDOS_TABLE = "fv_pedidos"; // ✅ crie essa tabela no Supabase
+  const PEDIDOS_TABLE = "fv_pedidos";
+
+  // (Opcional) Whats (apenas para botão extra, se você quiser)
+  const WHATS = "5511952068432";
 
   const [saving, setSaving] = useState(false);
   const [pedidoCriado, setPedidoCriado] = useState<string | null>(null);
@@ -466,11 +464,6 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
     return true;
   }, [cart.items.length, clienteNome, clienteTelefone, tipoEntrega, endereco, numero, bairro]);
 
-  function waLink(phone: string, msg: string) {
-    const clean = phone.replace(/\D/g, "");
-    return `https://wa.me/${clean}?text=${encodeURIComponent(msg)}`;
-  }
-
   const mensagem = useMemo(() => {
     let msg = `🧾 *Pedido - Farmácia Virtual*\n\n`;
     msg += `👤 Cliente: ${clienteNome || "—"}\n`;
@@ -496,7 +489,6 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
     return msg;
   }, [cart.items, clienteNome, clienteTelefone, tipoEntrega, endereco, numero, bairro, pagamento, subtotal, total, taxaEntrega]);
 
-  // ✅ sempre que abrir: reseta confirmação
   useEffect(() => {
     if (!open) return;
     setPedidoCriado(null);
@@ -529,12 +521,17 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
       canal: "SITE",
     };
 
-    // ✅ sem .single() pra não dar erro de accept/row
+    // ✅ sem .single() pra evitar erro de Accept/row
     const { data, error } = await supabase.from(PEDIDOS_TABLE).insert(payload).select("id");
     if (error) throw error;
 
     const pedidoId = (data && data[0] && (data[0] as any).id) as string | undefined;
     return pedidoId || "";
+  }
+
+  function clearCartSafe() {
+    if (typeof (cart as any).clear === "function") (cart as any).clear();
+    else cart.items.forEach((it) => cart.remove(it.ean));
   }
 
   async function finalizarPedido() {
@@ -543,12 +540,8 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
     setSaving(true);
     try {
       const pedidoId = await criarPedidoNoPainel();
-
       setPedidoCriado(pedidoId || "OK");
-
-      // ✅ limpa carrinho
-      if (typeof (cart as any).clear === "function") (cart as any).clear();
-      else cart.items.forEach((it) => cart.remove(it.ean));
+      clearCartSafe();
     } catch (e) {
       console.error(e);
       alert("Não consegui finalizar o pedido. Tente novamente.");
@@ -593,7 +586,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
                   Voltar para a loja
                 </button>
 
-                {/* (Opcional) Whats */}
+                {/* ✅ OPCIONAL: só se clicar */}
                 <button
                   onClick={() => {
                     const msgComId = `✅ Pedido criado no sistema: ${pedidoCriado}\n\n${mensagem}`;
@@ -615,13 +608,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
               {cart.items.map((it) => (
                 <div key={it.ean} className="border rounded-2xl p-3 flex gap-3">
                   <div className="h-14 w-14 bg-gray-50 rounded-xl overflow-hidden flex items-center justify-center">
-                    <Image
-                      src={it.imagem || "/produtos/caixa-padrao.png"}
-                      alt={it.nome}
-                      width={64}
-                      height={64}
-                      className="object-contain"
-                    />
+                    <Image src={it.imagem || "/produtos/caixa-padrao.png"} alt={it.nome} width={64} height={64} className="object-contain" />
                   </div>
 
                   <div className="flex-1 min-w-0">
@@ -630,9 +617,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
 
                     <div className="mt-1 flex items-center justify-between gap-2">
                       <div className="font-extrabold text-blue-900">{brl(it.preco)}</div>
-                      <div className="text-xs font-bold text-gray-600">
-                        Item: {brl(Number(it.preco || 0) * Number(it.qtd || 0))}
-                      </div>
+                      <div className="text-xs font-bold text-gray-600">Item: {brl(Number(it.preco || 0) * Number(it.qtd || 0))}</div>
                     </div>
 
                     <div className="mt-2 flex items-center gap-2">
@@ -640,6 +625,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
                         onClick={() => cart.dec(it.ean)}
                         className="w-10 h-10 rounded-xl border bg-white hover:bg-gray-50 font-extrabold"
                         title="Diminuir"
+                        disabled={saving || !!pedidoCriado}
                       >
                         –
                       </button>
@@ -652,6 +638,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
                         onClick={() => cart.inc(it.ean)}
                         className="w-10 h-10 rounded-xl border bg-white hover:bg-gray-50 font-extrabold"
                         title="Aumentar"
+                        disabled={saving || !!pedidoCriado}
                       >
                         +
                       </button>
@@ -660,6 +647,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
                         onClick={() => cart.remove(it.ean)}
                         className="ml-auto px-3 py-2 rounded-xl border bg-white hover:bg-gray-50 text-sm font-extrabold text-red-600"
                         title="Remover item"
+                        disabled={saving || !!pedidoCriado}
                       >
                         Excluir
                       </button>
@@ -680,12 +668,14 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
                 value={clienteNome}
                 onChange={(e) => setClienteNome(e.target.value)}
                 className="w-full border bg-white px-3 py-2.5 rounded-xl outline-none focus:ring-4 focus:ring-blue-100"
+                disabled={saving || !!pedidoCriado}
               />
               <input
                 placeholder="WhatsApp com DDD (ex: 11999999999)"
                 value={clienteTelefone}
                 onChange={(e) => setClienteTelefone(e.target.value)}
                 className="w-full border bg-white px-3 py-2.5 rounded-xl outline-none focus:ring-4 focus:ring-blue-100"
+                disabled={saving || !!pedidoCriado}
               />
               <div className="text-[11px] text-gray-500">Dica: informe com DDD. Ex: 11999999999</div>
             </div>
@@ -701,6 +691,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
                 className={`flex-1 px-3 py-2.5 rounded-xl font-extrabold ${
                   tipoEntrega === "ENTREGA" ? "bg-blue-700 text-white" : "bg-gray-100 hover:bg-gray-200"
                 }`}
+                disabled={saving || !!pedidoCriado}
               >
                 Entrega
               </button>
@@ -710,6 +701,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
                 className={`flex-1 px-3 py-2.5 rounded-xl font-extrabold ${
                   tipoEntrega === "RETIRADA" ? "bg-blue-700 text-white" : "bg-gray-100 hover:bg-gray-200"
                 }`}
+                disabled={saving || !!pedidoCriado}
               >
                 Retirada
               </button>
@@ -722,6 +714,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
                   value={endereco}
                   onChange={(e) => setEndereco(e.target.value)}
                   className="w-full border bg-white px-3 py-2.5 rounded-xl outline-none focus:ring-4 focus:ring-blue-100"
+                  disabled={saving || !!pedidoCriado}
                 />
                 <div className="grid grid-cols-2 gap-2">
                   <input
@@ -729,12 +722,14 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
                     value={numero}
                     onChange={(e) => setNumero(e.target.value)}
                     className="w-full border bg-white px-3 py-2.5 rounded-xl outline-none focus:ring-4 focus:ring-blue-100"
+                    disabled={saving || !!pedidoCriado}
                   />
                   <input
                     placeholder="Bairro"
                     value={bairro}
                     onChange={(e) => setBairro(e.target.value)}
                     className="w-full border bg-white px-3 py-2.5 rounded-xl outline-none focus:ring-4 focus:ring-blue-100"
+                    disabled={saving || !!pedidoCriado}
                   />
                 </div>
 
@@ -757,6 +752,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
                   className={`px-3 py-2 rounded-xl font-extrabold ${
                     pagamento === p ? "bg-blue-700 text-white" : "bg-gray-100 hover:bg-gray-200"
                   }`}
+                  disabled={saving || !!pedidoCriado}
                 >
                   {p}
                 </button>
@@ -784,9 +780,9 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
 
           <div className="mt-3 grid grid-cols-2 gap-2">
             <button
-              onClick={() => (typeof (cart as any).clear === "function" ? (cart as any).clear() : cart.items.forEach((it) => cart.remove(it.ean)))}
+              onClick={clearCartSafe}
               className="px-4 py-3 rounded-2xl border bg-white hover:bg-gray-50 font-extrabold"
-              disabled={!cart.items.length || saving}
+              disabled={!cart.items.length || saving || !!pedidoCriado}
             >
               Limpar
             </button>
@@ -814,7 +810,6 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
     </div>
   );
 }
-
 
 function ProdutoCardUltra({ p }: { p: FVProduto }) {
   const pr = precoFinal(p);
@@ -847,13 +842,7 @@ function ProdutoCardUltra({ p }: { p: FVProduto }) {
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition overflow-hidden flex flex-col">
       <div className="relative p-3">
         <Link href={`/fv/produtos/${p.ean}`} className="bg-gray-50 rounded-xl p-2 flex items-center justify-center hover:opacity-95 transition">
-          <Image
-            src={firstImg(p.imagens)}
-            alt={p.nome || "Produto"}
-            width={240}
-            height={240}
-            className="rounded object-contain h-24 sm:h-28"
-          />
+          <Image src={firstImg(p.imagens)} alt={p.nome || "Produto"} width={240} height={240} className="rounded object-contain h-24 sm:h-28" />
         </Link>
 
         {pr.emPromo && pr.off > 0 && (
