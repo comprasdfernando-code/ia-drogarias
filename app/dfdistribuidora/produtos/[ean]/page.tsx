@@ -425,20 +425,44 @@ function DFProdutoPage() {
     </main>
   );
 }
+function onlyDigits(v: string) {
+  return (v || "").replace(/\D/g, "");
+}
+
 
 /* =========================
    CART MODAL (ESTILO PDV + dados entrega/pagamento)
+   - com taxaEntregaFixa via prop (evita erro de scope)
+   - limpar carrinho robusto (funciona com vários formatos de useCart)
+   - finalizar via button (pronto pra gerar "notinha" depois)
 ========================= */
 function CartModal({
   open,
   onClose,
   whats,
   estoqueByEan,
+  taxaEntregaFixa = 10,
+  onAfterFinalize,
 }: {
   open: boolean;
   onClose: () => void;
   whats: string;
   estoqueByEan: Map<string, number>;
+  taxaEntregaFixa?: number;
+  onAfterFinalize?: (payload: {
+    mensagem: string;
+    clienteNome: string;
+    clienteTelefone: string;
+    tipoEntrega: "ENTREGA" | "RETIRADA";
+    endereco: string;
+    numero: string;
+    bairro: string;
+    pagamento: "PIX" | "CARTAO" | "DINHEIRO" | "COMBINAR";
+    taxaEntrega: number;
+    total: number;
+    subtotal: number;
+    itens: Array<{ ean: string; nome: string; qtd: number; preco: number }>;
+  }) => void;
 }) {
   const cart = useCart();
 
@@ -452,17 +476,14 @@ function CartModal({
 
   const [pagamento, setPagamento] = useState<"PIX" | "CARTAO" | "DINHEIRO" | "COMBINAR">("PIX");
 
-  const taxaEntrega = tipoEntrega === "ENTREGA" ? TAXA_ENTREGA_FIXA : 0;
-  const total = cart.subtotal + taxaEntrega;
+  const taxaEntrega = tipoEntrega === "ENTREGA" ? Number(taxaEntregaFixa || 0) : 0;
+  const total = Number(cart.subtotal || 0) + taxaEntrega;
 
   function incSafe(ean: string) {
     const est = Number(estoqueByEan.get(ean) ?? 0);
-    const it = cart.items.find((x) => x.ean === ean);
+    const it = cart.items.find((x: any) => x.ean === ean);
     if (!it) return;
-
-    // Se tiver estoque conhecido, trava no limite
     if (est > 0 && it.qtd >= est) return;
-
     cart.inc(ean);
   }
 
@@ -471,7 +492,7 @@ function CartModal({
     const alvo = Math.max(1, Math.floor(Number(qtd || 1)));
     const final = est > 0 ? Math.min(alvo, est) : alvo;
 
-    const it = cart.items.find((x) => x.ean === ean);
+    const it = cart.items.find((x: any) => x.ean === ean);
     if (!it) return;
 
     if (final > it.qtd) {
@@ -481,8 +502,21 @@ function CartModal({
     }
   }
 
+  // ✅ limpar carrinho robusto (serve pra home e produto ficarem sincronizados QUANDO o provider é o mesmo)
+  function clearCartSafe() {
+    const anyCart: any = cart as any;
+
+    if (typeof anyCart.clearCart === "function") return anyCart.clearCart();
+    if (typeof anyCart.clearAll === "function") return anyCart.clearAll();
+    if (typeof anyCart.reset === "function") return anyCart.reset();
+    if (typeof anyCart.clear === "function") return anyCart.clear();
+
+    // fallback universal: remove item por item
+    (cart.items || []).forEach((it: any) => cart.remove(it.ean));
+  }
+
   const canCheckout = useMemo(() => {
-    if (cart.items.length === 0) return false;
+    if ((cart.items || []).length === 0) return false;
     if (!clienteNome.trim()) return false;
     if (onlyDigits(clienteTelefone).length < 10) return false;
 
@@ -490,7 +524,7 @@ function CartModal({
       if (!endereco.trim() || !numero.trim() || !bairro.trim()) return false;
     }
     return true;
-  }, [cart.items.length, clienteNome, clienteTelefone, tipoEntrega, endereco, numero, bairro]);
+  }, [cart.items?.length, clienteNome, clienteTelefone, tipoEntrega, endereco, numero, bairro]);
 
   const mensagem = useMemo(() => {
     let msg = `🧾 *Pedido DF Distribuidora*\n\n`;
@@ -503,8 +537,8 @@ function CartModal({
         : `🏪 *Retirada na loja*\n\n`;
 
     msg += `💳 Pagamento: ${pagamento}\n\n🛒 *Itens:*\n`;
-    cart.items.forEach((i) => {
-      msg += `• ${i.nome} (${i.ean}) — ${i.qtd}x — ${brl(i.preco * i.qtd)}\n`;
+    (cart.items || []).forEach((i: any) => {
+      msg += `• ${i.nome} (${i.ean}) — ${i.qtd}x — ${brl(Number(i.preco || 0) * Number(i.qtd || 0))}\n`;
     });
 
     msg += `\nSubtotal: ${brl(cart.subtotal)}\n`;
@@ -527,6 +561,34 @@ function CartModal({
     cart.subtotal,
   ]);
 
+  function finalizar() {
+    if (!canCheckout) return;
+
+    // abre whatsapp
+    window.open(waLink(whats, mensagem), "_blank");
+
+    // hook pronto pra você gerar "notinha" depois
+    onAfterFinalize?.({
+      mensagem,
+      clienteNome,
+      clienteTelefone,
+      tipoEntrega,
+      endereco,
+      numero,
+      bairro,
+      pagamento,
+      taxaEntrega,
+      total,
+      subtotal: Number(cart.subtotal || 0),
+      itens: (cart.items || []).map((i: any) => ({
+        ean: i.ean,
+        nome: i.nome,
+        qtd: Number(i.qtd || 0),
+        preco: Number(i.preco || 0),
+      })),
+    });
+  }
+
   if (!open) return null;
 
   return (
@@ -536,7 +598,6 @@ function CartModal({
       <div className="absolute right-0 top-0 h-full w-full sm:w-[520px] bg-white p-4 overflow-auto">
         <div className="flex items-center justify-between">
           <h2 className="text-xl font-extrabold">Seu carrinho</h2>
-
           <button onClick={onClose} className="px-3 py-2 rounded-xl border font-extrabold">
             Continuar comprando
           </button>
@@ -544,10 +605,10 @@ function CartModal({
 
         {/* ITENS */}
         <div className="mt-4">
-          {cart.items.length === 0 ? (
+          {(cart.items || []).length === 0 ? (
             <div className="text-gray-600 bg-gray-50 border rounded-2xl p-4">Seu carrinho está vazio.</div>
           ) : (
-            cart.items.map((it) => {
+            (cart.items || []).map((it: any) => {
               const est = Number(estoqueByEan.get(it.ean) ?? 0);
               const max = Math.max(1, est || 1);
               const travado = est > 0 ? Math.min(it.qtd, est) : it.qtd;
@@ -572,7 +633,10 @@ function CartModal({
                       <div className="mt-1 text-sm font-extrabold text-blue-900">{brl(it.preco)}</div>
 
                       <div className="mt-2 flex items-center gap-2">
-                        <button onClick={() => cart.dec(it.ean)} className="px-3 py-1 bg-gray-200 rounded font-extrabold">
+                        <button
+                          onClick={() => cart.dec(it.ean)}
+                          className="px-3 py-1 bg-gray-200 rounded font-extrabold"
+                        >
                           -
                         </button>
 
@@ -589,7 +653,9 @@ function CartModal({
                           onClick={() => incSafe(it.ean)}
                           disabled={est > 0 ? it.qtd >= est : false}
                           className={`px-3 py-1 rounded font-extrabold ${
-                            est > 0 && it.qtd >= est ? "bg-gray-200 text-gray-500 cursor-not-allowed" : "bg-blue-600 text-white"
+                            est > 0 && it.qtd >= est
+                              ? "bg-gray-200 text-gray-500 cursor-not-allowed"
+                              : "bg-blue-600 text-white"
                           }`}
                         >
                           +
@@ -606,11 +672,13 @@ function CartModal({
                             Disponível: <b>{est}</b>
                           </span>
                         ) : (
-                          <span className="text-red-600 font-bold">Atenção: estoque não encontrado (0)</span>
+                          <span className="text-red-600 font-bold">Sem estoque / indisponível</span>
                         )}
                       </div>
 
-                      <div className="mt-2 font-extrabold text-blue-900">Total item: {brl(it.preco * it.qtd)}</div>
+                      <div className="mt-2 font-extrabold text-blue-900">
+                        Total item: {brl(Number(it.preco || 0) * Number(it.qtd || 0))}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -619,23 +687,20 @@ function CartModal({
           )}
         </div>
 
-        {/* DADOS */}
-        <div className="mt-4">
-          <div className="font-bold mb-2">Dados</div>
-          <div className="space-y-2">
-            <input
-              placeholder="Nome do cliente"
-              value={clienteNome}
-              onChange={(e) => setClienteNome(e.target.value)}
-              className="w-full border p-2 rounded"
-            />
-            <input
-              placeholder="WhatsApp com DDD (ex: 11999999999)"
-              value={clienteTelefone}
-              onChange={(e) => setClienteTelefone(e.target.value)}
-              className="w-full border p-2 rounded"
-            />
-          </div>
+        {/* DADOS CLIENTE */}
+        <div className="mt-4 space-y-2">
+          <input
+            placeholder="Nome do cliente"
+            value={clienteNome}
+            onChange={(e) => setClienteNome(e.target.value)}
+            className="w-full border p-2 rounded"
+          />
+          <input
+            placeholder="WhatsApp com DDD (ex: 11999999999)"
+            value={clienteTelefone}
+            onChange={(e) => setClienteTelefone(e.target.value)}
+            className="w-full border p-2 rounded"
+          />
         </div>
 
         {/* ENTREGA */}
@@ -645,14 +710,18 @@ function CartModal({
           <div className="flex gap-2">
             <button
               onClick={() => setTipoEntrega("ENTREGA")}
-              className={`px-3 py-2 rounded flex-1 ${tipoEntrega === "ENTREGA" ? "bg-blue-600 text-white" : "bg-gray-200"}`}
+              className={`px-3 py-2 rounded flex-1 ${
+                tipoEntrega === "ENTREGA" ? "bg-blue-600 text-white" : "bg-gray-200"
+              }`}
             >
               Entrega
             </button>
 
             <button
               onClick={() => setTipoEntrega("RETIRADA")}
-              className={`px-3 py-2 rounded flex-1 ${tipoEntrega === "RETIRADA" ? "bg-blue-600 text-white" : "bg-gray-200"}`}
+              className={`px-3 py-2 rounded flex-1 ${
+                tipoEntrega === "RETIRADA" ? "bg-blue-600 text-white" : "bg-gray-200"
+              }`}
             >
               Retirada
             </button>
@@ -700,7 +769,7 @@ function CartModal({
           </div>
         </div>
 
-        {/* TOTAL + AÇÕES */}
+        {/* TOTAL */}
         <div className="mt-4 border-t pt-3">
           <div className="flex justify-between">
             <span>Subtotal</span>
@@ -714,36 +783,32 @@ function CartModal({
             <span className="font-extrabold">Total</span>
             <span className="font-extrabold">{brl(total)}</span>
           </div>
-
-          <div className="mt-3 grid grid-cols-2 gap-2">
-            <button
-              onClick={() => cart.clear?.() ?? cart.clearCart?.() ?? cart.clearAll?.()}
-              className="py-3 rounded-xl border font-extrabold"
-              title="Limpar carrinho"
-            >
-              Limpar
-            </button>
-
-            <a
-              href={waLink(whats, mensagem)}
-              target="_blank"
-              rel="noreferrer"
-              className={`text-center py-3 rounded-xl font-extrabold ${
-                canCheckout ? "bg-green-600 hover:bg-green-700 text-white" : "bg-gray-200 text-gray-500 pointer-events-none"
-              }`}
-              title={canCheckout ? "Finalizar no WhatsApp" : "Preencha nome/Whats e itens (e endereço se entrega)."}
-            >
-              Finalizar
-            </a>
-          </div>
-
-          {!canCheckout ? (
-            <div className="mt-2 text-xs text-gray-500">
-              Para liberar: informe <b>Nome</b>, <b>Whats</b>, e tenha itens no carrinho. Se escolher <b>Entrega</b>, preencha{" "}
-              <b>Endereço/Número/Bairro</b>.
-            </div>
-          ) : null}
         </div>
+
+        {/* AÇÕES */}
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          <button onClick={clearCartSafe} className="py-3 rounded-xl border font-extrabold" title="Limpar carrinho">
+            Limpar
+          </button>
+
+          <button
+            onClick={finalizar}
+            className={`py-3 rounded-xl font-extrabold ${
+              canCheckout ? "bg-green-600 hover:bg-green-700 text-white" : "bg-gray-200 text-gray-500 cursor-not-allowed"
+            }`}
+            disabled={!canCheckout}
+            title={canCheckout ? "Finalizar no WhatsApp" : "Preencha nome/Whats e itens (e endereço se entrega)."}
+          >
+            Finalizar no WhatsApp
+          </button>
+        </div>
+
+        {!canCheckout ? (
+          <div className="mt-2 text-xs text-gray-500">
+            Para liberar: informe <b>Nome</b>, <b>WhatsApp</b> e adicione itens. Se escolher <b>Entrega</b>, preencha{" "}
+            <b>Endereço/Número/Bairro</b>.
+          </div>
+        ) : null}
       </div>
     </div>
   );
