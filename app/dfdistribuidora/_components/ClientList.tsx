@@ -5,6 +5,7 @@ export type ClientePessoa = {
   cpf: string;
   responsavel_nome: string;
   nome_fantasia: string | null;
+  crf: string | null; // ✅ opcional
   whatsapp: string | null;
   email: string | null;
   endereco: string | null;
@@ -84,6 +85,13 @@ export default function ClientList({
                 {c.nome_fantasia || "—"}
               </p>
 
+              {/* ✅ CRF opcional (só mostra se existir) */}
+              {c.crf ? (
+                <p className="text-sm text-gray-700">
+                  <span className="font-medium">CRF:</span> {c.crf}
+                </p>
+              ) : null}
+
               <p className="text-sm text-gray-700">
                 <span className="font-medium">Whats:</span>{" "}
                 {c.whatsapp || "—"}
@@ -100,14 +108,10 @@ export default function ClientList({
 
               <p className="text-xs text-gray-500 mt-2">
                 Última visita:{" "}
-                <span className="font-medium">
-                  {fmtDate(c.ultima_visita)}
-                </span>
+                <span className="font-medium">{fmtDate(c.ultima_visita)}</span>
                 {" • "}
                 Próxima:{" "}
-                <span className="font-medium">
-                  {fmtDate(c.proxima_visita)}
-                </span>
+                <span className="font-medium">{fmtDate(c.proxima_visita)}</span>
               </p>
             </div>
 
