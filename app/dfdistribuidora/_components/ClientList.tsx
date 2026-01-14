@@ -1,22 +1,16 @@
 "use client";
 
-export type DrogariaCliente = {
+export type ClientePessoa = {
   id: string;
-  cnpj: string;
-  nome_fantasia: string;
-  responsavel: string | null;
-  telefone: string | null;
+  cpf: string;
+  responsavel_nome: string;
+  nome_fantasia: string | null;
+  whatsapp: string | null;
   email: string | null;
-
   endereco: string | null;
-  bairro: string | null;
-  cidade: string | null;
-  uf: string | null;
-  cep: string | null;
-
-  ultima_visita: string | null;  // YYYY-MM-DD
-  proxima_visita: string | null; // YYYY-MM-DD
-  status_visita: string | null;  // Novo / Em andamento / Visitado
+  ultima_visita: string | null;
+  proxima_visita: string | null;
+  status_visita: string | null;
 };
 
 function fmtDate(d?: string | null) {
@@ -24,11 +18,6 @@ function fmtDate(d?: string | null) {
   const [y, m, day] = d.split("-");
   if (!y || !m || !day) return d;
   return `${day}/${m}/${y}`;
-}
-
-function endToLine(c: DrogariaCliente) {
-  const parts = [c.endereco, c.bairro, c.cidade, c.uf, c.cep].filter(Boolean);
-  return parts.length ? parts.join(" - ") : "—";
 }
 
 function badgeClass(status?: string | null) {
@@ -40,25 +29,25 @@ function badgeClass(status?: string | null) {
 
 export default function ClientList({
   clientes,
-  loading,
+  loading = false,
   onMarcarVisita,
   onRemove,
   onCopiarWhats,
 }: {
-  clientes: DrogariaCliente[];
+  clientes: ClientePessoa[];
   loading?: boolean;
-  onMarcarVisita: (c: DrogariaCliente) => void;
-  onRemove: (id: string) => void;
-  onCopiarWhats?: (c: DrogariaCliente) => void;
+  onMarcarVisita?: (c: ClientePessoa) => void;
+  onRemove?: (id: string) => void;
+  onCopiarWhats?: (c: ClientePessoa) => void;
 }) {
   if (loading) {
     return <div className="text-gray-600">Carregando...</div>;
   }
 
-  if (!clientes?.length) {
+  if (!clientes || clientes.length === 0) {
     return (
       <div className="rounded-2xl border border-dashed border-gray-300 bg-white p-8 text-center text-gray-600">
-        Nenhuma drogaria encontrada.
+        Nenhum cliente encontrado.
       </div>
     );
   }
@@ -74,7 +63,7 @@ export default function ClientList({
             <div className="min-w-0">
               <div className="flex items-center gap-2 flex-wrap">
                 <h3 className="text-base font-semibold text-gray-900 truncate">
-                  {c.nome_fantasia}
+                  {c.responsavel_nome}
                 </h3>
 
                 <span
@@ -87,59 +76,72 @@ export default function ClientList({
               </div>
 
               <p className="text-sm text-gray-700 mt-1">
-                <span className="font-medium">CNPJ:</span> {c.cnpj}
+                <span className="font-medium">CPF:</span> {c.cpf}
               </p>
 
               <p className="text-sm text-gray-700">
-                <span className="font-medium">Responsável:</span>{" "}
-                {c.responsavel || "—"}
+                <span className="font-medium">Loja:</span>{" "}
+                {c.nome_fantasia || "—"}
               </p>
 
               <p className="text-sm text-gray-700">
-                <span className="font-medium">Whats:</span> {c.telefone || "—"}
+                <span className="font-medium">Whats:</span>{" "}
+                {c.whatsapp || "—"}
               </p>
 
               <p className="text-sm text-gray-700">
-                <span className="font-medium">Email:</span> {c.email || "—"}
+                <span className="font-medium">Email:</span>{" "}
+                {c.email || "—"}
               </p>
 
-              <p className="text-sm text-gray-600 mt-2">{endToLine(c)}</p>
+              <p className="text-sm text-gray-600 mt-2">
+                {c.endereco || "—"}
+              </p>
 
               <p className="text-xs text-gray-500 mt-2">
                 Última visita:{" "}
-                <span className="font-medium">{fmtDate(c.ultima_visita)}</span>
-                {"  •  "}
+                <span className="font-medium">
+                  {fmtDate(c.ultima_visita)}
+                </span>
+                {" • "}
                 Próxima:{" "}
-                <span className="font-medium">{fmtDate(c.proxima_visita)}</span>
+                <span className="font-medium">
+                  {fmtDate(c.proxima_visita)}
+                </span>
               </p>
             </div>
 
-            <button
-              onClick={() => onRemove(c.id)}
-              className="text-xs rounded-lg border border-gray-200 px-3 py-2 hover:bg-gray-50"
-              title="Remover"
-            >
-              Remover
-            </button>
-          </div>
-
-          <div className="mt-4 flex flex-wrap gap-2">
-            <button
-              onClick={() => onMarcarVisita(c)}
-              className="rounded-xl bg-green-600 px-4 py-2 text-white text-sm font-medium hover:bg-green-700"
-            >
-              Marcar visita
-            </button>
-
-            {onCopiarWhats ? (
+            {onRemove && (
               <button
-                onClick={() => onCopiarWhats(c)}
-                className="rounded-xl border border-gray-200 px-4 py-2 text-sm hover:bg-gray-50"
+                onClick={() => onRemove(c.id)}
+                className="text-xs rounded-lg border border-gray-200 px-3 py-2 hover:bg-gray-50"
               >
-                Copiar Whats
+                Remover
               </button>
-            ) : null}
+            )}
           </div>
+
+          {(onMarcarVisita || onCopiarWhats) && (
+            <div className="mt-4 flex flex-wrap gap-2">
+              {onMarcarVisita && (
+                <button
+                  onClick={() => onMarcarVisita(c)}
+                  className="rounded-xl bg-green-600 px-4 py-2 text-white text-sm font-medium hover:bg-green-700"
+                >
+                  Marcar visita
+                </button>
+              )}
+
+              {onCopiarWhats && (
+                <button
+                  onClick={() => onCopiarWhats(c)}
+                  className="rounded-xl border border-gray-200 px-4 py-2 text-sm hover:bg-gray-50"
+                >
+                  Copiar Whats
+                </button>
+              )}
+            </div>
+          )}
         </div>
       ))}
     </div>
