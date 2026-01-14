@@ -495,6 +495,7 @@ function CartModal({
   estoqueByEan: Map<string, number>;
 }) {
   const cart = useCart();
+
   const [saving, setSaving] = useState(false);
 
   const [clienteNome, setClienteNome] = useState("");
@@ -510,18 +511,21 @@ function CartModal({
   // ✅ ao abrir, puxa do perfil salvo e preenche automaticamente
   useEffect(() => {
     if (!open) return;
+
     try {
       const p = JSON.parse(localStorage.getItem(PROFILE_LS) || "null");
       if (!p) return;
 
-      if (!clienteNome) setClienteNome(p.responsavel_nome || "");
-      if (!clienteTelefone) setClienteTelefone(p.whatsapp || "");
+      // Só preenche se o campo estiver vazio (pra não sobrescrever edição do usuário)
+      setClienteNome((prev) => (prev?.trim() ? prev : p.responsavel_nome || ""));
+      setClienteTelefone((prev) => (prev?.trim() ? prev : p.whatsapp || ""));
 
-      if (!endereco) setEndereco(p.endereco || "");
-      if (!numero) setNumero(p.numero || "");
-      if (!bairro) setBairro(p.bairro || "");
-    } catch {}
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+      setEndereco((prev) => (prev?.trim() ? prev : p.endereco || ""));
+      setNumero((prev) => (prev?.trim() ? prev : p.numero || ""));
+      setBairro((prev) => (prev?.trim() ? prev : p.bairro || ""));
+    } catch {
+      // ignore
+    }
   }, [open]);
 
   const taxaEntrega = tipoEntrega === "ENTREGA" ? TAXA_ENTREGA_FIXA : 0;
@@ -588,7 +592,9 @@ function CartModal({
     let profile: any = null;
     try {
       profile = JSON.parse(localStorage.getItem(PROFILE_LS) || "null");
-    } catch {}
+    } catch {
+      // ignore
+    }
 
     const payload = {
       cliente_nome: clienteNome.trim(),
@@ -597,9 +603,9 @@ function CartModal({
       cliente_nome_fantasia: profile?.nome_fantasia || null,
 
       tipo_entrega: tipoEntrega,
-      endereco: tipoEntrega === "ENTREGA" ? endereco : null,
-      numero: tipoEntrega === "ENTREGA" ? numero : null,
-      bairro: tipoEntrega === "ENTREGA" ? bairro : null,
+      endereco: tipoEntrega === "ENTREGA" ? endereco.trim() : null,
+      numero: tipoEntrega === "ENTREGA" ? numero.trim() : null,
+      bairro: tipoEntrega === "ENTREGA" ? bairro.trim() : null,
 
       pagamento,
       taxa_entrega: taxaEntrega,
@@ -617,9 +623,29 @@ function CartModal({
       status: "NOVO",
     };
 
-    const { data, error } = await supabase.from("df_pedidos").insert(payload).select("id").single();
+    // ✅ não usa .single() (evita erro 406/400)
+    const { data, error } = await supabase.from("df_pedidos").insert(payload).select("id");
     if (error) throw error;
-    return data?.id as string;
+
+    const pedidoId = (data && data[0] && (data[0] as any).id) as string | undefined;
+    return pedidoId || "";
+  }
+
+  async function finalizar() {
+    if (!canCheckout || saving) return;
+
+    setSaving(true);
+    try {
+      const pedidoId = await criarPedidoNoPainel();
+      const msgComId = pedidoId ? `✅ Pedido criado no sistema: ${pedidoId}\n\n${mensagem}` : mensagem;
+      window.open(waLink(whats, msgComId), "_blank", "noopener,noreferrer");
+    } catch (e) {
+      console.error(e);
+      alert("Não consegui salvar o pedido no painel. Vou abrir no WhatsApp mesmo.");
+      window.open(waLink(whats, mensagem), "_blank", "noopener,noreferrer");
+    } finally {
+      setSaving(false);
+    }
   }
 
   if (!open) return null;
@@ -666,7 +692,10 @@ function CartModal({
                       <div className="mt-1 text-sm font-extrabold text-blue-900">{brl(it.preco)}</div>
 
                       <div className="mt-2 flex items-center gap-2">
-                        <button onClick={() => cart.dec(it.ean)} className="px-3 py-1 bg-gray-200 rounded font-extrabold">
+                        <button
+                          onClick={() => cart.dec(it.ean)}
+                          className="px-3 py-1 bg-gray-200 rounded font-extrabold"
+                        >
                           -
                         </button>
 
@@ -691,7 +720,10 @@ function CartModal({
                           +
                         </button>
 
-                        <button onClick={() => cart.remove(it.ean)} className="ml-auto text-red-600 font-extrabold">
+                        <button
+                          onClick={() => cart.remove(it.ean)}
+                          className="ml-auto text-red-600 font-extrabold"
+                        >
                           Excluir
                         </button>
                       </div>
@@ -739,14 +771,18 @@ function CartModal({
           <div className="flex gap-2">
             <button
               onClick={() => setTipoEntrega("ENTREGA")}
-              className={`px-3 py-2 rounded flex-1 ${tipoEntrega === "ENTREGA" ? "bg-blue-600 text-white" : "bg-gray-200"}`}
+              className={`px-3 py-2 rounded flex-1 ${
+                tipoEntrega === "ENTREGA" ? "bg-blue-600 text-white" : "bg-gray-200"
+              }`}
             >
               Entrega
             </button>
 
             <button
               onClick={() => setTipoEntrega("RETIRADA")}
-              className={`px-3 py-2 rounded flex-1 ${tipoEntrega === "RETIRADA" ? "bg-blue-600 text-white" : "bg-gray-200"}`}
+              className={`px-3 py-2 rounded flex-1 ${
+                tipoEntrega === "RETIRADA" ? "bg-blue-600 text-white" : "bg-gray-200"
+              }`}
             >
               Retirada
             </button>
@@ -804,27 +840,13 @@ function CartModal({
         {/* FINALIZAR: salva no painel + abre Whats */}
         <button
           disabled={!canCheckout || saving}
-          onClick={async () => {
-            if (!canCheckout || saving) return;
-            setSaving(true);
-            try {
-              const pedidoId = await criarPedidoNoPainel();
-              const msgComId = `✅ Pedido criado no sistema: ${pedidoId}\n\n` + mensagem;
-              window.open(waLink(whats, msgComId), "_blank", "noopener,noreferrer");
-            } catch (e: any) {
-              console.error(e);
-              alert("Não consegui salvar o pedido no painel. Vou abrir no WhatsApp mesmo.");
-              window.open(waLink(whats, mensagem), "_blank", "noopener,noreferrer");
-            } finally {
-              setSaving(false);
-            }
-          }}
+          onClick={finalizar}
           className={`w-full mt-4 text-center py-3 rounded-xl font-extrabold ${
             canCheckout ? "bg-green-600 hover:bg-green-700 text-white" : "bg-gray-200 text-gray-500"
           } ${saving ? "opacity-70 cursor-wait" : ""}`}
           title={canCheckout ? "Salvar pedido e abrir WhatsApp" : "Preencha nome/Whats e itens (e endereço se entrega)."}
         >
-          {saving ? "Salvando pedido..." : "Finalizar no WhatsApp"}
+          {saving ? "Salvando pedido..." : "Salvar pedido e abrir WhatsApp"}
         </button>
 
         {!canCheckout ? (
@@ -837,6 +859,7 @@ function CartModal({
     </div>
   );
 }
+
 
 /* =========================
    PRODUTO CARD
