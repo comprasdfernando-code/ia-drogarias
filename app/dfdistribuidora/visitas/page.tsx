@@ -12,7 +12,7 @@ const TABLE = "df_clientes_pessoas";
 
 type Cliente = {
   id: string;
-  cpf: string | null; // ✅ opcional
+  cpf: string | null; // opcional
   responsavel_nome: string;
   nome_fantasia: string | null;
   crf: string | null;
@@ -85,9 +85,13 @@ export default function VisitasPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
   // modal cadastro
-  const [open, setOpen] = useState(false);
+  const [openCreate, setOpenCreate] = useState(false);
 
-  // form cadastro (CPF opcional)
+  // modal editar
+  const [openEdit, setOpenEdit] = useState(false);
+  const [editing, setEditing] = useState<Cliente | null>(null);
+
+  // form (cadastro / edição)
   const [cpf, setCpf] = useState("");
   const [responsavelNome, setResponsavelNome] = useState("");
   const [nomeFantasia, setNomeFantasia] = useState("");
@@ -100,6 +104,34 @@ export default function VisitasPage() {
   const [cidade, setCidade] = useState("");
   const [uf, setUf] = useState("");
   const [cep, setCep] = useState("");
+
+  function resetForm() {
+    setCpf("");
+    setResponsavelNome("");
+    setNomeFantasia("");
+    setCrf("");
+    setWhatsapp("");
+    setEmail("");
+    setEndereco("");
+    setBairro("");
+    setCidade("");
+    setUf("");
+    setCep("");
+  }
+
+  function fillFormFromCliente(c: Cliente) {
+    setCpf(c.cpf || "");
+    setResponsavelNome(c.responsavel_nome || "");
+    setNomeFantasia(c.nome_fantasia || "");
+    setCrf(c.crf || "");
+    setWhatsapp(c.whatsapp || "");
+    setEmail(c.email || "");
+    setEndereco(c.endereco || "");
+    setBairro(c.bairro || "");
+    setCidade(c.cidade || "");
+    setUf(c.uf || "");
+    setCep(c.cep || "");
+  }
 
   async function load() {
     setLoading(true);
@@ -144,7 +176,7 @@ export default function VisitasPage() {
   const visitasDoDia = useMemo(() => {
     const list = clientes.filter((c) => (c.proxima_visita || "") === dia);
 
-    // rota simples: cidade > bairro > endereco > responsavel
+    // rota simples
     return list.sort((a, b) => {
       const A = `${a.cidade ?? ""} ${a.bairro ?? ""} ${a.endereco ?? ""} ${a.responsavel_nome ?? ""}`.toLowerCase();
       const B = `${b.cidade ?? ""} ${b.bairro ?? ""} ${b.endereco ?? ""} ${b.responsavel_nome ?? ""}`.toLowerCase();
@@ -240,7 +272,6 @@ export default function VisitasPage() {
   async function addCliente() {
     if (!responsavelNome.trim()) return alert("Nome do responsável é obrigatório.");
 
-    // ✅ CPF opcional: só valida se preencheu
     const cpfDigits = onlyDigits(cpf);
     if (cpfDigits && !isCpfValidBasic(cpfDigits)) return alert("CPF inválido (11 dígitos).");
 
@@ -265,33 +296,64 @@ export default function VisitasPage() {
     const { error } = await supabase.from(TABLE).insert(payload);
 
     if (error) {
-      if (error.message.toLowerCase().includes("duplicate")) {
-        return alert("CPF já cadastrado.");
-      }
+      if (error.message.toLowerCase().includes("duplicate")) return alert("CPF já cadastrado.");
       return alert(error.message);
     }
 
-    // limpa form e fecha modal
-    setCpf("");
-    setResponsavelNome("");
-    setNomeFantasia("");
-    setCrf("");
-    setWhatsapp("");
-    setEmail("");
-    setEndereco("");
-    setBairro("");
-    setCidade("");
-    setUf("");
-    setCep("");
-
-    setOpen(false);
+    resetForm();
+    setOpenCreate(false);
     load();
+  }
+
+  async function updateCliente() {
+    if (!editing) return;
+    if (!responsavelNome.trim()) return alert("Nome do responsável é obrigatório.");
+
+    const cpfDigits = onlyDigits(cpf);
+    if (cpfDigits && !isCpfValidBasic(cpfDigits)) return alert("CPF inválido (11 dígitos).");
+
+    const payload = {
+      cpf: cpfDigits || null,
+      responsavel_nome: responsavelNome.trim(),
+      nome_fantasia: nomeFantasia.trim() || null,
+      crf: crf.trim() || null,
+      whatsapp: onlyDigits(whatsapp) || null,
+      email: email.trim() || null,
+
+      endereco: endereco.trim() || null,
+      bairro: bairro.trim() || null,
+      cidade: cidade.trim() || null,
+      uf: uf.trim() || null,
+      cep: onlyDigits(cep) || null,
+    };
+
+    const { error } = await supabase.from(TABLE).update(payload).eq("id", editing.id);
+
+    if (error) {
+      if (error.message.toLowerCase().includes("duplicate")) return alert("CPF já cadastrado.");
+      return alert(error.message);
+    }
+
+    // atualiza local sem precisar recarregar tudo
+    setClientes((prev) =>
+      prev.map((c) => (c.id === editing.id ? { ...c, ...(payload as any) } : c))
+    );
+
+    resetForm();
+    setEditing(null);
+    setOpenEdit(false);
+  }
+
+  function openEditModal(c: Cliente) {
+    setEditing(c);
+    fillFormFromCliente(c);
+    setOpenEdit(true);
   }
 
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="mx-auto max-w-6xl p-4 md:p-8">
-        {/* HEADER CLEAN */}
+        {/* HEADER */}
         <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
           <div>
             <h1 className="text-2xl md:text-3xl font-semibold text-gray-900">
@@ -303,7 +365,10 @@ export default function VisitasPage() {
           </div>
 
           <button
-            onClick={() => setOpen(true)}
+            onClick={() => {
+              resetForm();
+              setOpenCreate(true);
+            }}
             className="rounded-xl bg-blue-600 px-4 py-2 text-white text-sm font-medium hover:bg-blue-700"
           >
             + Cadastrar cliente
@@ -404,6 +469,13 @@ export default function VisitasPage() {
 
                   <div className="mt-3 flex flex-wrap gap-2">
                     <button
+                      onClick={() => openEditModal(c)}
+                      className="rounded-xl border border-gray-200 px-4 py-2 text-sm hover:bg-gray-50"
+                    >
+                      Editar
+                    </button>
+
+                    <button
                       onClick={() => {
                         if (!c.whatsapp) return alert("Sem Whats cadastrado.");
                         const msg =
@@ -479,19 +551,10 @@ export default function VisitasPage() {
 
                   <div className="mt-3 flex flex-wrap gap-2">
                     <button
-                      onClick={() => {
-                        if (!c.whatsapp) return alert("Sem Whats cadastrado.");
-                        const msg =
-                          `Olá, ${c.responsavel_nome}! Tudo bem?\n\n` +
-                          `Sou da DF Distribuidora.\n` +
-                          `Posso te fazer uma visita? Qual melhor dia/horário?\n\n` +
-                          `Loja: ${c.nome_fantasia || "-"}\n` +
-                          `Endereço: ${fullAddress(c) || "-"}\n`;
-                        window.open(waLink(c.whatsapp, msg), "_blank", "noopener,noreferrer");
-                      }}
+                      onClick={() => openEditModal(c)}
                       className="rounded-xl border border-gray-200 px-4 py-2 text-sm hover:bg-gray-50"
                     >
-                      Whats
+                      Editar
                     </button>
 
                     <button
@@ -514,13 +577,10 @@ export default function VisitasPage() {
           )}
         </div>
 
-        {/* MODAL CADASTRO */}
-        {open && (
+        {/* MODAL: CADASTRAR */}
+        {openCreate && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div
-              className="absolute inset-0 bg-black/40"
-              onClick={() => setOpen(false)}
-            />
+            <div className="absolute inset-0 bg-black/40" onClick={() => setOpenCreate(false)} />
             <div className="relative w-full max-w-2xl rounded-2xl bg-white shadow-xl border border-gray-200">
               <div className="p-4 md:p-6 border-b border-gray-100 flex items-center justify-between">
                 <div>
@@ -528,7 +588,7 @@ export default function VisitasPage() {
                   <p className="text-sm text-gray-600">CPF opcional • Nome do responsável obrigatório</p>
                 </div>
                 <button
-                  onClick={() => setOpen(false)}
+                  onClick={() => setOpenCreate(false)}
                   className="rounded-lg border border-gray-200 px-3 py-2 text-sm hover:bg-gray-50"
                 >
                   Fechar
@@ -537,95 +597,90 @@ export default function VisitasPage() {
 
               <div className="p-4 md:p-6">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  <input
-                    value={responsavelNome}
-                    onChange={(e) => setResponsavelNome(e.target.value)}
-                    placeholder="Nome completo do responsável (obrigatório)"
-                    className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 outline-none focus:ring-2 focus:ring-blue-200"
-                  />
-                  <input
-                    value={cpf}
-                    onChange={(e) => setCpf(e.target.value)}
-                    placeholder="CPF (opcional)"
-                    className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 outline-none focus:ring-2 focus:ring-blue-200"
-                  />
+                  <input value={responsavelNome} onChange={(e) => setResponsavelNome(e.target.value)} placeholder="Nome completo do responsável (obrigatório)" className="w-full rounded-xl border border-gray-200 px-4 py-3 outline-none focus:ring-2 focus:ring-blue-200" />
+                  <input value={cpf} onChange={(e) => setCpf(e.target.value)} placeholder="CPF (opcional)" className="w-full rounded-xl border border-gray-200 px-4 py-3 outline-none focus:ring-2 focus:ring-blue-200" />
 
-                  <input
-                    value={nomeFantasia}
-                    onChange={(e) => setNomeFantasia(e.target.value)}
-                    placeholder="Nome fantasia (opcional)"
-                    className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 outline-none focus:ring-2 focus:ring-blue-200"
-                  />
-                  <input
-                    value={crf}
-                    onChange={(e) => setCrf(e.target.value)}
-                    placeholder="CRF (opcional)"
-                    className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 outline-none focus:ring-2 focus:ring-blue-200"
-                  />
+                  <input value={nomeFantasia} onChange={(e) => setNomeFantasia(e.target.value)} placeholder="Nome fantasia (opcional)" className="w-full rounded-xl border border-gray-200 px-4 py-3 outline-none focus:ring-2 focus:ring-blue-200" />
+                  <input value={crf} onChange={(e) => setCrf(e.target.value)} placeholder="CRF (opcional)" className="w-full rounded-xl border border-gray-200 px-4 py-3 outline-none focus:ring-2 focus:ring-blue-200" />
 
-                  <input
-                    value={whatsapp}
-                    onChange={(e) => setWhatsapp(e.target.value)}
-                    placeholder="WhatsApp (opcional)"
-                    className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 outline-none focus:ring-2 focus:ring-blue-200"
-                  />
-                  <input
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="Email (opcional)"
-                    className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 outline-none focus:ring-2 focus:ring-blue-200"
-                  />
+                  <input value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} placeholder="WhatsApp (opcional)" className="w-full rounded-xl border border-gray-200 px-4 py-3 outline-none focus:ring-2 focus:ring-blue-200" />
+                  <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email (opcional)" className="w-full rounded-xl border border-gray-200 px-4 py-3 outline-none focus:ring-2 focus:ring-blue-200" />
 
-                  <input
-                    value={endereco}
-                    onChange={(e) => setEndereco(e.target.value)}
-                    placeholder="Endereço (rua/número) (opcional)"
-                    className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 outline-none focus:ring-2 focus:ring-blue-200"
-                  />
-                  <input
-                    value={bairro}
-                    onChange={(e) => setBairro(e.target.value)}
-                    placeholder="Bairro (opcional)"
-                    className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 outline-none focus:ring-2 focus:ring-blue-200"
-                  />
-                  <input
-                    value={cidade}
-                    onChange={(e) => setCidade(e.target.value)}
-                    placeholder="Cidade (opcional)"
-                    className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 outline-none focus:ring-2 focus:ring-blue-200"
-                  />
-                  <input
-                    value={uf}
-                    onChange={(e) => setUf(e.target.value)}
-                    placeholder="UF (opcional)"
-                    className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 outline-none focus:ring-2 focus:ring-blue-200"
-                  />
-                  <input
-                    value={cep}
-                    onChange={(e) => setCep(e.target.value)}
-                    placeholder="CEP (opcional)"
-                    className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 outline-none focus:ring-2 focus:ring-blue-200"
-                  />
+                  <input value={endereco} onChange={(e) => setEndereco(e.target.value)} placeholder="Endereço (rua/número) (opcional)" className="w-full rounded-xl border border-gray-200 px-4 py-3 outline-none focus:ring-2 focus:ring-blue-200" />
+                  <input value={bairro} onChange={(e) => setBairro(e.target.value)} placeholder="Bairro (opcional)" className="w-full rounded-xl border border-gray-200 px-4 py-3 outline-none focus:ring-2 focus:ring-blue-200" />
+                  <input value={cidade} onChange={(e) => setCidade(e.target.value)} placeholder="Cidade (opcional)" className="w-full rounded-xl border border-gray-200 px-4 py-3 outline-none focus:ring-2 focus:ring-blue-200" />
+                  <input value={uf} onChange={(e) => setUf(e.target.value)} placeholder="UF (opcional)" className="w-full rounded-xl border border-gray-200 px-4 py-3 outline-none focus:ring-2 focus:ring-blue-200" />
+                  <input value={cep} onChange={(e) => setCep(e.target.value)} placeholder="CEP (opcional)" className="w-full rounded-xl border border-gray-200 px-4 py-3 outline-none focus:ring-2 focus:ring-blue-200" />
                 </div>
               </div>
 
               <div className="p-4 md:p-6 border-t border-gray-100 flex items-center justify-end gap-2">
-                <button
-                  onClick={() => setOpen(false)}
-                  className="rounded-xl border border-gray-200 px-4 py-2 text-sm hover:bg-gray-50"
-                >
+                <button onClick={() => setOpenCreate(false)} className="rounded-xl border border-gray-200 px-4 py-2 text-sm hover:bg-gray-50">
                   Cancelar
                 </button>
-                <button
-                  onClick={addCliente}
-                  className="rounded-xl bg-blue-600 px-4 py-2 text-white text-sm font-medium hover:bg-blue-700"
-                >
+                <button onClick={addCliente} className="rounded-xl bg-blue-600 px-4 py-2 text-white text-sm font-medium hover:bg-blue-700">
                   Salvar cliente
                 </button>
               </div>
             </div>
           </div>
         )}
+
+        {/* MODAL: EDITAR */}
+        {openEdit && editing && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-black/40" onClick={() => { setOpenEdit(false); setEditing(null); }} />
+            <div className="relative w-full max-w-2xl rounded-2xl bg-white shadow-xl border border-gray-200">
+              <div className="p-4 md:p-6 border-b border-gray-100 flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">Editar cliente</h3>
+                  <p className="text-sm text-gray-600">Atualize nome, tel/Whats, endereço e dados.</p>
+                </div>
+                <button
+                  onClick={() => { setOpenEdit(false); setEditing(null); }}
+                  className="rounded-lg border border-gray-200 px-3 py-2 text-sm hover:bg-gray-50"
+                >
+                  Fechar
+                </button>
+              </div>
+
+              <div className="p-4 md:p-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <input value={responsavelNome} onChange={(e) => setResponsavelNome(e.target.value)} placeholder="Nome completo do responsável (obrigatório)" className="w-full rounded-xl border border-gray-200 px-4 py-3 outline-none focus:ring-2 focus:ring-blue-200" />
+                  <input value={cpf} onChange={(e) => setCpf(e.target.value)} placeholder="CPF (opcional)" className="w-full rounded-xl border border-gray-200 px-4 py-3 outline-none focus:ring-2 focus:ring-blue-200" />
+
+                  <input value={nomeFantasia} onChange={(e) => setNomeFantasia(e.target.value)} placeholder="Nome fantasia (opcional)" className="w-full rounded-xl border border-gray-200 px-4 py-3 outline-none focus:ring-2 focus:ring-blue-200" />
+                  <input value={crf} onChange={(e) => setCrf(e.target.value)} placeholder="CRF (opcional)" className="w-full rounded-xl border border-gray-200 px-4 py-3 outline-none focus:ring-2 focus:ring-blue-200" />
+
+                  <input value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} placeholder="WhatsApp (opcional)" className="w-full rounded-xl border border-gray-200 px-4 py-3 outline-none focus:ring-2 focus:ring-blue-200" />
+                  <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email (opcional)" className="w-full rounded-xl border border-gray-200 px-4 py-3 outline-none focus:ring-2 focus:ring-blue-200" />
+
+                  <input value={endereco} onChange={(e) => setEndereco(e.target.value)} placeholder="Endereço (rua/número) (opcional)" className="w-full rounded-xl border border-gray-200 px-4 py-3 outline-none focus:ring-2 focus:ring-blue-200" />
+                  <input value={bairro} onChange={(e) => setBairro(e.target.value)} placeholder="Bairro (opcional)" className="w-full rounded-xl border border-gray-200 px-4 py-3 outline-none focus:ring-2 focus:ring-blue-200" />
+                  <input value={cidade} onChange={(e) => setCidade(e.target.value)} placeholder="Cidade (opcional)" className="w-full rounded-xl border border-gray-200 px-4 py-3 outline-none focus:ring-2 focus:ring-blue-200" />
+                  <input value={uf} onChange={(e) => setUf(e.target.value)} placeholder="UF (opcional)" className="w-full rounded-xl border border-gray-200 px-4 py-3 outline-none focus:ring-2 focus:ring-blue-200" />
+                  <input value={cep} onChange={(e) => setCep(e.target.value)} placeholder="CEP (opcional)" className="w-full rounded-xl border border-gray-200 px-4 py-3 outline-none focus:ring-2 focus:ring-blue-200" />
+                </div>
+              </div>
+
+              <div className="p-4 md:p-6 border-t border-gray-100 flex items-center justify-end gap-2">
+                <button
+                  onClick={() => { setOpenEdit(false); setEditing(null); }}
+                  className="rounded-xl border border-gray-200 px-4 py-2 text-sm hover:bg-gray-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={updateCliente}
+                  className="rounded-xl bg-blue-600 px-4 py-2 text-white text-sm font-medium hover:bg-blue-700"
+                >
+                  Salvar alterações
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
       </div>
     </div>
   );
