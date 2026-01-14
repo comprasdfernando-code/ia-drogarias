@@ -12,7 +12,7 @@ const TABLE = "df_clientes_pessoas";
 
 type Cliente = {
   id: string;
-  cpf: string;
+  cpf: string | null; // ✅ opcional
   responsavel_nome: string;
   nome_fantasia: string | null;
   crf: string | null;
@@ -26,7 +26,7 @@ type Cliente = {
   cep: string | null;
 
   ultima_visita: string | null;
-  proxima_visita: string | null; // YYYY-MM-DD
+  proxima_visita: string | null;
   status_visita: string | null;
   created_at: string;
 };
@@ -65,8 +65,6 @@ function waLink(phone: string, msg: string) {
   const text = encodeURIComponent(msg);
   return `https://wa.me/55${clean.startsWith("55") ? clean.slice(2) : clean}?text=${text}`;
 }
-
-// Google Maps directions link (limite de tamanho existe; funciona bem com poucas paradas)
 function googleMapsRouteLink(addresses: string[]) {
   const clean = addresses.filter((a) => a && a.trim().length > 5);
   if (clean.length < 2) return "";
@@ -86,7 +84,10 @@ export default function VisitasPage() {
   const [dia, setDia] = useState(todayISO());
   const [selected, setSelected] = useState<Set<string>>(new Set());
 
-  // cadastro
+  // modal cadastro
+  const [open, setOpen] = useState(false);
+
+  // form cadastro (CPF opcional)
   const [cpf, setCpf] = useState("");
   const [responsavelNome, setResponsavelNome] = useState("");
   const [nomeFantasia, setNomeFantasia] = useState("");
@@ -102,11 +103,7 @@ export default function VisitasPage() {
 
   async function load() {
     setLoading(true);
-
-    const res = await supabase
-      .from(TABLE)
-      .select("*")
-      .order("created_at", { ascending: false });
+    const res = await supabase.from(TABLE).select("*").order("created_at", { ascending: false });
 
     if (res.error) {
       alert(res.error.message);
@@ -128,7 +125,7 @@ export default function VisitasPage() {
 
     return clientes.filter((c) => {
       const blob = `
-        ${c.cpf}
+        ${c.cpf ?? ""}
         ${c.responsavel_nome}
         ${c.nome_fantasia ?? ""}
         ${c.crf ?? ""}
@@ -147,18 +144,13 @@ export default function VisitasPage() {
   const visitasDoDia = useMemo(() => {
     const list = clientes.filter((c) => (c.proxima_visita || "") === dia);
 
-    // “rota” simples: cidade > bairro > endereco > responsavel
+    // rota simples: cidade > bairro > endereco > responsavel
     return list.sort((a, b) => {
       const A = `${a.cidade ?? ""} ${a.bairro ?? ""} ${a.endereco ?? ""} ${a.responsavel_nome ?? ""}`.toLowerCase();
       const B = `${b.cidade ?? ""} ${b.bairro ?? ""} ${b.endereco ?? ""} ${b.responsavel_nome ?? ""}`.toLowerCase();
       return A.localeCompare(B);
     });
   }, [clientes, dia]);
-
-  const selecionadosClientes = useMemo(() => {
-    const ids = selected;
-    return clientes.filter((c) => ids.has(c.id));
-  }, [clientes, selected]);
 
   function toggle(id: string) {
     setSelected((prev) => {
@@ -181,61 +173,6 @@ export default function VisitasPage() {
     setSelected(new Set());
   }
 
-  async function addCliente() {
-    if (!isCpfValidBasic(cpf)) return alert("CPF inválido.");
-    if (!responsavelNome.trim()) return alert("Nome do responsável é obrigatório.");
-
-    const payload = {
-      cpf: onlyDigits(cpf),
-      responsavel_nome: responsavelNome.trim(),
-      nome_fantasia: nomeFantasia.trim() || null,
-      crf: crf.trim() || null, // opcional
-      whatsapp: onlyDigits(whatsapp) || null,
-      email: email.trim() || null,
-
-      endereco: endereco.trim() || null,
-      bairro: bairro.trim() || null,
-      cidade: cidade.trim() || null,
-      uf: uf.trim() || null,
-      cep: onlyDigits(cep) || null,
-
-      status_visita: "Novo",
-      proxima_visita: null,
-    };
-
-    const { error } = await supabase.from(TABLE).insert(payload);
-    if (error) {
-      if (error.message.toLowerCase().includes("duplicate")) return alert("CPF já cadastrado.");
-      return alert(error.message);
-    }
-
-    setCpf("");
-    setResponsavelNome("");
-    setNomeFantasia("");
-    setCrf("");
-    setWhatsapp("");
-    setEmail("");
-    setEndereco("");
-    setBairro("");
-    setCidade("");
-    setUf("");
-    setCep("");
-
-    load();
-  }
-
-  async function remover(id: string) {
-    if (!confirm("Remover este cliente?")) return;
-    const { error } = await supabase.from(TABLE).delete().eq("id", id);
-    if (error) return alert(error.message);
-    setClientes((prev) => prev.filter((c) => c.id !== id));
-    setSelected((prev) => {
-      const n = new Set(prev);
-      n.delete(id);
-      return n;
-    });
-  }
-
   async function agendarSelecionadosParaDia() {
     if (selected.size === 0) return alert("Selecione clientes primeiro.");
     if (!dia) return alert("Escolha um dia.");
@@ -249,9 +186,10 @@ export default function VisitasPage() {
 
     if (error) return alert(error.message);
 
-    // atualiza state local (rápido)
     setClientes((prev) =>
-      prev.map((c) => (selected.has(c.id) ? { ...c, proxima_visita: dia, status_visita: "Em andamento" } : c))
+      prev.map((c) =>
+        selected.has(c.id) ? { ...c, proxima_visita: dia, status_visita: "Em andamento" } : c
+      )
     );
 
     alert(`Agendado para ${fmtDate(dia)}: ${ids.length} cliente(s).`);
@@ -267,20 +205,24 @@ export default function VisitasPage() {
     if (error) return alert(error.message);
 
     setClientes((prev) =>
-      prev.map((x) => (x.id === c.id ? { ...x, ultima_visita: hoje, status_visita: "Visitado", proxima_visita: null } : x))
+      prev.map((x) =>
+        x.id === c.id
+          ? { ...x, ultima_visita: hoje, status_visita: "Visitado", proxima_visita: null }
+          : x
+      )
     );
   }
 
   function copiarRotaTexto() {
-    const lista = visitasDoDia;
-    if (lista.length === 0) return alert("Sem visitas para este dia.");
+    if (visitasDoDia.length === 0) return alert("Sem visitas para este dia.");
 
-    const linhas = lista.map((c, i) => {
+    const linhas = visitasDoDia.map((c, i) => {
       const addr = fullAddress(c) || "—";
       const w = c.whatsapp ? `Whats: ${c.whatsapp}` : "Whats: —";
       const loja = c.nome_fantasia ? `Loja: ${c.nome_fantasia}` : "Loja: —";
+      const cpfTxt = c.cpf ? `CPF: ${c.cpf}` : `CPF: —`;
       const crfTxt = c.crf ? `CRF: ${c.crf}` : "";
-      return `${i + 1}. ${c.responsavel_nome} | ${loja} | ${w}\n   ${addr}${crfTxt ? `\n   ${crfTxt}` : ""}`;
+      return `${i + 1}. ${c.responsavel_nome} | ${loja}\n   ${cpfTxt} • ${w}${crfTxt ? ` • ${crfTxt}` : ""}\n   ${addr}`;
     });
 
     const texto = `ROTA DF DISTRIBUIDORA - ${fmtDate(dia)}\n\n${linhas.join("\n\n")}`;
@@ -288,46 +230,95 @@ export default function VisitasPage() {
     alert("Rota copiada!");
   }
 
-  function abrirWhatsRota() {
-    const lista = visitasDoDia;
-    if (lista.length === 0) return alert("Sem visitas para este dia.");
-    // manda pro seu próprio Whats (você cola em um grupo, por exemplo)
-    const msgLinhas = lista.map((c, i) => {
-      const addr = fullAddress(c) || "—";
-      return `${i + 1}) ${c.responsavel_nome} - ${c.nome_fantasia || "—"}\n${addr}`;
-    });
-    const msg = `ROTA DF - ${fmtDate(dia)}\n\n${msgLinhas.join("\n\n")}`;
-    // coloque seu número aqui se quiser mandar pra você mesmo (ou só copiar no clipboard)
-    alert("Copiei a rota. Agora é só colar no Whats.");
-    navigator.clipboard?.writeText(msg);
-  }
-
   function abrirMapsRota() {
-    const lista = visitasDoDia;
-    const addrs = lista.map((c) => fullAddress(c)).filter(Boolean);
+    const addrs = visitasDoDia.map((c) => fullAddress(c)).filter(Boolean);
     const link = googleMapsRouteLink(addrs);
     if (!link) return alert("Precisa de pelo menos 2 endereços válidos para gerar rota no Maps.");
     window.open(link, "_blank", "noopener,noreferrer");
   }
 
+  async function addCliente() {
+    if (!responsavelNome.trim()) return alert("Nome do responsável é obrigatório.");
+
+    // ✅ CPF opcional: só valida se preencheu
+    const cpfDigits = onlyDigits(cpf);
+    if (cpfDigits && !isCpfValidBasic(cpfDigits)) return alert("CPF inválido (11 dígitos).");
+
+    const payload = {
+      cpf: cpfDigits || null,
+      responsavel_nome: responsavelNome.trim(),
+      nome_fantasia: nomeFantasia.trim() || null,
+      crf: crf.trim() || null,
+      whatsapp: onlyDigits(whatsapp) || null,
+      email: email.trim() || null,
+
+      endereco: endereco.trim() || null,
+      bairro: bairro.trim() || null,
+      cidade: cidade.trim() || null,
+      uf: uf.trim() || null,
+      cep: onlyDigits(cep) || null,
+
+      status_visita: "Novo",
+      proxima_visita: null,
+    };
+
+    const { error } = await supabase.from(TABLE).insert(payload);
+
+    if (error) {
+      if (error.message.toLowerCase().includes("duplicate")) {
+        return alert("CPF já cadastrado.");
+      }
+      return alert(error.message);
+    }
+
+    // limpa form e fecha modal
+    setCpf("");
+    setResponsavelNome("");
+    setNomeFantasia("");
+    setCrf("");
+    setWhatsapp("");
+    setEmail("");
+    setEndereco("");
+    setBairro("");
+    setCidade("");
+    setUf("");
+    setCep("");
+
+    setOpen(false);
+    load();
+  }
+
   return (
     <div className="min-h-screen bg-gray-50">
       <div className="mx-auto max-w-6xl p-4 md:p-8">
-        <h1 className="text-2xl md:text-3xl font-semibold text-gray-900">
-          DF Distribuidora • Visitas & Rotas
-        </h1>
-        <p className="text-gray-600 mt-1">
-          Buscar clientes • cadastrar • selecionar para visitar • gerar rota do dia.
-        </p>
+        {/* HEADER CLEAN */}
+        <div className="flex flex-col md:flex-row md:items-end md:justify-between gap-3">
+          <div>
+            <h1 className="text-2xl md:text-3xl font-semibold text-gray-900">
+              DF Distribuidora • Rotas de Visita
+            </h1>
+            <p className="text-gray-600 mt-1">
+              Buscar clientes • selecionar • agendar • gerar rota.
+            </p>
+          </div>
 
-        {/* TOPO: DIA + AÇÕES DE SELEÇÃO */}
+          <button
+            onClick={() => setOpen(true)}
+            className="rounded-xl bg-blue-600 px-4 py-2 text-white text-sm font-medium hover:bg-blue-700"
+          >
+            + Cadastrar cliente
+          </button>
+        </div>
+
+        {/* CONTROLES */}
         <div className="mt-6 grid grid-cols-1 md:grid-cols-3 gap-3">
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="Buscar por CPF, responsável, loja, cidade, Whats..."
+            placeholder="Buscar por nome, loja, cidade, Whats..."
             className="md:col-span-2 w-full rounded-xl border border-gray-200 bg-white px-4 py-3 outline-none focus:ring-2 focus:ring-blue-200"
           />
+
           <div className="rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm flex items-center justify-between">
             <span>Total</span>
             <span className="font-semibold">{clientes.length}</span>
@@ -335,7 +326,7 @@ export default function VisitasPage() {
         </div>
 
         <div className="mt-3 flex flex-wrap gap-2 items-center">
-          <label className="text-sm text-gray-700">Dia da visita:</label>
+          <label className="text-sm text-gray-700">Dia:</label>
           <input
             type="date"
             value={dia}
@@ -347,7 +338,7 @@ export default function VisitasPage() {
             onClick={selectAllCurrentSearch}
             className="rounded-xl border border-gray-200 px-4 py-2 text-sm hover:bg-gray-50"
           >
-            Selecionar (resultado da busca)
+            Selecionar (busca)
           </button>
 
           <button
@@ -365,17 +356,17 @@ export default function VisitasPage() {
             onClick={agendarSelecionadosParaDia}
             className="rounded-xl bg-blue-600 px-4 py-2 text-white text-sm font-medium hover:bg-blue-700"
           >
-            Agendar selecionados para o dia
+            Agendar selecionados
           </button>
         </div>
 
-        {/* VISITAS DO DIA / ROTA */}
+        {/* ROTA DO DIA */}
         <div className="mt-6 rounded-2xl border border-gray-200 bg-white p-4 md:p-6 shadow-sm">
           <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold text-gray-900">Rota do dia</h2>
               <p className="text-sm text-gray-600">
-                Mostra clientes com <span className="font-medium">próxima visita</span> = {fmtDate(dia)}.
+                Próxima visita = <span className="font-medium">{fmtDate(dia)}</span>
               </p>
             </div>
 
@@ -387,16 +378,10 @@ export default function VisitasPage() {
                 Copiar rota
               </button>
               <button
-                onClick={abrirWhatsRota}
-                className="rounded-xl border border-gray-200 px-4 py-2 text-sm hover:bg-gray-50"
-              >
-                Whats (copiar)
-              </button>
-              <button
                 onClick={abrirMapsRota}
                 className="rounded-xl bg-green-600 px-4 py-2 text-white text-sm font-medium hover:bg-green-700"
               >
-                Abrir no Google Maps
+                Abrir no Maps
               </button>
             </div>
           </div>
@@ -414,7 +399,7 @@ export default function VisitasPage() {
                   <div className="text-sm text-gray-600 truncate">{c.nome_fantasia || "—"}</div>
                   <div className="text-sm text-gray-700 mt-2">{fullAddress(c) || "—"}</div>
                   <div className="text-xs text-gray-500 mt-2">
-                    Whats: {c.whatsapp || "—"} • CRF: {c.crf || "—"}
+                    CPF: {c.cpf || "—"} • Whats: {c.whatsapp || "—"} • CRF: {c.crf || "—"}
                   </div>
 
                   <div className="mt-3 flex flex-wrap gap-2">
@@ -438,7 +423,7 @@ export default function VisitasPage() {
                       onClick={() => marcarVisitado(c)}
                       className="rounded-xl bg-blue-600 px-4 py-2 text-white text-sm font-medium hover:bg-blue-700"
                     >
-                      Visitado hoje
+                      Visitado
                     </button>
                   </div>
                 </div>
@@ -447,37 +432,9 @@ export default function VisitasPage() {
           )}
         </div>
 
-        {/* CADASTRO */}
-        <div className="mt-6 rounded-2xl border border-gray-200 bg-white p-4 md:p-6 shadow-sm">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-gray-900">Cadastrar cliente</h2>
-            <button
-              onClick={addCliente}
-              className="rounded-xl bg-blue-600 px-4 py-2 text-white text-sm font-medium hover:bg-blue-700"
-            >
-              Salvar
-            </button>
-          </div>
-
-          <div className="mt-4 grid grid-cols-1 md:grid-cols-2 gap-3">
-            <input value={cpf} onChange={(e) => setCpf(e.target.value)} placeholder="CPF (obrigatório)" className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 outline-none focus:ring-2 focus:ring-blue-200" />
-            <input value={responsavelNome} onChange={(e) => setResponsavelNome(e.target.value)} placeholder="Nome completo do responsável (obrigatório)" className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 outline-none focus:ring-2 focus:ring-blue-200" />
-            <input value={nomeFantasia} onChange={(e) => setNomeFantasia(e.target.value)} placeholder="Nome fantasia (opcional)" className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 outline-none focus:ring-2 focus:ring-blue-200" />
-            <input value={crf} onChange={(e) => setCrf(e.target.value)} placeholder="CRF (opcional)" className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 outline-none focus:ring-2 focus:ring-blue-200" />
-            <input value={whatsapp} onChange={(e) => setWhatsapp(e.target.value)} placeholder="WhatsApp (opcional)" className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 outline-none focus:ring-2 focus:ring-blue-200" />
-            <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="Email (opcional)" className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 outline-none focus:ring-2 focus:ring-blue-200" />
-
-            <input value={endereco} onChange={(e) => setEndereco(e.target.value)} placeholder="Endereço (rua/número) (opcional)" className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 outline-none focus:ring-2 focus:ring-blue-200" />
-            <input value={bairro} onChange={(e) => setBairro(e.target.value)} placeholder="Bairro (opcional)" className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 outline-none focus:ring-2 focus:ring-blue-200" />
-            <input value={cidade} onChange={(e) => setCidade(e.target.value)} placeholder="Cidade (opcional)" className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 outline-none focus:ring-2 focus:ring-blue-200" />
-            <input value={uf} onChange={(e) => setUf(e.target.value)} placeholder="UF (opcional)" className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 outline-none focus:ring-2 focus:ring-blue-200" />
-            <input value={cep} onChange={(e) => setCep(e.target.value)} placeholder="CEP (opcional)" className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 outline-none focus:ring-2 focus:ring-blue-200" />
-          </div>
-        </div>
-
-        {/* LISTA (buscar + selecionar) */}
+        {/* LISTA GERAL (SELEÇÃO) */}
         <div className="mt-6">
-          <h2 className="text-lg font-semibold text-gray-900 mb-3">Todos os clientes</h2>
+          <h2 className="text-lg font-semibold text-gray-900 mb-3">Clientes</h2>
 
           {loading ? (
             <div className="text-gray-600">Carregando...</div>
@@ -500,15 +457,17 @@ export default function VisitasPage() {
                         />
                         <div className="font-semibold text-gray-900 truncate">{c.responsavel_nome}</div>
                       </div>
+
                       <div className="text-sm text-gray-600 truncate mt-1">{c.nome_fantasia || "—"}</div>
+
                       <div className="text-xs text-gray-500 mt-1">
-                        CPF: {c.cpf} • CRF: {c.crf || "—"}
+                        CPF: {c.cpf || "—"} • CRF: {c.crf || "—"}
                       </div>
 
                       <div className="text-sm text-gray-700 mt-2">{fullAddress(c) || "—"}</div>
 
                       <div className="text-xs text-gray-500 mt-2">
-                        Próxima visita: <span className="font-medium">{fmtDate(c.proxima_visita)}</span> • Última:{" "}
+                        Próxima: <span className="font-medium">{fmtDate(c.proxima_visita)}</span> • Última:{" "}
                         <span className="font-medium">{fmtDate(c.ultima_visita)}</span>
                       </div>
 
@@ -516,13 +475,6 @@ export default function VisitasPage() {
                         Whats: {c.whatsapp || "—"} • Email: {c.email || "—"}
                       </div>
                     </div>
-
-                    <button
-                      onClick={() => remover(c.id)}
-                      className="text-xs rounded-lg border border-gray-200 px-3 py-2 hover:bg-gray-50"
-                    >
-                      Remover
-                    </button>
                   </div>
 
                   <div className="mt-3 flex flex-wrap gap-2">
@@ -549,7 +501,7 @@ export default function VisitasPage() {
                           n.add(c.id);
                           return n;
                         });
-                        alert("Cliente selecionado. Agora clique em 'Agendar selecionados para o dia'.");
+                        alert("Cliente selecionado. Agora clique em 'Agendar selecionados'.");
                       }}
                       className="rounded-xl bg-blue-600 px-4 py-2 text-white text-sm font-medium hover:bg-blue-700"
                     >
@@ -562,6 +514,118 @@ export default function VisitasPage() {
           )}
         </div>
 
+        {/* MODAL CADASTRO */}
+        {open && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div
+              className="absolute inset-0 bg-black/40"
+              onClick={() => setOpen(false)}
+            />
+            <div className="relative w-full max-w-2xl rounded-2xl bg-white shadow-xl border border-gray-200">
+              <div className="p-4 md:p-6 border-b border-gray-100 flex items-center justify-between">
+                <div>
+                  <h3 className="text-lg font-semibold text-gray-900">Cadastrar cliente</h3>
+                  <p className="text-sm text-gray-600">CPF opcional • Nome do responsável obrigatório</p>
+                </div>
+                <button
+                  onClick={() => setOpen(false)}
+                  className="rounded-lg border border-gray-200 px-3 py-2 text-sm hover:bg-gray-50"
+                >
+                  Fechar
+                </button>
+              </div>
+
+              <div className="p-4 md:p-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                  <input
+                    value={responsavelNome}
+                    onChange={(e) => setResponsavelNome(e.target.value)}
+                    placeholder="Nome completo do responsável (obrigatório)"
+                    className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 outline-none focus:ring-2 focus:ring-blue-200"
+                  />
+                  <input
+                    value={cpf}
+                    onChange={(e) => setCpf(e.target.value)}
+                    placeholder="CPF (opcional)"
+                    className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 outline-none focus:ring-2 focus:ring-blue-200"
+                  />
+
+                  <input
+                    value={nomeFantasia}
+                    onChange={(e) => setNomeFantasia(e.target.value)}
+                    placeholder="Nome fantasia (opcional)"
+                    className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 outline-none focus:ring-2 focus:ring-blue-200"
+                  />
+                  <input
+                    value={crf}
+                    onChange={(e) => setCrf(e.target.value)}
+                    placeholder="CRF (opcional)"
+                    className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 outline-none focus:ring-2 focus:ring-blue-200"
+                  />
+
+                  <input
+                    value={whatsapp}
+                    onChange={(e) => setWhatsapp(e.target.value)}
+                    placeholder="WhatsApp (opcional)"
+                    className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 outline-none focus:ring-2 focus:ring-blue-200"
+                  />
+                  <input
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="Email (opcional)"
+                    className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 outline-none focus:ring-2 focus:ring-blue-200"
+                  />
+
+                  <input
+                    value={endereco}
+                    onChange={(e) => setEndereco(e.target.value)}
+                    placeholder="Endereço (rua/número) (opcional)"
+                    className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 outline-none focus:ring-2 focus:ring-blue-200"
+                  />
+                  <input
+                    value={bairro}
+                    onChange={(e) => setBairro(e.target.value)}
+                    placeholder="Bairro (opcional)"
+                    className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 outline-none focus:ring-2 focus:ring-blue-200"
+                  />
+                  <input
+                    value={cidade}
+                    onChange={(e) => setCidade(e.target.value)}
+                    placeholder="Cidade (opcional)"
+                    className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 outline-none focus:ring-2 focus:ring-blue-200"
+                  />
+                  <input
+                    value={uf}
+                    onChange={(e) => setUf(e.target.value)}
+                    placeholder="UF (opcional)"
+                    className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 outline-none focus:ring-2 focus:ring-blue-200"
+                  />
+                  <input
+                    value={cep}
+                    onChange={(e) => setCep(e.target.value)}
+                    placeholder="CEP (opcional)"
+                    className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 outline-none focus:ring-2 focus:ring-blue-200"
+                  />
+                </div>
+              </div>
+
+              <div className="p-4 md:p-6 border-t border-gray-100 flex items-center justify-end gap-2">
+                <button
+                  onClick={() => setOpen(false)}
+                  className="rounded-xl border border-gray-200 px-4 py-2 text-sm hover:bg-gray-50"
+                >
+                  Cancelar
+                </button>
+                <button
+                  onClick={addCliente}
+                  className="rounded-xl bg-blue-600 px-4 py-2 text-white text-sm font-medium hover:bg-blue-700"
+                >
+                  Salvar cliente
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
