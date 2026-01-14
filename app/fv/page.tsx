@@ -119,7 +119,8 @@ function FarmaciaVirtualHome() {
 
         setHomeProdutos(arr);
       } catch (e) {
-        console.error("Erro loadHome:", e);
+        console.error("Erro loadHome FV:", e);
+        setHomeProdutos([]);
       } finally {
         setLoadingHome(false);
       }
@@ -145,13 +146,18 @@ function FarmaciaVirtualHome() {
           .replace(/\s+/g, " ")
           .trim();
 
-        const { data, error } = await supabase.rpc("fv_search_produtos", { q: normalized, lim: 100 });
+        const { data, error } = await supabase.rpc("fv_search_produtos", {
+          q: normalized,
+          lim: 100,
+        });
+
         if (error) throw error;
 
         setResultado(((data || []) as FVProduto[]) ?? []);
       } catch (e) {
-        console.error("Erro search (RPC):", e);
+        console.error("Erro search (RPC) FV:", e);
 
+        // fallback
         try {
           const digits = raw.replace(/\D/g, "");
           let query = supabase
@@ -177,7 +183,7 @@ function FarmaciaVirtualHome() {
 
           setResultado(ordered);
         } catch (e2) {
-          console.error("Erro fallback search:", e2);
+          console.error("Erro fallback search FV:", e2);
           setResultado([]);
         }
       } finally {
@@ -214,6 +220,7 @@ function FarmaciaVirtualHome() {
             </div>
 
             <button
+              type="button"
               onClick={openCart}
               className="relative text-white font-extrabold whitespace-nowrap bg-white/10 hover:bg-white/15 px-4 py-2 rounded-full"
               title="Abrir carrinho"
@@ -239,6 +246,7 @@ function FarmaciaVirtualHome() {
               <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
                 {busca.trim() ? (
                   <button
+                    type="button"
                     onClick={() => setBusca("")}
                     className="text-xs font-extrabold px-2 py-1 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700"
                     title="Limpar"
@@ -275,6 +283,7 @@ function FarmaciaVirtualHome() {
                 <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
                   {busca.trim() ? (
                     <button
+                      type="button"
                       onClick={() => setBusca("")}
                       className="text-xs font-extrabold px-2 py-1 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700"
                       title="Limpar"
@@ -294,6 +303,7 @@ function FarmaciaVirtualHome() {
             </div>
 
             <button
+              type="button"
               onClick={openCart}
               className="relative text-white font-extrabold whitespace-nowrap bg-white/10 hover:bg-white/15 px-4 py-2 rounded-full"
               title="Abrir carrinho"
@@ -328,7 +338,7 @@ function FarmaciaVirtualHome() {
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-5">
                 {resultado.map((p) => (
-                  <ProdutoCardUltra key={p.id} p={p} onBuy={openCart} />
+                  <ProdutoCardUltra key={p.id} p={p} onComprar={openCart} />
                 ))}
               </div>
             )}
@@ -348,7 +358,7 @@ function FarmaciaVirtualHome() {
 
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-5">
                     {itens.map((p) => (
-                      <ProdutoCardUltra key={p.id} p={p} onBuy={openCart} />
+                      <ProdutoCardUltra key={p.id} p={p} onComprar={openCart} />
                     ))}
                   </div>
                 </div>
@@ -358,14 +368,54 @@ function FarmaciaVirtualHome() {
         )}
       </section>
 
-      {/* ✅ CART DRAWER (SEM WHATS) */}
+      <section className="max-w-6xl mx-auto px-4 mt-12 pb-12">
+        <div className="bg-white rounded-3xl border shadow-sm p-6">
+          <h3 className="text-xl md:text-2xl font-extrabold text-gray-900">Compra rápida</h3>
+          <p className="text-gray-600 mt-1">Adicione no carrinho e finalize o pedido em poucos cliques.</p>
+
+          <div className="grid md:grid-cols-3 gap-4 mt-6">
+            <div className="flex gap-3 items-start">
+              <div className="h-11 w-11 rounded-2xl bg-gray-100 flex items-center justify-center text-lg">⚡</div>
+              <div>
+                <div className="font-extrabold">Rápido</div>
+                <div className="text-sm text-gray-600">Carrinho estilo PDV</div>
+              </div>
+            </div>
+
+            <div className="flex gap-3 items-start">
+              <div className="h-11 w-11 rounded-2xl bg-gray-100 flex items-center justify-center text-lg">✅</div>
+              <div>
+                <div className="font-extrabold">Confirmação</div>
+                <div className="text-sm text-gray-600">Checamos disponibilidade e retornamos</div>
+              </div>
+            </div>
+
+            <div className="flex gap-3 items-start">
+              <div className="h-11 w-11 rounded-2xl bg-gray-100 flex items-center justify-center text-lg">🚚</div>
+              <div>
+                <div className="font-extrabold">Entrega</div>
+                <div className="text-sm text-gray-600">Taxa fixa e prazo até 24h</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-6 rounded-3xl border p-4 bg-gray-50">
+            <div className="text-xs uppercase tracking-wide text-gray-500 font-bold">Dica</div>
+            <div className="font-extrabold text-gray-900">Pesquise pelo nome ou EAN pra achar rapidinho.</div>
+          </div>
+        </div>
+      </section>
+
+      {/* ✅ Carrinho (NÃO abre Whats) */}
       <CartModalPDV open={cartOpen} onClose={closeCart} />
     </main>
   );
 }
 
 /* =========================================
-   CART MODAL (SEM WHATS)
+   CART MODAL (ESTILO PDV) - FV
+   ✅ Salva no painel (fv_pedidos)
+   ✅ NÃO abre WhatsApp em nenhum momento
 ========================================= */
 function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void }) {
   const cart = useCart();
@@ -410,6 +460,11 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
     setPedidoCriado(null);
   }, [open]);
 
+  function clearCartSafe() {
+    if (typeof (cart as any).clear === "function") (cart as any).clear();
+    else cart.items.forEach((it) => cart.remove(it.ean));
+  }
+
   async function criarPedidoNoPainel() {
     const payload = {
       cliente_nome: clienteNome.trim(),
@@ -444,11 +499,6 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
     return pedidoId || "";
   }
 
-  function clearCartSafe() {
-    if (typeof (cart as any).clear === "function") (cart as any).clear();
-    else cart.items.forEach((it) => cart.remove(it.ean));
-  }
-
   async function finalizarPedido() {
     if (!canCheckout || saving) return;
 
@@ -472,13 +522,19 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
 
       <div className="absolute right-0 top-0 h-full w-full sm:w-[480px] bg-white shadow-2xl flex flex-col">
+        {/* HEADER */}
         <div className="p-4 border-b flex items-center justify-between">
           <div className="font-extrabold text-lg">🛒 Carrinho</div>
-          <button onClick={onClose} className="px-3 py-2 rounded-xl border font-extrabold bg-white hover:bg-gray-50">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-3 py-2 rounded-xl border font-extrabold bg-white hover:bg-gray-50"
+          >
             Continuar comprando
           </button>
         </div>
 
+        {/* BODY */}
         <div className="p-4 flex-1 overflow-auto">
           {pedidoCriado ? (
             <div className="rounded-2xl border bg-green-50 p-4 mb-4">
@@ -487,18 +543,22 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
                 Pedido criado no sistema: <b>{pedidoCriado}</b>
               </div>
 
-              <button
-                onClick={() => {
-                  setPedidoCriado(null);
-                  onClose();
-                }}
-                className="mt-4 w-full rounded-xl bg-blue-700 hover:bg-blue-800 text-white py-3 font-extrabold"
-              >
-                Voltar para a loja
-              </button>
+              <div className="mt-4">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPedidoCriado(null);
+                    onClose();
+                  }}
+                  className="w-full rounded-xl bg-blue-700 hover:bg-blue-800 text-white py-3 font-extrabold"
+                >
+                  Voltar para a loja
+                </button>
+              </div>
             </div>
           ) : null}
 
+          {/* ITENS */}
           {cart.items.length === 0 ? (
             <div className="text-gray-600 bg-gray-50 border rounded-2xl p-4">Seu carrinho está vazio. Adicione itens 😊</div>
           ) : (
@@ -513,8 +573,14 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
                     <div className="font-extrabold text-sm line-clamp-2">{it.nome}</div>
                     <div className="text-xs text-gray-500">EAN: {it.ean}</div>
 
+                    <div className="mt-1 flex items-center justify-between gap-2">
+                      <div className="font-extrabold text-blue-900">{brl(it.preco)}</div>
+                      <div className="text-xs font-bold text-gray-600">Item: {brl(Number(it.preco || 0) * Number(it.qtd || 0))}</div>
+                    </div>
+
                     <div className="mt-2 flex items-center gap-2">
                       <button
+                        type="button"
                         onClick={() => cart.dec(it.ean)}
                         className="w-10 h-10 rounded-xl border bg-white hover:bg-gray-50 font-extrabold"
                         disabled={saving || !!pedidoCriado}
@@ -527,6 +593,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
                       </div>
 
                       <button
+                        type="button"
                         onClick={() => cart.inc(it.ean)}
                         className="w-10 h-10 rounded-xl border bg-white hover:bg-gray-50 font-extrabold"
                         disabled={saving || !!pedidoCriado}
@@ -535,6 +602,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
                       </button>
 
                       <button
+                        type="button"
                         onClick={() => cart.remove(it.ean)}
                         className="ml-auto px-3 py-2 rounded-xl border bg-white hover:bg-gray-50 text-sm font-extrabold text-red-600"
                         disabled={saving || !!pedidoCriado}
@@ -542,16 +610,13 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
                         Excluir
                       </button>
                     </div>
-
-                    <div className="mt-2 text-sm font-extrabold text-blue-900">
-                      {brl(it.preco)} • Item: {brl(Number(it.preco || 0) * Number(it.qtd || 0))}
-                    </div>
                   </div>
                 </div>
               ))}
             </div>
           )}
 
+          {/* DADOS */}
           <div className="mt-5 bg-gray-50 border rounded-2xl p-4">
             <div className="font-extrabold text-gray-900">Dados</div>
 
@@ -570,14 +635,17 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
                 className="w-full border bg-white px-3 py-2.5 rounded-xl outline-none focus:ring-4 focus:ring-blue-100"
                 disabled={saving || !!pedidoCriado}
               />
+              <div className="text-[11px] text-gray-500">Dica: informe com DDD. Ex: 11999999999</div>
             </div>
           </div>
 
+          {/* ENTREGA */}
           <div className="mt-4 bg-white border rounded-2xl p-4">
             <div className="font-extrabold text-gray-900">Entrega</div>
 
             <div className="mt-3 flex gap-2">
               <button
+                type="button"
                 onClick={() => setTipoEntrega("ENTREGA")}
                 className={`flex-1 px-3 py-2.5 rounded-xl font-extrabold ${
                   tipoEntrega === "ENTREGA" ? "bg-blue-700 text-white" : "bg-gray-100 hover:bg-gray-200"
@@ -588,6 +656,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
               </button>
 
               <button
+                type="button"
                 onClick={() => setTipoEntrega("RETIRADA")}
                 className={`flex-1 px-3 py-2.5 rounded-xl font-extrabold ${
                   tipoEntrega === "RETIRADA" ? "bg-blue-700 text-white" : "bg-gray-100 hover:bg-gray-200"
@@ -627,16 +696,18 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
                 <div className="text-sm font-extrabold text-blue-900">Taxa fixa: {brl(taxaEntrega)}</div>
               </div>
             ) : (
-              <div className="mt-3 text-sm text-gray-600">Retirada na loja (confirmamos endereço/horário após salvar).</div>
+              <div className="mt-3 text-sm text-gray-600">Você pode retirar na loja. Assim que confirmar, enviamos o endereço/horário.</div>
             )}
           </div>
 
+          {/* PAGAMENTO */}
           <div className="mt-4 bg-white border rounded-2xl p-4">
             <div className="font-extrabold text-gray-900">Pagamento</div>
 
             <div className="mt-3 flex flex-wrap gap-2">
               {(["PIX", "CARTAO", "DINHEIRO", "COMBINAR"] as const).map((p) => (
                 <button
+                  type="button"
                   key={p}
                   onClick={() => setPagamento(p)}
                   className={`px-3 py-2 rounded-xl font-extrabold ${
@@ -651,6 +722,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
           </div>
         </div>
 
+        {/* FOOTER */}
         <div className="p-4 border-t">
           <div className="flex items-center justify-between">
             <div className="text-sm text-gray-600">Subtotal</div>
@@ -669,6 +741,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
 
           <div className="mt-3 grid grid-cols-2 gap-2">
             <button
+              type="button"
               onClick={clearCartSafe}
               className="px-4 py-3 rounded-2xl border bg-white hover:bg-gray-50 font-extrabold"
               disabled={!cart.items.length || saving || !!pedidoCriado}
@@ -677,6 +750,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
             </button>
 
             <button
+              type="button"
               disabled={!canCheckout || saving || !!pedidoCriado}
               onClick={finalizarPedido}
               className={`px-4 py-3 rounded-2xl font-extrabold text-center ${
@@ -686,19 +760,26 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
               {saving ? "Finalizando..." : "Finalizar pedido"}
             </button>
           </div>
+
+          {!canCheckout ? (
+            <div className="mt-2 text-xs text-gray-500">
+              Para liberar: informe <b>Nome</b>, <b>WhatsApp</b> e adicione itens. Se escolher <b>Entrega</b>, preencha{" "}
+              <b>Endereço/Número/Bairro</b>.
+            </div>
+          ) : null}
         </div>
       </div>
     </div>
   );
 }
 
-function ProdutoCardUltra({ p, onBuy }: { p: FVProduto; onBuy: () => void }) {
+function ProdutoCardUltra({ p, onComprar }: { p: FVProduto; onComprar: () => void }) {
   const pr = precoFinal(p);
   const { addItem } = useCart();
   const { push } = useToast();
   const [qtd, setQtd] = useState(1);
 
-  function addAndOpenCart() {
+  function addEAbreCarrinho() {
     addItem(
       {
         ean: p.ean,
@@ -713,9 +794,7 @@ function ProdutoCardUltra({ p, onBuy }: { p: FVProduto; onBuy: () => void }) {
 
     push({ title: "Adicionado ao carrinho ✅", desc: `${p.nome} • ${qtd}x` });
     setQtd(1);
-
-    // ✅ aqui é o segredo: abre o carrinho, nunca Whats
-    onBuy();
+    onComprar(); // ✅ abre carrinho (NÃO Whats)
   }
 
   return (
@@ -756,16 +835,16 @@ function ProdutoCardUltra({ p, onBuy }: { p: FVProduto; onBuy: () => void }) {
 
         <div className="mt-3 flex items-center gap-2">
           <div className="flex items-center border rounded-xl overflow-hidden">
-            <button onClick={() => setQtd((x) => Math.max(1, x - 1))} className="w-9 h-9 bg-white hover:bg-gray-50 font-extrabold">
+            <button type="button" onClick={() => setQtd((x) => Math.max(1, x - 1))} className="w-9 h-9 bg-white hover:bg-gray-50 font-extrabold">
               –
             </button>
             <div className="w-10 text-center font-extrabold text-sm">{qtd}</div>
-            <button onClick={() => setQtd((x) => x + 1)} className="w-9 h-9 bg-white hover:bg-gray-50 font-extrabold">
+            <button type="button" onClick={() => setQtd((x) => x + 1)} className="w-9 h-9 bg-white hover:bg-gray-50 font-extrabold">
               +
             </button>
           </div>
 
-          <button onClick={addAndOpenCart} className="flex-1 bg-blue-700 hover:bg-blue-800 text-white py-2.5 rounded-xl text-xs sm:text-sm font-extrabold">
+          <button type="button" onClick={addEAbreCarrinho} className="flex-1 bg-blue-700 hover:bg-blue-800 text-white py-2.5 rounded-xl text-xs sm:text-sm font-extrabold">
             Comprar
           </button>
         </div>
