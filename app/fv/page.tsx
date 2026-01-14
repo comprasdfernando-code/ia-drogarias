@@ -7,6 +7,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { useCart } from "./_components/cart";
 import { ToastProvider, useToast } from "./_components/toast";
 import FVBanners from "./_components/FVBanners";
+import { CartUIProvider, useCartUI } from "./_components/cart-ui";
 
 type FVProduto = {
   id: string;
@@ -60,16 +61,12 @@ function firstImg(imagens?: string[] | null) {
   return "/produtos/caixa-padrao.png";
 }
 
-// ✅ opcional (somente para o botão "Enviar no WhatsApp também")
-function waLink(phone: string, msg: string) {
-  const clean = phone.replace(/\D/g, "");
-  return `https://wa.me/${clean}?text=${encodeURIComponent(msg)}`;
-}
-
 export default function FarmaciaVirtualHomePage() {
   return (
     <ToastProvider>
-      <FarmaciaVirtualHome />
+      <CartUIProvider>
+        <FarmaciaVirtualHome />
+      </CartUIProvider>
     </ToastProvider>
   );
 }
@@ -82,8 +79,7 @@ function FarmaciaVirtualHome() {
   const [homeProdutos, setHomeProdutos] = useState<FVProduto[]>([]);
   const [resultado, setResultado] = useState<FVProduto[]>([]);
 
-  // ✅ Drawer do carrinho
-  const [cartOpen, setCartOpen] = useState(false);
+  const { cartOpen, openCart, closeCart } = useCartUI();
 
   const cart = useCart();
   const totalCarrinho = cart.subtotal;
@@ -132,7 +128,6 @@ function FarmaciaVirtualHome() {
     loadHome();
   }, []);
 
-  // ✅ BUSCA ULTRA (usa RPC fv_search_produtos)
   useEffect(() => {
     async function search() {
       const raw = busca.trim();
@@ -150,18 +145,13 @@ function FarmaciaVirtualHome() {
           .replace(/\s+/g, " ")
           .trim();
 
-        const { data, error } = await supabase.rpc("fv_search_produtos", {
-          q: normalized,
-          lim: 100,
-        });
-
+        const { data, error } = await supabase.rpc("fv_search_produtos", { q: normalized, lim: 100 });
         if (error) throw error;
 
         setResultado(((data || []) as FVProduto[]) ?? []);
       } catch (e) {
         console.error("Erro search (RPC):", e);
 
-        // ✅ fallback
         try {
           const digits = raw.replace(/\D/g, "");
           let query = supabase
@@ -224,7 +214,7 @@ function FarmaciaVirtualHome() {
             </div>
 
             <button
-              onClick={() => setCartOpen(true)}
+              onClick={openCart}
               className="relative text-white font-extrabold whitespace-nowrap bg-white/10 hover:bg-white/15 px-4 py-2 rounded-full"
               title="Abrir carrinho"
             >
@@ -304,7 +294,7 @@ function FarmaciaVirtualHome() {
             </div>
 
             <button
-              onClick={() => setCartOpen(true)}
+              onClick={openCart}
               className="relative text-white font-extrabold whitespace-nowrap bg-white/10 hover:bg-white/15 px-4 py-2 rounded-full"
               title="Abrir carrinho"
             >
@@ -338,7 +328,7 @@ function FarmaciaVirtualHome() {
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-5">
                 {resultado.map((p) => (
-                  <ProdutoCardUltra key={p.id} p={p} />
+                  <ProdutoCardUltra key={p.id} p={p} onBuy={openCart} />
                 ))}
               </div>
             )}
@@ -358,7 +348,7 @@ function FarmaciaVirtualHome() {
 
                   <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-5">
                     {itens.map((p) => (
-                      <ProdutoCardUltra key={p.id} p={p} />
+                      <ProdutoCardUltra key={p.id} p={p} onBuy={openCart} />
                     ))}
                   </div>
                 </div>
@@ -368,69 +358,20 @@ function FarmaciaVirtualHome() {
         )}
       </section>
 
-      <section className="max-w-6xl mx-auto px-4 mt-12 pb-12">
-        <div className="bg-white rounded-3xl border shadow-sm p-6">
-          <h3 className="text-xl md:text-2xl font-extrabold text-gray-900">Compra rápida</h3>
-          <p className="text-gray-600 mt-1">Adicione no carrinho e finalize o pedido em poucos cliques.</p>
-
-          <div className="grid md:grid-cols-3 gap-4 mt-6">
-            <div className="flex gap-3 items-start">
-              <div className="h-11 w-11 rounded-2xl bg-gray-100 flex items-center justify-center text-lg">⚡</div>
-              <div>
-                <div className="font-extrabold">Rápido</div>
-                <div className="text-sm text-gray-600">Carrinho estilo PDV</div>
-              </div>
-            </div>
-
-            <div className="flex gap-3 items-start">
-              <div className="h-11 w-11 rounded-2xl bg-gray-100 flex items-center justify-center text-lg">✅</div>
-              <div>
-                <div className="font-extrabold">Confirmação</div>
-                <div className="text-sm text-gray-600">Checamos disponibilidade e retornamos</div>
-              </div>
-            </div>
-
-            <div className="flex gap-3 items-start">
-              <div className="h-11 w-11 rounded-2xl bg-gray-100 flex items-center justify-center text-lg">🚚</div>
-              <div>
-                <div className="font-extrabold">Entrega</div>
-                <div className="text-sm text-gray-600">Taxa fixa e prazo até 24h</div>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-6 rounded-3xl border p-4 bg-gray-50">
-            <div className="text-xs uppercase tracking-wide text-gray-500 font-bold">Dica</div>
-            <div className="font-extrabold text-gray-900">Pesquise pelo nome ou EAN pra achar rapidinho.</div>
-          </div>
-        </div>
-      </section>
-
-      {/* ✅ CART DRAWER COMPLETO */}
-      <CartModalPDV open={cartOpen} onClose={() => setCartOpen(false)} />
+      {/* ✅ CART DRAWER (SEM WHATS) */}
+      <CartModalPDV open={cartOpen} onClose={closeCart} />
     </main>
   );
 }
 
 /* =========================================
-   CART MODAL (ESTILO PDV) + FINALIZA NO PAINEL (SEM WHATS)
-   - Nome / Whats
-   - Entrega / Retirada
-   - Endereço/Número/Bairro
-   - Pagamento
-   - Taxa fixa
-   - Salva pedido em fv_pedidos
-   - ✅ NÃO abre WhatsApp automaticamente
+   CART MODAL (SEM WHATS)
 ========================================= */
 function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void }) {
   const cart = useCart();
 
-  // ✅ AJUSTE AQUI
   const TAXA_ENTREGA_FIXA = 10;
   const PEDIDOS_TABLE = "fv_pedidos";
-
-  // (Opcional) Whats (apenas para botão extra, se você quiser)
-  const WHATS = "5511952068432";
 
   const [saving, setSaving] = useState(false);
   const [pedidoCriado, setPedidoCriado] = useState<string | null>(null);
@@ -464,31 +405,6 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
     return true;
   }, [cart.items.length, clienteNome, clienteTelefone, tipoEntrega, endereco, numero, bairro]);
 
-  const mensagem = useMemo(() => {
-    let msg = `🧾 *Pedido - Farmácia Virtual*\n\n`;
-    msg += `👤 Cliente: ${clienteNome || "—"}\n`;
-    msg += `📞 WhatsApp: ${clienteTelefone || "—"}\n\n`;
-
-    msg +=
-      tipoEntrega === "ENTREGA"
-        ? `🚚 *Entrega*\n${endereco || "—"}, ${numero || "—"} - ${bairro || "—"}\nTaxa: ${brl(taxaEntrega)}\n\n`
-        : `🏪 *Retirada na loja*\n\n`;
-
-    msg += `💳 Pagamento: ${pagamento}\n\n🛒 *Itens:*\n`;
-
-    cart.items.forEach((i) => {
-      const totalItem = Number(i.preco || 0) * Number(i.qtd || 0);
-      msg += `• ${i.nome} (${i.ean}) — ${i.qtd}x — ${brl(totalItem)}\n`;
-    });
-
-    msg += `\nSubtotal: ${brl(subtotal)}\n`;
-    msg += `Taxa: ${brl(taxaEntrega)}\n`;
-    msg += `Total: ${brl(total)}\n\n`;
-    msg += `Pode confirmar disponibilidade e prazo?`;
-
-    return msg;
-  }, [cart.items, clienteNome, clienteTelefone, tipoEntrega, endereco, numero, bairro, pagamento, subtotal, total, taxaEntrega]);
-
   useEffect(() => {
     if (!open) return;
     setPedidoCriado(null);
@@ -521,7 +437,6 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
       canal: "SITE",
     };
 
-    // ✅ sem .single() pra evitar erro de Accept/row
     const { data, error } = await supabase.from(PEDIDOS_TABLE).insert(payload).select("id");
     if (error) throw error;
 
@@ -557,7 +472,6 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
 
       <div className="absolute right-0 top-0 h-full w-full sm:w-[480px] bg-white shadow-2xl flex flex-col">
-        {/* HEADER */}
         <div className="p-4 border-b flex items-center justify-between">
           <div className="font-extrabold text-lg">🛒 Carrinho</div>
           <button onClick={onClose} className="px-3 py-2 rounded-xl border font-extrabold bg-white hover:bg-gray-50">
@@ -565,9 +479,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
           </button>
         </div>
 
-        {/* BODY */}
         <div className="p-4 flex-1 overflow-auto">
-          {/* ✅ CONFIRMAÇÃO */}
           {pedidoCriado ? (
             <div className="rounded-2xl border bg-green-50 p-4 mb-4">
               <div className="text-lg font-extrabold text-green-700">Pedido finalizado ✅</div>
@@ -575,32 +487,18 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
                 Pedido criado no sistema: <b>{pedidoCriado}</b>
               </div>
 
-              <div className="mt-4 grid gap-2">
-                <button
-                  onClick={() => {
-                    setPedidoCriado(null);
-                    onClose();
-                  }}
-                  className="w-full rounded-xl bg-blue-700 hover:bg-blue-800 text-white py-3 font-extrabold"
-                >
-                  Voltar para a loja
-                </button>
-
-                {/* ✅ OPCIONAL: só se clicar */}
-                <button
-                  onClick={() => {
-                    const msgComId = `✅ Pedido criado no sistema: ${pedidoCriado}\n\n${mensagem}`;
-                    window.open(waLink(WHATS, msgComId), "_blank", "noopener,noreferrer");
-                  }}
-                  className="w-full rounded-xl border py-3 font-extrabold hover:bg-gray-50"
-                >
-                  Enviar no WhatsApp também (opcional)
-                </button>
-              </div>
+              <button
+                onClick={() => {
+                  setPedidoCriado(null);
+                  onClose();
+                }}
+                className="mt-4 w-full rounded-xl bg-blue-700 hover:bg-blue-800 text-white py-3 font-extrabold"
+              >
+                Voltar para a loja
+              </button>
             </div>
           ) : null}
 
-          {/* ITENS */}
           {cart.items.length === 0 ? (
             <div className="text-gray-600 bg-gray-50 border rounded-2xl p-4">Seu carrinho está vazio. Adicione itens 😊</div>
           ) : (
@@ -615,16 +513,10 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
                     <div className="font-extrabold text-sm line-clamp-2">{it.nome}</div>
                     <div className="text-xs text-gray-500">EAN: {it.ean}</div>
 
-                    <div className="mt-1 flex items-center justify-between gap-2">
-                      <div className="font-extrabold text-blue-900">{brl(it.preco)}</div>
-                      <div className="text-xs font-bold text-gray-600">Item: {brl(Number(it.preco || 0) * Number(it.qtd || 0))}</div>
-                    </div>
-
                     <div className="mt-2 flex items-center gap-2">
                       <button
                         onClick={() => cart.dec(it.ean)}
                         className="w-10 h-10 rounded-xl border bg-white hover:bg-gray-50 font-extrabold"
-                        title="Diminuir"
                         disabled={saving || !!pedidoCriado}
                       >
                         –
@@ -637,7 +529,6 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
                       <button
                         onClick={() => cart.inc(it.ean)}
                         className="w-10 h-10 rounded-xl border bg-white hover:bg-gray-50 font-extrabold"
-                        title="Aumentar"
                         disabled={saving || !!pedidoCriado}
                       >
                         +
@@ -646,11 +537,14 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
                       <button
                         onClick={() => cart.remove(it.ean)}
                         className="ml-auto px-3 py-2 rounded-xl border bg-white hover:bg-gray-50 text-sm font-extrabold text-red-600"
-                        title="Remover item"
                         disabled={saving || !!pedidoCriado}
                       >
                         Excluir
                       </button>
+                    </div>
+
+                    <div className="mt-2 text-sm font-extrabold text-blue-900">
+                      {brl(it.preco)} • Item: {brl(Number(it.preco || 0) * Number(it.qtd || 0))}
                     </div>
                   </div>
                 </div>
@@ -658,7 +552,6 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
             </div>
           )}
 
-          {/* DADOS DO CLIENTE */}
           <div className="mt-5 bg-gray-50 border rounded-2xl p-4">
             <div className="font-extrabold text-gray-900">Dados</div>
 
@@ -677,11 +570,9 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
                 className="w-full border bg-white px-3 py-2.5 rounded-xl outline-none focus:ring-4 focus:ring-blue-100"
                 disabled={saving || !!pedidoCriado}
               />
-              <div className="text-[11px] text-gray-500">Dica: informe com DDD. Ex: 11999999999</div>
             </div>
           </div>
 
-          {/* ENTREGA / RETIRADA */}
           <div className="mt-4 bg-white border rounded-2xl p-4">
             <div className="font-extrabold text-gray-900">Entrega</div>
 
@@ -736,11 +627,10 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
                 <div className="text-sm font-extrabold text-blue-900">Taxa fixa: {brl(taxaEntrega)}</div>
               </div>
             ) : (
-              <div className="mt-3 text-sm text-gray-600">Você pode retirar na loja. Assim que confirmar, enviamos o endereço/horário.</div>
+              <div className="mt-3 text-sm text-gray-600">Retirada na loja (confirmamos endereço/horário após salvar).</div>
             )}
           </div>
 
-          {/* PAGAMENTO */}
           <div className="mt-4 bg-white border rounded-2xl p-4">
             <div className="font-extrabold text-gray-900">Pagamento</div>
 
@@ -761,7 +651,6 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
           </div>
         </div>
 
-        {/* FOOTER */}
         <div className="p-4 border-t">
           <div className="flex items-center justify-between">
             <div className="text-sm text-gray-600">Subtotal</div>
@@ -793,31 +682,23 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
               className={`px-4 py-3 rounded-2xl font-extrabold text-center ${
                 canCheckout ? "bg-green-600 hover:bg-green-700 text-white" : "bg-gray-200 text-gray-500"
               } ${saving ? "opacity-70 cursor-wait" : ""}`}
-              title={canCheckout ? "Finalizar pedido" : "Preencha Nome/Whats e itens (e endereço se Entrega)."}
             >
               {saving ? "Finalizando..." : "Finalizar pedido"}
             </button>
           </div>
-
-          {!canCheckout ? (
-            <div className="mt-2 text-xs text-gray-500">
-              Para liberar: informe <b>Nome</b>, <b>WhatsApp</b> e adicione itens. Se escolher <b>Entrega</b>, preencha{" "}
-              <b>Endereço/Número/Bairro</b>.
-            </div>
-          ) : null}
         </div>
       </div>
     </div>
   );
 }
 
-function ProdutoCardUltra({ p }: { p: FVProduto }) {
+function ProdutoCardUltra({ p, onBuy }: { p: FVProduto; onBuy: () => void }) {
   const pr = precoFinal(p);
   const { addItem } = useCart();
   const { push } = useToast();
   const [qtd, setQtd] = useState(1);
 
-  function add() {
+  function addAndOpenCart() {
     addItem(
       {
         ean: p.ean,
@@ -830,12 +711,11 @@ function ProdutoCardUltra({ p }: { p: FVProduto }) {
       qtd
     );
 
-    push({
-      title: "Adicionado ao carrinho ✅",
-      desc: `${p.nome} • ${qtd}x`,
-    });
-
+    push({ title: "Adicionado ao carrinho ✅", desc: `${p.nome} • ${qtd}x` });
     setQtd(1);
+
+    // ✅ aqui é o segredo: abre o carrinho, nunca Whats
+    onBuy();
   }
 
   return (
@@ -885,7 +765,7 @@ function ProdutoCardUltra({ p }: { p: FVProduto }) {
             </button>
           </div>
 
-          <button onClick={add} className="flex-1 bg-blue-700 hover:bg-blue-800 text-white py-2.5 rounded-xl text-xs sm:text-sm font-extrabold">
+          <button onClick={addAndOpenCart} className="flex-1 bg-blue-700 hover:bg-blue-800 text-white py-2.5 rounded-xl text-xs sm:text-sm font-extrabold">
             Comprar
           </button>
         </div>
