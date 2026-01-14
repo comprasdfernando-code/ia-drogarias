@@ -8,6 +8,9 @@ import { supabase } from "@/lib/supabaseClient";
 import { useCart } from "./_components/cart";
 import { useToast } from "./_components/toast";
 import { useCartUI } from "./_components/cart-ui";
+import QuickClientCreate from "./_components/QuickClientCreate";
+
+
 
 
 import FVBanners from "./_components/FVBanners";
@@ -398,6 +401,45 @@ function DFDistribuidoraHome({ onSair }: { onSair: () => void }) {
       <div className="mt-4">
         <FVBanners />
       </div>
+
+      <section className="max-w-6xl mx-auto px-4 mt-4">
+  <div className="bg-white rounded-3xl border shadow-sm p-4 md:p-6">
+    <div className="flex items-start justify-between gap-3 flex-wrap">
+      <div>
+        <div className="text-sm font-extrabold text-gray-900">Área interna</div>
+        <div className="text-xs text-gray-600">
+          Cadastro de clientes (Drogarias/Pessoas) integrado com Visitas & Rotas.
+        </div>
+      </div>
+
+      <Link
+        href="/dfdistribuidora/visitas"
+        className="rounded-xl bg-green-600 hover:bg-green-700 text-white px-4 py-2 text-sm font-extrabold"
+      >
+        📍 Abrir Visitas & Rotas
+      </Link>
+    </div>
+
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
+      <QuickClientCreate
+        label="+ Cadastrar cliente"
+        className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-extrabold hover:bg-gray-50"
+      />
+
+      <Link
+        href="/dfdistribuidora/visitas"
+        className="w-full text-center rounded-xl bg-blue-700 hover:bg-blue-800 text-white px-4 py-3 text-sm font-extrabold"
+      >
+        Ver clientes cadastrados
+      </Link>
+    </div>
+
+    <div className="mt-2 text-[11px] text-gray-500">
+      Obs.: Cliente cadastrado aqui já aparece na tela de visitas (mesma tabela no Supabase).
+    </div>
+  </div>
+</section>
+
 
       <section className="max-w-6xl mx-auto px-4">
         {isSearching ? (
