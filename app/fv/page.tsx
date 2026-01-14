@@ -374,7 +374,8 @@ function FarmaciaVirtualHome() {
       <section className="max-w-6xl mx-auto px-4 mt-12 pb-12">
         <div className="bg-white rounded-3xl border shadow-sm p-6">
           <h3 className="text-xl md:text-2xl font-extrabold text-gray-900">Compra rápida</h3>
-          <p className="text-gray-600 mt-1">Adicione no carrinho e finalize no WhatsApp em poucos cliques.</p>
+          <p className="text-gray-600 mt-1">Adicione no carrinho e finalize o pedido em poucos cliques.</p>
+
 
           <div className="grid md:grid-cols-3 gap-4 mt-6">
             <div className="flex gap-3 items-start">
@@ -416,20 +417,25 @@ function FarmaciaVirtualHome() {
 }
 
 /* =========================================
-   CART MODAL (ESTILO PDV) + CHECKOUT COMPLETO
+   CART MODAL (ESTILO PDV) + FINALIZA NO PAINEL (SEM WHATS)
    - Nome / Whats
    - Entrega / Retirada
    - Endereço/Número/Bairro
    - Pagamento
    - Taxa fixa
-   - Mensagem Whats com tudo
+   - Salva pedido em fv_pedidos
+   - (Opcional) botão “Enviar no WhatsApp também”
 ========================================= */
 function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void }) {
   const cart = useCart();
 
-  // ✅ ajuste aqui
-  const WHATS = "5511952068432";
+  // ✅ AJUSTE AQUI
+  const WHATS = "5511952068432"; // opcional (pra botão extra)
   const TAXA_ENTREGA_FIXA = 10;
+  const PEDIDOS_TABLE = "fv_pedidos"; // ✅ crie essa tabela no Supabase
+
+  const [saving, setSaving] = useState(false);
+  const [pedidoCriado, setPedidoCriado] = useState<string | null>(null);
 
   const [clienteNome, setClienteNome] = useState("");
   const [clienteTelefone, setClienteTelefone] = useState("");
@@ -443,7 +449,6 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
 
   const taxaEntrega = tipoEntrega === "ENTREGA" ? TAXA_ENTREGA_FIXA : 0;
 
-  // ✅ subtotal real (se seu cart.subtotal já for total, mantém ele; aqui calculo pra ficar 100% correto)
   const subtotal = useMemo(() => {
     return cart.items.reduce((acc, it) => acc + Number(it.preco || 0) * Number(it.qtd || 0), 0);
   }, [cart.items]);
@@ -460,6 +465,11 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
     }
     return true;
   }, [cart.items.length, clienteNome, clienteTelefone, tipoEntrega, endereco, numero, bairro]);
+
+  function waLink(phone: string, msg: string) {
+    const clean = phone.replace(/\D/g, "");
+    return `https://wa.me/${clean}?text=${encodeURIComponent(msg)}`;
+  }
 
   const mensagem = useMemo(() => {
     let msg = `🧾 *Pedido - Farmácia Virtual*\n\n`;
@@ -479,17 +489,73 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
     });
 
     msg += `\nSubtotal: ${brl(subtotal)}\n`;
+    msg += `Taxa: ${brl(taxaEntrega)}\n`;
     msg += `Total: ${brl(total)}\n\n`;
     msg += `Pode confirmar disponibilidade e prazo?`;
 
     return msg;
   }, [cart.items, clienteNome, clienteTelefone, tipoEntrega, endereco, numero, bairro, pagamento, subtotal, total, taxaEntrega]);
 
-  // ✅ reset quando fechar (opcional)
+  // ✅ sempre que abrir: reseta confirmação
   useEffect(() => {
     if (!open) return;
-    // quando abrir, nada
+    setPedidoCriado(null);
   }, [open]);
+
+  async function criarPedidoNoPainel() {
+    const payload = {
+      cliente_nome: clienteNome.trim(),
+      cliente_whatsapp: onlyDigits(clienteTelefone),
+
+      tipo_entrega: tipoEntrega,
+      endereco: tipoEntrega === "ENTREGA" ? endereco.trim() : null,
+      numero: tipoEntrega === "ENTREGA" ? numero.trim() : null,
+      bairro: tipoEntrega === "ENTREGA" ? bairro.trim() : null,
+
+      pagamento,
+      taxa_entrega: taxaEntrega,
+      subtotal,
+      total,
+
+      itens: cart.items.map((i) => ({
+        ean: i.ean,
+        nome: i.nome,
+        qtd: i.qtd,
+        preco: i.preco,
+        subtotal: Number(i.preco || 0) * Number(i.qtd || 0),
+      })),
+
+      status: "NOVO",
+      canal: "SITE",
+    };
+
+    // ✅ sem .single() pra não dar erro de accept/row
+    const { data, error } = await supabase.from(PEDIDOS_TABLE).insert(payload).select("id");
+    if (error) throw error;
+
+    const pedidoId = (data && data[0] && (data[0] as any).id) as string | undefined;
+    return pedidoId || "";
+  }
+
+  async function finalizarPedido() {
+    if (!canCheckout || saving) return;
+
+    setSaving(true);
+    try {
+      const pedidoId = await criarPedidoNoPainel();
+
+      setPedidoCriado(pedidoId || "OK");
+
+      // ✅ limpa carrinho
+      if (typeof (cart as any).clear === "function") (cart as any).clear();
+      else cart.items.forEach((it) => cart.remove(it.ean));
+    } catch (e) {
+      console.error(e);
+      alert("Não consegui finalizar o pedido. Tente novamente.");
+    } finally {
+      setSaving(false);
+    }
+  }
 
   if (!open) return null;
 
@@ -508,6 +574,39 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
 
         {/* BODY */}
         <div className="p-4 flex-1 overflow-auto">
+          {/* ✅ CONFIRMAÇÃO */}
+          {pedidoCriado ? (
+            <div className="rounded-2xl border bg-green-50 p-4 mb-4">
+              <div className="text-lg font-extrabold text-green-700">Pedido finalizado ✅</div>
+              <div className="text-sm text-gray-700 mt-1">
+                Pedido criado no sistema: <b>{pedidoCriado}</b>
+              </div>
+
+              <div className="mt-4 grid gap-2">
+                <button
+                  onClick={() => {
+                    setPedidoCriado(null);
+                    onClose();
+                  }}
+                  className="w-full rounded-xl bg-blue-700 hover:bg-blue-800 text-white py-3 font-extrabold"
+                >
+                  Voltar para a loja
+                </button>
+
+                {/* (Opcional) Whats */}
+                <button
+                  onClick={() => {
+                    const msgComId = `✅ Pedido criado no sistema: ${pedidoCriado}\n\n${mensagem}`;
+                    window.open(waLink(WHATS, msgComId), "_blank", "noopener,noreferrer");
+                  }}
+                  className="w-full rounded-xl border py-3 font-extrabold hover:bg-gray-50"
+                >
+                  Enviar no WhatsApp também (opcional)
+                </button>
+              </div>
+            </div>
+          ) : null}
+
           {/* ITENS */}
           {cart.items.length === 0 ? (
             <div className="text-gray-600 bg-gray-50 border rounded-2xl p-4">Seu carrinho está vazio. Adicione itens 😊</div>
@@ -516,7 +615,13 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
               {cart.items.map((it) => (
                 <div key={it.ean} className="border rounded-2xl p-3 flex gap-3">
                   <div className="h-14 w-14 bg-gray-50 rounded-xl overflow-hidden flex items-center justify-center">
-                    <Image src={it.imagem || "/produtos/caixa-padrao.png"} alt={it.nome} width={64} height={64} className="object-contain" />
+                    <Image
+                      src={it.imagem || "/produtos/caixa-padrao.png"}
+                      alt={it.nome}
+                      width={64}
+                      height={64}
+                      className="object-contain"
+                    />
                   </div>
 
                   <div className="flex-1 min-w-0">
@@ -525,7 +630,9 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
 
                     <div className="mt-1 flex items-center justify-between gap-2">
                       <div className="font-extrabold text-blue-900">{brl(it.preco)}</div>
-                      <div className="text-xs font-bold text-gray-600">Item: {brl(Number(it.preco || 0) * Number(it.qtd || 0))}</div>
+                      <div className="text-xs font-bold text-gray-600">
+                        Item: {brl(Number(it.preco || 0) * Number(it.qtd || 0))}
+                      </div>
                     </div>
 
                     <div className="mt-2 flex items-center gap-2">
@@ -634,9 +741,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
                 <div className="text-sm font-extrabold text-blue-900">Taxa fixa: {brl(taxaEntrega)}</div>
               </div>
             ) : (
-              <div className="mt-3 text-sm text-gray-600">
-                Você pode retirar na loja. Assim que confirmar, enviamos o endereço/horário.
-              </div>
+              <div className="mt-3 text-sm text-gray-600">Você pode retirar na loja. Assim que confirmar, enviamos o endereço/horário.</div>
             )}
           </div>
 
@@ -679,28 +784,23 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
 
           <div className="mt-3 grid grid-cols-2 gap-2">
             <button
-              onClick={() => cart.clear()}
+              onClick={() => (typeof (cart as any).clear === "function" ? (cart as any).clear() : cart.items.forEach((it) => cart.remove(it.ean)))}
               className="px-4 py-3 rounded-2xl border bg-white hover:bg-gray-50 font-extrabold"
-              disabled={!cart.items.length}
+              disabled={!cart.items.length || saving}
             >
               Limpar
             </button>
 
-            <a
+            <button
+              disabled={!canCheckout || saving || !!pedidoCriado}
+              onClick={finalizarPedido}
               className={`px-4 py-3 rounded-2xl font-extrabold text-center ${
-                canCheckout ? "bg-green-600 hover:bg-green-700 text-white" : "bg-gray-200 text-gray-500 pointer-events-none"
-              }`}
-              href={waLink(WHATS, mensagem)}
-              target="_blank"
-              rel="noreferrer"
-              title={
-                canCheckout
-                  ? "Finalizar no WhatsApp"
-                  : "Preencha Nome/Whats e itens (e endereço se Entrega)."
-              }
+                canCheckout ? "bg-green-600 hover:bg-green-700 text-white" : "bg-gray-200 text-gray-500"
+              } ${saving ? "opacity-70 cursor-wait" : ""}`}
+              title={canCheckout ? "Finalizar pedido" : "Preencha Nome/Whats e itens (e endereço se Entrega)."}
             >
-              Finalizar no WhatsApp
-            </a>
+              {saving ? "Finalizando..." : "Finalizar pedido"}
+            </button>
           </div>
 
           {!canCheckout ? (
@@ -714,6 +814,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
     </div>
   );
 }
+
 
 function ProdutoCardUltra({ p }: { p: FVProduto }) {
   const pr = precoFinal(p);
