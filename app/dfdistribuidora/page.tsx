@@ -481,22 +481,23 @@ function DFDistribuidoraHome({ onSair }: { onSair: () => void }) {
 }
 
 /* =========================
-   CART MODAL + salva pedido
+   CART MODAL + salva pedido (Whats opcional)
 ========================= */
 function CartModal({
   open,
   onClose,
-  whats,
+  whats, // agora é opcional (mas pode continuar passando)
   estoqueByEan,
 }: {
   open: boolean;
   onClose: () => void;
-  whats: string;
+  whats?: string;
   estoqueByEan: Map<string, number>;
 }) {
   const cart = useCart();
 
   const [saving, setSaving] = useState(false);
+  const [pedidoCriado, setPedidoCriado] = useState<string | null>(null);
 
   const [clienteNome, setClienteNome] = useState("");
   const [clienteTelefone, setClienteTelefone] = useState("");
@@ -511,6 +512,9 @@ function CartModal({
   // ✅ ao abrir, puxa do perfil salvo e preenche automaticamente
   useEffect(() => {
     if (!open) return;
+
+    // quando abrir o carrinho, reseta confirmação
+    setPedidoCriado(null);
 
     try {
       const p = JSON.parse(localStorage.getItem(PROFILE_LS) || "null");
@@ -586,7 +590,24 @@ function CartModal({
     msg += `Pode confirmar disponibilidade e prazo?`;
 
     return msg;
-  }, [cart.items, clienteNome, clienteTelefone, tipoEntrega, endereco, numero, bairro, pagamento, taxaEntrega, total, cart.subtotal]);
+  }, [
+    cart.items,
+    clienteNome,
+    clienteTelefone,
+    tipoEntrega,
+    endereco,
+    numero,
+    bairro,
+    pagamento,
+    taxaEntrega,
+    total,
+    cart.subtotal,
+  ]);
+
+  function waLink(phone: string, msg: string) {
+    const clean = phone.replace(/\D/g, "");
+    return `https://wa.me/${clean}?text=${encodeURIComponent(msg)}`;
+  }
 
   async function criarPedidoNoPainel() {
     let profile: any = null;
@@ -623,7 +644,7 @@ function CartModal({
       status: "NOVO",
     };
 
-    // ✅ não usa .single() (evita erro 406/400)
+    // ✅ não usa .single() (evita erro 406/400 em alguns cenários)
     const { data, error } = await supabase.from("df_pedidos").insert(payload).select("id");
     if (error) throw error;
 
@@ -631,18 +652,25 @@ function CartModal({
     return pedidoId || "";
   }
 
-  async function finalizar() {
+  async function finalizarPedido() {
     if (!canCheckout || saving) return;
 
     setSaving(true);
     try {
       const pedidoId = await criarPedidoNoPainel();
-      const msgComId = pedidoId ? `✅ Pedido criado no sistema: ${pedidoId}\n\n${mensagem}` : mensagem;
-      window.open(waLink(whats, msgComId), "_blank", "noopener,noreferrer");
+
+      // ✅ confirma dentro do site
+      setPedidoCriado(pedidoId || "OK");
+
+      // ✅ limpa carrinho (se seu hook tiver clear)
+      if (typeof (cart as any).clear === "function") (cart as any).clear();
+      else {
+        // fallback: remove item a item
+        cart.items.forEach((it) => cart.remove(it.ean));
+      }
     } catch (e) {
       console.error(e);
-      alert("Não consegui salvar o pedido no painel. Vou abrir no WhatsApp mesmo.");
-      window.open(waLink(whats, mensagem), "_blank", "noopener,noreferrer");
+      alert("Não consegui salvar o pedido. Tente novamente.");
     } finally {
       setSaving(false);
     }
@@ -661,6 +689,41 @@ function CartModal({
             Continuar comprando
           </button>
         </div>
+
+        {/* ✅ CONFIRMAÇÃO (após salvar) */}
+        {pedidoCriado ? (
+          <div className="mt-6 rounded-2xl border bg-green-50 p-4">
+            <div className="text-lg font-extrabold text-green-700">Pedido finalizado ✅</div>
+            <div className="text-sm text-gray-700 mt-1">
+              Pedido criado no sistema: <b>{pedidoCriado}</b>
+            </div>
+
+            <div className="mt-4 grid grid-cols-1 gap-2">
+              <button
+                onClick={() => {
+                  setPedidoCriado(null);
+                  onClose();
+                }}
+                className="w-full rounded-xl bg-blue-700 hover:bg-blue-800 text-white py-3 font-extrabold"
+              >
+                Voltar para a loja
+              </button>
+
+              {/* ✅ Opcional: Enviar no WhatsApp também */}
+              {whats ? (
+                <button
+                  onClick={() => {
+                    const msgComId = `✅ Pedido criado no sistema: ${pedidoCriado}\n\n${mensagem}`;
+                    window.open(waLink(whats, msgComId), "_blank", "noopener,noreferrer");
+                  }}
+                  className="w-full rounded-xl border py-3 font-extrabold hover:bg-gray-50"
+                >
+                  Enviar no WhatsApp também (opcional)
+                </button>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
 
         {/* ITENS */}
         <div className="mt-4">
@@ -738,7 +801,9 @@ function CartModal({
                         )}
                       </div>
 
-                      <div className="mt-2 font-extrabold text-blue-900">Total item: {brl(it.preco * it.qtd)}</div>
+                      <div className="mt-2 font-extrabold text-blue-900">
+                        Total item: {brl(it.preco * it.qtd)}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -747,7 +812,7 @@ function CartModal({
           )}
         </div>
 
-        {/* DADOS CLIENTE (auto preenchido do perfil) */}
+        {/* DADOS CLIENTE */}
         <div className="mt-4 space-y-2">
           <input
             placeholder="Nome do cliente"
@@ -837,16 +902,16 @@ function CartModal({
           <div className="font-extrabold text-lg">Total: {brl(total)}</div>
         </div>
 
-        {/* FINALIZAR: salva no painel + abre Whats */}
+        {/* ✅ FINALIZAR: salva no painel e PRONTO (sem Whats automático) */}
         <button
-          disabled={!canCheckout || saving}
-          onClick={finalizar}
+          disabled={!canCheckout || saving || !!pedidoCriado}
+          onClick={finalizarPedido}
           className={`w-full mt-4 text-center py-3 rounded-xl font-extrabold ${
             canCheckout ? "bg-green-600 hover:bg-green-700 text-white" : "bg-gray-200 text-gray-500"
           } ${saving ? "opacity-70 cursor-wait" : ""}`}
-          title={canCheckout ? "Salvar pedido e abrir WhatsApp" : "Preencha nome/Whats e itens (e endereço se entrega)."}
+          title={canCheckout ? "Finalizar pedido" : "Preencha nome/Whats e itens (e endereço se entrega)."}
         >
-          {saving ? "Salvando pedido..." : "Salvar pedido e abrir WhatsApp"}
+          {saving ? "Finalizando..." : "Finalizar pedido"}
         </button>
 
         {!canCheckout ? (
@@ -859,6 +924,7 @@ function CartModal({
     </div>
   );
 }
+
 
 
 /* =========================
