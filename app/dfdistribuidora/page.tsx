@@ -8,19 +8,13 @@ import { supabase } from "@/lib/supabaseClient";
 import { useCart } from "./_components/cart";
 import { useToast } from "./_components/toast";
 import { useCartUI } from "./_components/cart-ui";
-import QuickClientCreate from "./_components/QuickClientCreate";
-
-
-
-
+import ClientProfileGate from "./_components/ClientProfileGate";
 import FVBanners from "./_components/FVBanners";
 
 /* =========================
    SENHA SIMPLES (LOCAL)
-   - fica salva no navegador (localStorage)
-   - 🔴 troque DF_SENHA
 ========================= */
-const DF_SENHA = "102030"; // 🔴 troque
+const DF_SENHA = "102030";
 const LS_KEY = "df_public_ok";
 
 /* =========================
@@ -54,10 +48,11 @@ const BRAND_SUB = "• DF";
 
 const TAXA_ENTREGA_FIXA = 10;
 
-
 const HOME_LIMIT = 150;
 const SEARCH_LIMIT = 180;
 const SEARCH_DEBOUNCE = 350;
+
+const PROFILE_LS = "df_cliente_profile";
 
 /* =========================
    HELPERS
@@ -167,10 +162,16 @@ export default function DFDistribuidoraHomePage() {
     );
   }
 
-  return <DFDistribuidoraHome onSair={sair} />;
-} // ✅ ESSE FECHAMENTO TAVA FALTANDO
+  // ✅ cliente é obrigado a cadastrar perfil antes de ver produtos
+  return (
+    <ClientProfileGate>
+      <DFDistribuidoraHome onSair={sair} />
+    </ClientProfileGate>
+  );
+}
+
 /* =========================
-   PAGE
+   PAGE (loja do cliente)
 ========================= */
 function DFDistribuidoraHome({ onSair }: { onSair: () => void }) {
   const [loadingHome, setLoadingHome] = useState(true);
@@ -181,7 +182,6 @@ function DFDistribuidoraHome({ onSair }: { onSair: () => void }) {
   const [resultado, setResultado] = useState<DFProduto[]>([]);
 
   const { cartOpen, openCart, closeCart } = useCartUI();
-
 
   const cart = useCart();
   const totalCarrinho = cart.subtotal;
@@ -242,7 +242,6 @@ function DFDistribuidoraHome({ onSair }: { onSair: () => void }) {
         const normalized = normalizeSearch(raw);
         const { data, error } = await supabase.rpc(RPC_SEARCH, { q: normalized, lim: SEARCH_LIMIT });
         if (error) throw error;
-
         setResultado(((data || []) as DFProduto[]) ?? []);
       } catch (e) {
         try {
@@ -259,7 +258,9 @@ function DFDistribuidoraHome({ onSair }: { onSair: () => void }) {
           if (digits.length >= 8 && digits.length <= 14) query = query.or(`ean.eq.${digits},nome.ilike.%${raw}%`);
           else query = query.ilike("nome", `%${raw}%`);
 
-          const { data, error } = await query.order("em_promocao", { ascending: false }).order("nome", { ascending: true });
+          const { data, error } = await query
+            .order("em_promocao", { ascending: false })
+            .order("nome", { ascending: true });
 
           if (error) throw error;
 
@@ -290,7 +291,6 @@ function DFDistribuidoraHome({ onSair }: { onSair: () => void }) {
             <div className="flex items-center gap-2">
               <button
                 onClick={openCart}
-
                 className="relative text-white font-extrabold whitespace-nowrap bg-white/10 hover:bg-white/15 px-4 py-2 rounded-full"
                 title="Abrir carrinho"
               >
@@ -378,7 +378,6 @@ function DFDistribuidoraHome({ onSair }: { onSair: () => void }) {
 
             <button
               onClick={openCart}
-
               className="relative text-white font-extrabold whitespace-nowrap bg-white/10 hover:bg-white/15 px-4 py-2 rounded-full"
               title="Abrir carrinho"
             >
@@ -391,7 +390,11 @@ function DFDistribuidoraHome({ onSair }: { onSair: () => void }) {
               )}
             </button>
 
-            <button onClick={onSair} className="text-white font-extrabold bg-white/10 hover:bg-white/15 px-4 py-2 rounded-full" title="Sair">
+            <button
+              onClick={onSair}
+              className="text-white font-extrabold bg-white/10 hover:bg-white/15 px-4 py-2 rounded-full"
+              title="Sair"
+            >
               Sair
             </button>
           </div>
@@ -401,45 +404,6 @@ function DFDistribuidoraHome({ onSair }: { onSair: () => void }) {
       <div className="mt-4">
         <FVBanners />
       </div>
-
-      <section className="max-w-6xl mx-auto px-4 mt-4">
-  <div className="bg-white rounded-3xl border shadow-sm p-4 md:p-6">
-    <div className="flex items-start justify-between gap-3 flex-wrap">
-      <div>
-        <div className="text-sm font-extrabold text-gray-900">Área interna</div>
-        <div className="text-xs text-gray-600">
-          Cadastro de clientes (Drogarias/Pessoas) integrado com Visitas & Rotas.
-        </div>
-      </div>
-
-      <Link
-        href="/dfdistribuidora/visitas"
-        className="rounded-xl bg-green-600 hover:bg-green-700 text-white px-4 py-2 text-sm font-extrabold"
-      >
-        📍 Abrir Visitas & Rotas
-      </Link>
-    </div>
-
-    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-4">
-      <QuickClientCreate
-        label="+ Cadastrar cliente"
-        className="w-full rounded-xl border border-gray-200 bg-white px-4 py-3 text-sm font-extrabold hover:bg-gray-50"
-      />
-
-      <Link
-        href="/dfdistribuidora/visitas"
-        className="w-full text-center rounded-xl bg-blue-700 hover:bg-blue-800 text-white px-4 py-3 text-sm font-extrabold"
-      >
-        Ver clientes cadastrados
-      </Link>
-    </div>
-
-    <div className="mt-2 text-[11px] text-gray-500">
-      Obs.: Cliente cadastrado aqui já aparece na tela de visitas (mesma tabela no Supabase).
-    </div>
-  </div>
-</section>
-
 
       <section className="max-w-6xl mx-auto px-4">
         {isSearching ? (
@@ -455,7 +419,13 @@ function DFDistribuidoraHome({ onSair }: { onSair: () => void }) {
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-5">
                 {resultado.map((p) => (
-                  <ProdutoCardUltra key={p.id} p={p} prefix={PREFIX} onEncomendar={() => encomendarDF(p)} estoqueByEan={estoqueByEan} />
+                  <ProdutoCardUltra
+                    key={p.id}
+                    p={p}
+                    prefix={PREFIX}
+                    onEncomendar={() => encomendarDF(p)}
+                    estoqueByEan={estoqueByEan}
+                  />
                 ))}
               </div>
             )}
@@ -473,7 +443,13 @@ function DFDistribuidoraHome({ onSair }: { onSair: () => void }) {
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-5">
                 {homeProdutos.map((p) => (
-                  <ProdutoCardUltra key={p.id} p={p} prefix={PREFIX} onEncomendar={() => encomendarDF(p)} estoqueByEan={estoqueByEan} />
+                  <ProdutoCardUltra
+                    key={p.id}
+                    p={p}
+                    prefix={PREFIX}
+                    onEncomendar={() => encomendarDF(p)}
+                    estoqueByEan={estoqueByEan}
+                  />
                 ))}
               </div>
             )}
@@ -485,46 +461,10 @@ function DFDistribuidoraHome({ onSair }: { onSair: () => void }) {
         <div className="bg-white rounded-3xl border shadow-sm p-6">
           <h3 className="text-xl md:text-2xl font-extrabold text-gray-900">Compra rápida</h3>
           <p className="text-gray-600 mt-1">Adicione no carrinho e finalize no WhatsApp em poucos cliques.</p>
-
-          <div className="grid md:grid-cols-3 gap-4 mt-6">
-            <div className="flex gap-3 items-start">
-              <div className="h-11 w-11 rounded-2xl bg-gray-100 flex items-center justify-center text-lg">⚡</div>
-              <div>
-                <div className="font-extrabold">Rápido</div>
-                <div className="text-sm text-gray-600">Carrinho modal para melhor agilidade</div>
-              </div>
-            </div>
-
-            <div className="flex gap-3 items-start">
-              <div className="h-11 w-11 rounded-2xl bg-gray-100 flex items-center justify-center text-lg">✅</div>
-              <div>
-                <div className="font-extrabold">Confirmação</div>
-                <div className="text-sm text-gray-600">Checamos disponibilidade e retornamos</div>
-              </div>
-            </div>
-
-            <div className="flex gap-3 items-start">
-              <div className="h-11 w-11 rounded-2xl bg-gray-100 flex items-center justify-center text-lg">🚚</div>
-              <div>
-                <div className="font-extrabold">Entrega</div>
-                <div className="text-sm text-gray-600">Prazo e taxa conforme região</div>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-6 rounded-3xl border p-4 bg-gray-50">
-            <div className="text-xs uppercase tracking-wide text-gray-500 font-bold">Dica</div>
-            <div className="font-extrabold text-gray-900">Pesquise pelo nome ou EAN pra achar rapidinho.</div>
-          </div>
         </div>
       </section>
 
-                  <CartModal
-        open={cartOpen}
-        onClose={closeCart}
-        whats={WHATS_DF}
-        estoqueByEan={estoqueByEan}
-      />
+      <CartModal open={cartOpen} onClose={closeCart} whats={WHATS_DF} estoqueByEan={estoqueByEan} />
     </main>
   );
 
@@ -541,7 +481,7 @@ function DFDistribuidoraHome({ onSair }: { onSair: () => void }) {
 }
 
 /* =========================
-   CART MODAL (ESTILO PDV + dados entrega/pagamento)
+   CART MODAL + salva pedido
 ========================= */
 function CartModal({
   open,
@@ -555,6 +495,7 @@ function CartModal({
   estoqueByEan: Map<string, number>;
 }) {
   const cart = useCart();
+  const [saving, setSaving] = useState(false);
 
   const [clienteNome, setClienteNome] = useState("");
   const [clienteTelefone, setClienteTelefone] = useState("");
@@ -565,6 +506,23 @@ function CartModal({
   const [bairro, setBairro] = useState("");
 
   const [pagamento, setPagamento] = useState<"PIX" | "CARTAO" | "DINHEIRO" | "COMBINAR">("PIX");
+
+  // ✅ ao abrir, puxa do perfil salvo e preenche automaticamente
+  useEffect(() => {
+    if (!open) return;
+    try {
+      const p = JSON.parse(localStorage.getItem(PROFILE_LS) || "null");
+      if (!p) return;
+
+      if (!clienteNome) setClienteNome(p.responsavel_nome || "");
+      if (!clienteTelefone) setClienteTelefone(p.whatsapp || "");
+
+      if (!endereco) setEndereco(p.endereco || "");
+      if (!numero) setNumero(p.numero || "");
+      if (!bairro) setBairro(p.bairro || "");
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   const taxaEntrega = tipoEntrega === "ENTREGA" ? TAXA_ENTREGA_FIXA : 0;
   const total = cart.subtotal + taxaEntrega;
@@ -626,6 +584,44 @@ function CartModal({
     return msg;
   }, [cart.items, clienteNome, clienteTelefone, tipoEntrega, endereco, numero, bairro, pagamento, taxaEntrega, total, cart.subtotal]);
 
+  async function criarPedidoNoPainel() {
+    let profile: any = null;
+    try {
+      profile = JSON.parse(localStorage.getItem(PROFILE_LS) || "null");
+    } catch {}
+
+    const payload = {
+      cliente_nome: clienteNome.trim(),
+      cliente_whatsapp: onlyDigits(clienteTelefone),
+      cliente_cpf: profile?.cpf || null,
+      cliente_nome_fantasia: profile?.nome_fantasia || null,
+
+      tipo_entrega: tipoEntrega,
+      endereco: tipoEntrega === "ENTREGA" ? endereco : null,
+      numero: tipoEntrega === "ENTREGA" ? numero : null,
+      bairro: tipoEntrega === "ENTREGA" ? bairro : null,
+
+      pagamento,
+      taxa_entrega: taxaEntrega,
+      subtotal: cart.subtotal,
+      total,
+
+      itens: cart.items.map((i) => ({
+        ean: i.ean,
+        nome: i.nome,
+        qtd: i.qtd,
+        preco: i.preco,
+        subtotal: i.preco * i.qtd,
+      })),
+
+      status: "NOVO",
+    };
+
+    const { data, error } = await supabase.from("df_pedidos").insert(payload).select("id").single();
+    if (error) throw error;
+    return data?.id as string;
+  }
+
   if (!open) return null;
 
   return (
@@ -670,10 +666,7 @@ function CartModal({
                       <div className="mt-1 text-sm font-extrabold text-blue-900">{brl(it.preco)}</div>
 
                       <div className="mt-2 flex items-center gap-2">
-                        <button
-                          onClick={() => cart.dec(it.ean)}
-                          className="px-3 py-1 bg-gray-200 rounded font-extrabold"
-                        >
+                        <button onClick={() => cart.dec(it.ean)} className="px-3 py-1 bg-gray-200 rounded font-extrabold">
                           -
                         </button>
 
@@ -690,7 +683,9 @@ function CartModal({
                           onClick={() => incSafe(it.ean)}
                           disabled={est > 0 ? it.qtd >= est : false}
                           className={`px-3 py-1 rounded font-extrabold ${
-                            est > 0 && it.qtd >= est ? "bg-gray-200 text-gray-500 cursor-not-allowed" : "bg-blue-600 text-white"
+                            est > 0 && it.qtd >= est
+                              ? "bg-gray-200 text-gray-500 cursor-not-allowed"
+                              : "bg-blue-600 text-white"
                           }`}
                         >
                           +
@@ -720,7 +715,7 @@ function CartModal({
           )}
         </div>
 
-        {/* DADOS CLIENTE */}
+        {/* DADOS CLIENTE (auto preenchido do perfil) */}
         <div className="mt-4 space-y-2">
           <input
             placeholder="Nome do cliente"
@@ -806,18 +801,31 @@ function CartModal({
           <div className="font-extrabold text-lg">Total: {brl(total)}</div>
         </div>
 
-        {/* FINALIZAR */}
-        <a
-          href={waLink(whats, mensagem)}
-          target="_blank"
-          rel="noreferrer"
-          className={`block mt-4 text-center py-3 rounded-xl font-extrabold ${
-            canCheckout ? "bg-green-600 hover:bg-green-700 text-white" : "bg-gray-200 text-gray-500 pointer-events-none"
-          }`}
-          title={canCheckout ? "Finalizar no WhatsApp" : "Preencha nome/Whats e itens (e endereço se entrega)."}
+        {/* FINALIZAR: salva no painel + abre Whats */}
+        <button
+          disabled={!canCheckout || saving}
+          onClick={async () => {
+            if (!canCheckout || saving) return;
+            setSaving(true);
+            try {
+              const pedidoId = await criarPedidoNoPainel();
+              const msgComId = `✅ Pedido criado no sistema: ${pedidoId}\n\n` + mensagem;
+              window.open(waLink(whats, msgComId), "_blank", "noopener,noreferrer");
+            } catch (e: any) {
+              console.error(e);
+              alert("Não consegui salvar o pedido no painel. Vou abrir no WhatsApp mesmo.");
+              window.open(waLink(whats, mensagem), "_blank", "noopener,noreferrer");
+            } finally {
+              setSaving(false);
+            }
+          }}
+          className={`w-full mt-4 text-center py-3 rounded-xl font-extrabold ${
+            canCheckout ? "bg-green-600 hover:bg-green-700 text-white" : "bg-gray-200 text-gray-500"
+          } ${saving ? "opacity-70 cursor-wait" : ""}`}
+          title={canCheckout ? "Salvar pedido e abrir WhatsApp" : "Preencha nome/Whats e itens (e endereço se entrega)."}
         >
-          Finalizar no WhatsApp
-        </a>
+          {saving ? "Salvando pedido..." : "Finalizar no WhatsApp"}
+        </button>
 
         {!canCheckout ? (
           <div className="mt-2 text-xs text-gray-500">
@@ -831,7 +839,7 @@ function CartModal({
 }
 
 /* =========================
-   PRODUTO CARD (com estoque/indisponível/encomendar)
+   PRODUTO CARD
 ========================= */
 function ProdutoCardUltra({
   p,
