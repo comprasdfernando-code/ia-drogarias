@@ -1,30 +1,64 @@
 "use client";
 
-import type { Cliente } from "../page";
+export type DrogariaCliente = {
+  id: string;
+  cnpj: string;
+  nome_fantasia: string;
+  responsavel: string | null;
+  telefone: string | null;
+  email: string | null;
 
-function formatDate(d?: string) {
+  endereco: string | null;
+  bairro: string | null;
+  cidade: string | null;
+  uf: string | null;
+  cep: string | null;
+
+  ultima_visita: string | null;  // YYYY-MM-DD
+  proxima_visita: string | null; // YYYY-MM-DD
+  status_visita: string | null;  // Novo / Em andamento / Visitado
+};
+
+function fmtDate(d?: string | null) {
   if (!d) return "—";
-  // YYYY-MM-DD -> DD/MM/YYYY
   const [y, m, day] = d.split("-");
   if (!y || !m || !day) return d;
   return `${day}/${m}/${y}`;
 }
 
-export default function ClienteList({
+function endToLine(c: DrogariaCliente) {
+  const parts = [c.endereco, c.bairro, c.cidade, c.uf, c.cep].filter(Boolean);
+  return parts.length ? parts.join(" - ") : "—";
+}
+
+function badgeClass(status?: string | null) {
+  const s = (status || "Novo").toLowerCase();
+  if (s.includes("visit")) return "bg-green-50 text-green-700 border-green-200";
+  if (s.includes("and")) return "bg-yellow-50 text-yellow-700 border-yellow-200";
+  return "bg-blue-50 text-blue-700 border-blue-200";
+}
+
+export default function ClientList({
   clientes,
-  onRemove,
+  loading,
   onMarcarVisita,
+  onRemove,
   onCopiarWhats,
 }: {
-  clientes: Cliente[];
+  clientes: DrogariaCliente[];
+  loading?: boolean;
+  onMarcarVisita: (c: DrogariaCliente) => void;
   onRemove: (id: string) => void;
-  onMarcarVisita: (c: Cliente) => void;
-  onCopiarWhats: (c: Cliente) => void;
+  onCopiarWhats?: (c: DrogariaCliente) => void;
 }) {
-  if (!clientes.length) {
+  if (loading) {
+    return <div className="text-gray-600">Carregando...</div>;
+  }
+
+  if (!clientes?.length) {
     return (
       <div className="rounded-2xl border border-dashed border-gray-300 bg-white p-8 text-center text-gray-600">
-        Nenhum cliente cadastrado ainda.
+        Nenhuma drogaria encontrada.
       </div>
     );
   }
@@ -37,17 +71,46 @@ export default function ClienteList({
           className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm"
         >
           <div className="flex items-start justify-between gap-3">
-            <div>
-              <h3 className="text-base font-semibold text-gray-900">{c.nome}</h3>
-              <p className="text-sm text-gray-600 mt-1">{c.endereco}</p>
-              <p className="text-sm text-gray-700 mt-2">
-                <span className="font-medium">Whats:</span> {c.whatsapp}
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <h3 className="text-base font-semibold text-gray-900 truncate">
+                  {c.nome_fantasia}
+                </h3>
+
+                <span
+                  className={`text-xs border px-2 py-1 rounded-full ${badgeClass(
+                    c.status_visita
+                  )}`}
+                >
+                  {c.status_visita || "Novo"}
+                </span>
+              </div>
+
+              <p className="text-sm text-gray-700 mt-1">
+                <span className="font-medium">CNPJ:</span> {c.cnpj}
               </p>
+
               <p className="text-sm text-gray-700">
-                <span className="font-medium">Contato:</span> {c.contato || "—"}
+                <span className="font-medium">Responsável:</span>{" "}
+                {c.responsavel || "—"}
               </p>
+
+              <p className="text-sm text-gray-700">
+                <span className="font-medium">Whats:</span> {c.telefone || "—"}
+              </p>
+
+              <p className="text-sm text-gray-700">
+                <span className="font-medium">Email:</span> {c.email || "—"}
+              </p>
+
+              <p className="text-sm text-gray-600 mt-2">{endToLine(c)}</p>
+
               <p className="text-xs text-gray-500 mt-2">
-                Última visita: <span className="font-medium">{formatDate(c.ultimaVisita)}</span>
+                Última visita:{" "}
+                <span className="font-medium">{fmtDate(c.ultima_visita)}</span>
+                {"  •  "}
+                Próxima:{" "}
+                <span className="font-medium">{fmtDate(c.proxima_visita)}</span>
               </p>
             </div>
 
@@ -68,12 +131,14 @@ export default function ClienteList({
               Marcar visita
             </button>
 
-            <button
-              onClick={() => onCopiarWhats(c)}
-              className="rounded-xl border border-gray-200 px-4 py-2 text-sm hover:bg-gray-50"
-            >
-              Copiar Whats
-            </button>
+            {onCopiarWhats ? (
+              <button
+                onClick={() => onCopiarWhats(c)}
+                className="rounded-xl border border-gray-200 px-4 py-2 text-sm hover:bg-gray-50"
+              >
+                Copiar Whats
+              </button>
+            ) : null}
           </div>
         </div>
       ))}
