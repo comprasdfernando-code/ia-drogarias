@@ -35,7 +35,6 @@ type Pedido = {
   taxa_entrega?: number | null;
   total?: number | null;
 
-  // pode existir como json
   itens?: any;
 };
 
@@ -71,7 +70,6 @@ export default function CupomPedidoFV() {
   }, [itens]);
 
   const subtotalCalc = useMemo(() => {
-    // se item tiver subtotal use, senão calcula
     const sum = itens.reduce((s, i) => {
       const q = safeNumber((i as any).qtd ?? (i as any).quantidade ?? 0);
       const sub =
@@ -87,7 +85,6 @@ export default function CupomPedidoFV() {
     setLoading(true);
     setErro(null);
 
-    // 1) Busca pedido
     const { data: p, error: e1 } = await supabase
       .from("fv_pedidos")
       .select("*")
@@ -105,8 +102,6 @@ export default function CupomPedidoFV() {
 
     setPedido(p as Pedido);
 
-    // 2) Tenta relacionamento (se existir tabela de itens)
-    //    Se não existir, cai no JSON.
     let itensFinal: ItemPedido[] = [];
 
     try {
@@ -119,14 +114,12 @@ export default function CupomPedidoFV() {
       if (!e2 && its && its.length) {
         itensFinal = its as any;
       } else {
-        // fallback JSON
         const json = (p as any).itens;
         if (Array.isArray(json)) itensFinal = json as any;
         else if (json && Array.isArray(json?.items)) itensFinal = json.items as any;
         else itensFinal = [];
       }
     } catch (err) {
-      // fallback JSON se a tabela nem existir
       const json = (p as any).itens;
       if (Array.isArray(json)) itensFinal = json as any;
       else if (json && Array.isArray(json?.items)) itensFinal = json.items as any;
@@ -137,7 +130,6 @@ export default function CupomPedidoFV() {
     setLoading(false);
 
     if (AUTO_PRINT) {
-      // dá um respiro pro layout renderizar
       setTimeout(() => window.print(), 350);
     }
   }
@@ -155,7 +147,7 @@ export default function CupomPedidoFV() {
   const dt = pedido?.created_at ? new Date(pedido.created_at) : null;
 
   return (
-    <div className="min-h-screen bg-gray-100 p-3">
+    <div className="min-h-screen bg-zinc-100 p-3">
       {/* CSS de impressão (cupom 80mm) */}
       <style>{`
         @media print {
@@ -164,119 +156,124 @@ export default function CupomPedidoFV() {
           .paper { box-shadow: none !important; border: none !important; margin: 0 !important; }
           @page { size: 80mm auto; margin: 6mm; }
         }
-        .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+        .mono {
+          font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+        }
+        .hr-strong {
+          border: none;
+          border-top: 2px solid rgba(0,0,0,.55);
+          margin: 10px 0;
+        }
       `}</style>
 
       <div className="no-print max-w-md mx-auto mb-3 flex gap-2">
         <button
           onClick={() => router.back()}
-          className="px-3 py-2 rounded bg-white border"
+          className="px-3 py-2 rounded bg-white border border-zinc-300"
         >
           ← Voltar
         </button>
 
         <button
           onClick={() => window.print()}
-          className="px-3 py-2 rounded bg-gray-900 text-white"
+          className="px-3 py-2 rounded bg-black text-white font-extrabold"
         >
           🖨️ Imprimir
         </button>
 
         <button
           onClick={() => id && carregarPedidoEItens(id)}
-          className="px-3 py-2 rounded bg-white border"
+          className="px-3 py-2 rounded bg-white border border-zinc-300"
         >
           Atualizar
         </button>
       </div>
 
       {loading && (
-        <div className="max-w-md mx-auto paper bg-white border rounded-xl p-4 mono">
-          Carregando cupom...
+        <div className="max-w-md mx-auto paper bg-white border border-zinc-300 rounded-xl p-4 mono text-black">
+          <div className="font-black">Carregando cupom…</div>
         </div>
       )}
 
       {erro && !loading && (
-        <div className="max-w-md mx-auto paper bg-white border rounded-xl p-4 mono">
-          {erro}
+        <div className="max-w-md mx-auto paper bg-white border border-zinc-300 rounded-xl p-4 mono text-black">
+          <div className="font-black">{erro}</div>
         </div>
       )}
 
       {!loading && !erro && pedido && (
-        <div className="max-w-md mx-auto paper bg-white border rounded-xl p-4 mono">
+        <div className="max-w-md mx-auto paper bg-white border border-zinc-300 rounded-xl p-4 mono text-black">
           {/* Cabeçalho */}
           <div className="text-center">
-            <div className="text-lg font-bold">IA Drogarias • FV</div>
-            <div className="text-xs text-gray-600">
-              Cupom de Pedido
-            </div>
+            <div className="text-xl font-black tracking-tight">IA DROGARIAS • FV</div>
+            <div className="text-[12px] font-bold">CUPOM DE PEDIDO</div>
           </div>
 
-          <hr className="my-3" />
+          <hr className="hr-strong" />
 
           {/* Pedido */}
-          <div className="text-sm">
+          <div className="text-[13px] leading-5">
             <div className="flex justify-between">
-              <span>Pedido:</span>
-              <strong>{pedido.id.slice(0, 8).toUpperCase()}</strong>
+              <span className="font-bold">Pedido:</span>
+              <span className="font-black">{pedido.id.slice(0, 8).toUpperCase()}</span>
             </div>
 
             <div className="flex justify-between">
-              <span>Status:</span>
-              <strong>{pedido.status || "-"}</strong>
+              <span className="font-bold">Status:</span>
+              <span className="font-black">{pedido.status || "-"}</span>
             </div>
 
             <div className="flex justify-between">
-              <span>Data:</span>
-              <strong>{dt ? dt.toLocaleString("pt-BR") : "-"}</strong>
+              <span className="font-bold">Data:</span>
+              <span className="font-black">{dt ? dt.toLocaleString("pt-BR") : "-"}</span>
             </div>
 
             <div className="flex justify-between">
-              <span>Entrega:</span>
-              <strong>{pedido.tipo_entrega || "-"}</strong>
+              <span className="font-bold">Entrega:</span>
+              <span className="font-black">{pedido.tipo_entrega || "-"}</span>
             </div>
 
             <div className="flex justify-between">
-              <span>Pagamento:</span>
-              <strong>{pedido.pagamento || "-"}</strong>
+              <span className="font-bold">Pagamento:</span>
+              <span className="font-black">{pedido.pagamento || "-"}</span>
             </div>
           </div>
 
-          <hr className="my-3" />
+          <hr className="hr-strong" />
 
           {/* Cliente */}
-          <div className="text-sm">
-            <div className="font-bold mb-1">Cliente</div>
-            <div>{pedido.cliente_nome || "-"}</div>
-            <div>{pedido.cliente_whatsapp || "-"}</div>
+          <div className="text-[13px] leading-5">
+            <div className="font-black mb-1">CLIENTE</div>
+            <div className="font-bold">{pedido.cliente_nome || "-"}</div>
+            <div className="font-bold">{pedido.cliente_whatsapp || "-"}</div>
 
             {String(pedido.tipo_entrega || "").toUpperCase() === "ENTREGA" && (
-              <div className="mt-2 text-xs text-gray-700">
-                <div>
+              <div className="mt-2 text-[12px] leading-4">
+                <div className="font-bold">
                   {pedido.endereco || "-"}
                   {pedido.numero ? `, ${pedido.numero}` : ""}
                 </div>
-                <div>
+                <div className="font-bold">
                   {pedido.bairro ? `Bairro: ${pedido.bairro}` : ""}
                   {pedido.complemento ? ` • ${pedido.complemento}` : ""}
                 </div>
-                {pedido.referencia && <div>Ref: {pedido.referencia}</div>}
+                {pedido.referencia && <div className="font-bold">Ref: {pedido.referencia}</div>}
               </div>
             )}
           </div>
 
-          <hr className="my-3" />
+          <hr className="hr-strong" />
 
           {/* Itens */}
-          <div className="text-sm">
-            <div className="font-bold mb-1">Itens ({totalItens})</div>
+          <div className="text-[13px]">
+            <div className="font-black mb-2">ITENS ({totalItens})</div>
 
             {itens.length === 0 ? (
-              <div className="text-xs text-gray-600">
+              <div className="text-[12px] font-bold">
                 Sem itens (verifique se está salvando itens no pedido ou criando fv_pedido_itens).
               </div>
             ) : (
-              <div className="space-y-1">
+              <div className="space-y-2">
                 {itens.map((i, idx) => {
                   const q = safeNumber((i as any).qtd ?? (i as any).quantidade ?? 0);
                   const preco = safeNumber(i.preco);
@@ -286,16 +283,17 @@ export default function CupomPedidoFV() {
                       : preco * q;
 
                   return (
-                    <div key={i.id || `${idx}`} className="text-xs">
+                    <div key={i.id || `${idx}`} className="pb-1 border-b border-black/30">
                       <div className="flex justify-between gap-2">
-                        <span className="truncate">
+                        <span className="truncate font-bold">
                           {q}x {i.nome}
                         </span>
-                        <span className="font-bold">{brl(sub)}</span>
+                        <span className="font-black">{brl(sub)}</span>
                       </div>
-                      <div className="flex justify-between text-[11px] text-gray-600">
-                        <span>{i.ean ? `EAN: ${i.ean}` : ""}</span>
-                        <span>{preco ? `${brl(preco)} un` : ""}</span>
+
+                      <div className="flex justify-between text-[12px]">
+                        <span className="font-bold">{i.ean ? `EAN: ${i.ean}` : ""}</span>
+                        <span className="font-bold">{preco ? `${brl(preco)} un` : ""}</span>
                       </div>
                     </div>
                   );
@@ -304,30 +302,30 @@ export default function CupomPedidoFV() {
             )}
           </div>
 
-          <hr className="my-3" />
+          <hr className="hr-strong" />
 
           {/* Totais */}
-          <div className="text-sm space-y-1">
+          <div className="text-[13px] space-y-1">
             <div className="flex justify-between">
-              <span>Subtotal</span>
-              <strong>{brl(subtotal)}</strong>
+              <span className="font-bold">Subtotal</span>
+              <span className="font-black">{brl(subtotal)}</span>
             </div>
 
             <div className="flex justify-between">
-              <span>Taxa</span>
-              <strong>{brl(taxa)}</strong>
+              <span className="font-bold">Taxa</span>
+              <span className="font-black">{brl(taxa)}</span>
             </div>
 
-            <div className="flex justify-between text-base">
-              <span>Total</span>
-              <strong>{brl(total)}</strong>
+            <div className="flex justify-between text-[16px]">
+              <span className="font-black">TOTAL</span>
+              <span className="font-black">{brl(total)}</span>
             </div>
           </div>
 
-          <hr className="my-3" />
+          <hr className="hr-strong" />
 
           {/* Rodapé */}
-          <div className="text-center text-xs text-gray-600">
+          <div className="text-center text-[12px] font-bold">
             Obrigado! 💙
             <div className="mt-1">
               Whats: {pedido.cliente_whatsapp ? onlyDigits(pedido.cliente_whatsapp) : "-"}
