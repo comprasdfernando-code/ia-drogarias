@@ -1,69 +1,24 @@
-// app/fv/painel/page.tsx
+// app/fv/cupom/[id]/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
 export const dynamic = "force-dynamic";
 
-/* =========================
-   CONFIG
-========================= */
-const SENHA_PAINEL = "102030";
-const LS_KEY = "fv_painel_ok";
-const PEDIDOS_TABLE = "fv_pedidos";
-
-// (opcional) botão de WhatsApp no detalhe
-const WHATS = "5511948343725";
-
-/* =========================
-   TYPES
-========================= */
-type Pedido = {
-  id: string;
-  created_at?: string;
-  cliente_nome?: string | null;
-  cliente_whatsapp?: string | null;
-
-  tipo_entrega?: string | null;
-  pagamento?: string | null;
-
-  taxa_entrega?: number | null;
-  subtotal?: number | null;
-  total?: number | null;
-
-  status?: string | null;
-  itens?: any; // json
-};
-
-/* =========================
-   HELPERS
-========================= */
-function brl(v: number | null | undefined) {
-  if (v === null || v === undefined || Number.isNaN(v)) return "—";
-  return Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+function brl(v: number) {
+  return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
-
-function onlyDigits(v: string) {
-  return (v || "").replace(/\D/g, "");
+function safeDate(iso?: string | null) {
+  if (!iso) return "—";
+  try {
+    return new Date(iso).toLocaleString("pt-BR");
+  } catch {
+    return String(iso);
+  }
 }
-
-function waLink(phone: string, msg: string) {
-  const clean = phone.replace(/\D/g, "");
-  return `https://wa.me/${clean}?text=${encodeURIComponent(msg)}`;
-}
-
-function normalizeStatus(s?: string | null) {
-  const v = (s || "NOVO").toUpperCase();
-  if (v === "NOVO") return "NOVO";
-  if (v === "EM_SEPARACAO" || v === "SEPARANDO") return "EM SEPARAÇÃO";
-  if (v === "CONFIRMADO") return "CONFIRMADO";
-  if (v === "ENTREGUE") return "ENTREGUE";
-  if (v === "CANCELADO") return "CANCELADO";
-  return v;
-}
-
-function parseItens(raw: any): Array<any> {
+function parseItens(raw: any): any[] {
   if (!raw) return [];
   if (Array.isArray(raw)) return raw;
   if (typeof raw === "string") {
@@ -77,377 +32,137 @@ function parseItens(raw: any): Array<any> {
   return [];
 }
 
-function fmtData(iso?: string) {
-  if (!iso) return "—";
-  try {
-    const d = new Date(iso);
-    return d.toLocaleString("pt-BR");
-  } catch {
-    return iso;
-  }
-}
+export default function CupomFv() {
+  const params = useParams();
+  const id = String((params as any)?.id || "");
 
-function buildResumo(p: Pedido) {
-  const itens = parseItens(p.itens);
-
-  let msg = `🧾 *Pedido FV* (${p.id})\n\n`;
-  msg += `🕒 ${fmtData(p.created_at)}\n`;
-  msg += `👤 Cliente: ${p.cliente_nome || "—"}\n`;
-  msg += `📞 Whats: ${p.cliente_whatsapp || "—"}\n`;
-  msg += `🚚 Entrega: ${p.tipo_entrega || "—"}\n`;
-  msg += `💳 Pagamento: ${p.pagamento || "—"}\n`;
-  msg += `🏷️ Status: ${normalizeStatus(p.status)}\n\n`;
-
-  msg += `🛒 *Itens:*\n`;
-  for (const it of itens) {
-    const qtd = Number(it?.qtd ?? 0);
-    const nome = it?.nome || "—";
-    const ean = it?.ean || "";
-    // ✅ CORRIGIDO (sem misturar ?? com ||)
-    const sub = Number(it?.subtotal ?? (Number(it?.preco ?? 0) * qtd));
-    msg += `• ${nome}${ean ? ` (${ean})` : ""} — ${qtd}x — ${brl(sub)}\n`;
-  }
-
-  msg += `\nSubtotal: ${brl(p.subtotal || 0)}\n`;
-  msg += `Taxa: ${brl(p.taxa_entrega || 0)}\n`;
-  msg += `Total: ${brl(p.total || 0)}\n`;
-
-  return msg;
-}
-
-/* =========================
-   PAGE
-========================= */
-export default function PainelPedidosFVPage() {
-  const [ok, setOk] = useState(false);
-  const [senha, setSenha] = useState("");
-
-  useEffect(() => {
-    const saved = typeof window !== "undefined" && localStorage.getItem(LS_KEY) === "1";
-    if (saved) setOk(true);
-  }, []);
-
-  function entrar() {
-    if (senha === SENHA_PAINEL) {
-      localStorage.setItem(LS_KEY, "1");
-      setOk(true);
-    } else {
-      alert("Senha incorreta.");
-    }
-  }
-
-  function sair() {
-    localStorage.removeItem(LS_KEY);
-    setOk(false);
-    setSenha("");
-  }
-
-  if (!ok) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <div className="w-full max-w-md bg-white border rounded-3xl shadow-sm p-6">
-          <div className="text-xl font-extrabold text-gray-900">Painel • Pedidos FV</div>
-          <div className="text-sm text-gray-600 mt-1">Digite a senha para entrar.</div>
-
-          <input
-            value={senha}
-            onChange={(e) => setSenha(e.target.value)}
-            onKeyDown={(e) => (e.key === "Enter" ? entrar() : null)}
-            type="password"
-            placeholder="Senha"
-            className="mt-4 w-full border rounded-2xl px-4 py-3 outline-none focus:ring-4 focus:ring-blue-100"
-          />
-
-          <button onClick={entrar} className="mt-4 w-full bg-blue-700 hover:bg-blue-800 text-white rounded-2xl py-3 font-extrabold">
-            Entrar
-          </button>
-
-          <div className="mt-3 text-[11px] text-gray-500">Fica salvo neste navegador (localStorage).</div>
-        </div>
-      </div>
-    );
-  }
-
-  return <Painel onSair={sair} />;
-}
-
-function Painel({ onSair }: { onSair: () => void }) {
   const [loading, setLoading] = useState(true);
-  const [pedidos, setPedidos] = useState<Pedido[]>([]);
-  const [q, setQ] = useState("");
-  const [status, setStatus] = useState<string>("TODOS");
-
-  const [open, setOpen] = useState(false);
-  const [sel, setSel] = useState<Pedido | null>(null);
-
-  async function load() {
-    setLoading(true);
-    try {
-      // ✅ select("*") evita quebrar se colunas mudarem
-      const { data, error } = await supabase
-        .from(PEDIDOS_TABLE)
-        .select("*")
-        .order("created_at", { ascending: false })
-        .limit(500);
-
-      if (error) throw error;
-      setPedidos((data || []) as Pedido[]);
-    } catch (e) {
-      console.error("Erro carregando pedidos:", e);
-      setPedidos([]);
-    } finally {
-      setLoading(false);
-    }
-  }
+  const [p, setP] = useState<any>(null);
 
   useEffect(() => {
-    load();
-  }, []);
+    (async () => {
+      setLoading(true);
+      const { data, error } = await supabase.from("fv_pedidos").select("*").eq("id", id).single();
+      if (error) console.error(error);
+      setP(data || null);
+      setLoading(false);
+    })();
+  }, [id]);
 
-  const filtrados = useMemo(() => {
-    const qq = q.trim().toLowerCase();
-    return pedidos.filter((p) => {
-      const st = (p.status || "NOVO").toUpperCase();
-      if (status !== "TODOS" && st !== status) return false;
+  const itens = useMemo(() => parseItens(p?.itens), [p]);
 
-      if (!qq) return true;
-      const nome = (p.cliente_nome || "").toLowerCase();
-      const wpp = (p.cliente_whatsapp || "").toLowerCase();
-      const id = (p.id || "").toLowerCase();
-      return nome.includes(qq) || wpp.includes(qq) || id.includes(qq);
-    });
-  }, [pedidos, q, status]);
+  if (loading) return <div className="p-6">Carregando…</div>;
+  if (!p) return <div className="p-6">Pedido não encontrado.</div>;
 
-  const contagem = useMemo(() => {
-    const map = new Map<string, number>();
-    for (const p of pedidos) {
-      const st = (p.status || "NOVO").toUpperCase();
-      map.set(st, (map.get(st) || 0) + 1);
-    }
-    return map;
-  }, [pedidos]);
+  const subtotal = Number(p.subtotal ?? 0);
+  const taxa = Number(p.taxa_entrega ?? 0);
+  const total = Number(p.total ?? 0);
 
   return (
-    <main className="min-h-screen bg-gray-50 pb-16">
-      <header className="sticky top-0 z-40 bg-blue-700 shadow">
-        <div className="mx-auto max-w-6xl px-4 py-3 flex items-center gap-3">
-          <div className="text-white font-extrabold whitespace-nowrap">IA Drogarias • Painel FV</div>
-
-          <div className="flex-1">
-            <input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Buscar por cliente, Whats ou ID..."
-              className="w-full rounded-full bg-white/95 px-4 py-2.5 text-sm outline-none focus:ring-4 focus:ring-white/20"
-            />
+    <div className="min-h-screen bg-gray-50 p-4">
+      <div className="max-w-md mx-auto bg-white border rounded-2xl shadow-sm p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <div className="text-lg font-extrabold">IA Drogarias • FV</div>
+            <div className="text-xs text-gray-500">Cupom / Pedido</div>
           </div>
 
-          <button onClick={load} className="text-white font-extrabold bg-white/10 hover:bg-white/15 px-4 py-2 rounded-full">
-            Atualizar
-          </button>
-
-          <button onClick={onSair} className="text-white font-extrabold bg-white/10 hover:bg-white/15 px-4 py-2 rounded-full">
-            Sair
+          <button
+            onClick={() => window.print()}
+            className="px-3 py-2 rounded-xl bg-gray-900 text-white font-extrabold"
+          >
+            🖨️ Imprimir
           </button>
         </div>
 
-        <div className="mx-auto max-w-6xl px-4 pb-3 flex flex-wrap gap-2">
-          {[
-            ["TODOS", "Todos"],
-            ["NOVO", `NOVO (${contagem.get("NOVO") || 0})`],
-            ["CONFIRMADO", `CONFIRMADO (${contagem.get("CONFIRMADO") || 0})`],
-            ["ENTREGUE", `ENTREGUE (${contagem.get("ENTREGUE") || 0})`],
-            ["CANCELADO", `CANCELADO (${contagem.get("CANCELADO") || 0})`],
-          ].map(([k, label]) => (
-            <button
-              key={k}
-              onClick={() => setStatus(k)}
-              className={`px-3 py-2 rounded-full text-xs font-extrabold ${
-                status === k ? "bg-green-400 text-blue-950" : "bg-white/10 text-white hover:bg-white/15"
-              }`}
-            >
-              {label}
-            </button>
-          ))}
-        </div>
-      </header>
-
-      <section className="max-w-6xl mx-auto px-4 mt-6">
-        <div className="bg-white border rounded-3xl p-4 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div className="font-extrabold text-gray-900">
-              Pedidos <span className="text-gray-500">({filtrados.length})</span>
-            </div>
-            <div className="text-xs text-gray-500">Mostrando até 500</div>
+        <div className="mt-4 text-sm">
+          <div className="flex justify-between">
+            <span className="text-gray-500">Pedido</span>
+            <span className="font-mono font-bold">{String(p.id).slice(0, 10).toUpperCase()}</span>
           </div>
+          <div className="flex justify-between mt-1">
+            <span className="text-gray-500">Data</span>
+            <span className="font-bold">{safeDate(p.created_at)}</span>
+          </div>
+          <div className="flex justify-between mt-1">
+            <span className="text-gray-500">Status</span>
+            <span className="font-bold">{String(p.status || "novo").toUpperCase()}</span>
+          </div>
+        </div>
 
-          {loading ? (
-            <div className="mt-4 text-gray-600">Carregando…</div>
-          ) : filtrados.length === 0 ? (
-            <div className="mt-4 text-gray-600">Nenhum pedido encontrado.</div>
+        <div className="mt-4 border-t pt-3 text-sm">
+          <div className="font-extrabold mb-2">Cliente</div>
+          <div className="flex justify-between">
+            <span className="text-gray-500">Nome</span>
+            <span className="font-bold">{p.cliente_nome || "—"}</span>
+          </div>
+          <div className="flex justify-between mt-1">
+            <span className="text-gray-500">Whats</span>
+            <span className="font-bold">{p.cliente_whatsapp || p.cliente_telefone || "—"}</span>
+          </div>
+          <div className="flex justify-between mt-1">
+            <span className="text-gray-500">Entrega</span>
+            <span className="font-bold">{String(p.tipo_entrega || "retirada").toUpperCase()}</span>
+          </div>
+          <div className="flex justify-between mt-1">
+            <span className="text-gray-500">Pagamento</span>
+            <span className="font-bold">{String(p.pagamento || "—").toUpperCase()}</span>
+          </div>
+        </div>
+
+        <div className="mt-4 border-t pt-3">
+          <div className="font-extrabold mb-2">Itens</div>
+          {itens.length === 0 ? (
+            <div className="text-sm text-gray-600">Sem itens.</div>
           ) : (
-            <div className="mt-4 space-y-2">
-              {filtrados.map((p) => (
-                <button
-                  key={p.id}
-                  onClick={() => {
-                    setSel(p);
-                    setOpen(true);
-                  }}
-                  className="w-full text-left border rounded-2xl p-3 hover:bg-gray-50"
-                >
-                  <div className="flex items-start justify-between gap-3">
+            <div className="space-y-2">
+              {itens.map((it: any, idx: number) => {
+                const qtd = Number(it.qtd ?? it.quantidade ?? 0);
+                const preco = Number(it.preco ?? 0);
+                const sub = Number(it.subtotal ?? (preco * qtd));
+                return (
+                  <div key={idx} className="flex justify-between text-sm">
                     <div className="min-w-0">
-                      <div className="font-extrabold text-gray-900 line-clamp-1">
-                        {p.cliente_nome || "Sem nome"} <span className="text-gray-400 font-bold">•</span>{" "}
-                        <span className="text-gray-600 font-bold">{p.cliente_whatsapp || "—"}</span>
-                      </div>
-                      <div className="text-xs text-gray-500 mt-1">
-                        ID: <span className="font-mono">{p.id}</span> • {fmtData(p.created_at)}
-                      </div>
+                      <div className="font-bold truncate">{qtd}x {it.nome || "—"}</div>
+                      {it.ean ? <div className="text-xs text-gray-500 truncate">EAN: {it.ean}</div> : null}
                     </div>
-
-                    <div className="text-right shrink-0">
-                      <div className="text-sm font-extrabold text-green-700">{brl(p.total || 0)}</div>
-                      <div className="text-xs font-extrabold text-blue-900">{normalizeStatus(p.status)}</div>
-                    </div>
+                    <div className="font-extrabold">{brl(sub)}</div>
                   </div>
-                </button>
-              ))}
+                );
+              })}
             </div>
           )}
         </div>
-      </section>
 
-      {open && sel ? (
-        <Detalhe
-          p={sel}
-          onClose={() => {
-            setOpen(false);
-            setSel(null);
-          }}
-        />
-      ) : null}
-    </main>
-  );
-}
-
-function Detalhe({ p, onClose }: { p: Pedido; onClose: () => void }) {
-  const itens = parseItens(p.itens);
-  const resumo = useMemo(() => buildResumo(p), [p]);
-
-  return (
-    <div className="fixed inset-0 z-[80]">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
-      <div className="absolute right-0 top-0 h-full w-full sm:w-[520px] bg-white shadow-2xl flex flex-col">
-        <div className="p-4 border-b flex items-center justify-between">
-          <div className="font-extrabold">Pedido • {p.id}</div>
-          <button onClick={onClose} className="px-3 py-2 rounded-xl border font-extrabold bg-white hover:bg-gray-50">
-            Fechar
-          </button>
+        <div className="mt-4 border-t pt-3 text-sm">
+          <div className="flex justify-between">
+            <span className="text-gray-500">Subtotal</span>
+            <span className="font-extrabold">{brl(subtotal)}</span>
+          </div>
+          <div className="flex justify-between mt-1">
+            <span className="text-gray-500">Taxa</span>
+            <span className="font-extrabold">{brl(taxa)}</span>
+          </div>
+          <div className="flex justify-between mt-2 text-base">
+            <span className="font-extrabold">Total</span>
+            <span className="font-extrabold text-green-700">{brl(total)}</span>
+          </div>
         </div>
 
-        <div className="p-4 flex-1 overflow-auto">
-          <div className="bg-gray-50 border rounded-2xl p-4">
-            <div className="text-xs text-gray-500">Criado em</div>
-            <div className="font-extrabold">{fmtData(p.created_at)}</div>
-
-            <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
-              <div>
-                <div className="text-xs text-gray-500">Cliente</div>
-                <div className="font-extrabold">{p.cliente_nome || "—"}</div>
-              </div>
-              <div>
-                <div className="text-xs text-gray-500">Whats</div>
-                <div className="font-extrabold">{p.cliente_whatsapp || "—"}</div>
-              </div>
-
-              <div>
-                <div className="text-xs text-gray-500">Entrega</div>
-                <div className="font-extrabold">{p.tipo_entrega || "—"}</div>
-              </div>
-              <div>
-                <div className="text-xs text-gray-500">Pagamento</div>
-                <div className="font-extrabold">{p.pagamento || "—"}</div>
-              </div>
-
-              <div>
-                <div className="text-xs text-gray-500">Status</div>
-                <div className="font-extrabold text-blue-900">{normalizeStatus(p.status)}</div>
-              </div>
-              <div>
-                <div className="text-xs text-gray-500">Total</div>
-                <div className="font-extrabold text-green-700">{brl(p.total || 0)}</div>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-4 bg-white border rounded-2xl p-4">
-            <div className="font-extrabold">Itens</div>
-
-            {itens.length === 0 ? (
-              <div className="mt-2 text-sm text-gray-600">Sem itens no JSON.</div>
-            ) : (
-              <div className="mt-3 space-y-2">
-                {itens.map((it: any, idx: number) => {
-                  const qtd = Number(it?.qtd ?? 0);
-                  const sub = Number(it?.subtotal ?? (Number(it?.preco ?? 0) * qtd));
-                  return (
-                    <div key={idx} className="border rounded-xl p-3">
-                      <div className="font-extrabold text-sm">{it?.nome || "—"}</div>
-                      <div className="text-xs text-gray-500">EAN: {it?.ean || "—"}</div>
-                      <div className="mt-1 text-sm font-extrabold text-blue-900">
-                        {qtd}x • {brl(sub)}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-
-            <div className="mt-4 border-t pt-3 text-sm">
-              <div className="flex justify-between">
-                <span className="text-gray-600">Subtotal</span>
-                <span className="font-extrabold">{brl(p.subtotal || 0)}</span>
-              </div>
-              <div className="flex justify-between mt-1">
-                <span className="text-gray-600">Taxa</span>
-                <span className="font-extrabold">{brl(p.taxa_entrega || 0)}</span>
-              </div>
-              <div className="flex justify-between mt-2 text-base">
-                <span className="font-extrabold">Total</span>
-                <span className="font-extrabold text-green-700">{brl(p.total || 0)}</span>
-              </div>
-            </div>
-          </div>
-
-          <div className="mt-4 grid grid-cols-1 gap-2">
-            <button
-              onClick={async () => {
-                try {
-                  await navigator.clipboard.writeText(resumo);
-                  alert("Resumo copiado ✅");
-                } catch {
-                  alert("Não consegui copiar.");
-                }
-              }}
-              className="w-full rounded-xl border py-3 font-extrabold hover:bg-gray-50"
-            >
-              Copiar resumo
-            </button>
-
-            <button
-              onClick={() => {
-                const msg = resumo;
-                window.open(waLink(WHATS, msg), "_blank", "noopener,noreferrer");
-              }}
-              className="w-full rounded-xl bg-green-600 hover:bg-green-700 text-white py-3 font-extrabold"
-            >
-              Enviar no WhatsApp (opcional)
-            </button>
-          </div>
+        <div className="mt-4 text-[11px] text-gray-500 border-t pt-3">
+          Obrigado! • IA Drogarias FV
         </div>
       </div>
+
+      {/* CSS de impressão */}
+      <style jsx global>{`
+        @media print {
+          body { background: white !important; }
+          button { display: none !important; }
+          .bg-gray-50 { background: white !important; }
+          .shadow-sm { box-shadow: none !important; }
+        }
+      `}</style>
     </div>
   );
 }
