@@ -1,38 +1,44 @@
-// app/fv/painel/pedidos/page.tsx
+// app/fv/painel/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
+export const dynamic = "force-dynamic";
+
+/* =========================
+   CONFIG
+========================= */
 const SENHA_PAINEL = "102030";
 const LS_KEY = "fv_painel_ok";
-
 const PEDIDOS_TABLE = "fv_pedidos";
-const PAGE_LIMIT = 300;
 
+// (opcional) botão de WhatsApp no detalhe
+const WHATS = "5511948343725";
+
+/* =========================
+   TYPES
+========================= */
 type Pedido = {
   id: string;
-  created_at?: string | null;
-
+  created_at?: string;
   cliente_nome?: string | null;
   cliente_whatsapp?: string | null;
 
-  tipo_entrega?: string | null; // ENTREGA | RETIRADA
-  endereco?: string | null;
-  numero?: string | null;
-  bairro?: string | null;
+  tipo_entrega?: string | null;
+  pagamento?: string | null;
 
-  pagamento?: string | null; // PIX | CARTAO | DINHEIRO | COMBINAR
   taxa_entrega?: number | null;
   subtotal?: number | null;
   total?: number | null;
 
-  status?: string | null; // NOVO | EM_ATENDIMENTO | CONFIRMADO | CANCELADO
-  canal?: string | null; // SITE | WHATS | etc
-
-  itens?: any; // jsonb
+  status?: string | null;
+  itens?: any; // json
 };
 
+/* =========================
+   HELPERS
+========================= */
 function brl(v: number | null | undefined) {
   if (v === null || v === undefined || Number.isNaN(v)) return "—";
   return Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
@@ -42,7 +48,36 @@ function onlyDigits(v: string) {
   return (v || "").replace(/\D/g, "");
 }
 
-function fmtDate(iso?: string | null) {
+function waLink(phone: string, msg: string) {
+  const clean = phone.replace(/\D/g, "");
+  return `https://wa.me/${clean}?text=${encodeURIComponent(msg)}`;
+}
+
+function normalizeStatus(s?: string | null) {
+  const v = (s || "NOVO").toUpperCase();
+  if (v === "NOVO") return "NOVO";
+  if (v === "EM_SEPARACAO" || v === "SEPARANDO") return "EM SEPARAÇÃO";
+  if (v === "CONFIRMADO") return "CONFIRMADO";
+  if (v === "ENTREGUE") return "ENTREGUE";
+  if (v === "CANCELADO") return "CANCELADO";
+  return v;
+}
+
+function parseItens(raw: any): Array<any> {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw === "string") {
+    try {
+      const j = JSON.parse(raw);
+      return Array.isArray(j) ? j : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+function fmtData(iso?: string) {
   if (!iso) return "—";
   try {
     const d = new Date(iso);
@@ -52,45 +87,37 @@ function fmtDate(iso?: string | null) {
   }
 }
 
-function normalizeStatus(s?: string | null) {
-  const x = (s || "").toUpperCase().trim();
-  return x || "NOVO";
-}
-
 function buildResumo(p: Pedido) {
-  const itens = Array.isArray(p.itens) ? p.itens : [];
-  let msg = `🧾 *Pedido FV*\n`;
-  msg += `🆔 ${p.id}\n`;
-  msg += `📅 ${fmtDate(p.created_at)}\n\n`;
+  const itens = parseItens(p.itens);
 
-  msg += `👤 ${p.cliente_nome || "—"}\n`;
-  msg += `📞 ${p.cliente_whatsapp || "—"}\n\n`;
-
-  if ((p.tipo_entrega || "").toUpperCase() === "ENTREGA") {
-    msg += `🚚 *Entrega*\n${p.endereco || "—"}, ${p.numero || "—"} - ${p.bairro || "—"}\n`;
-    msg += `Taxa: ${brl(p.taxa_entrega || 0)}\n\n`;
-  } else {
-    msg += `🏪 *Retirada*\n\n`;
-  }
-
+  let msg = `🧾 *Pedido FV* (${p.id})\n\n`;
+  msg += `🕒 ${fmtData(p.created_at)}\n`;
+  msg += `👤 Cliente: ${p.cliente_nome || "—"}\n`;
+  msg += `📞 Whats: ${p.cliente_whatsapp || "—"}\n`;
+  msg += `🚚 Entrega: ${p.tipo_entrega || "—"}\n`;
   msg += `💳 Pagamento: ${p.pagamento || "—"}\n`;
-  msg += `📌 Status: ${normalizeStatus(p.status)}\n\n`;
+  msg += `🏷️ Status: ${normalizeStatus(p.status)}\n\n`;
 
   msg += `🛒 *Itens:*\n`;
   for (const it of itens) {
-    const qtd = Number(it?.qtd || 0);
+    const qtd = Number(it?.qtd ?? 0);
     const nome = it?.nome || "—";
     const ean = it?.ean || "";
-    const sub = Number(it?.subtotal ?? (Number(it?.preco || 0) * qtd) || 0);
+    // ✅ CORRIGIDO (sem misturar ?? com ||)
+    const sub = Number(it?.subtotal ?? (Number(it?.preco ?? 0) * qtd));
     msg += `• ${nome}${ean ? ` (${ean})` : ""} — ${qtd}x — ${brl(sub)}\n`;
   }
 
   msg += `\nSubtotal: ${brl(p.subtotal || 0)}\n`;
+  msg += `Taxa: ${brl(p.taxa_entrega || 0)}\n`;
   msg += `Total: ${brl(p.total || 0)}\n`;
 
   return msg;
 }
 
+/* =========================
+   PAGE
+========================= */
 export default function PainelPedidosFVPage() {
   const [ok, setOk] = useState(false);
   const [senha, setSenha] = useState("");
@@ -141,35 +168,32 @@ export default function PainelPedidosFVPage() {
     );
   }
 
-  return <PainelPedidosFV onSair={sair} />;
+  return <Painel onSair={sair} />;
 }
 
-function PainelPedidosFV({ onSair }: { onSair: () => void }) {
+function Painel({ onSair }: { onSair: () => void }) {
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-
-  const [tab, setTab] = useState<"NOVO" | "EM_ATENDIMENTO" | "CONFIRMADO" | "CANCELADO" | "TODOS">("NOVO");
-  const [q, setQ] = useState("");
   const [pedidos, setPedidos] = useState<Pedido[]>([]);
+  const [q, setQ] = useState("");
+  const [status, setStatus] = useState<string>("TODOS");
 
+  const [open, setOpen] = useState(false);
   const [sel, setSel] = useState<Pedido | null>(null);
-  const [editStatus, setEditStatus] = useState<string>("NOVO");
-  const [obs, setObs] = useState<string>(""); // se quiser criar coluna "obs" depois, já fica pronto
 
-  async function carregar() {
+  async function load() {
     setLoading(true);
     try {
+      // ✅ select("*") evita quebrar se colunas mudarem
       const { data, error } = await supabase
         .from(PEDIDOS_TABLE)
         .select("*")
         .order("created_at", { ascending: false })
-        .limit(PAGE_LIMIT);
+        .limit(500);
 
       if (error) throw error;
-      setPedidos(((data || []) as Pedido[]) ?? []);
+      setPedidos((data || []) as Pedido[]);
     } catch (e) {
-      console.error(e);
-      alert("Não consegui carregar os pedidos.");
+      console.error("Erro carregando pedidos:", e);
       setPedidos([]);
     } finally {
       setLoading(false);
@@ -177,345 +201,253 @@ function PainelPedidosFV({ onSair }: { onSair: () => void }) {
   }
 
   useEffect(() => {
-    carregar();
-  }, []);
-
-  // refresh a cada 25s (leve)
-  useEffect(() => {
-    const t = setInterval(() => carregar(), 25000);
-    return () => clearInterval(t);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    load();
   }, []);
 
   const filtrados = useMemo(() => {
     const qq = q.trim().toLowerCase();
-
     return pedidos.filter((p) => {
-      const st = normalizeStatus(p.status);
-
-      if (tab !== "TODOS" && st !== tab) return false;
+      const st = (p.status || "NOVO").toUpperCase();
+      if (status !== "TODOS" && st !== status) return false;
 
       if (!qq) return true;
-
-      const alvo =
-        `${p.id} ${p.cliente_nome || ""} ${p.cliente_whatsapp || ""} ${p.pagamento || ""} ${p.tipo_entrega || ""} ${p.bairro || ""}`.toLowerCase();
-
-      return alvo.includes(qq);
+      const nome = (p.cliente_nome || "").toLowerCase();
+      const wpp = (p.cliente_whatsapp || "").toLowerCase();
+      const id = (p.id || "").toLowerCase();
+      return nome.includes(qq) || wpp.includes(qq) || id.includes(qq);
     });
-  }, [pedidos, tab, q]);
+  }, [pedidos, q, status]);
 
-  const counts = useMemo(() => {
-    const c = { NOVO: 0, EM_ATENDIMENTO: 0, CONFIRMADO: 0, CANCELADO: 0, TODOS: pedidos.length };
+  const contagem = useMemo(() => {
+    const map = new Map<string, number>();
     for (const p of pedidos) {
-      const st = normalizeStatus(p.status) as any;
-      if (st in c) c[st] += 1;
+      const st = (p.status || "NOVO").toUpperCase();
+      map.set(st, (map.get(st) || 0) + 1);
     }
-    return c;
+    return map;
   }, [pedidos]);
 
-  function abrir(p: Pedido) {
-    setSel(p);
-    setEditStatus(normalizeStatus(p.status));
-    setObs("");
-  }
-
-  async function salvarStatus() {
-    if (!sel) return;
-    setSaving(true);
-    try {
-      const { error } = await supabase
-        .from(PEDIDOS_TABLE)
-        .update({ status: editStatus })
-        .eq("id", sel.id);
-
-      if (error) throw error;
-
-      // atualiza local
-      setPedidos((prev) => prev.map((x) => (x.id === sel.id ? { ...x, status: editStatus } : x)));
-      setSel((prev) => (prev ? { ...prev, status: editStatus } : prev));
-    } catch (e) {
-      console.error(e);
-      alert("Não consegui salvar o status.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function excluirPedido() {
-    if (!sel) return;
-    const ok = confirm("Tem certeza que deseja excluir este pedido?");
-    if (!ok) return;
-
-    setSaving(true);
-    try {
-      const { error } = await supabase.from(PEDIDOS_TABLE).delete().eq("id", sel.id);
-      if (error) throw error;
-
-      setPedidos((prev) => prev.filter((x) => x.id !== sel.id));
-      setSel(null);
-    } catch (e) {
-      console.error(e);
-      alert("Não consegui excluir.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  function copy(text: string) {
-    try {
-      navigator.clipboard.writeText(text);
-    } catch {
-      // ignore
-    }
-  }
-
   return (
-    <main className="min-h-screen bg-gray-50">
-      {/* TOPBAR */}
+    <main className="min-h-screen bg-gray-50 pb-16">
       <header className="sticky top-0 z-40 bg-blue-700 shadow">
-        <div className="mx-auto max-w-7xl px-4 py-3 flex items-center gap-3">
+        <div className="mx-auto max-w-6xl px-4 py-3 flex items-center gap-3">
           <div className="text-white font-extrabold whitespace-nowrap">IA Drogarias • Painel FV</div>
 
-          <div className="flex-1" />
+          <div className="flex-1">
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Buscar por cliente, Whats ou ID..."
+              className="w-full rounded-full bg-white/95 px-4 py-2.5 text-sm outline-none focus:ring-4 focus:ring-white/20"
+            />
+          </div>
 
-          <button onClick={carregar} className="text-white font-extrabold bg-white/10 hover:bg-white/15 px-4 py-2 rounded-full">
-            {loading ? "Atualizando..." : "Atualizar"}
+          <button onClick={load} className="text-white font-extrabold bg-white/10 hover:bg-white/15 px-4 py-2 rounded-full">
+            Atualizar
           </button>
 
           <button onClick={onSair} className="text-white font-extrabold bg-white/10 hover:bg-white/15 px-4 py-2 rounded-full">
             Sair
           </button>
         </div>
+
+        <div className="mx-auto max-w-6xl px-4 pb-3 flex flex-wrap gap-2">
+          {[
+            ["TODOS", "Todos"],
+            ["NOVO", `NOVO (${contagem.get("NOVO") || 0})`],
+            ["CONFIRMADO", `CONFIRMADO (${contagem.get("CONFIRMADO") || 0})`],
+            ["ENTREGUE", `ENTREGUE (${contagem.get("ENTREGUE") || 0})`],
+            ["CANCELADO", `CANCELADO (${contagem.get("CANCELADO") || 0})`],
+          ].map(([k, label]) => (
+            <button
+              key={k}
+              onClick={() => setStatus(k)}
+              className={`px-3 py-2 rounded-full text-xs font-extrabold ${
+                status === k ? "bg-green-400 text-blue-950" : "bg-white/10 text-white hover:bg-white/15"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
       </header>
 
-      <div className="mx-auto max-w-7xl px-4 py-6 grid lg:grid-cols-[420px_1fr] gap-6">
-        {/* LISTA */}
-        <section className="bg-white border rounded-3xl shadow-sm p-4">
-          <div className="flex items-center justify-between gap-3">
-            <div className="text-lg font-extrabold text-gray-900">Pedidos</div>
-            <div className="text-xs text-gray-500">Limite: {PAGE_LIMIT}</div>
-          </div>
-
-          {/* Tabs */}
-          <div className="mt-3 flex flex-wrap gap-2">
-            {(
-              [
-                ["NOVO", counts.NOVO],
-                ["EM_ATENDIMENTO", counts.EM_ATENDIMENTO],
-                ["CONFIRMADO", counts.CONFIRMADO],
-                ["CANCELADO", counts.CANCELADO],
-                ["TODOS", counts.TODOS],
-              ] as const
-            ).map(([k, n]) => (
-              <button
-                key={k}
-                onClick={() => setTab(k)}
-                className={`px-3 py-2 rounded-xl font-extrabold text-sm ${
-                  tab === k ? "bg-blue-700 text-white" : "bg-gray-100 hover:bg-gray-200 text-gray-800"
-                }`}
-              >
-                {k.replace("_", " ")} <span className={`${tab === k ? "text-white/80" : "text-gray-500"}`}>({n})</span>
-              </button>
-            ))}
-          </div>
-
-          {/* Busca */}
-          <div className="mt-3">
-            <input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Buscar por nome, Whats, ID..."
-              className="w-full border rounded-2xl px-4 py-3 outline-none focus:ring-4 focus:ring-blue-100"
-            />
-          </div>
-
-          {/* Lista */}
-          <div className="mt-4 space-y-2 max-h-[65vh] overflow-auto pr-1">
-            {loading ? (
-              <div className="text-gray-600 bg-gray-50 border rounded-2xl p-4">Carregando…</div>
-            ) : filtrados.length === 0 ? (
-              <div className="text-gray-600 bg-gray-50 border rounded-2xl p-4">Nenhum pedido.</div>
-            ) : (
-              filtrados.map((p) => {
-                const st = normalizeStatus(p.status);
-                return (
-                  <button
-                    key={p.id}
-                    onClick={() => abrir(p)}
-                    className={`w-full text-left border rounded-2xl p-3 hover:bg-gray-50 transition ${
-                      sel?.id === p.id ? "border-blue-300 bg-blue-50" : "border-gray-200"
-                    }`}
-                  >
-                    <div className="flex items-start justify-between gap-2">
-                      <div className="min-w-0">
-                        <div className="font-extrabold text-gray-900 truncate">
-                          {p.cliente_nome || "Sem nome"} <span className="text-gray-400 font-bold">•</span>{" "}
-                          <span className="text-gray-600">{p.cliente_whatsapp || "—"}</span>
-                        </div>
-                        <div className="text-xs text-gray-500 mt-1">
-                          {fmtDate(p.created_at)} • {p.tipo_entrega || "—"} • {p.pagamento || "—"}
-                        </div>
-                      </div>
-
-                      <div className="text-right">
-                        <div className="font-extrabold text-green-700">{brl(p.total || 0)}</div>
-                        <div className="text-[11px] font-extrabold text-blue-900 bg-blue-100 px-2 py-1 rounded-full inline-block">
-                          {st}
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="mt-2 text-[11px] text-gray-500 break-all">
-                      ID: <span className="font-mono">{p.id}</span>
-                    </div>
-                  </button>
-                );
-              })
-            )}
-          </div>
-        </section>
-
-        {/* DETALHE */}
-        <section className="bg-white border rounded-3xl shadow-sm p-5">
-          {!sel ? (
-            <div className="text-gray-600 bg-gray-50 border rounded-2xl p-6">
-              Selecione um pedido na lista para ver os detalhes.
+      <section className="max-w-6xl mx-auto px-4 mt-6">
+        <div className="bg-white border rounded-3xl p-4 shadow-sm">
+          <div className="flex items-center justify-between">
+            <div className="font-extrabold text-gray-900">
+              Pedidos <span className="text-gray-500">({filtrados.length})</span>
             </div>
+            <div className="text-xs text-gray-500">Mostrando até 500</div>
+          </div>
+
+          {loading ? (
+            <div className="mt-4 text-gray-600">Carregando…</div>
+          ) : filtrados.length === 0 ? (
+            <div className="mt-4 text-gray-600">Nenhum pedido encontrado.</div>
           ) : (
-            <>
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <div className="text-xl font-extrabold text-gray-900">{sel.cliente_nome || "Sem nome"}</div>
-                  <div className="text-sm text-gray-600 mt-1">
-                    Whats: <b>{sel.cliente_whatsapp || "—"}</b>
-                  </div>
-                  <div className="text-xs text-gray-500 mt-1">Criado: {fmtDate(sel.created_at)}</div>
-                  <div className="text-xs text-gray-500 mt-1">
-                    ID: <span className="font-mono">{sel.id}</span>
-                  </div>
-                </div>
-
-                <div className="flex flex-col gap-2">
-                  <button
-                    onClick={() => copy(buildResumo(sel))}
-                    className="px-4 py-2 rounded-xl border font-extrabold hover:bg-gray-50"
-                  >
-                    Copiar resumo
-                  </button>
-
-                  {/* opcional: abrir Whats do cliente */}
-                  <a
-                    href={`https://wa.me/55${onlyDigits(sel.cliente_whatsapp || "")}`}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="px-4 py-2 rounded-xl bg-green-600 hover:bg-green-700 text-white font-extrabold text-center"
-                  >
-                    Abrir Whats
-                  </a>
-                </div>
-              </div>
-
-              <div className="mt-5 grid md:grid-cols-3 gap-4">
-                <div className="bg-gray-50 border rounded-2xl p-4">
-                  <div className="text-xs text-gray-500 font-bold">ENTREGA</div>
-                  <div className="mt-1 font-extrabold">{sel.tipo_entrega || "—"}</div>
-                  {(sel.tipo_entrega || "").toUpperCase() === "ENTREGA" ? (
-                    <div className="mt-2 text-sm text-gray-700">
-                      {sel.endereco || "—"}, {sel.numero || "—"} <br />
-                      {sel.bairro || "—"} <br />
-                      <span className="font-extrabold">Taxa:</span> {brl(sel.taxa_entrega || 0)}
+            <div className="mt-4 space-y-2">
+              {filtrados.map((p) => (
+                <button
+                  key={p.id}
+                  onClick={() => {
+                    setSel(p);
+                    setOpen(true);
+                  }}
+                  className="w-full text-left border rounded-2xl p-3 hover:bg-gray-50"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <div className="font-extrabold text-gray-900 line-clamp-1">
+                        {p.cliente_nome || "Sem nome"} <span className="text-gray-400 font-bold">•</span>{" "}
+                        <span className="text-gray-600 font-bold">{p.cliente_whatsapp || "—"}</span>
+                      </div>
+                      <div className="text-xs text-gray-500 mt-1">
+                        ID: <span className="font-mono">{p.id}</span> • {fmtData(p.created_at)}
+                      </div>
                     </div>
-                  ) : (
-                    <div className="mt-2 text-sm text-gray-700">Retirada na loja.</div>
-                  )}
-                </div>
 
-                <div className="bg-gray-50 border rounded-2xl p-4">
-                  <div className="text-xs text-gray-500 font-bold">PAGAMENTO</div>
-                  <div className="mt-1 font-extrabold">{sel.pagamento || "—"}</div>
-                  <div className="mt-2 text-sm text-gray-700">
-                    <div>Subtotal: <b>{brl(sel.subtotal || 0)}</b></div>
-                    <div>Total: <b className="text-green-700">{brl(sel.total || 0)}</b></div>
+                    <div className="text-right shrink-0">
+                      <div className="text-sm font-extrabold text-green-700">{brl(p.total || 0)}</div>
+                      <div className="text-xs font-extrabold text-blue-900">{normalizeStatus(p.status)}</div>
+                    </div>
                   </div>
-                </div>
-
-                <div className="bg-white border rounded-2xl p-4">
-                  <div className="text-xs text-gray-500 font-bold">STATUS</div>
-
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {(["NOVO", "EM_ATENDIMENTO", "CONFIRMADO", "CANCELADO"] as const).map((s) => (
-                      <button
-                        key={s}
-                        onClick={() => setEditStatus(s)}
-                        className={`px-3 py-2 rounded-xl font-extrabold ${
-                          editStatus === s ? "bg-blue-700 text-white" : "bg-gray-100 hover:bg-gray-200"
-                        }`}
-                        disabled={saving}
-                      >
-                        {s.replace("_", " ")}
-                      </button>
-                    ))}
-                  </div>
-
-                  <div className="mt-3 grid grid-cols-2 gap-2">
-                    <button
-                      onClick={salvarStatus}
-                      disabled={saving}
-                      className="px-4 py-3 rounded-2xl bg-blue-700 hover:bg-blue-800 text-white font-extrabold"
-                    >
-                      {saving ? "Salvando..." : "Salvar status"}
-                    </button>
-
-                    <button
-                      onClick={excluirPedido}
-                      disabled={saving}
-                      className="px-4 py-3 rounded-2xl border font-extrabold text-red-600 hover:bg-red-50"
-                    >
-                      Excluir
-                    </button>
-                  </div>
-
-                  <div className="mt-2 text-xs text-gray-500">
-                    Atual: <b>{normalizeStatus(sel.status)}</b>
-                  </div>
-                </div>
-              </div>
-
-              {/* ITENS */}
-              <div className="mt-6">
-                <div className="text-lg font-extrabold text-gray-900">Itens</div>
-
-                <div className="mt-3 space-y-2">
-                  {Array.isArray(sel.itens) && sel.itens.length ? (
-                    sel.itens.map((it: any, idx: number) => {
-                      const qtd = Number(it?.qtd || 0);
-                      const nome = it?.nome || "—";
-                      const ean = it?.ean || "";
-                      const preco = Number(it?.preco || 0);
-                      const sub = Number(it?.subtotal ?? preco * qtd);
-                      return (
-                        <div key={idx} className="border rounded-2xl p-3 flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="font-extrabold text-gray-900">{nome}</div>
-                            <div className="text-xs text-gray-500">EAN: {ean || "—"}</div>
-                            <div className="text-xs text-gray-500">Preço: {brl(preco)}</div>
-                          </div>
-                          <div className="text-right">
-                            <div className="text-sm font-extrabold">Qtd: {qtd}</div>
-                            <div className="text-sm font-extrabold text-blue-900">{brl(sub)}</div>
-                          </div>
-                        </div>
-                      );
-                    })
-                  ) : (
-                    <div className="text-gray-600 bg-gray-50 border rounded-2xl p-4">Sem itens (json vazio).</div>
-                  )}
-                </div>
-              </div>
-            </>
+                </button>
+              ))}
+            </div>
           )}
-        </section>
-      </div>
+        </div>
+      </section>
+
+      {open && sel ? (
+        <Detalhe
+          p={sel}
+          onClose={() => {
+            setOpen(false);
+            setSel(null);
+          }}
+        />
+      ) : null}
     </main>
+  );
+}
+
+function Detalhe({ p, onClose }: { p: Pedido; onClose: () => void }) {
+  const itens = parseItens(p.itens);
+  const resumo = useMemo(() => buildResumo(p), [p]);
+
+  return (
+    <div className="fixed inset-0 z-[80]">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="absolute right-0 top-0 h-full w-full sm:w-[520px] bg-white shadow-2xl flex flex-col">
+        <div className="p-4 border-b flex items-center justify-between">
+          <div className="font-extrabold">Pedido • {p.id}</div>
+          <button onClick={onClose} className="px-3 py-2 rounded-xl border font-extrabold bg-white hover:bg-gray-50">
+            Fechar
+          </button>
+        </div>
+
+        <div className="p-4 flex-1 overflow-auto">
+          <div className="bg-gray-50 border rounded-2xl p-4">
+            <div className="text-xs text-gray-500">Criado em</div>
+            <div className="font-extrabold">{fmtData(p.created_at)}</div>
+
+            <div className="mt-3 grid grid-cols-2 gap-2 text-sm">
+              <div>
+                <div className="text-xs text-gray-500">Cliente</div>
+                <div className="font-extrabold">{p.cliente_nome || "—"}</div>
+              </div>
+              <div>
+                <div className="text-xs text-gray-500">Whats</div>
+                <div className="font-extrabold">{p.cliente_whatsapp || "—"}</div>
+              </div>
+
+              <div>
+                <div className="text-xs text-gray-500">Entrega</div>
+                <div className="font-extrabold">{p.tipo_entrega || "—"}</div>
+              </div>
+              <div>
+                <div className="text-xs text-gray-500">Pagamento</div>
+                <div className="font-extrabold">{p.pagamento || "—"}</div>
+              </div>
+
+              <div>
+                <div className="text-xs text-gray-500">Status</div>
+                <div className="font-extrabold text-blue-900">{normalizeStatus(p.status)}</div>
+              </div>
+              <div>
+                <div className="text-xs text-gray-500">Total</div>
+                <div className="font-extrabold text-green-700">{brl(p.total || 0)}</div>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 bg-white border rounded-2xl p-4">
+            <div className="font-extrabold">Itens</div>
+
+            {itens.length === 0 ? (
+              <div className="mt-2 text-sm text-gray-600">Sem itens no JSON.</div>
+            ) : (
+              <div className="mt-3 space-y-2">
+                {itens.map((it: any, idx: number) => {
+                  const qtd = Number(it?.qtd ?? 0);
+                  const sub = Number(it?.subtotal ?? (Number(it?.preco ?? 0) * qtd));
+                  return (
+                    <div key={idx} className="border rounded-xl p-3">
+                      <div className="font-extrabold text-sm">{it?.nome || "—"}</div>
+                      <div className="text-xs text-gray-500">EAN: {it?.ean || "—"}</div>
+                      <div className="mt-1 text-sm font-extrabold text-blue-900">
+                        {qtd}x • {brl(sub)}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+
+            <div className="mt-4 border-t pt-3 text-sm">
+              <div className="flex justify-between">
+                <span className="text-gray-600">Subtotal</span>
+                <span className="font-extrabold">{brl(p.subtotal || 0)}</span>
+              </div>
+              <div className="flex justify-between mt-1">
+                <span className="text-gray-600">Taxa</span>
+                <span className="font-extrabold">{brl(p.taxa_entrega || 0)}</span>
+              </div>
+              <div className="flex justify-between mt-2 text-base">
+                <span className="font-extrabold">Total</span>
+                <span className="font-extrabold text-green-700">{brl(p.total || 0)}</span>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 grid grid-cols-1 gap-2">
+            <button
+              onClick={async () => {
+                try {
+                  await navigator.clipboard.writeText(resumo);
+                  alert("Resumo copiado ✅");
+                } catch {
+                  alert("Não consegui copiar.");
+                }
+              }}
+              className="w-full rounded-xl border py-3 font-extrabold hover:bg-gray-50"
+            >
+              Copiar resumo
+            </button>
+
+            <button
+              onClick={() => {
+                const msg = resumo;
+                window.open(waLink(WHATS, msg), "_blank", "noopener,noreferrer");
+              }}
+              className="w-full rounded-xl bg-green-600 hover:bg-green-700 text-white py-3 font-extrabold"
+            >
+              Enviar no WhatsApp (opcional)
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
