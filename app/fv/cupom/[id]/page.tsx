@@ -203,13 +203,36 @@ export default function CupomPedidoFV() {
 
   const dt = pedido?.created_at ? new Date(pedido.created_at) : null;
 
+  const whatsFormatado = useMemo(() => {
+    // exibir só 11 9xxxx-xxxx
+    const br = WHATS_FV.replace(/^55/, "");
+    const d = onlyDigits(br);
+    // 11 + 9xxxx + xxxx
+    if (d.length >= 11) {
+      const ddd = d.slice(0, 2);
+      const p1 = d.slice(2, 7);
+      const p2 = d.slice(7, 11);
+      return `(${ddd}) ${p1}-${p2}`;
+    }
+    return br;
+  }, []);
+
   return (
     <div className="min-h-screen bg-gray-100 p-3">
       <style>{`
         @media print {
-          body { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+          body { 
+            -webkit-print-color-adjust: exact; 
+            print-color-adjust: exact; 
+            color: #000 !important;
+          }
+          .paper { 
+            box-shadow: none !important; 
+            border: none !important; 
+            margin: 0 !important; 
+            color: #000 !important;
+          }
           .no-print { display: none !important; }
-          .paper { box-shadow: none !important; border: none !important; margin: 0 !important; }
           @page { size: 80mm auto; margin: 6mm; }
           img { max-width: 100% !important; }
           svg { max-width: 100% !important; }
@@ -232,19 +255,19 @@ export default function CupomPedidoFV() {
       </div>
 
       {loading && (
-        <div className="max-w-md mx-auto paper bg-white border rounded-xl p-4 mono">
+        <div className="max-w-md mx-auto paper bg-white border rounded-xl p-4 mono text-black">
           Carregando cupom...
         </div>
       )}
 
       {erro && !loading && (
-        <div className="max-w-md mx-auto paper bg-white border rounded-xl p-4 mono">
+        <div className="max-w-md mx-auto paper bg-white border rounded-xl p-4 mono text-black">
           {erro}
         </div>
       )}
 
       {!loading && !erro && pedido && (
-        <div className="max-w-md mx-auto paper bg-white border rounded-xl p-4 mono">
+        <div className="max-w-md mx-auto paper bg-white border rounded-xl p-4 mono text-black">
           {/* CABEÇALHO */}
           <div className="text-center">
             <div className="text-lg font-extrabold text-black">IA Drogarias • FV</div>
@@ -399,7 +422,7 @@ export default function CupomPedidoFV() {
           <div className="text-center text-xs text-black/80">
             <div className="font-semibold">Obrigado! 💙</div>
             <div className="mt-1 font-extrabold text-black">
-              Whats: {WHATS_FV.replace(/^55/, "").replace(/^(\d{2})(\d)/, "($1) $2").replace(/(\d{5})(\d{4})$/, "$1-$2")}
+              Whats: {whatsFormatado}
             </div>
             <div className="mt-1 font-semibold text-black">{SITE}</div>
           </div>
