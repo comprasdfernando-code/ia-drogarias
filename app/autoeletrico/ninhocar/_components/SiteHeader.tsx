@@ -10,7 +10,7 @@ function buildWhatsAppLink(numberE164: string, msg: string) {
 }
 
 export default function SiteHeader() {
-  const WHATS = "5511948343725";
+  const WHATS = "5511954548870";
   const wa = buildWhatsAppLink(
     WHATS,
     "Olá! Vim pelo site da Ninho Car. Quero um orçamento 🙂"
@@ -37,7 +37,7 @@ export default function SiteHeader() {
 
         <nav className="flex items-center gap-2">
           <Link
-            href="/loja"
+            href="/autoeletrico/ninhocar/loja"
             className="rounded-xl border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm font-semibold hover:bg-zinc-800"
           >
             Loja
@@ -53,7 +53,7 @@ export default function SiteHeader() {
           </a>
 
           <Link
-            href="/financeiro"
+            href="/autoeletrico/ninhocar/financeiro"
             className="hidden rounded-xl border border-zinc-800 bg-transparent px-3 py-2 text-sm font-semibold text-zinc-200 hover:bg-zinc-900 sm:inline-flex"
           >
             Financeiro
