@@ -5,7 +5,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 
-import { CartProvider, useCart } from "./_components/cart"; // ✅ garante Provider
+import { useCart } from "./_components/cart";
 import { ToastProvider, useToast } from "./_components/toast";
 import FVBanners from "./_components/FVBanners";
 import { CartUIProvider, useCartUI } from "./_components/cart-ui";
@@ -24,7 +24,14 @@ type FVProduto = {
   destaque_home: boolean | null;
   ativo: boolean | null;
   imagens: string[] | null;
+
+  // ✅ vindo da VIEW
+  estoque_total: number;
+  disponivel: boolean;
 };
+
+const VIEW_HOME = "fv_home_com_estoque";
+const PAGE_SIZE = 60;
 
 function brl(v: number | null | undefined) {
   if (v === null || v === undefined || Number.isNaN(v)) return "—";
@@ -67,11 +74,9 @@ function firstImg(imagens?: string[] | null) {
 export default function FarmaciaVirtualHomePage() {
   return (
     <ToastProvider>
-      <CartProvider>
-        <CartUIProvider>
-          <FarmaciaVirtualHome />
-        </CartUIProvider>
-      </CartProvider>
+      <CartUIProvider>
+        <FarmaciaVirtualHome />
+      </CartUIProvider>
     </ToastProvider>
   );
 }
@@ -79,60 +84,68 @@ export default function FarmaciaVirtualHomePage() {
 function FarmaciaVirtualHome() {
   const [loadingHome, setLoadingHome] = useState(true);
   const [loadingBusca, setLoadingBusca] = useState(false);
-  const [busca, setBusca] = useState("");
 
+  const [busca, setBusca] = useState("");
   const [homeProdutos, setHomeProdutos] = useState<FVProduto[]>([]);
   const [resultado, setResultado] = useState<FVProduto[]>([]);
 
-  const { cartOpen, openCart, closeCart } = useCartUI();
+  const [page, setPage] = useState(0);
+  const [hasMore, setHasMore] = useState(true);
 
+  const { cartOpen, openCart, closeCart } = useCartUI();
   const cart = useCart();
+
   const totalCarrinho = cart.subtotal;
   const qtdCarrinho = cart.countItems;
 
   const isSearching = !!busca.trim();
 
-  // ✅ LOAD HOME (sem categoria)
-  useEffect(() => {
-    async function loadHome() {
-      try {
-        setLoadingHome(true);
+  // =========================================
+  // LOAD HOME (sem categoria) com paginação
+  // =========================================
+  async function loadHome(p = 0, append = false) {
+    try {
+      setLoadingHome(true);
 
-        const { data, error } = await supabase
-          .from("fv_produtos")
-          .select("id,ean,nome,laboratorio,categoria,apresentacao,pmc,em_promocao,preco_promocional,percentual_off,destaque_home,ativo,imagens")
-          .eq("ativo", true)
-          .limit(2500);
+      const from = p * PAGE_SIZE;
+      const to = from + PAGE_SIZE - 1;
 
-        if (error) throw error;
+      const { data, error } = await supabase
+        .from(VIEW_HOME)
+        .select(
+          "id,ean,nome,laboratorio,categoria,apresentacao,pmc,em_promocao,preco_promocional,percentual_off,destaque_home,ativo,imagens,estoque_total,disponivel"
+        )
+        .order("destaque_home", { ascending: false })
+        .order("em_promocao", { ascending: false })
+        .order("nome", { ascending: true })
+        .range(from, to);
 
-        const arr = (data || []) as FVProduto[];
-        // ✅ ordena: destaque > promoção > nome
-        arr.sort((a, b) => {
-          const da = a.destaque_home ? 1 : 0;
-          const db = b.destaque_home ? 1 : 0;
-          if (db !== da) return db - da;
+      if (error) throw error;
 
-          const pa = a.em_promocao ? 1 : 0;
-          const pb = b.em_promocao ? 1 : 0;
-          if (pb !== pa) return pb - pa;
+      const arr = (data || []) as FVProduto[];
+      setHasMore(arr.length === PAGE_SIZE);
 
-          return (a.nome || "").localeCompare(b.nome || "");
-        });
+      if (append) setHomeProdutos((prev) => [...prev, ...arr]);
+      else setHomeProdutos(arr);
 
-        setHomeProdutos(arr);
-      } catch (e) {
-        console.error("Erro loadHome FV:", e);
-        setHomeProdutos([]);
-      } finally {
-        setLoadingHome(false);
-      }
+      setPage(p);
+    } catch (e) {
+      console.error("Erro loadHome FV:", e);
+      setHomeProdutos([]);
+      setHasMore(false);
+    } finally {
+      setLoadingHome(false);
     }
+  }
 
-    loadHome();
+  useEffect(() => {
+    loadHome(0, false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ✅ SEARCH
+  // =========================================
+  // SEARCH
+  // =========================================
   useEffect(() => {
     async function search() {
       const raw = busca.trim();
@@ -142,7 +155,6 @@ function FarmaciaVirtualHome() {
       }
 
       setLoadingBusca(true);
-
       try {
         const normalized = raw
           .toLowerCase()
@@ -150,55 +162,54 @@ function FarmaciaVirtualHome() {
           .replace(/\s+/g, " ")
           .trim();
 
-        const { data, error } = await supabase.rpc("fv_search_produtos", {
-          q: normalized,
-          lim: 120,
-        });
-
-        if (error) throw error;
-        setResultado(((data || []) as FVProduto[]) ?? []);
-      } catch (e) {
-        console.error("Erro search (RPC) FV:", e);
-
-        // fallback
+        // Se você tiver RPC, ok. Senão, usa fallback abaixo.
+        // IMPORTANTE: a RPC precisa retornar também estoque_total/disponivel,
+        // por isso aqui vamos de fallback direto na VIEW (mais garantido).
+        throw new Error("fallback");
+      } catch {
         try {
           const digits = raw.replace(/\D/g, "");
           let query = supabase
-            .from("fv_produtos")
-            .select("id,ean,nome,laboratorio,categoria,apresentacao,pmc,em_promocao,preco_promocional,percentual_off,destaque_home,ativo,imagens")
-            .eq("ativo", true)
-            .limit(120);
+            .from(VIEW_HOME)
+            .select(
+              "id,ean,nome,laboratorio,categoria,apresentacao,pmc,em_promocao,preco_promocional,percentual_off,destaque_home,ativo,imagens,estoque_total,disponivel"
+            )
+            .limit(100);
 
-          if (digits.length >= 8 && digits.length <= 14) query = query.or(`ean.eq.${digits},nome.ilike.%${raw}%`);
-          else query = query.ilike("nome", `%${raw}%`);
+          if (digits.length >= 8 && digits.length <= 14) {
+            query = query.or(`ean.eq.${digits},nome.ilike.%${raw}%`);
+          } else {
+            query = query.ilike("nome", `%${raw}%`);
+          }
 
           const { data, error } = await query;
           if (error) throw error;
 
           const ordered = ((data || []) as FVProduto[]).sort((a, b) => {
-            const pa = a.em_promocao ? 1 : 0;
-            const pb = b.em_promocao ? 1 : 0;
-            if (pb !== pa) return pb - pa;
+            const pa = a.disponivel ? 1 : 0;
+            const pb = b.disponivel ? 1 : 0;
+            if (pb !== pa) return pb - pa; // disponíveis primeiro
+
+            const ppa = a.em_promocao ? 1 : 0;
+            const ppb = b.em_promocao ? 1 : 0;
+            if (ppb !== ppa) return ppb - ppa;
+
             return (a.nome || "").localeCompare(b.nome || "");
           });
 
           setResultado(ordered);
         } catch (e2) {
-          console.error("Erro fallback search FV:", e2);
+          console.error("Erro search FV:", e2);
           setResultado([]);
+        } finally {
+          setLoadingBusca(false);
         }
-      } finally {
-        setLoadingBusca(false);
       }
     }
 
-    const timer = setTimeout(search, 300);
+    const timer = setTimeout(search, 350);
     return () => clearTimeout(timer);
   }, [busca]);
-
-  const lista = useMemo(() => {
-    return isSearching ? resultado : homeProdutos;
-  }, [isSearching, resultado, homeProdutos]);
 
   return (
     <main className="min-h-screen bg-gray-50 pb-24">
@@ -316,36 +327,62 @@ function FarmaciaVirtualHome() {
       </div>
 
       <section className="max-w-6xl mx-auto px-4 mt-6">
-        <div className="flex items-end justify-between gap-3 mb-3">
-          <h2 className="text-lg font-extrabold text-gray-900">
-            {isSearching ? (
-              <>
+        {isSearching ? (
+          <>
+            <div className="flex items-end justify-between gap-3 mb-3">
+              <h2 className="text-lg font-extrabold text-gray-900">
                 Resultados <span className="text-gray-500">({resultado.length})</span>
-              </>
+              </h2>
+            </div>
+
+            {loadingBusca ? (
+              <GridSkeleton />
+            ) : resultado.length === 0 ? (
+              <div className="bg-white border rounded-2xl p-6 text-gray-600">Nenhum produto encontrado.</div>
             ) : (
-              "Produtos em destaque"
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-5">
+                {resultado.map((p) => (
+                  <ProdutoCardUltra key={p.id} p={p} onComprar={openCart} />
+                ))}
+              </div>
             )}
-          </h2>
-
-          {!isSearching ? (
-            <div className="text-xs font-bold text-gray-500">{homeProdutos.length ? `${homeProdutos.length}+ itens` : ""}</div>
-          ) : null}
-        </div>
-
-        {(loadingHome && !isSearching) || (loadingBusca && isSearching) ? (
-          <GridSkeleton />
-        ) : lista.length === 0 ? (
-          <div className="bg-white border rounded-2xl p-6 text-gray-700">Nenhum produto encontrado.</div>
+          </>
         ) : (
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-5">
-            {lista.map((p) => (
-              <ProdutoCardUltra key={p.id} p={p} onComprar={openCart} />
-            ))}
-          </div>
+          <>
+            <div className="flex items-end justify-between gap-3 mb-3">
+              <h2 className="text-lg font-extrabold text-gray-900">Produtos em destaque</h2>
+              <div className="text-xs text-gray-500">{homeProdutos.length}+ itens</div>
+            </div>
+
+            {loadingHome ? (
+              <GridSkeleton />
+            ) : (
+              <>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-5">
+                  {homeProdutos.map((p) => (
+                    <ProdutoCardUltra key={p.id} p={p} onComprar={openCart} />
+                  ))}
+                </div>
+
+                {hasMore ? (
+                  <div className="mt-6 flex justify-center">
+                    <button
+                      type="button"
+                      onClick={() => loadHome(page + 1, true)}
+                      className="px-6 py-3 rounded-2xl bg-white border hover:bg-gray-50 font-extrabold"
+                      disabled={loadingHome}
+                    >
+                      {loadingHome ? "Carregando..." : "Carregar mais"}
+                    </button>
+                  </div>
+                ) : null}
+              </>
+            )}
+          </>
         )}
       </section>
 
-      {/* ✅ Carrinho modal */}
+      {/* ✅ carrinho igual antes */}
       <CartModalPDV open={cartOpen} onClose={closeCart} />
     </main>
   );
@@ -353,8 +390,6 @@ function FarmaciaVirtualHome() {
 
 /* =========================================
    CART MODAL (ESTILO PDV) - FV
-   ✅ Salva no painel (fv_pedidos)
-   ✅ NÃO abre WhatsApp
 ========================================= */
 function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void }) {
   const cart = useCart();
@@ -461,7 +496,6 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
 
       <div className="absolute right-0 top-0 h-full w-full sm:w-[480px] bg-white shadow-2xl flex flex-col">
-        {/* HEADER */}
         <div className="p-4 border-b flex items-center justify-between">
           <div className="font-extrabold text-lg">🛒 Carrinho</div>
           <button type="button" onClick={onClose} className="px-3 py-2 rounded-xl border font-extrabold bg-white hover:bg-gray-50">
@@ -469,12 +503,11 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
           </button>
         </div>
 
-        {/* BODY */}
         <div className="p-4 flex-1 overflow-auto">
           {pedidoCriado ? (
             <div className="rounded-2xl border bg-green-50 p-4 mb-4">
-              <div className="text-lg font-extrabold text-green-700">Pedido finalizado com sucesso ✅</div>
-              <div className="text-sm text-gray-800 mt-1">
+              <div className="text-lg font-extrabold text-green-700">Pedido finalizado ✅</div>
+              <div className="text-sm text-gray-700 mt-1">
                 Pedido criado no sistema: <b>{pedidoCriado}</b>
               </div>
 
@@ -493,11 +526,8 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
             </div>
           ) : null}
 
-          {/* ITENS */}
           {cart.items.length === 0 ? (
-            <div className="text-gray-800 bg-gray-50 border rounded-2xl p-4 font-bold">
-              Seu carrinho está vazio. Adicione itens 😊
-            </div>
+            <div className="text-gray-600 bg-gray-50 border rounded-2xl p-4">Seu carrinho está vazio. Adicione itens 😊</div>
           ) : (
             <div className="space-y-3">
               {cart.items.map((it) => (
@@ -513,12 +543,12 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
                   </div>
 
                   <div className="flex-1 min-w-0">
-                    <div className="font-extrabold text-sm line-clamp-2 text-gray-900">{it.nome}</div>
-                    <div className="text-xs text-gray-700 font-bold">EAN: {it.ean}</div>
+                    <div className="font-extrabold text-sm line-clamp-2">{it.nome}</div>
+                    <div className="text-xs text-gray-500">EAN: {it.ean}</div>
 
                     <div className="mt-1 flex items-center justify-between gap-2">
                       <div className="font-extrabold text-blue-900">{brl(it.preco)}</div>
-                      <div className="text-xs font-extrabold text-gray-800">
+                      <div className="text-xs font-bold text-gray-600">
                         Item: {brl(Number(it.preco || 0) * Number(it.qtd || 0))}
                       </div>
                     </div>
@@ -533,7 +563,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
                         –
                       </button>
 
-                      <div className="w-10 h-10 rounded-xl border bg-gray-50 flex items-center justify-center font-extrabold text-gray-900">
+                      <div className="w-10 h-10 rounded-xl border bg-gray-50 flex items-center justify-center font-extrabold">
                         {it.qtd}
                       </div>
 
@@ -561,30 +591,28 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
             </div>
           )}
 
-          {/* DADOS */}
           <div className="mt-5 bg-gray-50 border rounded-2xl p-4">
-            <div className="font-extrabold text-gray-900">Dados do comprador</div>
+            <div className="font-extrabold text-gray-900">Dados</div>
 
             <div className="mt-3 space-y-2">
               <input
                 placeholder="Nome do cliente"
                 value={clienteNome}
                 onChange={(e) => setClienteNome(e.target.value)}
-                className="w-full border bg-white px-3 py-2.5 rounded-xl outline-none focus:ring-4 focus:ring-blue-100 font-bold text-gray-900"
+                className="w-full border bg-white px-3 py-2.5 rounded-xl outline-none focus:ring-4 focus:ring-blue-100"
                 disabled={saving || !!pedidoCriado}
               />
               <input
                 placeholder="WhatsApp com DDD (ex: 11999999999)"
                 value={clienteTelefone}
                 onChange={(e) => setClienteTelefone(e.target.value)}
-                className="w-full border bg-white px-3 py-2.5 rounded-xl outline-none focus:ring-4 focus:ring-blue-100 font-bold text-gray-900"
+                className="w-full border bg-white px-3 py-2.5 rounded-xl outline-none focus:ring-4 focus:ring-blue-100"
                 disabled={saving || !!pedidoCriado}
               />
-              <div className="text-[11px] text-gray-800 font-bold">Dica: informe com DDD. Ex: 11999999999</div>
+              <div className="text-[11px] text-gray-500">Dica: informe com DDD. Ex: 11999999999</div>
             </div>
           </div>
 
-          {/* ENTREGA */}
           <div className="mt-4 bg-white border rounded-2xl p-4">
             <div className="font-extrabold text-gray-900">Entrega</div>
 
@@ -593,7 +621,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
                 type="button"
                 onClick={() => setTipoEntrega("ENTREGA")}
                 className={`flex-1 px-3 py-2.5 rounded-xl font-extrabold ${
-                  tipoEntrega === "ENTREGA" ? "bg-blue-700 text-white" : "bg-gray-100 hover:bg-gray-200 text-gray-900"
+                  tipoEntrega === "ENTREGA" ? "bg-blue-700 text-white" : "bg-gray-100 hover:bg-gray-200"
                 }`}
                 disabled={saving || !!pedidoCriado}
               >
@@ -604,7 +632,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
                 type="button"
                 onClick={() => setTipoEntrega("RETIRADA")}
                 className={`flex-1 px-3 py-2.5 rounded-xl font-extrabold ${
-                  tipoEntrega === "RETIRADA" ? "bg-blue-700 text-white" : "bg-gray-100 hover:bg-gray-200 text-gray-900"
+                  tipoEntrega === "RETIRADA" ? "bg-blue-700 text-white" : "bg-gray-100 hover:bg-gray-200"
                 }`}
                 disabled={saving || !!pedidoCriado}
               >
@@ -618,7 +646,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
                   placeholder="Endereço"
                   value={endereco}
                   onChange={(e) => setEndereco(e.target.value)}
-                  className="w-full border bg-white px-3 py-2.5 rounded-xl outline-none focus:ring-4 focus:ring-blue-100 font-bold text-gray-900"
+                  className="w-full border bg-white px-3 py-2.5 rounded-xl outline-none focus:ring-4 focus:ring-blue-100"
                   disabled={saving || !!pedidoCriado}
                 />
                 <div className="grid grid-cols-2 gap-2">
@@ -626,14 +654,14 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
                     placeholder="Número"
                     value={numero}
                     onChange={(e) => setNumero(e.target.value)}
-                    className="w-full border bg-white px-3 py-2.5 rounded-xl outline-none focus:ring-4 focus:ring-blue-100 font-bold text-gray-900"
+                    className="w-full border bg-white px-3 py-2.5 rounded-xl outline-none focus:ring-4 focus:ring-blue-100"
                     disabled={saving || !!pedidoCriado}
                   />
                   <input
                     placeholder="Bairro"
                     value={bairro}
                     onChange={(e) => setBairro(e.target.value)}
-                    className="w-full border bg-white px-3 py-2.5 rounded-xl outline-none focus:ring-4 focus:ring-blue-100 font-bold text-gray-900"
+                    className="w-full border bg-white px-3 py-2.5 rounded-xl outline-none focus:ring-4 focus:ring-blue-100"
                     disabled={saving || !!pedidoCriado}
                   />
                 </div>
@@ -641,15 +669,14 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
                 <div className="text-sm font-extrabold text-blue-900">Taxa fixa: {brl(taxaEntrega)}</div>
               </div>
             ) : (
-              <div className="mt-3 text-sm text-gray-900 font-bold">
+              <div className="mt-3 text-sm text-gray-600">
                 Você pode retirar na loja. Assim que confirmar, enviamos o endereço/horário.
               </div>
             )}
           </div>
 
-          {/* PAGAMENTO */}
           <div className="mt-4 bg-white border rounded-2xl p-4">
-            <div className="font-extrabold text-gray-900">Forma de pagamento</div>
+            <div className="font-extrabold text-gray-900">Pagamento</div>
 
             <div className="mt-3 flex flex-wrap gap-2">
               {(["PIX", "CARTAO", "DINHEIRO", "COMBINAR"] as const).map((p) => (
@@ -658,7 +685,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
                   key={p}
                   onClick={() => setPagamento(p)}
                   className={`px-3 py-2 rounded-xl font-extrabold ${
-                    pagamento === p ? "bg-blue-700 text-white" : "bg-gray-100 hover:bg-gray-200 text-gray-900"
+                    pagamento === p ? "bg-blue-700 text-white" : "bg-gray-100 hover:bg-gray-200"
                   }`}
                   disabled={saving || !!pedidoCriado}
                 >
@@ -669,16 +696,15 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
           </div>
         </div>
 
-        {/* FOOTER */}
         <div className="p-4 border-t">
           <div className="flex items-center justify-between">
-            <div className="text-sm text-gray-900 font-bold">Subtotal</div>
+            <div className="text-sm text-gray-600">Subtotal</div>
             <div className="text-lg font-extrabold text-blue-900">{brl(subtotal)}</div>
           </div>
 
           <div className="mt-1 flex items-center justify-between">
-            <div className="text-sm text-gray-900 font-bold">Taxa</div>
-            <div className="text-sm font-extrabold text-gray-900">{brl(taxaEntrega)}</div>
+            <div className="text-sm text-gray-600">Taxa</div>
+            <div className="text-sm font-extrabold">{brl(taxaEntrega)}</div>
           </div>
 
           <div className="mt-2 flex items-center justify-between">
@@ -690,7 +716,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
             <button
               type="button"
               onClick={clearCartSafe}
-              className="px-4 py-3 rounded-2xl border bg-white hover:bg-gray-50 font-extrabold text-gray-900"
+              className="px-4 py-3 rounded-2xl border bg-white hover:bg-gray-50 font-extrabold"
               disabled={!cart.items.length || saving || !!pedidoCriado}
             >
               Limpar
@@ -701,7 +727,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
               disabled={!canCheckout || saving || !!pedidoCriado}
               onClick={finalizarPedido}
               className={`px-4 py-3 rounded-2xl font-extrabold text-center ${
-                canCheckout ? "bg-green-600 hover:bg-green-700 text-white" : "bg-gray-200 text-gray-600"
+                canCheckout ? "bg-green-600 hover:bg-green-700 text-white" : "bg-gray-200 text-gray-500"
               } ${saving ? "opacity-70 cursor-wait" : ""}`}
             >
               {saving ? "Finalizando..." : "Finalizar pedido"}
@@ -709,7 +735,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
           </div>
 
           {!canCheckout ? (
-            <div className="mt-2 text-xs text-gray-900 font-bold">
+            <div className="mt-2 text-xs text-gray-500">
               Para liberar: informe <b>Nome</b>, <b>WhatsApp</b> e adicione itens. Se escolher <b>Entrega</b>, preencha{" "}
               <b>Endereço/Número/Bairro</b>.
             </div>
@@ -722,39 +748,31 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
 
 function ProdutoCardUltra({ p, onComprar }: { p: FVProduto; onComprar: () => void }) {
   const pr = precoFinal(p);
-  const cart = useCart(); // ✅ mais compatível
+  const { addItem } = useCart();
   const { push } = useToast();
   const [qtd, setQtd] = useState(1);
 
-  function addEAbreCarrinho() {
-    // ✅ mantém compatibilidade com seu cart
-    if (typeof (cart as any).addItem === "function") {
-      (cart as any).addItem(
-        {
-          ean: p.ean,
-          nome: p.nome,
-          laboratorio: p.laboratorio,
-          apresentacao: p.apresentacao,
-          imagem: firstImg(p.imagens),
-          preco: pr.final || 0,
-        },
-        qtd
-      );
-    } else if (typeof (cart as any).add === "function") {
-      (cart as any).add(
-        {
-          ean: p.ean,
-          nome: p.nome,
-          laboratorio: p.laboratorio,
-          apresentacao: p.apresentacao,
-          imagem: firstImg(p.imagens),
-          preco: pr.final || 0,
-        },
-        qtd
-      );
-    }
+  const disponivel = !!p.disponivel;
+  const estoque = Number(p.estoque_total || 0);
 
-    push({ title: "Adicionado ao carrinho ✅", desc: `${p.nome} • ${qtd}x` });
+  function addEAbreCarrinho() {
+    addItem(
+      {
+        ean: p.ean,
+        nome: p.nome,
+        laboratorio: p.laboratorio,
+        apresentacao: p.apresentacao,
+        imagem: firstImg(p.imagens),
+        preco: pr.final || 0,
+      },
+      qtd
+    );
+
+    push({
+      title: disponivel ? "Adicionado ao carrinho ✅" : "Encomenda adicionada ✅",
+      desc: `${p.nome} • ${qtd}x`,
+    });
+
     setQtd(1);
     onComprar();
   }
@@ -762,17 +780,8 @@ function ProdutoCardUltra({ p, onComprar }: { p: FVProduto; onComprar: () => voi
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition overflow-hidden flex flex-col">
       <div className="relative p-3">
-        <Link
-          href={`/fv/produtos/${p.ean}`}
-          className="bg-gray-50 rounded-xl p-2 flex items-center justify-center hover:opacity-95 transition"
-        >
-          <Image
-            src={firstImg(p.imagens)}
-            alt={p.nome || "Produto"}
-            width={240}
-            height={240}
-            className="rounded object-contain h-24 sm:h-28"
-          />
+        <Link href={`/fv/produtos/${p.ean}`} className="bg-gray-50 rounded-xl p-2 flex items-center justify-center hover:opacity-95 transition">
+          <Image src={firstImg(p.imagens)} alt={p.nome || "Produto"} width={240} height={240} className="rounded object-contain h-24 sm:h-28" />
         </Link>
 
         {pr.emPromo && pr.off > 0 && (
@@ -780,21 +789,30 @@ function ProdutoCardUltra({ p, onComprar }: { p: FVProduto; onComprar: () => voi
             {pr.off}% OFF
           </span>
         )}
+
+        <span
+          className={`absolute top-3 left-3 text-[11px] font-extrabold px-2 py-1 rounded-full shadow-sm ${
+            disponivel ? "bg-green-600 text-white" : "bg-gray-200 text-gray-700"
+          }`}
+          title={disponivel ? "Disponível" : "Sem estoque nas parceiras"}
+        >
+          {disponivel ? `Estoque: ${estoque}` : "Sem estoque"}
+        </span>
       </div>
 
       <div className="px-3 pb-3 flex-1 flex flex-col">
-        <div className="text-[11px] text-gray-700 font-bold line-clamp-1">{p.laboratorio || "—"}</div>
+        <div className="text-[11px] text-gray-500 line-clamp-1">{p.laboratorio || "—"}</div>
 
-        <Link href={`/fv/produtos/${p.ean}`} className="mt-1 font-extrabold text-blue-950 text-xs sm:text-sm line-clamp-2 hover:underline">
+        <Link href={`/fv/produtos/${p.ean}`} className="mt-1 font-semibold text-blue-950 text-xs sm:text-sm line-clamp-2 hover:underline">
           {p.nome}
         </Link>
 
-        {p.apresentacao && <div className="text-[11px] text-gray-800 font-bold mt-1 line-clamp-1">{p.apresentacao}</div>}
+        {p.apresentacao && <div className="text-[11px] text-gray-600 mt-1 line-clamp-1">{p.apresentacao}</div>}
 
         <div className="mt-2">
           {pr.emPromo ? (
             <>
-              <div className="text-xs text-gray-700 font-bold">
+              <div className="text-xs text-gray-500">
                 De <span className="line-through">{brl(pr.pmc)}</span>
               </div>
               <div className="text-base font-extrabold text-blue-900">Por {brl(pr.final)}</div>
@@ -809,7 +827,7 @@ function ProdutoCardUltra({ p, onComprar }: { p: FVProduto; onComprar: () => voi
             <button type="button" onClick={() => setQtd((x) => Math.max(1, x - 1))} className="w-9 h-9 bg-white hover:bg-gray-50 font-extrabold">
               –
             </button>
-            <div className="w-10 text-center font-extrabold text-sm text-gray-900">{qtd}</div>
+            <div className="w-10 text-center font-extrabold text-sm">{qtd}</div>
             <button type="button" onClick={() => setQtd((x) => x + 1)} className="w-9 h-9 bg-white hover:bg-gray-50 font-extrabold">
               +
             </button>
@@ -818,9 +836,11 @@ function ProdutoCardUltra({ p, onComprar }: { p: FVProduto; onComprar: () => voi
           <button
             type="button"
             onClick={addEAbreCarrinho}
-            className="flex-1 bg-blue-700 hover:bg-blue-800 text-white py-2.5 rounded-xl text-xs sm:text-sm font-extrabold"
+            className={`flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold ${
+              disponivel ? "bg-blue-700 hover:bg-blue-800 text-white" : "bg-green-600 hover:bg-green-700 text-white"
+            }`}
           >
-            Comprar
+            {disponivel ? "Comprar" : "Encomendar"}
           </button>
         </div>
       </div>
@@ -830,8 +850,8 @@ function ProdutoCardUltra({ p, onComprar }: { p: FVProduto; onComprar: () => voi
 
 function GridSkeleton() {
   return (
-    <div className="mt-2 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-5">
-      {Array.from({ length: 10 }).map((_, i) => (
+    <div className="mt-6 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-5">
+      {Array.from({ length: 12 }).map((_, i) => (
         <div key={i} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
           <div className="p-3">
             <div className="h-28 bg-gray-100 rounded-xl animate-pulse" />
