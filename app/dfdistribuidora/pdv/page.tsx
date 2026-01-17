@@ -8,13 +8,14 @@ import { supabase } from "@/lib/supabaseClient";
    CONFIG
 ========================= */
 const PROD_TABLE = "df_produtos";
-const RPC_SEARCH = "df_search_produtos";
+const RPC_SEARCH = "df_search_produtos"; // se não existir, fallback
+const WHATS = "5511952068432";
 const TAXA_ENTREGA_FIXA = 10;
 
-const HOME_LIMIT = 10;
-const SEARCH_LIMIT = 80;
-const SEARCH_DEBOUNCE = 350;
-const ESTOQUE_LABEL_LOW = 5;
+const HOME_LIMIT = 10; // ✅ deixa leve
+const SEARCH_LIMIT = 80; // ✅ resultados da busca
+const SEARCH_DEBOUNCE = 350; // ms
+const ESTOQUE_LABEL_LOW = 5; // só pra badge "baixo"
 
 /* =========================
    TIPOS
@@ -50,28 +51,45 @@ type CartItem = {
 ========================= */
 function brl(v: number | null | undefined) {
   if (v === null || v === undefined || Number.isNaN(v)) return "—";
-  return Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  return Number(v).toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  });
 }
+
 function firstImg(imagens?: string[] | null) {
   return imagens?.[0] || "/produtos/caixa-padrao.png";
 }
+
 function calcOff(pmc?: number | null, promo?: number | null) {
   const a = Number(pmc || 0);
   const b = Number(promo || 0);
   if (!a || !b || b >= a) return 0;
   return Math.round(((a - b) / a) * 100);
 }
+
 function precoFinal(p: DFProduto) {
   const pmc = Number(p.pmc || 0);
   const promo = Number(p.preco_promocional || 0);
   const emPromo = !!p.em_promocao && promo > 0 && (!pmc || promo < pmc);
   const final = emPromo ? promo : pmc;
-  const off = emPromo ? (p.percentual_off && p.percentual_off > 0 ? p.percentual_off : calcOff(pmc, promo)) : 0;
+  const off = emPromo
+    ? p.percentual_off && p.percentual_off > 0
+      ? p.percentual_off
+      : calcOff(pmc, promo)
+    : 0;
   return { emPromo, final, pmc, promo, off };
 }
+
 function onlyDigits(v: string) {
   return (v || "").replace(/\D/g, "");
 }
+
+function waLink(phone: string, msg: string) {
+  const clean = phone.replace(/\D/g, "");
+  return `https://wa.me/${clean}?text=${encodeURIComponent(msg)}`;
+}
+
 function normalizeSearch(raw: string) {
   return raw
     .toLowerCase()
@@ -81,14 +99,14 @@ function normalizeSearch(raw: string) {
 }
 
 /* =========================
-   PAGE
+   COMPONENTE
 ========================= */
 export default function PDVDF() {
-  // home leve
+  // ✅ home leve
   const [home, setHome] = useState<DFProduto[]>([]);
   const [loadingHome, setLoadingHome] = useState(true);
 
-  // busca
+  // ✅ busca remota (todo banco)
   const [busca, setBusca] = useState("");
   const [loadingBusca, setLoadingBusca] = useState(false);
   const [resultado, setResultado] = useState<DFProduto[]>([]);
@@ -97,7 +115,7 @@ export default function PDVDF() {
   const [carrinho, setCarrinho] = useState<CartItem[]>([]);
   const [drawerOpen, setDrawerOpen] = useState(false);
 
-  // dados comprador + entrega + pagamento
+  // checkout
   const [clienteNome, setClienteNome] = useState("");
   const [clienteTelefone, setClienteTelefone] = useState("");
 
@@ -108,17 +126,16 @@ export default function PDVDF() {
 
   const [pagamento, setPagamento] = useState<"PIX" | "CARTAO" | "DINHEIRO" | "COMBINAR">("PIX");
 
-  // modal finalizar (comanda)
-  const [finalOpen, setFinalOpen] = useState(false);
-  const [comanda, setComanda] = useState("");
+  // ✅ estado de salvar
   const [saving, setSaving] = useState(false);
+  const [pedidoCriado, setPedidoCriado] = useState<string | null>(null);
 
   const taxaEntrega = tipoEntrega === "ENTREGA" ? TAXA_ENTREGA_FIXA : 0;
 
   const isSearching = !!busca.trim();
   const lista = isSearching ? resultado : home;
 
-  // mapa estoque
+  // ✅ mapa de estoque por produto (pra travar inc/add no carrinho)
   const estoqueById = useMemo(() => {
     const m = new Map<string, number>();
     for (const p of home) m.set(p.id, Number(p.estoque ?? 0));
@@ -127,7 +144,7 @@ export default function PDVDF() {
   }, [home, resultado]);
 
   /* =========================
-     HOME
+     HOME (10 itens)
   ========================= */
   useEffect(() => {
     async function loadHome() {
@@ -159,7 +176,7 @@ export default function PDVDF() {
   }, []);
 
   /* =========================
-     BUSCA
+     BUSCA REMOTA (todo banco)
   ========================= */
   useEffect(() => {
     async function run() {
@@ -173,10 +190,17 @@ export default function PDVDF() {
 
       try {
         const normalized = normalizeSearch(raw);
-        const { data, error } = await supabase.rpc(RPC_SEARCH, { q: normalized, lim: SEARCH_LIMIT });
+
+        // 1) tenta RPC (se existir)
+        const { data, error } = await supabase.rpc(RPC_SEARCH, {
+          q: normalized,
+          lim: SEARCH_LIMIT,
+        });
         if (error) throw error;
+
         setResultado(((data || []) as DFProduto[]) ?? []);
       } catch (e) {
+        // 2) fallback sem RPC
         try {
           const digits = onlyDigits(raw);
 
@@ -188,10 +212,16 @@ export default function PDVDF() {
             .eq("ativo", true)
             .limit(SEARCH_LIMIT);
 
-          if (digits.length >= 8 && digits.length <= 14) query = query.or(`ean.eq.${digits},nome.ilike.%${raw}%`);
-          else query = query.ilike("nome", `%${raw}%`);
+          if (digits.length >= 8 && digits.length <= 14) {
+            query = query.or(`ean.eq.${digits},nome.ilike.%${raw}%`);
+          } else {
+            query = query.ilike("nome", `%${raw}%`);
+          }
 
-          const { data, error } = await query.order("em_promocao", { ascending: false }).order("nome", { ascending: true });
+          const { data, error } = await query
+            .order("em_promocao", { ascending: false })
+            .order("nome", { ascending: true });
+
           if (error) throw error;
 
           setResultado(((data || []) as DFProduto[]) ?? []);
@@ -209,11 +239,11 @@ export default function PDVDF() {
   }, [busca]);
 
   /* =========================
-     CARRINHO
+     CARRINHO (com trava de estoque)
   ========================= */
   function addProduto(p: DFProduto) {
     const estoqueAtual = Number(p.estoque ?? 0);
-    if (estoqueAtual <= 0) return;
+    if (estoqueAtual <= 0) return; // ✅ não adiciona
 
     const pr = precoFinal(p);
     const preco = Number(pr.final || 0);
@@ -226,8 +256,21 @@ export default function PDVDF() {
         copy[idx] = { ...copy[idx], qtd: copy[idx].qtd + 1, preco };
         return copy;
       }
-      return [...prev, { id: p.id, ean: p.ean, nome: p.nome, imagem: firstImg(p.imagens), preco, qtd: 1 }];
+      return [
+        ...prev,
+        {
+          id: p.id,
+          ean: p.ean,
+          nome: p.nome,
+          imagem: firstImg(p.imagens),
+          preco,
+          qtd: 1,
+        },
+      ];
     });
+
+    // quando adiciona algo, limpa mensagem de sucesso anterior
+    setPedidoCriado(null);
   }
 
   function inc(id: string) {
@@ -244,7 +287,11 @@ export default function PDVDF() {
   }
 
   function dec(id: string) {
-    setCarrinho((prev) => prev.map((x) => (x.id === id ? { ...x, qtd: x.qtd - 1 } : x)).filter((x) => x.qtd > 0));
+    setCarrinho((prev) =>
+      prev
+        .map((x) => (x.id === id ? { ...x, qtd: x.qtd - 1 } : x))
+        .filter((x) => x.qtd > 0)
+    );
   }
 
   function remove(id: string) {
@@ -256,16 +303,72 @@ export default function PDVDF() {
     const alvo = Math.max(1, Math.floor(Number(qtd || 1)));
     const travado = estoqueAtual > 0 ? Math.min(alvo, estoqueAtual) : 1;
 
-    setCarrinho((prev) => prev.map((x) => (x.id === id ? { ...x, qtd: travado } : x)));
+    setCarrinho((prev) =>
+      prev.map((x) => (x.id === id ? { ...x, qtd: travado } : x))
+    );
   }
 
-  const subtotal = useMemo(() => carrinho.reduce((a, b) => a + b.preco * b.qtd, 0), [carrinho]);
+  const subtotal = useMemo(
+    () => carrinho.reduce((a, b) => a + b.preco * b.qtd, 0),
+    [carrinho]
+  );
   const total = subtotal + taxaEntrega;
-  const qtdCarrinho = useMemo(() => carrinho.reduce((acc, it) => acc + it.qtd, 0), [carrinho]);
+
+  const qtdCarrinho = useMemo(
+    () => carrinho.reduce((acc, it) => acc + it.qtd, 0),
+    [carrinho]
+  );
 
   /* =========================
-     VALIDATION
+     ENCOMENDAR (quando indisponível)
   ========================= */
+  function encomendar(p: DFProduto) {
+    const msg =
+      `Olá! Quero encomendar este item:\n\n` +
+      `• ${p.nome} (EAN: ${p.ean})\n` +
+      (p.apresentacao ? `• Apresentação: ${p.apresentacao}\n` : "") +
+      (p.laboratorio ? `• Laboratório: ${p.laboratorio}\n` : "") +
+      `\nPode me avisar prazo e valor?`;
+    window.open(waLink(WHATS, msg), "_blank");
+  }
+
+  /* =========================
+     WHATS (opcional)
+  ========================= */
+  const mensagem = useMemo(() => {
+    let msg = `🧾 *Pedido DF Distribuidora (PDV)*\n\n`;
+    msg += `👤 Cliente: ${clienteNome}\n`;
+    msg += `📞 WhatsApp: ${clienteTelefone}\n\n`;
+
+    msg +=
+      tipoEntrega === "ENTREGA"
+        ? `🚚 *Entrega*\n${endereco}, ${numero} - ${bairro}\nTaxa: ${brl(taxaEntrega)}\n\n`
+        : `🏪 *Retirada na loja*\n\n`;
+
+    msg += `💳 Pagamento: ${pagamento}\n\n🛒 *Itens:*\n`;
+    carrinho.forEach((i) => {
+      msg += `• ${i.nome} (${i.ean}) — ${i.qtd}x — ${brl(i.preco * i.qtd)}\n`;
+    });
+
+    msg += `\nSubtotal: ${brl(subtotal)}\n`;
+    msg += `Total: ${brl(total)}\n\n`;
+    msg += `Pode confirmar?`;
+
+    return msg;
+  }, [
+    carrinho,
+    clienteNome,
+    clienteTelefone,
+    tipoEntrega,
+    endereco,
+    numero,
+    bairro,
+    pagamento,
+    subtotal,
+    total,
+    taxaEntrega,
+  ]);
+
   const canCheckout = useMemo(() => {
     if (carrinho.length === 0) return false;
     if (!clienteNome.trim()) return false;
@@ -276,72 +379,67 @@ export default function PDVDF() {
     return true;
   }, [carrinho.length, clienteNome, clienteTelefone, tipoEntrega, endereco, numero, bairro]);
 
-  const canFinalConfirm = useMemo(() => {
-    if (!canCheckout) return false;
-    if (!comanda.trim()) return false;
-    return true;
-  }, [canCheckout, comanda]);
-
   /* =========================
-     SALVAR PEDIDO (PDV)
+     ✅ FINALIZAR PDV (baixa estoque)
   ========================= */
-  async function criarPedidoPDV() {
-    const payload: any = {
-      canal: "PDV",
-      comanda: comanda.trim(),
+  async function criarPedidoNoPainelPDV() {
+    const itens = carrinho.map((i) => ({
+      ean: i.ean,
+      nome: i.nome,
+      qtd: i.qtd,
+      preco: i.preco,
+      subtotal: i.preco * i.qtd,
+    }));
 
-      cliente_nome: clienteNome.trim(),
-      cliente_whatsapp: onlyDigits(clienteTelefone),
+    // ✅ pede comanda
+    const comandaRaw = window.prompt("Número da comanda:", "");
+    const comanda = (comandaRaw || "").trim() || null;
 
-      tipo_entrega: tipoEntrega,
-      endereco: tipoEntrega === "ENTREGA" ? endereco.trim() : null,
-      numero: tipoEntrega === "ENTREGA" ? numero.trim() : null,
-      bairro: tipoEntrega === "ENTREGA" ? bairro.trim() : null,
+    const { data, error } = await supabase.rpc("df_checkout", {
+      p_canal: "PDV",
+      p_comanda: comanda,
 
-      pagamento,
-      taxa_entrega: taxaEntrega,
-      subtotal,
-      total,
+      p_cliente_nome: clienteNome.trim(),
+      p_cliente_whatsapp: onlyDigits(clienteTelefone),
 
-      itens: carrinho.map((i) => ({
-        ean: i.ean,
-        nome: i.nome,
-        qtd: i.qtd,
-        preco: i.preco,
-        subtotal: i.preco * i.qtd,
-      })),
+      p_cliente_cpf: null,
+      p_cliente_nome_fantasia: null,
 
-      status: "FECHADO_PDV",
-    };
+      p_tipo_entrega: tipoEntrega,
+      p_endereco: tipoEntrega === "ENTREGA" ? endereco.trim() : null,
+      p_numero: tipoEntrega === "ENTREGA" ? numero.trim() : null,
+      p_bairro: tipoEntrega === "ENTREGA" ? bairro.trim() : null,
 
-    const { data, error } = await supabase.from("df_pedidos").insert(payload).select("id");
+      p_pagamento: pagamento,
+      p_taxa_entrega: taxaEntrega,
+      p_subtotal: subtotal,
+      p_total: total,
+
+      p_itens: itens,
+    });
+
     if (error) throw error;
-
-    const pedidoId = (data && data[0] && (data[0] as any).id) as string | undefined;
-    return pedidoId || "";
+    return (data as string) || "";
   }
 
   async function finalizarPDV() {
-    if (saving) return;
-    if (!canFinalConfirm) return;
+    if (!canCheckout || saving) return;
 
     setSaving(true);
     try {
-      const pedidoId = await criarPedidoPDV();
+      const pedidoId = await criarPedidoNoPainelPDV();
 
-      // limpa carrinho e fecha drawer
+      // ✅ frase no meio
+      setPedidoCriado(pedidoId || "OK");
+
+      // limpa carrinho
       setCarrinho([]);
-      setDrawerOpen(false);
-      setFinalOpen(false);
-      setComanda("");
 
-      // abre cupom DF
-      if (pedidoId) {
-        window.open(`/dfdistribuidora/cupom/${pedidoId}`, "_blank", "noopener,noreferrer");
-      }
+      // ✅ força recarregar pra atualizar estoques na vitrine
+      setTimeout(() => window.location.reload(), 700);
     } catch (e) {
       console.error(e);
-      alert("Não consegui salvar o pedido no painel. Verifique RLS/colunas e tente novamente.");
+      alert("Não consegui finalizar/baixar estoque. Verifique a função df_checkout e permissões.");
     } finally {
       setSaving(false);
     }
@@ -349,6 +447,7 @@ export default function PDVDF() {
 
   return (
     <div className="p-4 pb-24 bg-gray-50 min-h-screen">
+      {/* LOGO */}
       <div className="flex justify-center mb-4">
         <Image src="/df-distribuidora-logo.png" alt="DF Distribuidora" width={120} height={120} />
       </div>
@@ -378,7 +477,9 @@ export default function PDVDF() {
           {loadingBusca ? "Buscando…" : resultado.length ? `${resultado.length} resultado(s)` : "Nenhum resultado"}
         </div>
       ) : (
-        <div className="text-xs text-gray-500 mb-3">{loadingHome ? "Carregando vitrine…" : `Vitrine leve: ${home.length} itens`}</div>
+        <div className="text-xs text-gray-500 mb-3">
+          {loadingHome ? "Carregando vitrine…" : `Vitrine leve: ${home.length} itens`}
+        </div>
       )}
 
       {/* LISTA */}
@@ -426,6 +527,7 @@ export default function PDVDF() {
                   </div>
                 </div>
 
+                {/* AÇÕES */}
                 <div className="flex flex-col items-end gap-2">
                   <button
                     onClick={() => addProduto(p)}
@@ -437,6 +539,16 @@ export default function PDVDF() {
                   >
                     {indisponivel ? "Indisponível" : "+"}
                   </button>
+
+                  {indisponivel ? (
+                    <button
+                      onClick={() => encomendar(p)}
+                      className="px-4 py-2 rounded-xl font-extrabold bg-green-600 hover:bg-green-700 text-white"
+                      title="Pedir por encomenda no WhatsApp"
+                    >
+                      Encomendar
+                    </button>
+                  ) : null}
                 </div>
               </div>
             );
@@ -460,12 +572,43 @@ export default function PDVDF() {
           <div className="absolute right-0 top-0 h-full w-full sm:w-[420px] bg-white p-4 overflow-auto">
             <div className="flex items-center justify-between">
               <h2 className="text-xl font-extrabold">Carrinho</h2>
-              <button onClick={() => setDrawerOpen(false)} className="px-3 py-2 rounded-xl border font-extrabold">
+              <button
+                onClick={() => setDrawerOpen(false)}
+                className="px-3 py-2 rounded-xl border font-extrabold"
+              >
                 Continuar comprando
               </button>
             </div>
 
-            {/* ITENS */}
+            {/* ✅ CONFIRMAÇÃO NO MEIO */}
+            {pedidoCriado ? (
+              <div className="mt-6 rounded-2xl border bg-green-50 p-4">
+                <div className="text-lg font-extrabold text-green-700">Pedido finalizado com sucesso ✅</div>
+                <div className="text-sm text-gray-700 mt-1">
+                  Pedido criado no sistema: <b>{pedidoCriado}</b>
+                </div>
+
+                <div className="mt-4 grid grid-cols-1 gap-2">
+                  <button
+                    onClick={() => {
+                      setPedidoCriado(null);
+                      setDrawerOpen(false);
+                    }}
+                    className="w-full rounded-xl bg-blue-700 hover:bg-blue-800 text-white py-3 font-extrabold"
+                  >
+                    Voltar
+                  </button>
+
+                  <button
+                    onClick={() => window.open(waLink(WHATS, `✅ Pedido PDV: ${pedidoCriado}\n\n${mensagem}`), "_blank")}
+                    className="w-full rounded-xl border py-3 font-extrabold hover:bg-gray-50"
+                  >
+                    Enviar no WhatsApp (opcional)
+                  </button>
+                </div>
+              </div>
+            ) : null}
+
             <div className="mt-4">
               {carrinho.length === 0 ? (
                 <div className="text-gray-600 bg-gray-50 border rounded-2xl p-4">Seu carrinho está vazio.</div>
@@ -511,16 +654,6 @@ export default function PDVDF() {
                         </button>
                       </div>
 
-                      <div className="mt-2 text-xs text-gray-600">
-                        {estoqueAtual > 0 ? (
-                          <span>
-                            Disponível: <b>{estoqueAtual}</b>
-                          </span>
-                        ) : (
-                          <span className="text-red-600 font-bold">Atenção: estoque não encontrado (0)</span>
-                        )}
-                      </div>
-
                       <div className="mt-2 font-extrabold text-blue-900">Total item: {brl(i.preco * i.qtd)}</div>
                     </div>
                   );
@@ -528,38 +661,38 @@ export default function PDVDF() {
               )}
             </div>
 
-            {/* DADOS COMPRADOR */}
+            {/* DADOS */}
             <div className="mt-4 space-y-2">
-              <div className="font-extrabold text-gray-900">Dados do comprador</div>
               <input
-                placeholder="Nome do comprador"
+                placeholder="Nome do cliente"
                 value={clienteNome}
                 onChange={(e) => setClienteNome(e.target.value)}
                 className="w-full border p-2 rounded"
               />
               <input
-                placeholder="WhatsApp (DDD + número)"
+                placeholder="WhatsApp"
                 value={clienteTelefone}
                 onChange={(e) => setClienteTelefone(e.target.value)}
                 className="w-full border p-2 rounded"
               />
+              <div className="text-[11px] text-gray-500">Dica: informe com DDD (ex: 11999999999)</div>
             </div>
 
             {/* ENTREGA */}
             <div className="mt-4">
-              <div className="font-extrabold mb-2 text-gray-900">Entrega</div>
+              <div className="font-bold mb-2">Entrega</div>
 
               <div className="flex gap-2">
                 <button
                   onClick={() => setTipoEntrega("ENTREGA")}
-                  className={`px-3 py-2 rounded flex-1 font-extrabold ${tipoEntrega === "ENTREGA" ? "bg-blue-600 text-white" : "bg-gray-200"}`}
+                  className={`px-3 py-2 rounded flex-1 ${tipoEntrega === "ENTREGA" ? "bg-blue-600 text-white" : "bg-gray-200"}`}
                 >
                   Entrega
                 </button>
 
                 <button
                   onClick={() => setTipoEntrega("RETIRADA")}
-                  className={`px-3 py-2 rounded flex-1 font-extrabold ${tipoEntrega === "RETIRADA" ? "bg-blue-600 text-white" : "bg-gray-200"}`}
+                  className={`px-3 py-2 rounded flex-1 ${tipoEntrega === "RETIRADA" ? "bg-blue-600 text-white" : "bg-gray-200"}`}
                 >
                   Retirada
                 </button>
@@ -570,20 +703,21 @@ export default function PDVDF() {
                   <input placeholder="Endereço" value={endereco} onChange={(e) => setEndereco(e.target.value)} className="w-full border p-2 rounded" />
                   <input placeholder="Número" value={numero} onChange={(e) => setNumero(e.target.value)} className="w-full border p-2 rounded" />
                   <input placeholder="Bairro" value={bairro} onChange={(e) => setBairro(e.target.value)} className="w-full border p-2 rounded" />
-                  <div className="text-sm font-extrabold text-gray-900">Taxa fixa: {brl(taxaEntrega)}</div>
+                  <div className="text-sm font-bold">Taxa fixa: {brl(taxaEntrega)}</div>
                 </div>
               )}
             </div>
 
             {/* PAGAMENTO */}
             <div className="mt-4">
-              <div className="font-extrabold mb-2 text-gray-900">Pagamento</div>
+              <div className="font-bold mb-2">Pagamento</div>
+
               <div className="flex flex-wrap gap-2">
-                {(["PIX", "CARTAO", "DINHEIRO", "COMBINAR"] as const).map((p) => (
+                {["PIX", "CARTAO", "DINHEIRO", "COMBINAR"].map((p) => (
                   <button
                     key={p}
-                    onClick={() => setPagamento(p)}
-                    className={`px-3 py-2 rounded font-extrabold ${pagamento === p ? "bg-blue-600 text-white" : "bg-gray-200"}`}
+                    onClick={() => setPagamento(p as any)}
+                    className={`px-3 py-2 rounded ${pagamento === p ? "bg-blue-600 text-white" : "bg-gray-200"}`}
                   >
                     {p}
                   </button>
@@ -592,70 +726,30 @@ export default function PDVDF() {
             </div>
 
             {/* TOTAL */}
-            <div className="mt-4 border-t pt-3 text-gray-900">
-              <div className="font-semibold">Subtotal: {brl(subtotal)}</div>
-              <div className="font-semibold">Taxa: {brl(taxaEntrega)}</div>
+            <div className="mt-4 border-t pt-3">
+              <div>Subtotal: {brl(subtotal)}</div>
+              <div>Taxa: {brl(taxaEntrega)}</div>
               <div className="font-extrabold text-lg">Total: {brl(total)}</div>
             </div>
 
-            {/* FECHAR COMANDA */}
+            {/* ✅ FINALIZAR (BAIXA ESTOQUE) */}
             <button
-              disabled={!canCheckout || saving}
-              onClick={() => setFinalOpen(true)}
+              disabled={!canCheckout || saving || !!pedidoCriado}
+              onClick={finalizarPDV}
               className={`w-full mt-4 text-center py-3 rounded-xl font-extrabold ${
                 canCheckout ? "bg-green-600 hover:bg-green-700 text-white" : "bg-gray-200 text-gray-500"
-              }`}
-            >
-              Fechar venda (Comanda)
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* MODAL COMANDA */}
-      {finalOpen && (
-        <div className="fixed inset-0 z-[60]">
-          <div className="absolute inset-0 bg-black/50" onClick={() => (saving ? null : setFinalOpen(false))} />
-
-          <div className="absolute left-1/2 top-1/2 w-[92%] max-w-md -translate-x-1/2 -translate-y-1/2 bg-white rounded-2xl border shadow-lg p-4">
-            <div className="flex items-center justify-between gap-3">
-              <div className="text-lg font-extrabold text-gray-950">Finalizar PDV</div>
-              <button
-                disabled={saving}
-                onClick={() => setFinalOpen(false)}
-                className="px-3 py-2 rounded-xl border font-extrabold text-gray-950 disabled:opacity-60"
-              >
-                Fechar
-              </button>
-            </div>
-
-            <div className="mt-3 bg-gray-50 border rounded-xl p-3 text-sm text-gray-950">
-              <div className="font-extrabold">Resumo</div>
-              <div className="mt-1 font-semibold">Itens: {carrinho.reduce((a, b) => a + b.qtd, 0)}</div>
-              <div className="font-semibold">Total: {brl(total)}</div>
-              <div className="font-semibold">Pagamento: {pagamento}</div>
-              <div className="font-semibold">Entrega: {tipoEntrega}</div>
-            </div>
-
-            <div className="mt-3">
-              <label className="text-sm font-extrabold text-gray-950">Número da comanda (obrigatório)</label>
-              <input
-                value={comanda}
-                onChange={(e) => setComanda(e.target.value)}
-                placeholder="Ex: 12 / M12"
-                className="mt-1 w-full border rounded-xl px-3 py-2 font-extrabold text-gray-950"
-              />
-            </div>
-
-            <button
-              disabled={!canFinalConfirm || saving}
-              onClick={finalizarPDV}
-              className={`w-full mt-4 py-3 rounded-xl font-extrabold ${
-                canFinalConfirm ? "bg-gray-950 hover:bg-black text-white" : "bg-gray-200 text-gray-500"
               } ${saving ? "opacity-70 cursor-wait" : ""}`}
+              title={canCheckout ? "Finalizar e baixar estoque" : "Preencha nome/Whats e itens (e endereço se entrega)."}
             >
-              {saving ? "Salvando..." : "Confirmar e imprimir cupom"}
+              {saving ? "Finalizando..." : "Finalizar (baixar estoque)"}
             </button>
+
+            {!canCheckout ? (
+              <div className="mt-2 text-xs text-gray-500">
+                Para liberar o botão: informe <b>Nome</b>, <b>WhatsApp</b>, e adicione itens.
+                Se escolher <b>Entrega</b>, preencha <b>Endereço/Número/Bairro</b>.
+              </div>
+            ) : null}
           </div>
         </div>
       )}
