@@ -610,47 +610,49 @@ function CartModal({
   }
 
   async function criarPedidoNoPainel() {
-    let profile: any = null;
-    try {
-      profile = JSON.parse(localStorage.getItem(PROFILE_LS) || "null");
-    } catch {
-      // ignore
-    }
-
-    const payload = {
-      cliente_nome: clienteNome.trim(),
-      cliente_whatsapp: onlyDigits(clienteTelefone),
-      cliente_cpf: profile?.cpf || null,
-      cliente_nome_fantasia: profile?.nome_fantasia || null,
-
-      tipo_entrega: tipoEntrega,
-      endereco: tipoEntrega === "ENTREGA" ? endereco.trim() : null,
-      numero: tipoEntrega === "ENTREGA" ? numero.trim() : null,
-      bairro: tipoEntrega === "ENTREGA" ? bairro.trim() : null,
-
-      pagamento,
-      taxa_entrega: taxaEntrega,
-      subtotal: cart.subtotal,
-      total,
-
-      itens: cart.items.map((i) => ({
-        ean: i.ean,
-        nome: i.nome,
-        qtd: i.qtd,
-        preco: i.preco,
-        subtotal: i.preco * i.qtd,
-      })),
-
-      status: "NOVO",
-    };
-
-    // ✅ não usa .single() (evita erro 406/400 em alguns cenários)
-    const { data, error } = await supabase.from("df_pedidos").insert(payload).select("id");
-    if (error) throw error;
-
-    const pedidoId = (data && data[0] && (data[0] as any).id) as string | undefined;
-    return pedidoId || "";
+  let profile: any = null;
+  try {
+    profile = JSON.parse(localStorage.getItem(PROFILE_LS) || "null");
+  } catch {
+    // ignore
   }
+
+  const itens = cart.items.map((i) => ({
+    ean: i.ean,
+    nome: i.nome,
+    qtd: i.qtd,
+    preco: i.preco,
+    subtotal: i.preco * i.qtd,
+  }));
+
+  const { data, error } = await supabase.rpc("df_checkout", {
+    p_canal: "SITE",
+    p_comanda: null,
+
+    p_cliente_nome: clienteNome.trim(),
+    p_cliente_whatsapp: onlyDigits(clienteTelefone),
+
+    // ✅ extras do profile (pra não perder)
+    p_cliente_cpf: profile?.cpf || null,
+    p_cliente_nome_fantasia: profile?.nome_fantasia || null,
+
+    p_tipo_entrega: tipoEntrega,
+    p_endereco: tipoEntrega === "ENTREGA" ? endereco.trim() : null,
+    p_numero: tipoEntrega === "ENTREGA" ? numero.trim() : null,
+    p_bairro: tipoEntrega === "ENTREGA" ? bairro.trim() : null,
+
+    p_pagamento: pagamento,
+    p_taxa_entrega: taxaEntrega,
+    p_subtotal: cart.subtotal,
+    p_total: total,
+
+    p_itens: itens,
+  });
+
+  if (error) throw error;
+  return (data as string) || "";
+}
+
 
   async function finalizarPedido() {
     if (!canCheckout || saving) return;
