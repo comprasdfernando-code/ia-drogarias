@@ -2,45 +2,54 @@
 
 import React, { createContext, useContext, useEffect, useMemo, useState } from "react";
 
-export type CartItem = {
+type CartItem = {
   ean: string;
   nome: string;
+  preco: number;
+  qtd: number;
+  imagem?: string | null;
   laboratorio?: string | null;
   apresentacao?: string | null;
-  imagem?: string | null;
-  preco: number; // preço final usado no carrinho
-  qtd: number;
 };
 
 type CartCtx = {
   items: CartItem[];
   addItem: (item: Omit<CartItem, "qtd">, qtd?: number) => void;
-  setQty: (ean: string, qtd: number) => void;
   inc: (ean: string) => void;
   dec: (ean: string) => void;
   remove: (ean: string) => void;
   clear: () => void;
-  countItems: number;
   subtotal: number;
+  countItems: number;
 };
 
-const CartContext = createContext<CartCtx | null>(null);
-const LS_KEY = "fv_cart_v2";
+const LS_KEY = "FV_CART_V1";
+
+const Ctx = createContext<CartCtx | null>(null);
 
 export function CartProvider({ children }: { children: React.ReactNode }) {
+  // ✅ começa VAZIO no server/client (hidrata igual)
   const [items, setItems] = useState<CartItem[]>([]);
 
+  // ✅ carrega do localStorage só DEPOIS que montou no client
   useEffect(() => {
     try {
       const raw = localStorage.getItem(LS_KEY);
-      if (raw) setItems(JSON.parse(raw));
-    } catch {}
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) setItems(parsed);
+    } catch {
+      // ignore
+    }
   }, []);
 
+  // ✅ salva sempre que mudar (somente no client)
   useEffect(() => {
     try {
       localStorage.setItem(LS_KEY, JSON.stringify(items));
-    } catch {}
+    } catch {
+      // ignore
+    }
   }, [items]);
 
   function addItem(item: Omit<CartItem, "qtd">, qtd = 1) {
@@ -56,14 +65,6 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     });
   }
 
-  function setQty(ean: string, qtd: number) {
-    const q = Math.max(0, Number(qtd || 0));
-    setItems((prev) => {
-      if (q === 0) return prev.filter((x) => x.ean !== ean);
-      return prev.map((x) => (x.ean === ean ? { ...x, qtd: q } : x));
-    });
-  }
-
   function inc(ean: string) {
     setItems((prev) => prev.map((x) => (x.ean === ean ? { ...x, qtd: x.qtd + 1 } : x)));
   }
@@ -71,7 +72,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   function dec(ean: string) {
     setItems((prev) =>
       prev
-        .map((x) => (x.ean === ean ? { ...x, qtd: Math.max(0, x.qtd - 1) } : x))
+        .map((x) => (x.ean === ean ? { ...x, qtd: Math.max(1, x.qtd - 1) } : x))
         .filter((x) => x.qtd > 0)
     );
   }
@@ -84,26 +85,25 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     setItems([]);
   }
 
-  const countItems = useMemo(() => items.reduce((a, b) => a + b.qtd, 0), [items]);
-  const subtotal = useMemo(() => items.reduce((a, b) => a + b.preco * b.qtd, 0), [items]);
+  const subtotal = useMemo(() => items.reduce((acc, it) => acc + (Number(it.preco) || 0) * (Number(it.qtd) || 0), 0), [items]);
+  const countItems = useMemo(() => items.reduce((acc, it) => acc + (Number(it.qtd) || 0), 0), [items]);
 
   const value: CartCtx = {
     items,
     addItem,
-    setQty,
     inc,
     dec,
     remove,
     clear,
-    countItems,
     subtotal,
+    countItems,
   };
 
-  return <CartContext.Provider value={value}>{children}</CartContext.Provider>;
+  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
 }
 
 export function useCart() {
-  const ctx = useContext(CartContext);
-  if (!ctx) throw new Error("useCart must be used inside CartProvider");
+  const ctx = useContext(Ctx);
+  if (!ctx) throw new Error("useCart deve ser usado dentro de <CartProvider />");
   return ctx;
 }
