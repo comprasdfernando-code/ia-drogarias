@@ -610,49 +610,48 @@ function CartModal({
   }
 
   async function criarPedidoNoPainel() {
-  let profile: any = null;
-  try {
-    profile = JSON.parse(localStorage.getItem(PROFILE_LS) || "null");
-  } catch {
-    // ignore
+    let profile: any = null;
+    try {
+      profile = JSON.parse(localStorage.getItem(PROFILE_LS) || "null");
+    } catch {
+      // ignore
+    }
+
+    const itens = cart.items.map((i) => ({
+      ean: i.ean,
+      nome: i.nome,
+      qtd: i.qtd,
+      preco: i.preco,
+      subtotal: i.preco * i.qtd,
+    }));
+
+    const { data, error } = await supabase.rpc("df_checkout", {
+      p_canal: "SITE",
+      p_comanda: null,
+
+      p_cliente_nome: clienteNome.trim(),
+      p_cliente_whatsapp: onlyDigits(clienteTelefone),
+
+      // ✅ extras do profile (pra não perder)
+      p_cliente_cpf: profile?.cpf || null,
+      p_cliente_nome_fantasia: profile?.nome_fantasia || null,
+
+      p_tipo_entrega: tipoEntrega,
+      p_endereco: tipoEntrega === "ENTREGA" ? endereco.trim() : null,
+      p_numero: tipoEntrega === "ENTREGA" ? numero.trim() : null,
+      p_bairro: tipoEntrega === "ENTREGA" ? bairro.trim() : null,
+
+      p_pagamento: pagamento,
+      p_taxa_entrega: taxaEntrega,
+      p_subtotal: cart.subtotal,
+      p_total: total,
+
+      p_itens: itens,
+    });
+
+    if (error) throw error;
+    return (data as string) || "";
   }
-
-  const itens = cart.items.map((i) => ({
-    ean: i.ean,
-    nome: i.nome,
-    qtd: i.qtd,
-    preco: i.preco,
-    subtotal: i.preco * i.qtd,
-  }));
-
-  const { data, error } = await supabase.rpc("df_checkout", {
-    p_canal: "SITE",
-    p_comanda: null,
-
-    p_cliente_nome: clienteNome.trim(),
-    p_cliente_whatsapp: onlyDigits(clienteTelefone),
-
-    // ✅ extras do profile (pra não perder)
-    p_cliente_cpf: profile?.cpf || null,
-    p_cliente_nome_fantasia: profile?.nome_fantasia || null,
-
-    p_tipo_entrega: tipoEntrega,
-    p_endereco: tipoEntrega === "ENTREGA" ? endereco.trim() : null,
-    p_numero: tipoEntrega === "ENTREGA" ? numero.trim() : null,
-    p_bairro: tipoEntrega === "ENTREGA" ? bairro.trim() : null,
-
-    p_pagamento: pagamento,
-    p_taxa_entrega: taxaEntrega,
-    p_subtotal: cart.subtotal,
-    p_total: total,
-
-    p_itens: itens,
-  });
-
-  if (error) throw error;
-  return (data as string) || "";
-}
-
 
   async function finalizarPedido() {
     if (!canCheckout || saving) return;
@@ -694,9 +693,16 @@ function CartModal({
 
         {/* ✅ CONFIRMAÇÃO (após salvar) */}
         {pedidoCriado ? (
-          <div className="mt-6 rounded-2xl border bg-green-50 p-4">
-            <div className="text-lg font-extrabold text-green-700">Pedido finalizado ✅</div>
-            <div className="text-sm text-gray-700 mt-1">
+          <div className="mt-6 rounded-2xl border bg-green-50 p-6 text-center">
+            <div className="text-2xl font-extrabold text-green-700">
+              Pedido finalizado com sucesso! ✅
+            </div>
+
+            <div className="mt-2 text-sm text-gray-900 font-semibold">
+              Em breve nossa equipe irá conferir o estoque e dar sequência ao atendimento.
+            </div>
+
+            <div className="mt-3 text-sm text-gray-700">
               Pedido criado no sistema: <b>{pedidoCriado}</b>
             </div>
 
@@ -926,6 +932,7 @@ function CartModal({
     </div>
   );
 }
+
 
 
 
