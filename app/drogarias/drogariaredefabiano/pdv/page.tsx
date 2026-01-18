@@ -108,14 +108,17 @@ export default function PDVPageFabiano() {
   const [vendaSelecionada, setVendaSelecionada] = useState<any | null>(null);
   const [filtroData, setFiltroData] = useState("");
 
+  const [saving, setSaving] = useState(false);
+
   const [pagamento, setPagamento] = useState<any>({
-    tipo: "Balcão",
-    forma: "",
+    tipo: "Balcão", // Balcão | Entrega | Externo
+    forma: "", // Pix | Cartão | Dinheiro
     dinheiro: "",
     troco: "0.00",
     nome: "",
     telefone: "",
     endereco: "",
+    comanda: "", // ✅ NOVO
   });
 
   // ==========================
@@ -144,6 +147,7 @@ export default function PDVPageFabiano() {
       nome: "",
       telefone: "",
       endereco: "",
+      comanda: "",
     }));
     inputRef.current?.focus();
   }
@@ -191,7 +195,7 @@ export default function PDVPageFabiano() {
 
       const ids = catArr.map((p) => p.id);
 
-      // ✅ sua tabela real (pela sua view): fv_farmacia_produtos
+      // ✅ estoque/preço da loja
       const { data: loja, error: eLoja } = await supabase
         .from("fv_farmacia_produtos")
         .select("produto_id,farmacia_slug,estoque,preco_venda,ativo")
@@ -211,12 +215,10 @@ export default function PDVPageFabiano() {
         });
       });
 
-      // ✅ aqui é o ponto que estava dando erro no seu VSCode
       const out: ProdutoBusca[] = catArr
         .map((p) => {
           const lp = mapLoja.get(String(p.id));
 
-          // se não tem registro da loja, consideramos sem estoque (indisponível)
           const ativoLoja = lp?.ativo !== null && lp?.ativo !== undefined ? !!lp.ativo : true;
           const estoque = Number(lp?.estoque || 0);
           const estoqueFinal = ativoLoja ? estoque : 0;
@@ -310,9 +312,11 @@ export default function PDVPageFabiano() {
   }
 
   // ==========================
-  // BAIXA ESTOQUE (fv_farmacia_produtos)
+  // BAIXA ESTOQUE (SEGURA)
+  // - faz "lock otimista": atualiza só se o estoque ainda é o que foi lido
+  // - evita estoque negativo e evita corrida simples
   // ==========================
-  async function baixarEstoque(vendaAtual: ItemVenda[]) {
+  async function baixarEstoqueSegura(vendaAtual: ItemVenda[]) {
     for (const item of vendaAtual) {
       const { data: lp, error: e1 } = await supabase
         .from("fv_farmacia_produtos")
@@ -321,25 +325,53 @@ export default function PDVPageFabiano() {
         .eq("produto_id", item.id)
         .maybeSingle();
 
-      if (e1) {
-        console.warn("Erro buscar estoque:", e1);
-        continue;
-      }
-      if (!lp) {
-        console.warn("Produto não existe em fv_farmacia_produtos:", item.nome);
-        continue;
+      if (e1) throw e1;
+      if (!lp) throw new Error(`Produto não existe no estoque da loja: ${item.nome}`);
+
+      const atual = Number((lp as any).estoque || 0);
+      const qtd = Number(item.qtd || 0);
+
+      if (qtd <= 0) continue;
+      if (atual < qtd) {
+        throw new Error(`Estoque insuficiente para ${item.nome}. Atual: ${atual}, pedido: ${qtd}`);
       }
 
-      const atual = Number(lp.estoque || 0);
-      const novo = Math.max(0, atual - Number(item.qtd || 0));
+      const novo = atual - qtd;
 
-      const { error: e2 } = await supabase
+      // ✅ lock otimista: só atualiza se estoque ainda é "atual"
+      const { data: updated, error: e2 } = await supabase
         .from("fv_farmacia_produtos")
         .update({ estoque: novo })
         .eq("farmacia_slug", LOJA_SLUG)
-        .eq("produto_id", item.id);
+        .eq("produto_id", item.id)
+        .eq("estoque", atual)
+        .select("produto_id")
+        .maybeSingle();
 
-      if (e2) console.warn("Erro baixar estoque:", e2);
+      if (e2) throw e2;
+
+      // se não atualizou (corrida), refaz uma vez
+      if (!updated) {
+        const { data: lp2, error: e3 } = await supabase
+          .from("fv_farmacia_produtos")
+          .select("estoque")
+          .eq("farmacia_slug", LOJA_SLUG)
+          .eq("produto_id", item.id)
+          .maybeSingle();
+        if (e3) throw e3;
+
+        const atual2 = Number((lp2 as any)?.estoque || 0);
+        if (atual2 < qtd) throw new Error(`Estoque insuficiente (após atualização) para ${item.nome}. Atual: ${atual2}`);
+
+        const { error: e4 } = await supabase
+          .from("fv_farmacia_produtos")
+          .update({ estoque: Math.max(0, atual2 - qtd) })
+          .eq("farmacia_slug", LOJA_SLUG)
+          .eq("produto_id", item.id)
+          .eq("estoque", atual2);
+
+        if (e4) throw e4;
+      }
     }
   }
 
@@ -356,6 +388,11 @@ export default function PDVPageFabiano() {
 
     const itens = asArray<any>(v?.itens);
 
+    const clienteNome = v?.cliente?.nome || "";
+    const clienteTel = v?.cliente?.telefone || "";
+    const clienteEnd = v?.cliente?.endereco || "";
+    const comanda = v?.comanda || v?.pedido_comanda || "";
+
     win.document.write(`
       <html>
         <head>
@@ -365,21 +402,23 @@ export default function PDVPageFabiano() {
             .t { text-align:center; font-weight:700; }
             .l { border-top: 1px dashed #777; margin: 6px 0; }
             .row { display:flex; justify-content:space-between; gap:8px; }
-            .muted { color:#555; font-size:11px; }
-            .total { text-align:right; font-weight:700; margin-top:6px; }
+            .muted { color:#222; font-size:11px; font-weight:700; } /* ✅ mais forte */
+            .total { text-align:right; font-weight:900; margin-top:6px; }
+            .strong { font-weight:900; }
           </style>
         </head>
         <body>
-          <div class="t">💊 Drogaria Rede Fabiano</div>
-          <div class="t muted">COMANDA / SEPARAÇÃO</div>
+          <div class="t strong">💊 Drogaria Rede Fabiano</div>
+          <div class="t muted strong">COMANDA / SEPARAÇÃO</div>
+          <div class="t muted">${comanda ? `COMANDA: <span class="strong">${String(comanda)}</span>` : ""}</div>
           <div class="l"></div>
           <div class="muted">
-            <div>Data: ${data} ${hora}</div>
-            <div>Origem: ${v?.origem || "PDV"}</div>
-            <div>ID: ${String(v?.id || "").slice(0, 8)}</div>
-            ${v?.cliente?.nome ? `<div>Cliente: ${v.cliente.nome}</div>` : ""}
-            ${v?.cliente?.telefone ? `<div>Tel: ${v.cliente.telefone}</div>` : ""}
-            ${v?.cliente?.endereco ? `<div>End: ${v.cliente.endereco}</div>` : ""}
+            <div><span class="strong">Data:</span> ${data} ${hora}</div>
+            <div><span class="strong">Origem:</span> ${v?.origem || "PDV"}</div>
+            <div><span class="strong">ID:</span> ${String(v?.id || "").slice(0, 8)}</div>
+            ${clienteNome ? `<div><span class="strong">Cliente:</span> ${clienteNome}</div>` : ""}
+            ${clienteTel ? `<div><span class="strong">Tel:</span> ${clienteTel}</div>` : ""}
+            ${clienteEnd ? `<div><span class="strong">End:</span> ${clienteEnd}</div>` : ""}
           </div>
           <div class="l"></div>
 
@@ -390,7 +429,7 @@ export default function PDVPageFabiano() {
                   .map(
                     (p: any) => `
                       <div class="row">
-                        <span>${Number(p.qtd || 0)}x ${String(p.nome || "").slice(0, 22)}</span>
+                        <span class="strong">${Number(p.qtd || 0)}x ${String(p.nome || "").slice(0, 22)}</span>
                         <span></span>
                       </div>
                       <div class="muted">${p.ean || ""}</div>
@@ -400,9 +439,9 @@ export default function PDVPageFabiano() {
           }
 
           <div class="l"></div>
-          <div class="total">Total: ${brl(Number(v?.total || 0))}</div>
+          <div class="total strong">Total: ${brl(Number(v?.total || 0))}</div>
           <div class="l"></div>
-          <div class="t muted">IA Drogarias • Saúde com Inteligência</div>
+          <div class="t muted strong">iadrogarias.com.br</div>
         </body>
       </html>
     `);
@@ -414,13 +453,24 @@ export default function PDVPageFabiano() {
 
   // ==========================
   // FINALIZAR
+  // ✅ baixa estoque com segurança
+  // ✅ grava venda
+  // ✅ exige COMANDA (número)
   // ==========================
   async function finalizarVenda() {
     if (venda.length === 0) return;
+    if (saving) return;
 
     try {
       if (!pagamento.forma) {
         alert("Selecione a forma de pagamento.");
+        return;
+      }
+
+      // ✅ comanda obrigatória
+      const comanda = String(pagamento.comanda || "").trim();
+      if (!comanda) {
+        alert("Informe o número da comanda.");
         return;
       }
 
@@ -431,6 +481,15 @@ export default function PDVPageFabiano() {
           return;
         }
       }
+
+      // valida entrega
+      if (pagamento.tipo === "Entrega") {
+        if (!String(pagamento.nome || "").trim()) return alert("Informe o nome do cliente.");
+        if (onlyDigits(String(pagamento.telefone || "")).length < 10) return alert("Informe o Whats/Telefone com DDD.");
+        if (!String(pagamento.endereco || "").trim()) return alert("Informe o endereço.");
+      }
+
+      setSaving(true);
 
       const itens = venda.map((p) => ({
         produto_id: p.id,
@@ -444,16 +503,21 @@ export default function PDVPageFabiano() {
       const cliente =
         pagamento.tipo === "Entrega"
           ? {
-              nome: pagamento.nome || "",
-              telefone: pagamento.telefone || "",
-              endereco: pagamento.endereco || "",
+              nome: String(pagamento.nome || "").trim(),
+              telefone: onlyDigits(String(pagamento.telefone || "")),
+              endereco: String(pagamento.endereco || "").trim(),
             }
           : null;
 
+      // ✅ 1) baixa estoque primeiro (se falhar, não grava a venda)
+      await baixarEstoqueSegura(venda);
+
+      // ✅ 2) grava venda
       const payload = {
         loja_slug: LOJA_SLUG,
         origem: "PDV",
         status: "FINALIZADA",
+        comanda, // ✅ NOVO (salva no banco)
         cliente,
         pagamento: {
           tipo: pagamento.tipo,
@@ -474,57 +538,39 @@ export default function PDVPageFabiano() {
 
       if (error) throw error;
 
-      await baixarEstoque(venda);
       imprimirComanda(saved);
 
-      alert("✅ Venda finalizada e gravada!");
+      alert("✅ Venda finalizada, estoque baixado e comanda impressa!");
       setShowPagamento(false);
       limparVenda();
     } catch (err: any) {
       console.error("Erro finalizarVenda:", err);
       alert(err?.message || "Falha ao finalizar venda.");
+    } finally {
+      setSaving(false);
     }
   }
 
   // ==========================
   // CONSULTA (admin)
+  // ✅ corrigido: carregarVendas agora lê da tabela "vendas" (antes estava errado)
   // ==========================
-  async function carregarVendas(termo: string = "") {
-  const termoLimpo = termo.trim();
+  async function carregarVendas() {
+    const { data, error } = await supabase
+      .from("vendas")
+      .select("*")
+      .eq("loja_slug", LOJA_SLUG)
+      .order("created_at", { ascending: false })
+      .limit(200);
 
-  const query = supabase
-    .from("fv_produtos_loja_view")
-    .select(`
-      produto_id,
-      ean,
-      nome,
-      categoria,
-      imagens,
-      estoque,
-      preco_venda,
-      disponivel_farmacia
-    `)
-    .eq("farmacia_slug", LOJA_SLUG)
-    .eq("disponivel_farmacia", true)
-    .order("nome", { ascending: true })
-    .limit(30);
+    if (error) {
+      console.error(error);
+      alert("Erro ao carregar vendas!");
+      return;
+    }
 
-  // só aplica o ilike se tiver termo
-  if (termoLimpo) {
-    query.ilike("nome", `%${termoLimpo}%`);
+    setVendas(data || []);
   }
-
-  const { data, error } = await query;
-
-  if (error) {
-    console.error(error);
-    alert("Erro ao carregar vendas!");
-    return;
-  }
-
-  setVendas(data || []);
-}
-
 
   async function buscarPorData() {
     if (!filtroData) {
@@ -590,9 +636,7 @@ export default function PDVPageFabiano() {
   return (
     <main className="max-w-6xl mx-auto p-4 sm:p-6">
       <div className="flex flex-col sm:flex-row justify-between items-center gap-3">
-        <h1 className="text-2xl sm:text-3xl font-bold text-blue-700">
-          💻 PDV — Drogaria Rede Fabiano
-        </h1>
+        <h1 className="text-2xl sm:text-3xl font-bold text-blue-700">💻 PDV — Drogaria Rede Fabiano</h1>
 
         <div className="hidden sm:block bg-blue-50 border border-blue-200 rounded-lg p-2 text-xs text-gray-700">
           <p className="font-semibold text-blue-700 mb-1">⌨️ Atalhos:</p>
@@ -689,7 +733,17 @@ export default function PDVPageFabiano() {
                   <td className="p-2 text-blue-800 font-semibold">{brl(unit)}</td>
                   <td className="p-2 font-bold text-emerald-700">{brl(tot)}</td>
                   <td className="p-2">
-                    <button onClick={() => setVenda((prev) => prev.filter((x) => x.id !== p.id))} className="text-red-600">
+                    <button
+                      onClick={() => {
+                        setVenda((prev) => {
+                          const nv = prev.filter((x) => x.id !== p.id);
+                          calcularTotal(nv);
+                          return nv;
+                        });
+                      }}
+                      className="text-red-600"
+                      title="Remover"
+                    >
                       🗑️
                     </button>
                   </td>
@@ -732,6 +786,18 @@ export default function PDVPageFabiano() {
           <div className="bg-white w-[95%] sm:w-[420px] rounded-xl shadow-2xl p-5 max-h-[90vh] overflow-y-auto relative">
             <h2 className="text-2xl font-bold text-blue-700 text-center mb-5">🧾 Finalizar Venda</h2>
 
+            {/* ✅ COMANDA */}
+            <div className="mb-4">
+              <label className="block font-semibold mb-2 text-gray-700">Comanda (obrigatório):</label>
+              <input
+                type="text"
+                placeholder="Ex: 12"
+                value={pagamento.comanda || ""}
+                onChange={(e) => setPagamento((prev: any) => ({ ...prev, comanda: e.target.value }))}
+                className="w-full border rounded p-2"
+              />
+            </div>
+
             <div className="mb-4">
               <label className="block font-semibold mb-2 text-gray-700">Tipo:</label>
               <div className="flex gap-2">
@@ -760,7 +826,7 @@ export default function PDVPageFabiano() {
                 />
                 <input
                   type="text"
-                  placeholder="Telefone"
+                  placeholder="Whats/Telefone (DDD)"
                   value={pagamento.telefone || ""}
                   onChange={(e) => setPagamento((prev: any) => ({ ...prev, telefone: e.target.value }))}
                   className="w-full border rounded p-2"
@@ -813,15 +879,25 @@ export default function PDVPageFabiano() {
             </div>
 
             <div className="flex flex-col gap-2 mt-6">
-              <button onClick={finalizarVenda} className="bg-blue-800 text-white py-2 rounded-md font-semibold">
-                ✅ Confirmar e Imprimir Comanda
+              <button
+                onClick={finalizarVenda}
+                disabled={saving}
+                className={`py-2 rounded-md font-semibold ${
+                  saving ? "bg-blue-300 text-white cursor-wait" : "bg-blue-800 text-white"
+                }`}
+              >
+                {saving ? "Salvando..." : "✅ Confirmar e Imprimir Comanda"}
               </button>
               <button onClick={() => setShowPagamento(false)} className="bg-gray-400 text-white py-2 rounded-md">
                 ↩️ Voltar
               </button>
             </div>
 
-            <button onClick={() => setShowPagamento(false)} className="absolute top-2 right-3 text-xl text-gray-400" aria-label="Fechar">
+            <button
+              onClick={() => setShowPagamento(false)}
+              className="absolute top-2 right-3 text-xl text-gray-400"
+              aria-label="Fechar"
+            >
               ×
             </button>
           </div>
@@ -855,7 +931,12 @@ export default function PDVPageFabiano() {
             </div>
 
             <div className="flex items-center gap-3 mb-4">
-              <input type="date" value={filtroData} onChange={(e) => setFiltroData(e.target.value)} className="border rounded px-3 py-2" />
+              <input
+                type="date"
+                value={filtroData}
+                onChange={(e) => setFiltroData(e.target.value)}
+                className="border rounded px-3 py-2"
+              />
               <button onClick={buscarPorData} className="bg-blue-600 text-white px-4 py-2 rounded">
                 Buscar
               </button>
@@ -879,6 +960,7 @@ export default function PDVPageFabiano() {
                     <th className="p-2 border">Data</th>
                     <th className="p-2 border">Origem</th>
                     <th className="p-2 border">Status</th>
+                    <th className="p-2 border">Comanda</th>
                     <th className="p-2 border text-right">Total</th>
                     <th className="p-2 border text-center">Ações</th>
                   </tr>
@@ -895,6 +977,7 @@ export default function PDVPageFabiano() {
                         )}
                       </td>
                       <td className="p-2 border text-center">{v.status}</td>
+                      <td className="p-2 border text-center">{v.comanda || "-"}</td>
                       <td className="p-2 border text-right text-emerald-700 font-semibold">{brl(Number(v.total || 0))}</td>
                       <td className="p-2 border text-center">
                         <button onClick={() => setVendaSelecionada(v)} className="text-xs bg-blue-500 text-white px-3 py-1 rounded">
@@ -920,8 +1003,12 @@ export default function PDVPageFabiano() {
               Data: {new Date(vendaSelecionada.created_at).toLocaleString("pt-BR")}
             </p>
 
-            <p className="text-sm text-gray-600 mb-4">
+            <p className="text-sm text-gray-600 mb-2">
               Origem: <b>{vendaSelecionada.origem}</b> • Status: <b>{vendaSelecionada.status}</b>
+            </p>
+
+            <p className="text-sm text-gray-600 mb-4">
+              Comanda: <b>{vendaSelecionada.comanda || "-"}</b>
             </p>
 
             <ul className="border-t border-gray-200 pt-3">
@@ -935,9 +1022,7 @@ export default function PDVPageFabiano() {
               ))}
             </ul>
 
-            <div className="mt-4 text-right font-bold text-emerald-700">
-              Total: {brl(Number(vendaSelecionada.total || 0))}
-            </div>
+            <div className="mt-4 text-right font-bold text-emerald-700">Total: {brl(Number(vendaSelecionada.total || 0))}</div>
 
             <div className="mt-4 flex flex-col gap-2">
               <button onClick={() => imprimirComanda(vendaSelecionada)} className="bg-emerald-600 text-white px-4 py-2 rounded">

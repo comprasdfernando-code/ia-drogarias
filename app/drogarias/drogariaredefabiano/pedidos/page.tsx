@@ -1,372 +1,292 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
-import { createClient } from "@supabase/supabase-js";
+import { useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
+import { supabase } from "@/lib/supabaseClient";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+type ItemPedido = {
+  produto_id?: string;
+  ean?: string;
+  nome: string;
+  qtd: number;
+  preco: number;
+};
 
-const LOJA_SLUG = "drogariaredefabiano";
+type Pedido = {
+  id: string;
+  created_at: string;
+  status: "NOVO" | "PREPARO" | "PRONTO" | "ENTREGUE" | string;
 
-// Ajuste os status que você quer trabalhar
-const STATUS_OPCOES = ["NOVO", "SEPARANDO", "PRONTO", "ENTREGUE", "CANCELADO", "FINALIZADA"] as const;
+  canal?: "PDV" | "SITE" | string;
+  comanda?: string | null;
 
+  cliente_nome?: string | null;
+  cliente_whatsapp?: string | null;
+
+  tipo_entrega: "ENTREGA" | "RETIRADA";
+  endereco?: string | null;
+  numero?: string | null;
+  bairro?: string | null;
+
+  pagamento: string;
+  subtotal: number;
+  taxa_entrega: number;
+  total: number;
+
+  itens?: ItemPedido[];
+};
+
+const STATUS_STYLE: Record<string, { badge: string; card: string; btn: string; label: string }> = {
+  NOVO: { badge: "bg-yellow-200 text-yellow-950 border border-yellow-300", card: "border-l-8 border-yellow-500", btn: "bg-yellow-600 hover:bg-yellow-700", label: "NOVO" },
+  PREPARO:{ badge: "bg-blue-200 text-blue-950 border border-blue-300", card: "border-l-8 border-blue-600", btn: "bg-blue-700 hover:bg-blue-800", label: "PREPARO" },
+  PRONTO:{ badge: "bg-purple-200 text-purple-950 border border-purple-300", card: "border-l-8 border-purple-600", btn: "bg-purple-700 hover:bg-purple-800", label: "PRONTO" },
+  ENTREGUE:{ badge: "bg-green-200 text-green-950 border border-green-300", card: "border-l-8 border-green-600", btn: "bg-green-700 hover:bg-green-800", label: "ENTREGUE" },
+};
+
+function proximoStatus(s: string) {
+  if (s === "NOVO") return "PREPARO";
+  if (s === "PREPARO") return "PRONTO";
+  if (s === "PRONTO") return "ENTREGUE";
+  return "ENTREGUE";
+}
 function brl(n: number) {
-  return (Number(n || 0)).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  return Number(n || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+function onlyDigits(v: string) {
+  return (v || "").replace(/\D/g, "");
+}
+function buildWhatsappStatusMsg(p: Pedido) {
+  const idCurto = p.id.slice(0, 6).toUpperCase();
+  const st = (STATUS_STYLE[p.status]?.label || p.status || "NOVO").toUpperCase();
+  const total = brl(p.total);
+  const comanda = p.comanda ? `\nComanda: ${p.comanda}` : "";
+  return `Olá, ${p.cliente_nome || "cliente"}! 😊\nSeu pedido ${idCurto} está em: *${st}*.\nTotal: ${total}${comanda}\n\nDrogaria Rede Fabiano`;
 }
 
-function pickData(v: any): string {
-  // prioridade: created_at -> data_venda -> finalizada_em
-  return v?.created_at || v?.data_venda || v?.finalizada_em || v?.updated_at || new Date().toISOString();
-}
+export default function PainelPedidosDRF() {
+  const TABLE = "drf_pedidos";
 
-function fmtData(iso: string) {
-  try {
-    return new Date(iso).toLocaleString("pt-BR");
-  } catch {
-    return iso;
-  }
-}
-
-function txt(v: any) {
-  return String(v ?? "").toLowerCase();
-}
-
-export default function PedidosFabianoPage() {
+  const [pedidos, setPedidos] = useState<Pedido[]>([]);
   const [loading, setLoading] = useState(true);
-  const [erro, setErro] = useState<string | null>(null);
+  const [filtro, setFiltro] = useState("TODOS");
+  const [abertos, setAbertos] = useState<Record<string, boolean>>({});
 
-  const [itens, setItens] = useState<any[]>([]);
-  const [q, setQ] = useState("");
-  const [fStatus, setFStatus] = useState<string>("TODOS");
-  const [fOrigem, setFOrigem] = useState<string>("TODAS");
-
-  const [selecionado, setSelecionado] = useState<any | null>(null);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const idsRef = useRef<Set<string>>(new Set());
 
   async function carregar() {
-    try {
-      setLoading(true);
-      setErro(null);
-
-      // Importante: não usar order("created_at") se sua tabela não tem essa coluna.
-      // Agora que vamos adicionar via SQL, ok. Mesmo assim, deixei resiliente:
-      // buscamos e ordenamos no front usando pickData().
-
-      const { data, error } = await supabase
-        .from("vendas")
-        .select("*")
-        .eq("loja_slug", LOJA_SLUG)
-        .limit(500);
-
-      if (error) throw error;
-
-      const arr = (data || []).slice().sort((a: any, b: any) => {
-        const da = new Date(pickData(a)).getTime();
-        const db = new Date(pickData(b)).getTime();
-        return db - da;
-      });
-
-      setItens(arr);
-    } catch (e: any) {
-      console.error(e);
-      setErro(e?.message || "Erro ao carregar pedidos.");
-      alert(e?.message || "Erro ao carregar pedidos.");
-    } finally {
+    setLoading(true);
+    const { data, error } = await supabase.from(TABLE).select("*").order("created_at", { ascending: false });
+    if (error) {
+      console.error(error);
       setLoading(false);
+      return;
     }
+    setPedidos((data || []) as Pedido[]);
+    idsRef.current = new Set((data || []).map((p: any) => p.id));
+    setLoading(false);
+  }
+
+  async function mudarStatus(id: string, status: string) {
+    const { error } = await supabase.from(TABLE).update({ status }).eq("id", id);
+    if (error) {
+      console.error(error);
+      alert("Erro ao mudar status (RLS?).");
+      return;
+    }
+    setPedidos((prev) => prev.map((p) => (p.id === id ? { ...p, status } : p)));
+  }
+
+  function enviarWhatsStatus(p: Pedido) {
+    const tel = onlyDigits(p.cliente_whatsapp || "");
+    if (tel.length < 10) return alert("Cliente sem WhatsApp válido.");
+    const msg = buildWhatsappStatusMsg(p);
+    const url = `https://wa.me/55${tel}?text=${encodeURIComponent(msg)}`;
+    window.open(url, "_blank");
   }
 
   useEffect(() => {
     carregar();
+
+    const channel = supabase
+      .channel("drf-painel-pedidos")
+      .on("postgres_changes", { event: "*", schema: "public", table: TABLE }, async (payload) => {
+        await carregar();
+        if (payload.eventType === "INSERT") {
+          const id = (payload.new as any)?.id;
+          if (id && !idsRef.current.has(id)) {
+            idsRef.current.add(id);
+            try { await audioRef.current?.play(); } catch {}
+          }
+        }
+      })
+      .subscribe();
+
+    return () => { supabase.removeChannel(channel); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const filtrados = useMemo(() => {
-    const qq = q.trim().toLowerCase();
-
-    return itens.filter((v) => {
-      const origem = String(v?.origem || "").toUpperCase(); // "SITE" ou "PDV"
-      const status = String(v?.status || "").toUpperCase();
-
-      if (fOrigem !== "TODAS" && origem !== fOrigem) return false;
-      if (fStatus !== "TODOS" && status !== fStatus) return false;
-
-      if (!qq) return true;
-
-      const clienteNome = v?.cliente?.nome ?? v?.nome ?? "";
-      const clienteTel = v?.cliente?.telefone ?? v?.telefone ?? "";
-      const clienteEnd = v?.cliente?.endereco ?? v?.endereco ?? "";
-
-      const itensTxt =
-        Array.isArray(v?.itens)
-          ? v.itens.map((i: any) => `${i?.nome ?? ""} ${i?.ean ?? ""}`).join(" ")
-          : Array.isArray(v?.produtos)
-            ? v.produtos.map((i: any) => `${i?.nome ?? ""} ${i?.ean ?? ""}`).join(" ")
-            : "";
-
-      const hay = [
-        origem,
-        status,
-        String(v?.id ?? ""),
-        String(v?.total ?? ""),
-        clienteNome,
-        clienteTel,
-        clienteEnd,
-        itensTxt,
-      ]
-        .map((s) => txt(s))
-        .join(" ");
-
-      return hay.includes(qq);
-    });
-  }, [itens, q, fStatus, fOrigem]);
-
-  const total = useMemo(() => filtrados.reduce((s, v) => s + Number(v?.total || 0), 0), [filtrados]);
-
-  async function atualizarStatus(id: string, status: string) {
-    try {
-      const { error } = await supabase
-        .from("vendas")
-        .update({ status })
-        .eq("id", id)
-        .eq("loja_slug", LOJA_SLUG);
-
-      if (error) throw error;
-
-      // atualiza no front sem precisar recarregar tudo
-      setItens((prev) =>
-        prev.map((x) => (x.id === id ? { ...x, status } : x))
-      );
-      setSelecionado((prev: any) => (prev?.id === id ? { ...prev, status } : prev));
-    } catch (e: any) {
-      console.error(e);
-      alert(e?.message || "Erro ao atualizar status.");
-    }
-  }
-
-  function getItensVenda(v: any) {
-    // compatível com seus dois formatos antigos: v.itens ou v.produtos
-    if (Array.isArray(v?.itens)) return v.itens;
-    if (Array.isArray(v?.produtos)) return v.produtos;
-    return [];
-  }
+    if (filtro === "TODOS") return pedidos;
+    return pedidos.filter((p) => p.status === filtro);
+  }, [pedidos, filtro]);
 
   return (
-    <main className="max-w-6xl mx-auto p-4 sm:p-6">
-      <div className="flex items-center justify-between gap-3">
-        <h1 className="text-2xl sm:text-3xl font-bold text-blue-800">📦 Pedidos (SITE + PDV) — Rede Fabiano</h1>
-        <button
-          onClick={carregar}
-          className="bg-blue-700 hover:bg-blue-800 text-white px-4 py-2 rounded-lg font-semibold"
-        >
-          Atualizar
-        </button>
-      </div>
+    <div className="min-h-screen bg-gray-50 p-4">
+      <audio ref={audioRef} src="/sounds/new-order.mp3" preload="auto" />
 
-      {erro && (
-        <div className="mt-4 bg-red-50 border border-red-200 text-red-700 px-4 py-2 rounded-lg">
-          {erro}
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
+        <div>
+          <h1 className="text-2xl font-extrabold text-gray-950">📥 Painel de Pedidos – DRF</h1>
+          <p className="text-sm text-gray-800">Pedidos em tempo real • controle por etapas</p>
         </div>
-      )}
 
-      <div className="mt-5 grid grid-cols-1 sm:grid-cols-12 gap-3">
-        <select
-          value={fOrigem}
-          onChange={(e) => setFOrigem(e.target.value)}
-          className="sm:col-span-2 border rounded-lg px-3 py-2"
-        >
-          <option value="TODAS">Todas</option>
-          <option value="SITE">SITE</option>
-          <option value="PDV">PDV</option>
-        </select>
+        <div className="flex gap-2">
+          <select
+            value={filtro}
+            onChange={(e) => setFiltro(e.target.value)}
+            className="border border-gray-300 rounded-xl px-3 py-2 bg-white text-gray-950 font-semibold shadow-sm"
+          >
+            <option value="TODOS">Todos</option>
+            <option value="NOVO">Novo</option>
+            <option value="PREPARO">Preparo</option>
+            <option value="PRONTO">Pronto</option>
+            <option value="ENTREGUE">Entregue</option>
+          </select>
 
-        <select
-          value={fStatus}
-          onChange={(e) => setFStatus(e.target.value)}
-          className="sm:col-span-3 border rounded-lg px-3 py-2"
-        >
-          <option value="TODOS">Todos status</option>
-          {STATUS_OPCOES.map((s) => (
-            <option key={s} value={s}>{s}</option>
-          ))}
-        </select>
-
-        <input
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder="Buscar por produto / cliente / telefone / EAN / ID..."
-          className="sm:col-span-5 border rounded-lg px-3 py-2"
-        />
-
-        <div className="sm:col-span-2 border rounded-lg px-3 py-2 bg-gray-50 flex items-center justify-between">
-          <span className="text-sm text-gray-600">Total:</span>
-          <span className="font-bold text-emerald-700">{brl(total)}</span>
+          <button
+            onClick={carregar}
+            className="border border-gray-300 rounded-xl px-3 py-2 bg-white text-gray-950 font-extrabold shadow-sm hover:bg-gray-100"
+          >
+            Atualizar
+          </button>
         </div>
       </div>
 
-      <div className="mt-4 text-sm text-gray-600">
-        {loading ? "Carregando..." : `Encontrados: ${filtrados.length}`}
-      </div>
+      {loading ? (
+        <div className="bg-white border border-gray-200 rounded-2xl p-4 text-gray-900 font-semibold">Carregando...</div>
+      ) : null}
 
-      <div className="mt-3 overflow-x-auto bg-white border rounded-xl shadow-sm">
-        <table className="w-full text-sm">
-          <thead className="bg-blue-50 text-blue-900">
-            <tr>
-              <th className="p-2 border-b text-left">Data</th>
-              <th className="p-2 border-b text-center">Origem</th>
-              <th className="p-2 border-b text-center">Status</th>
-              <th className="p-2 border-b text-left">Cliente</th>
-              <th className="p-2 border-b text-right">Total</th>
-              <th className="p-2 border-b text-center">Ações</th>
-            </tr>
-          </thead>
-          <tbody>
-            {!loading && filtrados.length === 0 && (
-              <tr>
-                <td colSpan={6} className="p-6 text-center text-gray-500">
-                  Nenhum pedido encontrado.
-                </td>
-              </tr>
-            )}
+      <div className="space-y-3">
+        {filtrados.map((p) => {
+          const st = STATUS_STYLE[p.status] || STATUS_STYLE["NOVO"];
+          const itens = (p.itens as any[]) || [];
+          const qtdItens = itens.reduce((s, i) => s + Number(i.qtd || 0), 0);
+          const entregaLabel = p.tipo_entrega === "ENTREGA" ? "🚚 Entrega" : "🏪 Retirada";
 
-            {filtrados.map((v) => {
-              const origem = String(v?.origem || "").toUpperCase();
-              const status = String(v?.status || "").toUpperCase();
-              const dt = pickData(v);
-              const cliente = v?.cliente?.nome || v?.nome || (origem === "PDV" ? "Balcão" : "—");
-              const tel = v?.cliente?.telefone || v?.telefone || "";
+          return (
+            <div key={p.id} className={`bg-white rounded-2xl border border-gray-200 shadow-sm p-4 ${st.card}`}>
+              <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <strong className="text-gray-950 text-base">
+                      Pedido {p.id.slice(0, 6).toUpperCase()}
+                      {p.comanda ? <span className="ml-2 text-gray-800 font-extrabold">• Comanda {p.comanda}</span> : null}
+                      {p.canal ? <span className="ml-2 text-xs text-gray-700 font-semibold">({p.canal})</span> : null}
+                    </strong>
 
-              return (
-                <tr key={v.id} className="border-t hover:bg-gray-50">
-                  <td className="p-2 text-left whitespace-nowrap">{fmtData(dt)}</td>
+                    <span className={`text-xs px-2 py-1 rounded-full font-extrabold ${st.badge}`}>{st.label}</span>
+                    <span className="text-xs text-gray-800 font-semibold">{new Date(p.created_at).toLocaleString("pt-BR")}</span>
+                  </div>
 
-                  <td className="p-2 text-center">
-                    {origem === "SITE" ? (
-                      <span className="text-xs bg-blue-700 text-white px-2 py-0.5 rounded">🌐 SITE</span>
-                    ) : (
-                      <span className="text-xs bg-emerald-700 text-white px-2 py-0.5 rounded">🏪 PDV</span>
-                    )}
-                  </td>
+                  <p className="text-sm mt-1 text-gray-950 font-semibold">
+                    <span className="font-extrabold">{brl(p.total)}</span>
+                    <span className="text-gray-800"> • {entregaLabel} • {p.pagamento}</span>
+                    {qtdItens > 0 ? <span className="text-gray-800"> • {qtdItens} itens</span> : null}
+                  </p>
 
-                  <td className="p-2 text-center">
-                    <span className="text-xs bg-gray-200 text-gray-800 px-2 py-0.5 rounded">
-                      {status || "—"}
-                    </span>
-                  </td>
+                  <div className="mt-3 text-sm bg-gray-50 border border-gray-200 rounded-xl p-3">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div className="font-extrabold text-gray-950">{entregaLabel}</div>
+                      <div className="text-xs text-gray-800 font-semibold">
+                        Subtotal: {brl(p.subtotal)} • Taxa: {brl(p.taxa_entrega)} • Total:{" "}
+                        <span className="font-extrabold text-gray-950">{brl(p.total)}</span>
+                      </div>
+                    </div>
 
-                  <td className="p-2 text-left">
-                    <div className="font-medium text-gray-800">{cliente}</div>
-                    {tel && <div className="text-xs text-gray-500">{tel}</div>}
-                  </td>
+                    <div className="mt-2 text-gray-950 font-semibold">{p.cliente_nome || "-"}</div>
+                    <div className="text-gray-900 font-semibold">{p.cliente_whatsapp || "-"}</div>
 
-                  <td className="p-2 text-right font-bold text-emerald-700">{brl(Number(v?.total || 0))}</td>
+                    {p.tipo_entrega === "ENTREGA" ? (
+                      <div className="mt-1 text-sm text-gray-900 font-semibold">
+                        {p.endereco || "-"}, {p.numero || "-"} • {p.bairro || "-"}
+                      </div>
+                    ) : null}
+                  </div>
 
-                  <td className="p-2 text-center">
+                  <div className="mt-3">
                     <button
-                      onClick={() => setSelecionado(v)}
-                      className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 rounded"
+                      onClick={() => setAbertos((x) => ({ ...x, [p.id]: !x[p.id] }))}
+                      className="text-sm font-extrabold border border-gray-300 rounded-xl px-3 py-2 bg-white text-gray-950 hover:bg-gray-100"
                     >
-                      Ver
+                      {abertos[p.id] ? "▾ Ocultar itens" : "▸ Ver itens"}
                     </button>
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
 
-      {/* MODAL */}
-      {selecionado && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-[9999] p-3">
-          <div className="bg-white w-full max-w-lg rounded-xl shadow-xl p-5">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <div className="text-xl font-bold text-blue-800">Pedido</div>
-                <div className="text-xs text-gray-500">
-                  ID: {String(selecionado.id).slice(0, 10)} • {fmtData(pickData(selecionado))}
+                    {abertos[p.id] ? (
+                      <div className="mt-2 bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm space-y-1">
+                        {itens.length === 0 ? (
+                          <div className="text-gray-900 font-semibold">Sem itens carregados.</div>
+                        ) : (
+                          itens.map((i: any, idx: number) => (
+                            <div key={idx} className="flex justify-between gap-3">
+                              <span className="text-gray-950 font-semibold truncate">{i.qtd}x {i.nome}</span>
+                              <span className="text-gray-950 font-extrabold whitespace-nowrap">
+                                {brl((Number(i.preco) || 0) * (Number(i.qtd) || 0))}
+                              </span>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="flex flex-row lg:flex-col items-stretch lg:items-end gap-2">
+                  <Link
+                    href={`/drogarias/drogariaredefabiano/cupom/${p.id}`}
+                    target="_blank"
+                    className="px-3 py-2 rounded-xl bg-gray-950 text-white font-extrabold hover:bg-black text-center"
+                  >
+                    🖨️ Imprimir
+                  </Link>
+
+                  <button
+                    onClick={() => enviarWhatsStatus(p)}
+                    className="px-3 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-extrabold"
+                    title="Enviar status no WhatsApp"
+                  >
+                    💬 Whats
+                  </button>
+
+                  <button
+                    onClick={() => mudarStatus(p.id, proximoStatus(p.status))}
+                    className={`px-3 py-2 rounded-xl text-white font-extrabold ${st.btn}`}
+                    title="Avançar para a próxima etapa"
+                  >
+                    Avançar ▶
+                  </button>
                 </div>
               </div>
-              <button
-                onClick={() => setSelecionado(null)}
-                className="text-gray-400 hover:text-gray-700 text-2xl leading-none"
-                aria-label="Fechar"
-              >
-                ×
-              </button>
-            </div>
 
-            <div className="mt-3 flex items-center gap-2">
-              <span className="text-xs bg-gray-200 px-2 py-0.5 rounded">
-                Origem: {String(selecionado?.origem || "—").toUpperCase()}
-              </span>
-              <span className="text-xs bg-gray-200 px-2 py-0.5 rounded">
-                Status: {String(selecionado?.status || "—").toUpperCase()}
-              </span>
-            </div>
-
-            {/* Cliente */}
-            <div className="mt-4 border rounded-lg p-3 bg-gray-50">
-              <div className="font-semibold text-gray-800 mb-1">Cliente</div>
-              <div className="text-sm text-gray-700">
-                {selecionado?.cliente?.nome || selecionado?.nome || "—"}
-              </div>
-              {selecionado?.cliente?.telefone && (
-                <div className="text-sm text-gray-600">📞 {selecionado.cliente.telefone}</div>
-              )}
-              {selecionado?.cliente?.endereco && (
-                <div className="text-sm text-gray-600">📍 {selecionado.cliente.endereco}</div>
-              )}
-            </div>
-
-            {/* Itens */}
-            <div className="mt-4">
-              <div className="font-semibold text-gray-800 mb-2">Itens</div>
-              <div className="border rounded-lg overflow-hidden">
-                {(getItensVenda(selecionado) || []).map((p: any, i: number) => (
-                  <div key={i} className="flex justify-between gap-3 px-3 py-2 border-b last:border-b-0">
-                    <div className="min-w-0">
-                      <div className="text-sm font-medium text-gray-800 truncate">{p?.nome}</div>
-                      {p?.ean && <div className="text-xs text-gray-500">{p.ean}</div>}
-                    </div>
-                    <div className="text-sm text-gray-700 whitespace-nowrap">
-                      {Number(p?.qtd || 0)}x • {brl(Number(p?.preco_unit || p?.preco_venda || 0))}
-                    </div>
-                  </div>
+              <div className="flex gap-2 mt-4 flex-wrap">
+                {(["NOVO", "PREPARO", "PRONTO", "ENTREGUE"] as const).map((s) => (
+                  <button
+                    key={s}
+                    onClick={() => mudarStatus(p.id, s)}
+                    className="px-3 py-2 border border-gray-300 rounded-xl bg-white text-gray-950 font-extrabold hover:bg-gray-100"
+                  >
+                    {s}
+                  </button>
                 ))}
               </div>
 
-              <div className="mt-3 text-right font-bold text-emerald-700">
-                Total: {brl(Number(selecionado?.total || 0))}
-              </div>
+              <p className="text-xs text-gray-800 font-semibold mt-3">
+                Dica: se o som não tocar, clique 1 vez na tela (o navegador libera áudio).
+              </p>
             </div>
-
-            {/* Ações */}
-            <div className="mt-5 grid grid-cols-2 sm:grid-cols-3 gap-2">
-              {STATUS_OPCOES.map((s) => (
-                <button
-                  key={s}
-                  onClick={() => atualizarStatus(selecionado.id, s)}
-                  className="border rounded-lg py-2 text-sm hover:bg-gray-50"
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
-
-            <div className="mt-4">
-              <button
-                onClick={() => setSelecionado(null)}
-                className="w-full bg-gray-200 hover:bg-gray-300 text-gray-800 py-2 rounded-lg font-semibold"
-              >
-                Fechar
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-    </main>
+          );
+        })}
+      </div>
+    </div>
   );
 }
