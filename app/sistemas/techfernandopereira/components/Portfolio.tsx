@@ -76,7 +76,7 @@ const projects: Project[] = [
   {
     title: "E-commerce de Drogaria",
     desc: "E-commerce de medicamentos e perfumaria.",
-    link: "/drogarias",
+    link: "/fv",
     image: "/drogarias.png",
   },
 
