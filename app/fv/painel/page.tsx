@@ -83,6 +83,51 @@ function brl(n: number) {
   return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
+function onlyDigits(v: string) {
+  return (v || "").replace(/\D/g, "");
+}
+
+function labelStatus(s: string) {
+  if (s === "NOVO") return "Novo";
+  if (s === "PREPARO") return "Em preparo";
+  if (s === "PRONTO") return "Pronto";
+  if (s === "ENTREGUE") return "Entregue";
+  return s;
+}
+
+function buildWhatsAppLink(phone: string, msg: string) {
+  const clean = onlyDigits(phone);
+  const text = encodeURIComponent(msg);
+  return `https://wa.me/55${clean}?text=${text}`;
+}
+
+function msgStatusPedido(p: Pedido) {
+  const entrega = p.tipo_entrega === "ENTREGA" ? "Entrega" : "Retirada";
+  const when = safeDateBR(p.created_at);
+
+  const itens = (p.itens || [])
+    .slice(0, 12)
+    .map((i) => `• ${i.qtd}x ${i.nome}`)
+    .join("\n");
+
+  const end =
+    p.tipo_entrega === "ENTREGA"
+      ? `\nEndereço: ${p.endereco || "-"}, ${p.numero || "-"} - ${p.bairro || "-"}`
+      : "";
+
+  return (
+    `Olá, ${p.cliente_nome || "tudo bem"}! 🙂\n` +
+    `Seu pedido ${p.id.slice(0, 6).toUpperCase()} está com status: *${labelStatus(p.status)}*.\n` +
+    `Tipo: ${entrega} • Pagamento: ${p.pagamento}\n` +
+    `Total: ${brl(Number(p.total || 0))}\n` +
+    `${end}\n\n` +
+    `Itens:\n${itens || "• (sem itens)"}\n\n` +
+    `Pedido feito em: ${when}\n` +
+    `Qualquer dúvida, me chama por aqui. ✅`
+  );
+}
+
+
 function safeDateBR(d: string) {
   try {
     return new Date(d).toLocaleString("pt-BR");
@@ -356,45 +401,44 @@ export default function PainelPedidosFV() {
 
                 {/* AÇÕES */}
                 <div className="flex flex-row lg:flex-col items-stretch lg:items-end gap-2">
-                  <Link
-                    href={`/fv/cupom/${p.id}`}
-                    target="_blank"
-                    className="px-3 py-2 rounded-xl bg-gray-950 text-white font-extrabold hover:bg-black text-center"
-                  >
-                    🖨️ Imprimir
-                  </Link>
+  <Link
+    href={`/fv/cupom/${p.id}`}
+    target="_blank"
+    className="px-3 py-2 rounded-xl bg-gray-950 text-white font-extrabold hover:bg-black text-center"
+  >
+    🖨️ Imprimir
+  </Link>
 
-                  {/* ✅ BAIXAR ESTOQUE DF */}
-                  <button
-                    onClick={() => baixarEstoqueDF(p.id)}
-                    disabled={btnDisabled}
-                    className={`px-3 py-2 rounded-xl font-extrabold text-center border ${
-                      btnDisabled
-                        ? "bg-gray-200 text-gray-600 border-gray-300 cursor-not-allowed"
-                        : "bg-green-700 hover:bg-green-800 text-white border-green-800"
-                    }`}
-                    title={
-                      jaBaixou
-                        ? "Estoque DF já foi baixado"
-                        : temEanFaltando
-                        ? "Falta EAN em algum item"
-                        : itens.length === 0
-                        ? "Pedido sem itens"
-                        : "Confirmar e baixar estoque da DF"
-                    }
-                  >
-                    {baixandoId === p.id ? "Baixando..." : "✅ Confirmar + Baixar DF"}
-                  </button>
+  <a
+    href={
+      p.cliente_whatsapp
+        ? buildWhatsAppLink(p.cliente_whatsapp, msgStatusPedido(p))
+        : undefined
+    }
+    target="_blank"
+    rel="noreferrer"
+    className={`px-3 py-2 rounded-xl text-center font-extrabold border ${
+      p.cliente_whatsapp
+        ? "bg-green-700 hover:bg-green-800 text-white border-green-800"
+        : "bg-gray-200 text-gray-600 border-gray-300 cursor-not-allowed"
+    }`}
+    title={p.cliente_whatsapp ? "Enviar status no WhatsApp" : "Cliente sem WhatsApp"}
+    onClick={(e) => {
+      if (!p.cliente_whatsapp) e.preventDefault();
+    }}
+  >
+    💬 WhatsApp
+  </a>
 
-                  {/* STATUS */}
-                  <button
-                    onClick={() => mudarStatus(p.id, proximoStatus(p.status))}
-                    className={`px-3 py-2 rounded-xl text-white font-extrabold ${st.btn}`}
-                    title="Avançar para a próxima etapa"
-                  >
-                    Avançar ▶
-                  </button>
-                </div>
+  <button
+    onClick={() => mudarStatus(p.id, proximoStatus(p.status))}
+    className={`px-3 py-2 rounded-xl text-white font-extrabold ${st.btn}`}
+    title="Avançar para a próxima etapa"
+  >
+    Avançar ▶
+  </button>
+</div>
+
               </div>
 
               {/* STATUS MANUAL */}
