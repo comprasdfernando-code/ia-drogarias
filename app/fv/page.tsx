@@ -388,9 +388,6 @@ function FarmaciaVirtualHome() {
   );
 }
 
-/* =========================================
-   CART MODAL (ESTILO PDV) - FV
-========================================= */
 function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void }) {
   const cart = useCart();
 
@@ -398,7 +395,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
   const PEDIDOS_TABLE = "fv_pedidos";
 
   const [saving, setSaving] = useState(false);
-  const [pedidoCriado, setPedidoCriado] = useState<string | null>(null);
+  const [pedidoCriado, setPedidoCriado] = useState<{ pronto?: string; encomenda?: string; grupo?: string } | null>(null);
 
   const [clienteNome, setClienteNome] = useState("");
   const [clienteTelefone, setClienteTelefone] = useState("");
@@ -439,38 +436,29 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
     else cart.items.forEach((it) => cart.remove(it.ean));
   }
 
-  async function criarPedidoNoPainel() {
-    const payload = {
-      cliente_nome: clienteNome.trim(),
-      cliente_whatsapp: onlyDigits(clienteTelefone),
+  // 🔎 Busca estoque consolidado da VIEW por EAN
+  async function getEstoqueByEan(eans: string[]) {
+    const clean = Array.from(new Set(eans.map((x) => (x || "").trim()).filter(Boolean)));
+    if (!clean.length) return new Map<string, number>();
 
-      tipo_entrega: tipoEntrega,
-      endereco: tipoEntrega === "ENTREGA" ? endereco.trim() : null,
-      numero: tipoEntrega === "ENTREGA" ? numero.trim() : null,
-      bairro: tipoEntrega === "ENTREGA" ? bairro.trim() : null,
+    const { data, error } = await supabase
+      .from("fv_home_com_estoque") // ✅ sua view consolidada
+      .select("ean,estoque_total")
+      .in("ean", clean);
 
-      pagamento,
-      taxa_entrega: taxaEntrega,
-      subtotal,
-      total,
-
-      itens: cart.items.map((i) => ({
-        ean: i.ean,
-        nome: i.nome,
-        qtd: i.qtd,
-        preco: i.preco,
-        subtotal: Number(i.preco || 0) * Number(i.qtd || 0),
-      })),
-
-      status: "NOVO",
-      canal: "SITE",
-    };
-
-    const { data, error } = await supabase.from(PEDIDOS_TABLE).insert(payload).select("id");
     if (error) throw error;
 
-    const pedidoId = (data && data[0] && (data[0] as any).id) as string | undefined;
-    return pedidoId || "";
+    const map = new Map<string, number>();
+    for (const row of (data || []) as any[]) {
+      map.set(String(row.ean), Number(row.estoque_total || 0));
+    }
+    return map;
+  }
+
+  async function criarPedido(payload: any) {
+    const { data, error } = await supabase.from(PEDIDOS_TABLE).insert(payload).select("id").single();
+    if (error) throw error;
+    return String((data as any).id || "");
   }
 
   async function finalizarPedido() {
@@ -478,10 +466,85 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
 
     setSaving(true);
     try {
-      const pedidoId = await criarPedidoNoPainel();
-      setPedidoCriado(pedidoId || "OK");
+      const grupoId = (globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : undefined) || undefined;
+
+      // 1) estoque consolidado
+      const eans = cart.items.map((i) => i.ean);
+      const estoqueMap = await getEstoqueByEan(eans);
+
+      // 2) separa itens (opção 2)
+      const pronta: any[] = [];
+      const encomenda: any[] = [];
+
+      for (const i of cart.items) {
+        const est = Number(estoqueMap.get(i.ean) ?? 0);
+        const qtd = Number(i.qtd || 0);
+
+        const item = {
+          ean: i.ean,
+          nome: i.nome,
+          qtd,
+          preco: i.preco,
+          subtotal: Number(i.preco || 0) * qtd,
+          estoque_total: est,
+        };
+
+        if (est >= qtd && qtd > 0) pronta.push(item);
+        else encomenda.push(item);
+      }
+
+      // 3) base do pedido (dados do cliente)
+      const base = {
+        grupo_id: grupoId ?? null,
+        cliente_nome: clienteNome.trim(),
+        cliente_whatsapp: onlyDigits(clienteTelefone),
+
+        tipo_entrega: tipoEntrega,
+        endereco: tipoEntrega === "ENTREGA" ? endereco.trim() : null,
+        numero: tipoEntrega === "ENTREGA" ? numero.trim() : null,
+        bairro: tipoEntrega === "ENTREGA" ? bairro.trim() : null,
+
+        pagamento,
+        canal: "SITE",
+        status: "NOVO",
+      };
+
+      // 4) cria 1 ou 2 pedidos
+      const created: { pronto?: string; encomenda?: string; grupo?: string } = { grupo: grupoId };
+
+      // PRONTA ENTREGA
+      if (pronta.length) {
+        const subPronto = pronta.reduce((acc, it) => acc + Number(it.subtotal || 0), 0);
+        const totalPronto = subPronto + taxaEntrega;
+
+        created.pronto = await criarPedido({
+          ...base,
+          pedido_tipo: "PRONTA_ENTREGA",
+          taxa_entrega: taxaEntrega,
+          subtotal: subPronto,
+          total: totalPronto,
+          itens: pronta,
+        });
+      }
+
+      // ENCOMENDA (sem taxa? você decide; aqui mantém taxa igual para não confundir)
+      if (encomenda.length) {
+        const subEnc = encomenda.reduce((acc, it) => acc + Number(it.subtotal || 0), 0);
+        const totalEnc = subEnc + taxaEntrega;
+
+        created.encomenda = await criarPedido({
+          ...base,
+          pedido_tipo: "ENCOMENDA",
+          taxa_entrega: taxaEntrega,
+          subtotal: subEnc,
+          total: totalEnc,
+          itens: encomenda,
+        });
+      }
+
+      setPedidoCriado(created);
       clearCartSafe();
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
       alert("Não consegui finalizar o pedido. Tente novamente.");
     } finally {
@@ -496,6 +559,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
 
       <div className="absolute right-0 top-0 h-full w-full sm:w-[480px] bg-white shadow-2xl flex flex-col">
+        {/* HEADER */}
         <div className="p-4 border-b flex items-center justify-between">
           <div className="font-extrabold text-lg">🛒 Carrinho</div>
           <button type="button" onClick={onClose} className="px-3 py-2 rounded-xl border font-extrabold bg-white hover:bg-gray-50">
@@ -503,12 +567,23 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
           </button>
         </div>
 
+        {/* BODY */}
         <div className="p-4 flex-1 overflow-auto">
           {pedidoCriado ? (
             <div className="rounded-2xl border bg-green-50 p-4 mb-4">
-              <div className="text-lg font-extrabold text-green-700">Pedido finalizado ✅</div>
-              <div className="text-sm text-gray-700 mt-1">
-                Pedido criado no sistema: <b>{pedidoCriado}</b>
+              <div className="text-lg font-extrabold text-green-700">Pedido finalizado com sucesso ✅</div>
+
+              <div className="text-sm text-gray-800 mt-2 space-y-1">
+                {pedidoCriado.pronto ? (
+                  <div>
+                    <b>Pronta entrega:</b> {pedidoCriado.pronto}
+                  </div>
+                ) : null}
+                {pedidoCriado.encomenda ? (
+                  <div>
+                    <b>Encomenda:</b> {pedidoCriado.encomenda}
+                  </div>
+                ) : null}
               </div>
 
               <div className="mt-4">
@@ -526,6 +601,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
             </div>
           ) : null}
 
+          {/* ITENS */}
           {cart.items.length === 0 ? (
             <div className="text-gray-600 bg-gray-50 border rounded-2xl p-4">Seu carrinho está vazio. Adicione itens 😊</div>
           ) : (
@@ -533,13 +609,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
               {cart.items.map((it) => (
                 <div key={it.ean} className="border rounded-2xl p-3 flex gap-3">
                   <div className="h-14 w-14 bg-gray-50 rounded-xl overflow-hidden flex items-center justify-center">
-                    <Image
-                      src={it.imagem || "/produtos/caixa-padrao.png"}
-                      alt={it.nome}
-                      width={64}
-                      height={64}
-                      className="object-contain"
-                    />
+                    <Image src={it.imagem || "/produtos/caixa-padrao.png"} alt={it.nome} width={64} height={64} className="object-contain" />
                   </div>
 
                   <div className="flex-1 min-w-0">
@@ -548,9 +618,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
 
                     <div className="mt-1 flex items-center justify-between gap-2">
                       <div className="font-extrabold text-blue-900">{brl(it.preco)}</div>
-                      <div className="text-xs font-bold text-gray-600">
-                        Item: {brl(Number(it.preco || 0) * Number(it.qtd || 0))}
-                      </div>
+                      <div className="text-xs font-bold text-gray-600">Item: {brl(Number(it.preco || 0) * Number(it.qtd || 0))}</div>
                     </div>
 
                     <div className="mt-2 flex items-center gap-2">
@@ -563,9 +631,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
                         –
                       </button>
 
-                      <div className="w-10 h-10 rounded-xl border bg-gray-50 flex items-center justify-center font-extrabold">
-                        {it.qtd}
-                      </div>
+                      <div className="w-10 h-10 rounded-xl border bg-gray-50 flex items-center justify-center font-extrabold">{it.qtd}</div>
 
                       <button
                         type="button"
@@ -591,6 +657,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
             </div>
           )}
 
+          {/* DADOS */}
           <div className="mt-5 bg-gray-50 border rounded-2xl p-4">
             <div className="font-extrabold text-gray-900">Dados</div>
 
@@ -613,6 +680,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
             </div>
           </div>
 
+          {/* ENTREGA */}
           <div className="mt-4 bg-white border rounded-2xl p-4">
             <div className="font-extrabold text-gray-900">Entrega</div>
 
@@ -620,9 +688,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
               <button
                 type="button"
                 onClick={() => setTipoEntrega("ENTREGA")}
-                className={`flex-1 px-3 py-2.5 rounded-xl font-extrabold ${
-                  tipoEntrega === "ENTREGA" ? "bg-blue-700 text-white" : "bg-gray-100 hover:bg-gray-200"
-                }`}
+                className={`flex-1 px-3 py-2.5 rounded-xl font-extrabold ${tipoEntrega === "ENTREGA" ? "bg-blue-700 text-white" : "bg-gray-100 hover:bg-gray-200"}`}
                 disabled={saving || !!pedidoCriado}
               >
                 Entrega
@@ -631,9 +697,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
               <button
                 type="button"
                 onClick={() => setTipoEntrega("RETIRADA")}
-                className={`flex-1 px-3 py-2.5 rounded-xl font-extrabold ${
-                  tipoEntrega === "RETIRADA" ? "bg-blue-700 text-white" : "bg-gray-100 hover:bg-gray-200"
-                }`}
+                className={`flex-1 px-3 py-2.5 rounded-xl font-extrabold ${tipoEntrega === "RETIRADA" ? "bg-blue-700 text-white" : "bg-gray-100 hover:bg-gray-200"}`}
                 disabled={saving || !!pedidoCriado}
               >
                 Retirada
@@ -669,12 +733,11 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
                 <div className="text-sm font-extrabold text-blue-900">Taxa fixa: {brl(taxaEntrega)}</div>
               </div>
             ) : (
-              <div className="mt-3 text-sm text-gray-600">
-                Você pode retirar na loja. Assim que confirmar, enviamos o endereço/horário.
-              </div>
+              <div className="mt-3 text-sm text-gray-600">Você pode retirar na loja. Assim que confirmar, enviamos o endereço/horário.</div>
             )}
           </div>
 
+          {/* PAGAMENTO */}
           <div className="mt-4 bg-white border rounded-2xl p-4">
             <div className="font-extrabold text-gray-900">Pagamento</div>
 
@@ -684,9 +747,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
                   type="button"
                   key={p}
                   onClick={() => setPagamento(p)}
-                  className={`px-3 py-2 rounded-xl font-extrabold ${
-                    pagamento === p ? "bg-blue-700 text-white" : "bg-gray-100 hover:bg-gray-200"
-                  }`}
+                  className={`px-3 py-2 rounded-xl font-extrabold ${pagamento === p ? "bg-blue-700 text-white" : "bg-gray-100 hover:bg-gray-200"}`}
                   disabled={saving || !!pedidoCriado}
                 >
                   {p}
@@ -696,6 +757,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
           </div>
         </div>
 
+        {/* FOOTER */}
         <div className="p-4 border-t">
           <div className="flex items-center justify-between">
             <div className="text-sm text-gray-600">Subtotal</div>
@@ -726,9 +788,9 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
               type="button"
               disabled={!canCheckout || saving || !!pedidoCriado}
               onClick={finalizarPedido}
-              className={`px-4 py-3 rounded-2xl font-extrabold text-center ${
-                canCheckout ? "bg-green-600 hover:bg-green-700 text-white" : "bg-gray-200 text-gray-500"
-              } ${saving ? "opacity-70 cursor-wait" : ""}`}
+              className={`px-4 py-3 rounded-2xl font-extrabold text-center ${canCheckout ? "bg-green-600 hover:bg-green-700 text-white" : "bg-gray-200 text-gray-500"} ${
+                saving ? "opacity-70 cursor-wait" : ""
+              }`}
             >
               {saving ? "Finalizando..." : "Finalizar pedido"}
             </button>
@@ -736,8 +798,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
 
           {!canCheckout ? (
             <div className="mt-2 text-xs text-gray-500">
-              Para liberar: informe <b>Nome</b>, <b>WhatsApp</b> e adicione itens. Se escolher <b>Entrega</b>, preencha{" "}
-              <b>Endereço/Número/Bairro</b>.
+              Para liberar: informe <b>Nome</b>, <b>WhatsApp</b> e adicione itens. Se escolher <b>Entrega</b>, preencha <b>Endereço/Número/Bairro</b>.
             </div>
           ) : null}
         </div>
@@ -745,6 +806,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
     </div>
   );
 }
+
 
 function ProdutoCardUltra({ p, onComprar }: { p: FVProduto; onComprar: () => void }) {
   const pr = precoFinal(p);

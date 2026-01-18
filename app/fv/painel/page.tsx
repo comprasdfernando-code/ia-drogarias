@@ -9,6 +9,7 @@ import { supabase } from "@/lib/supabaseClient";
 ========================= */
 type ItemPedido = {
   id?: string;
+  ean?: string; // 👈 importante pro estoque
   nome: string;
   qtd: number;
   preco: number;
@@ -34,15 +35,17 @@ type Pedido = {
   total: number;
 
   itens?: ItemPedido[];
+
+  // 👇 novos campos (opcionais no TS; no banco a gente cria)
+  estoque_df_baixado_at?: string | null;
+  estoque_df_ok?: boolean | null;
+  estoque_df_msg?: string | null;
 };
 
 /* =========================
    STATUS UI (mais contraste)
 ========================= */
-const STATUS_STYLE: Record<
-  string,
-  { badge: string; card: string; btn: string; label: string }
-> = {
+const STATUS_STYLE: Record<string, { badge: string; card: string; btn: string; label: string }> = {
   NOVO: {
     badge: "bg-yellow-200 text-yellow-950 border border-yellow-300",
     card: "border-l-8 border-yellow-500",
@@ -80,6 +83,14 @@ function brl(n: number) {
   return n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
+function safeDateBR(d: string) {
+  try {
+    return new Date(d).toLocaleString("pt-BR");
+  } catch {
+    return d;
+  }
+}
+
 /* =========================
    PAGE
 ========================= */
@@ -88,6 +99,10 @@ export default function PainelPedidosFV() {
   const [loading, setLoading] = useState(true);
   const [filtro, setFiltro] = useState("TODOS");
   const [abertos, setAbertos] = useState<Record<string, boolean>>({});
+
+  // estoque DF
+  const [baixandoId, setBaixandoId] = useState<string | null>(null);
+  const [erroAcao, setErroAcao] = useState<string | null>(null);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const idsRef = useRef<Set<string>>(new Set());
@@ -98,10 +113,7 @@ export default function PainelPedidosFV() {
   async function carregar() {
     setLoading(true);
 
-    const { data, error } = await supabase
-      .from("fv_pedidos")
-      .select("*")
-      .order("created_at", { ascending: false });
+    const { data, error } = await supabase.from("fv_pedidos").select("*").order("created_at", { ascending: false });
 
     if (error) {
       console.error(error);
@@ -118,6 +130,8 @@ export default function PainelPedidosFV() {
      STATUS
   ========================= */
   async function mudarStatus(id: string, status: string) {
+    setErroAcao(null);
+
     const { error } = await supabase.from("fv_pedidos").update({ status }).eq("id", id);
 
     if (error) {
@@ -127,6 +141,33 @@ export default function PainelPedidosFV() {
     }
 
     setPedidos((prev) => prev.map((p) => (p.id === id ? { ...p, status } : p)));
+  }
+
+  /* =========================
+     BAIXAR ESTOQUE DF (Modo A / Opção 2)
+     RPC: fv_baixar_estoque_df(p_pedido_id uuid)
+  ========================= */
+  async function baixarEstoqueDF(pedidoId: string) {
+    setErroAcao(null);
+    setBaixandoId(pedidoId);
+
+    try {
+      const { data, error } = await supabase.rpc("fv_baixar_estoque_df", {
+        p_pedido_id: pedidoId,
+      });
+
+      if (error) throw error;
+
+      // RPC pode retornar texto/obj; a gente só recarrega
+      await carregar();
+      return data;
+    } catch (e: any) {
+      console.error("Erro baixarEstoqueDF:", e);
+      setErroAcao(e?.message || "Não consegui baixar o estoque da DF.");
+      alert(e?.message || "Não consegui baixar o estoque da DF.");
+    } finally {
+      setBaixandoId(null);
+    }
   }
 
   /* =========================
@@ -172,9 +213,7 @@ export default function PainelPedidosFV() {
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
         <div>
           <h1 className="text-2xl font-extrabold text-gray-950">📥 Painel de Pedidos – FV</h1>
-          <p className="text-sm text-gray-800">
-            Pedidos em tempo real • controle por etapas
-          </p>
+          <p className="text-sm text-gray-800">Pedidos em tempo real • controle por etapas • baixa de estoque DF</p>
         </div>
 
         <div className="flex gap-2">
@@ -199,10 +238,14 @@ export default function PainelPedidosFV() {
         </div>
       </div>
 
-      {loading ? (
-        <div className="bg-white border border-gray-200 rounded-2xl p-4 text-gray-900 font-semibold">
-          Carregando...
+      {erroAcao ? (
+        <div className="mb-3 bg-red-50 border border-red-200 rounded-2xl p-3 text-red-900 font-semibold">
+          {erroAcao}
         </div>
+      ) : null}
+
+      {loading ? (
+        <div className="bg-white border border-gray-200 rounded-2xl p-4 text-gray-900 font-semibold">Carregando...</div>
       ) : null}
 
       {/* LISTA */}
@@ -212,27 +255,35 @@ export default function PainelPedidosFV() {
           const itens = (p.itens as any[]) || [];
           const qtdItens = itens.reduce((s, i) => s + Number(i.qtd || 0), 0);
 
-          const entregaLabel =
-            p.tipo_entrega === "ENTREGA" ? "🚚 Entrega" : "🏪 Retirada";
+          const entregaLabel = p.tipo_entrega === "ENTREGA" ? "🚚 Entrega" : "🏪 Retirada";
+
+          const jaBaixou = !!p.estoque_df_baixado_at;
+          const podeBaixarAgora = !jaBaixou && (p.status === "NOVO" || p.status === "PREPARO");
+
+          const temEanFaltando = itens.some((i) => !String(i?.ean || "").trim());
+          const btnDisabled = !!baixandoId || !podeBaixarAgora || itens.length === 0 || temEanFaltando;
 
           return (
-            <div
-              key={p.id}
-              className={`bg-white rounded-2xl border border-gray-200 shadow-sm p-4 ${st.card}`}
-            >
+            <div key={p.id} className={`bg-white rounded-2xl border border-gray-200 shadow-sm p-4 ${st.card}`}>
               <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
-                    <strong className="text-gray-950 text-base">
-                      Pedido {p.id.slice(0, 6).toUpperCase()}
-                    </strong>
+                    <strong className="text-gray-950 text-base">Pedido {p.id.slice(0, 6).toUpperCase()}</strong>
 
-                    <span className={`text-xs px-2 py-1 rounded-full font-extrabold ${st.badge}`}>
-                      {st.label}
-                    </span>
+                    <span className={`text-xs px-2 py-1 rounded-full font-extrabold ${st.badge}`}>{st.label}</span>
 
-                    <span className="text-xs text-gray-800 font-semibold">
-                      {new Date(p.created_at).toLocaleString("pt-BR")}
+                    <span className="text-xs text-gray-800 font-semibold">{safeDateBR(p.created_at)}</span>
+
+                    {/* Badge estoque DF */}
+                    <span
+                      className={`text-xs px-2 py-1 rounded-full font-extrabold border ${
+                        jaBaixou
+                          ? "bg-green-100 text-green-950 border-green-200"
+                          : "bg-gray-100 text-gray-900 border-gray-200"
+                      }`}
+                      title={jaBaixou ? `Baixado em: ${safeDateBR(p.estoque_df_baixado_at as string)}` : "Ainda não baixado"}
+                    >
+                      DF: {jaBaixou ? "BAIXADO" : "PENDENTE"}
                     </span>
                   </div>
 
@@ -274,20 +325,29 @@ export default function PainelPedidosFV() {
                     {abertos[p.id] && (
                       <div className="mt-2 bg-gray-50 border border-gray-200 rounded-xl p-3 text-sm space-y-1">
                         {itens.length === 0 ? (
-                          <div className="text-gray-900 font-semibold">
-                            Sem itens carregados (campo itens vazio).
-                          </div>
+                          <div className="text-gray-900 font-semibold">Sem itens carregados (campo itens vazio).</div>
                         ) : (
-                          itens.map((i, idx) => (
-                            <div key={idx} className="flex justify-between gap-3">
-                              <span className="text-gray-950 font-semibold truncate">
-                                {i.qtd}x {i.nome}
-                              </span>
-                              <span className="text-gray-950 font-extrabold whitespace-nowrap">
-                                {brl((Number(i.preco) || 0) * (Number(i.qtd) || 0))}
-                              </span>
-                            </div>
-                          ))
+                          <>
+                            {temEanFaltando ? (
+                              <div className="mb-2 bg-yellow-50 border border-yellow-200 rounded-xl p-2 text-yellow-900 font-semibold">
+                                Atenção: tem item sem EAN. Para baixar estoque DF, cada item precisa ter <b>ean</b>.
+                              </div>
+                            ) : null}
+
+                            {itens.map((i, idx) => (
+                              <div key={idx} className="flex justify-between gap-3">
+                                <span className="text-gray-950 font-semibold truncate">
+                                  {i.qtd}x {i.nome}{" "}
+                                  <span className="text-gray-700 font-bold">
+                                    {i.ean ? `• EAN ${i.ean}` : ""}
+                                  </span>
+                                </span>
+                                <span className="text-gray-950 font-extrabold whitespace-nowrap">
+                                  {brl((Number(i.preco) || 0) * (Number(i.qtd) || 0))}
+                                </span>
+                              </div>
+                            ))}
+                          </>
                         )}
                       </div>
                     )}
@@ -304,6 +364,29 @@ export default function PainelPedidosFV() {
                     🖨️ Imprimir
                   </Link>
 
+                  {/* ✅ BAIXAR ESTOQUE DF */}
+                  <button
+                    onClick={() => baixarEstoqueDF(p.id)}
+                    disabled={btnDisabled}
+                    className={`px-3 py-2 rounded-xl font-extrabold text-center border ${
+                      btnDisabled
+                        ? "bg-gray-200 text-gray-600 border-gray-300 cursor-not-allowed"
+                        : "bg-green-700 hover:bg-green-800 text-white border-green-800"
+                    }`}
+                    title={
+                      jaBaixou
+                        ? "Estoque DF já foi baixado"
+                        : temEanFaltando
+                        ? "Falta EAN em algum item"
+                        : itens.length === 0
+                        ? "Pedido sem itens"
+                        : "Confirmar e baixar estoque da DF"
+                    }
+                  >
+                    {baixandoId === p.id ? "Baixando..." : "✅ Confirmar + Baixar DF"}
+                  </button>
+
+                  {/* STATUS */}
                   <button
                     onClick={() => mudarStatus(p.id, proximoStatus(p.status))}
                     className={`px-3 py-2 rounded-xl text-white font-extrabold ${st.btn}`}
