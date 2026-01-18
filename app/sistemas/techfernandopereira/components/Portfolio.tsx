@@ -17,7 +17,7 @@ const projects: Project[] = [
     title: "Achadinhos da Gisa",
     desc: "Página de achadinhos com links para marketplaces.",
     link: "https://iadrogarias.com.br/achadinhos",
-    image: "/achadinhos.png",
+    image: "/achadinhosdagi.png",
     external: true,
   },
 
