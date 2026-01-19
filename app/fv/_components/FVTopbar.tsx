@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 import CartDrawer from "./CartDrawer";
 import { useCart } from "./cart";
 
-const WHATSAPP = "5511948343725";
+const WHATSAPP = "5511952068432";
 const TAXA_ENTREGA = 10;
 
 function brl(v: number) {

@@ -123,7 +123,8 @@ function msgStatusPedido(p: Pedido) {
     `${end}\n\n` +
     `Itens:\n${itens || "• (sem itens)"}\n\n` +
     `Pedido feito em: ${when}\n` +
-    `Qualquer dúvida, me chama por aqui. ✅`
+    `Qualquer dúvida, me chama por aqui. ✅` +
+    `Pedidos entregue em ate 24hrs Sempre no Periodo entre 8hrs as 15hrs. ✅`
   );
 }
 
