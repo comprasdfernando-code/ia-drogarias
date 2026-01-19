@@ -5,7 +5,6 @@ import { createClient } from "@supabase/supabase-js";
 import Image from "next/image";
 import Link from "next/link";
 import Slider from "react-slick";
-import { ToastProvider, useToast } from "./_components/toast";
 
 import "slick-carousel/slick/slick.css";
 import "slick-carousel/slick/slick-theme.css";
@@ -18,38 +17,30 @@ const supabase = createClient(
 
 // ⚙️ Constantes
 const LOJA_SLUG = "drogariaredefabiano";
+const VIEW_LOJA = "fv_produtos_loja_view";
 const CARRINHO_KEY = "carrinhoFabiano";
 
-// 🧩 Tipos (Catálogo Global)
-type FVProduto = {
+// ✅ Tipos
+type ProdutoTela = {
   id: string;
   ean: string;
   nome: string;
   laboratorio: string | null;
   categoria: string | null;
   apresentacao: string | null;
+
   pmc: number | null;
   em_promocao: boolean | null;
   preco_promocional: number | null;
   percentual_off: number | null;
+
   imagens: string[] | null;
-  ativo: boolean | null;
-};
 
-// 🧩 Tipos (Estoque por Loja)
-type LojaProduto = {
-  produto_id: string;
-  loja_slug: string;
-  estoque: number | null;
-  preco_venda: number | null;
-  ativo: boolean | null;
-};
-
-// ✅ Produto final da tela (join)
-type ProdutoTela = FVProduto & {
+  // loja
   loja_estoque: number;
   loja_preco: number | null;
   loja_ativo: boolean;
+
   disponivel: boolean;
 };
 
@@ -62,13 +53,13 @@ type ItemCarrinho = {
   quantidade: number;
 };
 
-// 📸 helpers
+// helpers
 function brl(v: number | null | undefined) {
   if (v === null || v === undefined || Number.isNaN(v)) return "—";
   return Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 function firstImg(imagens?: string[] | null) {
-  if (Array.isArray(imagens) && imagens.length > 0) return imagens[0];
+  if (Array.isArray(imagens) && imagens.length > 0 && imagens[0]) return imagens[0];
   return "/produtos/caixa-padrao.png";
 }
 function calcOff(pmc?: number | null, promo?: number | null) {
@@ -77,7 +68,12 @@ function calcOff(pmc?: number | null, promo?: number | null) {
   if (!a || !b || b >= a) return 0;
   return Math.round(((a - b) / a) * 100);
 }
-function precoFinalGlobal(p: FVProduto) {
+function precoFinalGlobal(p: {
+  pmc: number | null;
+  em_promocao: boolean | null;
+  preco_promocional: number | null;
+  percentual_off: number | null;
+}) {
   const pmc = Number(p.pmc || 0);
   const promo = Number(p.preco_promocional || 0);
   const emPromo = !!p.em_promocao && promo > 0 && (!pmc || promo < pmc);
@@ -87,7 +83,7 @@ function precoFinalGlobal(p: FVProduto) {
   return { pmc, promo, emPromo, final, off };
 }
 
-// 🔥 Promoções (mock) — pode trocar depois por promos reais do banco
+// 🔥 Promoções mock
 const promocoes = [
   { id: 1, nome: "Amoxicilina 500mg", preco: "R$ 9,99", imagem: "/promocoes/amoxicilina.png" },
   { id: 2, nome: "Dipirona 500mg", preco: "R$ 4,99", imagem: "/promocoes/dipirona.png" },
@@ -100,56 +96,78 @@ export default function DrogariaRedeFabianoPage() {
   const [busca, setBusca] = useState("");
   const [carrinho, setCarrinho] = useState<ItemCarrinho[]>([]);
 
-  // 🔄 Produtos (agora lendo da VIEW loja x catálogo)
-useEffect(() => {
-  async function carregarProdutos() {
-    const { data, error } = await supabase
-      .from("fv_produtos_loja_view")
-      .select(`
-        produto_id,
-        ean,
-        nome,
-        categoria,
-        imagens,
-        pmc,
-        em_promocao,
-        preco_promocional,
-        percentual_off,
-        estoque,
-        disponivel_farmacia
-      `)
-      .eq("farmacia_slug", LOJA_SLUG)                 // <- 'drogariaredefabiano'
-      .eq("disponivel_farmacia", true)          // ativo da loja
-      .gt("estoque", 0)                          // estoque da loja
-      .order("nome", { ascending: true });
+  // 🔄 Carrega produtos (DRF)
+  useEffect(() => {
+    async function carregarProdutos() {
+      setCarregando(true);
 
-    if (error) {
-      console.error(error);
-      setProdutos([]);
+      const { data, error } = await supabase
+        .from(VIEW_LOJA)
+        .select(
+          `
+          produto_id,
+          ean,
+          nome,
+          laboratorio,
+          categoria,
+          apresentacao,
+          imagens,
+          pmc,
+          em_promocao,
+          preco_promocional,
+          percentual_off,
+          estoque,
+          preco_venda,
+          disponivel_farmacia
+        `
+        )
+        .eq("farmacia_slug", LOJA_SLUG)
+        .eq("disponivel_farmacia", true)
+        .order("estoque", { ascending: false })
+        .order("nome", { ascending: true })
+        .limit(300);
+
+      if (error) {
+        console.error("Erro carregarProdutos DRF:", error);
+        setProdutos([]);
+        setCarregando(false);
+        return;
+      }
+
+      const mapped: ProdutoTela[] = (data || []).map((r: any) => {
+        const estoque = Number(r.estoque || 0);
+        const ativo = r.disponivel_farmacia !== null && r.disponivel_farmacia !== undefined ? !!r.disponivel_farmacia : true;
+
+        return {
+          id: String(r.produto_id),
+          ean: String(r.ean || ""),
+          nome: String(r.nome || ""),
+          laboratorio: r.laboratorio ?? null,
+          categoria: r.categoria ?? null,
+          apresentacao: r.apresentacao ?? null,
+
+          pmc: r.pmc ?? null,
+          em_promocao: r.em_promocao ?? null,
+          preco_promocional: r.preco_promocional ?? null,
+          percentual_off: r.percentual_off ?? null,
+
+          imagens: Array.isArray(r.imagens) ? r.imagens : null,
+
+          loja_estoque: ativo ? estoque : 0,
+          loja_preco: r.preco_venda != null ? Number(r.preco_venda) : null,
+          loja_ativo: ativo,
+
+          disponivel: ativo && estoque > 0,
+        };
+      });
+
+      // ✅ ESSA LINHA TAVA FALTANDO (por isso não aparecia nada)
+      setProdutos(mapped);
       setCarregando(false);
-      return;
     }
 
-    // mapeia pra estrutura que seu card já usa
-    const mapped = (data || []).map((r: any) => ({
-      id: r.produto_id,
-      nome: r.nome,
-      preco_venda: Number(
-        r.em_promocao && r.preco_promocional ? r.preco_promocional : (r.pmc || 0)
-      ),
-      estoque: Number(r.estoque || 0),
-      imagem: Array.isArray(r.imagens) && r.imagens.length ? r.imagens[0] : null,
-      categoria: r.categoria || null,
-      ean: r.ean,
-    }));
-
-   
-    setCarregando(false);
-  }
-
-  carregarProdutos();
-}, []);
-
+    carregarProdutos();
+  }, []);
 
   // 🛒 Carrinho — leitura
   useEffect(() => {
@@ -179,7 +197,7 @@ useEffect(() => {
           id: p.id,
           ean: p.ean,
           nome: p.nome,
-          preco: preco || 0,
+          preco: Number(preco || 0),
           imagem: firstImg(p.imagens),
           quantidade: 1,
         },
@@ -204,14 +222,14 @@ useEffect(() => {
   return (
     <main className="min-h-screen bg-gray-100 pb-16">
       {/* HERO */}
-      <section className="relative h-[320px]">
+      <section className="relative h-[280px] sm:h-[320px]">
         <div
           className="absolute inset-0 bg-cover bg-center"
           style={{ backgroundImage: "url('/banners/hero-drogaria-rede-fabiano.png')" }}
         />
         <div className="absolute inset-0 bg-white/80 backdrop-blur-sm" />
         <div className="relative z-10 h-full flex flex-col items-center justify-center text-center px-4">
-          <h1 className="text-4xl font-extrabold text-blue-700">Drogaria Rede Fabiano</h1>
+          <h1 className="text-3xl sm:text-4xl font-extrabold text-blue-700">Drogaria Rede Fabiano</h1>
           <p className="text-gray-600 mt-2">Saúde, confiança e economia perto de você</p>
         </div>
       </section>
@@ -296,12 +314,10 @@ useEffect(() => {
 
                 <div className="text-sm font-medium mt-2 line-clamp-2">{p.nome}</div>
 
-                {/* Info menor */}
                 <div className="text-[11px] text-gray-500 mt-1 line-clamp-1">
                   {p.laboratorio || "—"} • {p.categoria || "—"}
                 </div>
 
-                {/* Preço (loja > global) */}
                 <div className="mt-2">
                   {global.emPromo ? (
                     <>
@@ -322,10 +338,9 @@ useEffect(() => {
                   )}
                 </div>
 
-                {/* Status estoque */}
                 <div className="mt-2 text-xs">
                   {p.disponivel ? (
-                    <span className="text-emerald-700 font-bold">Disponível</span>
+                    <span className="text-emerald-700 font-bold">Disponível • {p.loja_estoque}</span>
                   ) : (
                     <span className="text-red-600 font-bold">Indisponível</span>
                   )}
