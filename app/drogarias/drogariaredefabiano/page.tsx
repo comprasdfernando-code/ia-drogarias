@@ -1,111 +1,58 @@
-// app/drogarias/drogariaredefabiano/page.tsx
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
+
 import { useCart } from "./_components/cart";
 import { useToast } from "./_components/toast";
 import FVBanners from "./_components/FVBanners";
 
 /* =========================
-   SENHA SIMPLES (LOCAL) - opcional
-========================= */
-const DRF_SENHA = "102030";
-const LS_KEY = "drf_public_ok";
-
-/* =========================
    CONFIG DRF
 ========================= */
-type DRFRow = {
-  // da VIEW
-  produto_id: string;
-  ean: string;
-  nome: string;
-  laboratorio: string | null;
-  categoria: string | null;
-  apresentacao: string | null;
-  pmc: number | null;
-  em_promocao: boolean | null;
-  preco_promocional: number | null;
-  percentual_off: number | null;
-  imagens: string[] | null;
-
-  estoque: number | null;
-  disponivel_farmacia: boolean | null;
-
-  // se existir na view, ótimo; se não existir, fica undefined
-  destaque_home?: boolean | null;
-};
-
-type ProdutoUI = {
-  id: string;
-  ean: string;
-  nome: string;
-  laboratorio: string | null;
-  categoria: string | null;
-  apresentacao: string | null;
-  pmc: number | null;
-  em_promocao: boolean | null;
-  preco_promocional: number | null;
-  percentual_off: number | null;
-  imagens: string[] | null;
-  estoque: number;
-};
-
 const LOJA_SLUG = "drogariaredefabiano";
-const VIEW_LOJA = "fv_produtos_loja_view";
 const PREFIX = "/drogarias/drogariaredefabiano";
-
 const WHATS_DRF = "5511948343725";
-const BRAND_TOP = "Drogaria";
-const BRAND_SUB = "• Rede Fabiano";
 
-const TAXA_ENTREGA_FIXA = 10;
+// VIEW loja x catálogo (precisa ter: farmacia_slug, ean, nome, imagens, estoque, preco_venda, disponivel_farmacia)
+const VIEW_LOJA = "fv_produtos_loja_view";
 
 const HOME_LIMIT = 150;
 const SEARCH_LIMIT = 180;
 const SEARCH_DEBOUNCE = 350;
 
-/* =========================
-   HELPERS
-========================= */
+type DRFProdutoView = {
+  produto_id: string;
+  farmacia_slug: string;
+
+  ean: string;
+  nome: string;
+  laboratorio: string | null;
+  categoria: string | null;
+  apresentacao: string | null;
+  imagens: string[] | null;
+
+  // da loja
+  estoque: number | null;
+  preco_venda: number | null;
+  disponivel_farmacia: boolean | null;
+
+  // do catálogo (se existir na view)
+  em_promocao: boolean | null;
+  preco_promocional: number | null;
+  percentual_off: number | null;
+};
+
 function brl(v: number | null | undefined) {
   if (v === null || v === undefined || Number.isNaN(v)) return "—";
   return Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
-function calcOff(pmc?: number | null, promo?: number | null) {
-  const a = Number(pmc || 0);
-  const b = Number(promo || 0);
-  if (!a || !b || b >= a) return 0;
-  return Math.round(((a - b) / a) * 100);
-}
-
-function precoFinal(p: {
-  pmc?: number | null;
-  em_promocao?: boolean | null;
-  preco_promocional?: number | null;
-  percentual_off?: number | null;
-}) {
-  const pmc = Number(p.pmc || 0);
-  const promo = Number(p.preco_promocional || 0);
-  const emPromo = !!p.em_promocao && promo > 0 && (!pmc || promo < pmc);
-  const final = emPromo ? promo : pmc;
-  const offFromDb = Number(p.percentual_off || 0);
-  const off = emPromo ? (offFromDb > 0 ? offFromDb : calcOff(pmc, promo)) : 0;
-  return { emPromo, pmc, promo, final, off };
-}
-
 function firstImg(imagens?: string[] | null) {
   if (Array.isArray(imagens) && imagens.length > 0 && imagens[0]) return imagens[0];
   return "/produtos/caixa-padrao.png";
-}
-
-function waLink(phone: string, msg: string) {
-  const clean = phone.replace(/\D/g, "");
-  return `https://wa.me/${clean}?text=${encodeURIComponent(msg)}`;
 }
 
 function onlyDigits(v: string) {
@@ -120,85 +67,43 @@ function normalizeSearch(raw: string) {
     .trim();
 }
 
-/* =========================
-   PAGE WRAPPER (senha opcional)
-========================= */
-export default function DRFHomePage() {
-  const [ok, setOk] = useState(false);
-  const [senha, setSenha] = useState("");
-
-  useEffect(() => {
-    const saved = typeof window !== "undefined" && localStorage.getItem(LS_KEY) === "1";
-    if (saved) setOk(true);
-  }, []);
-
-  function entrar() {
-    if (senha === DRF_SENHA) {
-      localStorage.setItem(LS_KEY, "1");
-      setOk(true);
-    } else {
-      alert("Senha incorreta.");
-    }
-  }
-
-  function sair() {
-    localStorage.removeItem(LS_KEY);
-    setOk(false);
-    setSenha("");
-  }
-
-  if (!ok) {
-    return (
-      <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
-        <div className="w-full max-w-md bg-white border rounded-3xl shadow-sm p-6">
-          <div className="text-xl font-extrabold text-gray-900">Acesso • Drogaria Rede Fabiano</div>
-          <div className="text-sm text-gray-600 mt-1">Digite a senha para entrar.</div>
-
-          <input
-            value={senha}
-            onChange={(e) => setSenha(e.target.value)}
-            onKeyDown={(e) => (e.key === "Enter" ? entrar() : null)}
-            type="password"
-            placeholder="Senha"
-            className="mt-4 w-full border rounded-2xl px-4 py-3 outline-none focus:ring-4 focus:ring-blue-100"
-          />
-
-          <button
-            onClick={entrar}
-            className="mt-4 w-full bg-blue-700 hover:bg-blue-800 text-white rounded-2xl py-3 font-extrabold"
-          >
-            Entrar
-          </button>
-
-          <div className="mt-3 text-[11px] text-gray-500">Fica salvo neste navegador (localStorage).</div>
-        </div>
-      </div>
-    );
-  }
-
-  return <DRFHome onSair={sair} />;
+function waLink(phone: string, msg: string) {
+  const clean = phone.replace(/\D/g, "");
+  return `https://wa.me/${clean}?text=${encodeURIComponent(msg)}`;
 }
 
-/* =========================
-   PAGE (loja DRF)
-========================= */
-function DRFHome({ onSair }: { onSair: () => void }) {
+function precoFinal(p: DRFProdutoView) {
+  // prioridade: preco_venda da loja
+  const loja = Number(p.preco_venda || 0);
+
+  // se não tiver preço loja, tenta promo global
+  const promo = Number(p.preco_promocional || 0);
+  const emPromo = !!p.em_promocao && promo > 0;
+
+  const final = loja > 0 ? loja : emPromo ? promo : 0;
+  const off = Number(p.percentual_off || 0);
+
+  return { final, emPromo, off };
+}
+
+export default function DrogariaRedeFabianoHome() {
   const [loadingHome, setLoadingHome] = useState(true);
   const [loadingBusca, setLoadingBusca] = useState(false);
   const [busca, setBusca] = useState("");
 
-  const [homeProdutos, setHomeProdutos] = useState<ProdutoUI[]>([]);
-  const [resultado, setResultado] = useState<ProdutoUI[]>([]);
+  const [homeProdutos, setHomeProdutos] = useState<DRFProdutoView[]>([]);
+  const [resultado, setResultado] = useState<DRFProdutoView[]>([]);
+
+  const [cartOpen, setCartOpen] = useState(false);
+  const openCart = () => setCartOpen(true);
+  const closeCart = () => setCartOpen(false);
 
   const cart = useCart();
-  const { push } = useToast();
-
   const totalCarrinho = cart.subtotal;
   const qtdCarrinho = cart.countItems;
 
   const isSearching = !!busca.trim();
 
-  // estoque por EAN (não mistura: tudo vem filtrado pela loja)
   const estoqueByEan = useMemo(() => {
     const m = new Map<string, number>();
     for (const p of homeProdutos) m.set(p.ean, Number(p.estoque ?? 0));
@@ -206,6 +111,7 @@ function DRFHome({ onSair }: { onSair: () => void }) {
     return m;
   }, [homeProdutos, resultado]);
 
+  // HOME
   useEffect(() => {
     async function loadHome() {
       try {
@@ -214,12 +120,11 @@ function DRFHome({ onSair }: { onSair: () => void }) {
         const { data, error } = await supabase
           .from(VIEW_LOJA)
           .select(
-            "produto_id,ean,nome,laboratorio,categoria,apresentacao,pmc,em_promocao,preco_promocional,percentual_off,imagens,estoque,disponivel_farmacia,destaque_home"
+            "produto_id,farmacia_slug,ean,nome,laboratorio,categoria,apresentacao,imagens,estoque,preco_venda,disponivel_farmacia,em_promocao,preco_promocional,percentual_off"
           )
           .eq("farmacia_slug", LOJA_SLUG)
           .eq("disponivel_farmacia", true)
           .gt("estoque", 0)
-          .order("destaque_home", { ascending: false })
           .order("em_promocao", { ascending: false })
           .order("estoque", { ascending: false })
           .order("nome", { ascending: true })
@@ -227,22 +132,7 @@ function DRFHome({ onSair }: { onSair: () => void }) {
 
         if (error) throw error;
 
-        const mapped: ProdutoUI[] = (data || []).map((r: any) => ({
-          id: String(r.produto_id),
-          ean: String(r.ean || ""),
-          nome: String(r.nome || ""),
-          laboratorio: r.laboratorio ?? null,
-          categoria: r.categoria ?? null,
-          apresentacao: r.apresentacao ?? null,
-          pmc: r.pmc ?? null,
-          em_promocao: r.em_promocao ?? null,
-          preco_promocional: r.preco_promocional ?? null,
-          percentual_off: r.percentual_off ?? null,
-          imagens: Array.isArray(r.imagens) ? r.imagens : null,
-          estoque: Number(r.estoque || 0),
-        }));
-
-        setHomeProdutos(mapped);
+        setHomeProdutos(((data || []) as DRFProdutoView[]) ?? []);
       } catch (e) {
         console.error("Erro loadHome DRF:", e);
         setHomeProdutos([]);
@@ -254,6 +144,7 @@ function DRFHome({ onSair }: { onSair: () => void }) {
     loadHome();
   }, []);
 
+  // SEARCH
   useEffect(() => {
     async function search() {
       const raw = busca.trim();
@@ -266,22 +157,19 @@ function DRFHome({ onSair }: { onSair: () => void }) {
 
       try {
         const normalized = normalizeSearch(raw);
-        const digits = onlyDigits(raw);
+        const digits = onlyDigits(normalized);
 
         let q = supabase
           .from(VIEW_LOJA)
           .select(
-            "produto_id,ean,nome,laboratorio,categoria,apresentacao,pmc,em_promocao,preco_promocional,percentual_off,imagens,estoque,disponivel_farmacia"
+            "produto_id,farmacia_slug,ean,nome,laboratorio,categoria,apresentacao,imagens,estoque,preco_venda,disponivel_farmacia,em_promocao,preco_promocional,percentual_off"
           )
           .eq("farmacia_slug", LOJA_SLUG)
           .eq("disponivel_farmacia", true)
           .limit(SEARCH_LIMIT);
 
-        if (digits.length >= 8 && digits.length <= 14) {
-          q = q.or(`ean.eq.${digits},nome.ilike.%${normalized}%`);
-        } else {
-          q = q.ilike("nome", `%${normalized}%`);
-        }
+        if (digits.length >= 8 && digits.length <= 14) q = q.or(`ean.eq.${digits},nome.ilike.%${raw}%`);
+        else q = q.ilike("nome", `%${raw}%`);
 
         const { data, error } = await q
           .order("em_promocao", { ascending: false })
@@ -290,24 +178,9 @@ function DRFHome({ onSair }: { onSair: () => void }) {
 
         if (error) throw error;
 
-        const mapped: ProdutoUI[] = (data || []).map((r: any) => ({
-          id: String(r.produto_id),
-          ean: String(r.ean || ""),
-          nome: String(r.nome || ""),
-          laboratorio: r.laboratorio ?? null,
-          categoria: r.categoria ?? null,
-          apresentacao: r.apresentacao ?? null,
-          pmc: r.pmc ?? null,
-          em_promocao: r.em_promocao ?? null,
-          preco_promocional: r.preco_promocional ?? null,
-          percentual_off: r.percentual_off ?? null,
-          imagens: Array.isArray(r.imagens) ? r.imagens : null,
-          estoque: Number(r.estoque || 0),
-        }));
-
-        setResultado(mapped);
-      } catch (e2) {
-        console.error("Erro search DRF:", e2);
+        setResultado(((data || []) as DRFProdutoView[]) ?? []);
+      } catch (e) {
+        console.error("Erro search DRF:", e);
         setResultado([]);
       } finally {
         setLoadingBusca(false);
@@ -324,13 +197,11 @@ function DRFHome({ onSair }: { onSair: () => void }) {
         <div className="mx-auto max-w-6xl px-4 py-3">
           {/* MOBILE */}
           <div className="flex items-center justify-between gap-3 md:hidden">
-            <div className="text-white font-extrabold whitespace-nowrap">
-              {BRAND_TOP} <span className="opacity-80">{BRAND_SUB}</span>
-            </div>
+            <div className="text-white font-extrabold whitespace-nowrap">Drogaria • Rede Fabiano</div>
 
             <div className="flex items-center gap-2">
-              <Link
-                href={`${PREFIX}/carrinho`}
+              <button
+                onClick={openCart}
                 className="relative text-white font-extrabold whitespace-nowrap bg-white/10 hover:bg-white/15 px-4 py-2 rounded-full"
                 title="Abrir carrinho"
               >
@@ -340,14 +211,6 @@ function DRFHome({ onSair }: { onSair: () => void }) {
                     {qtdCarrinho}
                   </span>
                 )}
-              </Link>
-
-              <button
-                onClick={onSair}
-                className="text-white font-extrabold bg-white/10 hover:bg-white/15 px-3 py-2 rounded-full"
-                title="Sair"
-              >
-                Sair
               </button>
             </div>
           </div>
@@ -385,9 +248,7 @@ function DRFHome({ onSair }: { onSair: () => void }) {
 
           {/* DESKTOP */}
           <div className="hidden md:flex items-center gap-3">
-            <div className="text-white font-extrabold whitespace-nowrap">
-              {BRAND_TOP} <span className="opacity-80">{BRAND_SUB}</span>
-            </div>
+            <div className="text-white font-extrabold whitespace-nowrap">Drogaria • Rede Fabiano</div>
 
             <div className="flex-1">
               <div className="relative">
@@ -420,8 +281,8 @@ function DRFHome({ onSair }: { onSair: () => void }) {
               )}
             </div>
 
-            <Link
-              href={`${PREFIX}/carrinho`}
+            <button
+              onClick={openCart}
               className="relative text-white font-extrabold whitespace-nowrap bg-white/10 hover:bg-white/15 px-4 py-2 rounded-full"
               title="Abrir carrinho"
             >
@@ -432,15 +293,15 @@ function DRFHome({ onSair }: { onSair: () => void }) {
                   {qtdCarrinho}
                 </span>
               )}
-            </Link>
-
-            <button
-              onClick={onSair}
-              className="text-white font-extrabold bg-white/10 hover:bg-white/15 px-4 py-2 rounded-full"
-              title="Sair"
-            >
-              Sair
             </button>
+
+            <Link
+              href={`${PREFIX}/carrinho`}
+              className="text-white font-extrabold bg-white/10 hover:bg-white/15 px-4 py-2 rounded-full"
+              title="Abrir página do carrinho"
+            >
+              Ver carrinho
+            </Link>
           </div>
         </div>
       </header>
@@ -464,7 +325,7 @@ function DRFHome({ onSair }: { onSair: () => void }) {
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-5">
                 {resultado.map((p) => (
                   <ProdutoCardUltra
-                    key={p.id}
+                    key={p.produto_id}
                     p={p}
                     prefix={PREFIX}
                     onEncomendar={() => encomendarDRF(p)}
@@ -490,7 +351,7 @@ function DRFHome({ onSair }: { onSair: () => void }) {
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-5">
                 {homeProdutos.map((p) => (
                   <ProdutoCardUltra
-                    key={p.id}
+                    key={p.produto_id}
                     p={p}
                     prefix={PREFIX}
                     onEncomendar={() => encomendarDRF(p)}
@@ -506,13 +367,15 @@ function DRFHome({ onSair }: { onSair: () => void }) {
       <section className="max-w-6xl mx-auto px-4 mt-12 pb-12">
         <div className="bg-white rounded-3xl border shadow-sm p-6">
           <h3 className="text-xl md:text-2xl font-extrabold text-gray-900">Compra rápida</h3>
-          <p className="text-gray-600 mt-1">Adicione no carrinho e finalize pelo WhatsApp em poucos cliques.</p>
+          <p className="text-gray-600 mt-1">Adicione no carrinho e finalize no WhatsApp em poucos cliques.</p>
         </div>
       </section>
+
+      <CartModal open={cartOpen} onClose={closeCart} whats={WHATS_DRF} estoqueByEan={estoqueByEan} />
     </main>
   );
 
-  function encomendarDRF(p: ProdutoUI) {
+  function encomendarDRF(p: DRFProdutoView) {
     const msg =
       `Olá! Quero encomendar este item:\n\n` +
       `• ${p.nome} (EAN: ${p.ean})\n` +
@@ -525,6 +388,256 @@ function DRFHome({ onSair }: { onSair: () => void }) {
 }
 
 /* =========================
+   CART MODAL (WhatsApp)
+========================= */
+function CartModal({
+  open,
+  onClose,
+  whats,
+  estoqueByEan,
+}: {
+  open: boolean;
+  onClose: () => void;
+  whats: string;
+  estoqueByEan: Map<string, number>;
+}) {
+  const cart = useCart();
+
+  const [clienteNome, setClienteNome] = useState("");
+  const [clienteTelefone, setClienteTelefone] = useState("");
+
+  const [tipoEntrega, setTipoEntrega] = useState<"ENTREGA" | "RETIRADA">("ENTREGA");
+  const [endereco, setEndereco] = useState("");
+  const [numero, setNumero] = useState("");
+  const [bairro, setBairro] = useState("");
+
+  const [pagamento, setPagamento] = useState<"PIX" | "CARTAO" | "DINHEIRO" | "COMBINAR">("PIX");
+
+  const taxaEntrega = tipoEntrega === "ENTREGA" ? 10 : 0;
+  const total = cart.subtotal + taxaEntrega;
+
+  function onlyDigitsLocal(s: string) {
+    return (s || "").replace(/\D/g, "");
+  }
+
+  const canCheckout = useMemo(() => {
+    if (cart.items.length === 0) return false;
+    if (!clienteNome.trim()) return false;
+    if (onlyDigitsLocal(clienteTelefone).length < 10) return false;
+    if (tipoEntrega === "ENTREGA") {
+      if (!endereco.trim() || !numero.trim() || !bairro.trim()) return false;
+    }
+    return true;
+  }, [cart.items.length, clienteNome, clienteTelefone, tipoEntrega, endereco, numero, bairro]);
+
+  function waLinkLocal(phone: string, msg: string) {
+    const clean = phone.replace(/\D/g, "");
+    return `https://wa.me/${clean}?text=${encodeURIComponent(msg)}`;
+  }
+
+  function incSafe(ean: string) {
+    const est = Number(estoqueByEan.get(ean) ?? 0);
+    const it = cart.items.find((x) => x.ean === ean);
+    if (!it) return;
+    if (est > 0 && it.qtd >= est) return;
+    cart.inc(ean);
+  }
+
+  function setQtdSafe(ean: string, qtd: number) {
+    const est = Number(estoqueByEan.get(ean) ?? 0);
+    const alvo = Math.max(1, Math.floor(Number(qtd || 1)));
+    const final = est > 0 ? Math.min(alvo, est) : alvo;
+
+    const it = cart.items.find((x) => x.ean === ean);
+    if (!it) return;
+
+    if (final > it.qtd) for (let i = 0; i < final - it.qtd; i++) incSafe(ean);
+    if (final < it.qtd) for (let i = 0; i < it.qtd - final; i++) cart.dec(ean);
+  }
+
+  const mensagem = useMemo(() => {
+    let msg = `🧾 *Pedido Drogaria Rede Fabiano*\n\n`;
+    msg += `👤 Cliente: ${clienteNome || "—"}\n`;
+    msg += `📞 WhatsApp: ${clienteTelefone || "—"}\n\n`;
+
+    msg +=
+      tipoEntrega === "ENTREGA"
+        ? `🚚 *Entrega*\n${endereco}, ${numero} - ${bairro}\nTaxa: ${brl(taxaEntrega)}\n\n`
+        : `🏪 *Retirada na loja*\n\n`;
+
+    msg += `💳 Pagamento: ${pagamento}\n\n🛒 *Itens:*\n`;
+    cart.items.forEach((i) => {
+      msg += `• ${i.nome} (${i.ean}) — ${i.qtd}x — ${brl(i.preco * i.qtd)}\n`;
+    });
+
+    msg += `\nSubtotal: ${brl(cart.subtotal)}\n`;
+    msg += `Taxa: ${brl(taxaEntrega)}\n`;
+    msg += `Total: ${brl(total)}\n\n`;
+    msg += `Pode confirmar disponibilidade e prazo?`;
+
+    return msg;
+  }, [cart.items, clienteNome, clienteTelefone, tipoEntrega, endereco, numero, bairro, pagamento, taxaEntrega, total, cart.subtotal]);
+
+  if (!open) return null;
+
+  return (
+    <div className="fixed inset-0 z-[60]">
+      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+
+      <div className="absolute right-0 top-0 h-full w-full sm:w-[520px] bg-white p-4 overflow-auto">
+        <div className="flex items-center justify-between">
+          <h2 className="text-xl font-extrabold">Carrinho</h2>
+          <button onClick={onClose} className="px-3 py-2 rounded-xl border font-extrabold">
+            Continuar comprando
+          </button>
+        </div>
+
+        {/* ITENS */}
+        <div className="mt-4">
+          {cart.items.length === 0 ? (
+            <div className="text-gray-600 bg-gray-50 border rounded-2xl p-4">Seu carrinho está vazio.</div>
+          ) : (
+            cart.items.map((it) => {
+              const est = Number(estoqueByEan.get(it.ean) ?? 0);
+              const max = Math.max(1, est || 1);
+              const travado = est > 0 ? Math.min(it.qtd, est) : it.qtd;
+
+              return (
+                <div key={it.ean} className="border rounded-2xl p-3 mb-2">
+                  <div className="flex gap-3">
+                    <div className="h-14 w-14 bg-gray-50 rounded-xl overflow-hidden flex items-center justify-center">
+                      <Image src={it.imagem || "/produtos/caixa-padrao.png"} alt={it.nome} width={64} height={64} className="object-contain" />
+                    </div>
+
+                    <div className="flex-1">
+                      <div className="font-extrabold">{it.nome}</div>
+                      <div className="text-xs text-gray-500">EAN: {it.ean}</div>
+
+                      <div className="mt-1 text-sm font-extrabold text-blue-900">{brl(it.preco)}</div>
+
+                      <div className="mt-2 flex items-center gap-2">
+                        <button onClick={() => cart.dec(it.ean)} className="px-3 py-1 bg-gray-200 rounded font-extrabold">
+                          -
+                        </button>
+
+                        <input
+                          type="number"
+                          min={1}
+                          max={max}
+                          value={travado}
+                          onChange={(e) => setQtdSafe(it.ean, Number(e.target.value))}
+                          className="w-16 border rounded px-2 py-1 text-center font-extrabold"
+                        />
+
+                        <button
+                          onClick={() => incSafe(it.ean)}
+                          disabled={est > 0 ? it.qtd >= est : false}
+                          className={`px-3 py-1 rounded font-extrabold ${
+                            est > 0 && it.qtd >= est ? "bg-gray-200 text-gray-500 cursor-not-allowed" : "bg-blue-600 text-white"
+                          }`}
+                        >
+                          +
+                        </button>
+
+                        <button onClick={() => cart.remove(it.ean)} className="ml-auto text-red-600 font-extrabold">
+                          Excluir
+                        </button>
+                      </div>
+
+                      <div className="mt-2 text-xs text-gray-600">
+                        {est > 0 ? (
+                          <span>
+                            Disponível: <b>{est}</b>
+                          </span>
+                        ) : (
+                          <span className="text-red-600 font-bold">Atenção: estoque não encontrado (0)</span>
+                        )}
+                      </div>
+
+                      <div className="mt-2 font-extrabold text-blue-900">Total item: {brl(it.preco * it.qtd)}</div>
+                    </div>
+                  </div>
+                </div>
+              );
+            })
+          )}
+        </div>
+
+        {/* DADOS CLIENTE */}
+        <div className="mt-4 space-y-2">
+          <input placeholder="Nome do cliente" value={clienteNome} onChange={(e) => setClienteNome(e.target.value)} className="w-full border p-2 rounded" />
+          <input placeholder="WhatsApp" value={clienteTelefone} onChange={(e) => setClienteTelefone(e.target.value)} className="w-full border p-2 rounded" />
+          <div className="text-[11px] text-gray-500">Dica: informe com DDD (ex: 11999999999)</div>
+        </div>
+
+        {/* ENTREGA */}
+        <div className="mt-4">
+          <div className="font-bold mb-2">Entrega</div>
+
+          <div className="flex gap-2">
+            <button onClick={() => setTipoEntrega("ENTREGA")} className={`px-3 py-2 rounded flex-1 ${tipoEntrega === "ENTREGA" ? "bg-blue-600 text-white" : "bg-gray-200"}`}>
+              Entrega
+            </button>
+
+            <button onClick={() => setTipoEntrega("RETIRADA")} className={`px-3 py-2 rounded flex-1 ${tipoEntrega === "RETIRADA" ? "bg-blue-600 text-white" : "bg-gray-200"}`}>
+              Retirada
+            </button>
+          </div>
+
+          {tipoEntrega === "ENTREGA" && (
+            <div className="mt-3 space-y-2">
+              <input placeholder="Endereço" value={endereco} onChange={(e) => setEndereco(e.target.value)} className="w-full border p-2 rounded" />
+              <input placeholder="Número" value={numero} onChange={(e) => setNumero(e.target.value)} className="w-full border p-2 rounded" />
+              <input placeholder="Bairro" value={bairro} onChange={(e) => setBairro(e.target.value)} className="w-full border p-2 rounded" />
+              <div className="text-sm font-bold">Taxa fixa: {brl(taxaEntrega)}</div>
+            </div>
+          )}
+        </div>
+
+        {/* PAGAMENTO */}
+        <div className="mt-4">
+          <div className="font-bold mb-2">Pagamento</div>
+
+          <div className="flex flex-wrap gap-2">
+            {(["PIX", "CARTAO", "DINHEIRO", "COMBINAR"] as const).map((p) => (
+              <button key={p} onClick={() => setPagamento(p)} className={`px-3 py-2 rounded ${pagamento === p ? "bg-blue-600 text-white" : "bg-gray-200"}`}>
+                {p}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* TOTAL */}
+        <div className="mt-4 border-t pt-3">
+          <div>Subtotal: {brl(cart.subtotal)}</div>
+          <div>Taxa: {brl(taxaEntrega)}</div>
+          <div className="font-extrabold text-lg">Total: {brl(total)}</div>
+        </div>
+
+        {/* FINALIZAR (Whats) */}
+        <button
+          disabled={!canCheckout}
+          onClick={() => window.open(waLinkLocal(whats, mensagem), "_blank", "noopener,noreferrer")}
+          className={`w-full mt-4 text-center py-3 rounded-xl font-extrabold ${
+            canCheckout ? "bg-green-600 hover:bg-green-700 text-white" : "bg-gray-200 text-gray-500"
+          }`}
+          title={canCheckout ? "Finalizar no WhatsApp" : "Preencha nome/Whats e itens (e endereço se entrega)."}
+        >
+          Finalizar no WhatsApp
+        </button>
+
+        {!canCheckout ? (
+          <div className="mt-2 text-xs text-gray-500">
+            Para liberar o botão: informe <b>Nome</b>, <b>WhatsApp</b>, e adicione itens. Se escolher <b>Entrega</b>, preencha{" "}
+            <b>Endereço/Número/Bairro</b>.
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+/* =========================
    PRODUTO CARD (padrão DF)
 ========================= */
 function ProdutoCardUltra({
@@ -533,7 +646,7 @@ function ProdutoCardUltra({
   onEncomendar,
   estoqueByEan,
 }: {
-  p: ProdutoUI;
+  p: DRFProdutoView;
   prefix: string;
   onEncomendar: () => void;
   estoqueByEan: Map<string, number>;
@@ -595,20 +708,11 @@ function ProdutoCardUltra({
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition overflow-hidden flex flex-col">
       <div className="relative p-3">
-        <Link
-          href={`${prefix}/produtos/${p.ean}`}
-          className="bg-gray-50 rounded-xl p-2 flex items-center justify-center hover:opacity-95 transition"
-        >
-          <Image
-            src={firstImg(p.imagens)}
-            alt={p.nome || "Produto"}
-            width={240}
-            height={240}
-            className="rounded object-contain h-24 sm:h-28"
-          />
+        <Link href={`${prefix}/produtos/${p.ean}`} className="bg-gray-50 rounded-xl p-2 flex items-center justify-center hover:opacity-95 transition">
+          <Image src={firstImg(p.imagens)} alt={p.nome || "Produto"} width={240} height={240} className="rounded object-contain h-24 sm:h-28" />
         </Link>
 
-        {pr.emPromo && pr.off > 0 && (
+        {!!p.em_promocao && pr.off > 0 && (
           <span className="absolute top-3 right-3 text-[11px] font-extrabold bg-red-600 text-white px-2 py-1 rounded-full shadow-sm">
             {pr.off}% OFF
           </span>
@@ -625,16 +729,7 @@ function ProdutoCardUltra({
         {p.apresentacao && <div className="text-[11px] text-gray-600 mt-1 line-clamp-1">{p.apresentacao}</div>}
 
         <div className="mt-2">
-          {pr.emPromo ? (
-            <>
-              <div className="text-xs text-gray-500">
-                De <span className="line-through">{brl(pr.pmc)}</span>
-              </div>
-              <div className="text-base font-extrabold text-blue-900">Por {brl(pr.final)}</div>
-            </>
-          ) : (
-            <div className="text-base font-extrabold text-blue-900">{brl(pr.final)}</div>
-          )}
+          <div className="text-base font-extrabold text-blue-900">{brl(pr.final)}</div>
         </div>
 
         <div className="mt-2 text-[11px]">
@@ -647,19 +742,11 @@ function ProdutoCardUltra({
 
         <div className="mt-3 flex items-center gap-2">
           <div className="flex items-center border rounded-xl overflow-hidden">
-            <button
-              onClick={() => setQtd((x) => Math.max(1, x - 1))}
-              className="w-9 h-9 bg-white hover:bg-gray-50 font-extrabold"
-              disabled={indisponivel}
-            >
+            <button onClick={() => setQtd((x) => Math.max(1, x - 1))} className="w-9 h-9 bg-white hover:bg-gray-50 font-extrabold" disabled={indisponivel}>
               –
             </button>
             <div className="w-10 text-center font-extrabold text-sm">{qtd}</div>
-            <button
-              onClick={() => setQtd((x) => x + 1)}
-              className="w-9 h-9 bg-white hover:bg-gray-50 font-extrabold"
-              disabled={indisponivel}
-            >
+            <button onClick={() => setQtd((x) => x + 1)} className="w-9 h-9 bg-white hover:bg-gray-50 font-extrabold" disabled={indisponivel}>
               +
             </button>
           </div>
@@ -676,10 +763,7 @@ function ProdutoCardUltra({
         </div>
 
         {indisponivel ? (
-          <button
-            onClick={onEncomendar}
-            className="mt-2 w-full bg-green-600 hover:bg-green-700 text-white py-2.5 rounded-xl text-xs sm:text-sm font-extrabold"
-          >
+          <button onClick={onEncomendar} className="mt-2 w-full bg-green-600 hover:bg-green-700 text-white py-2.5 rounded-xl text-xs sm:text-sm font-extrabold">
             Encomendar
           </button>
         ) : null}
