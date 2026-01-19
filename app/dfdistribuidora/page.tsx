@@ -14,7 +14,7 @@ import FVBanners from "./_components/FVBanners";
 /* =========================
    SENHA SIMPLES (LOCAL)
 ========================= */
-const DF_SENHA = "102030";
+const DF_SENHA = "112233";
 const LS_KEY = "df_public_ok";
 
 /* =========================
