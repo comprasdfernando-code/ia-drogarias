@@ -15,6 +15,9 @@ const SENHA_ADMIN = "102030";
 const VIEW = "fv_produtos_loja_view";
 const WRITE_TABLE = "fv_farmacia_produtos";
 
+// 👇 Tabela master de produtos (ajuste se for outro nome)
+const PROD_TABLE = "fv_produtos";
+
 // ✅ 50 itens por tela
 const PAGE_SIZE = 50;
 
@@ -64,7 +67,6 @@ function normalizeImgs(v: any): string[] {
       if (Array.isArray(parsed)) return parsed.map(String).filter(Boolean);
     } catch {}
   }
-
   return [];
 }
 
@@ -154,6 +156,25 @@ export default function AdminPageFabiano() {
   const [imgProduto, setImgProduto] = useState<RowUI | null>(null);
   const [imgTextarea, setImgTextarea] = useState("");
   const [imgSaving, setImgSaving] = useState(false);
+
+  // ===== Modal (NOVO) Produto =====
+  const [novoOpen, setNovoOpen] = useState(false);
+  const [novoSaving, setNovoSaving] = useState(false);
+
+  const [novoEAN, setNovoEAN] = useState("");
+  const [novoNome, setNovoNome] = useState("");
+  const [novoLab, setNovoLab] = useState("");
+  const [novoCategoria, setNovoCategoria] = useState("");
+  const [novoApresentacao, setNovoApresentacao] = useState("");
+  const [novoImgs, setNovoImgs] = useState("");
+
+  const [novoAtivo, setNovoAtivo] = useState(true);
+  const [novoDestaque, setNovoDestaque] = useState(false);
+  const [novoEstoque, setNovoEstoque] = useState("0");
+  const [novoPreco, setNovoPreco] = useState("");
+  const [novoPromo, setNovoPromo] = useState(false);
+  const [novoPrecoPromo, setNovoPrecoPromo] = useState("");
+  const [novoOff, setNovoOff] = useState("");
 
   function toast(s: string) {
     setToastMsg(s);
@@ -401,7 +422,6 @@ export default function AdminPageFabiano() {
 
     const imgs = urlsToJsonb(imgTextarea);
 
-    // se tiver linha inválida, avisa (pra você não salvar lixo)
     const lines = (imgTextarea || "")
       .split("\n")
       .map((l) => cleanUrl(l))
@@ -422,14 +442,13 @@ export default function AdminPageFabiano() {
           {
             farmacia_slug: FARMACIA_SLUG,
             produto_id: imgProduto.produto_id,
-            imagens: imgs.length ? imgs : null, // 👈 salva como JSONB array (ou null)
+            imagens: imgs.length ? imgs : null,
           },
           { onConflict: "farmacia_slug,produto_id" }
         );
 
       if (error) throw error;
 
-      // atualiza tela (e também o rowsRef vai acompanhar via useEffect)
       setRows((prev) =>
         prev.map((x) =>
           x.produto_id === imgProduto.produto_id
@@ -445,6 +464,141 @@ export default function AdminPageFabiano() {
       alert(e?.message || "Erro ao salvar imagens");
     } finally {
       setImgSaving(false);
+    }
+  }
+
+  // ==========================
+  // MODAL NOVO PRODUTO (NOVO)
+  // ==========================
+  function abrirNovoProduto() {
+    setNovoEAN("");
+    setNovoNome("");
+    setNovoLab("");
+    setNovoCategoria("");
+    setNovoApresentacao("");
+    setNovoImgs("");
+
+    setNovoAtivo(true);
+    setNovoDestaque(false);
+    setNovoEstoque("0");
+    setNovoPreco("");
+    setNovoPromo(false);
+    setNovoPrecoPromo("");
+    setNovoOff("");
+
+    setNovoSaving(false);
+    setNovoOpen(true);
+  }
+
+  function fecharNovoProduto() {
+    setNovoOpen(false);
+    setNovoSaving(false);
+  }
+
+  async function salvarNovoProduto() {
+    const eanDigits = onlyDigits(novoEAN);
+    if (eanDigits.length < 6) return alert("EAN inválido. Digite pelo menos 6 números.");
+    if (!novoNome.trim()) return alert("Nome é obrigatório.");
+
+    const imgs = urlsToJsonb(novoImgs);
+
+    // valida URLs (se usuário colou lixo)
+    const lines = (novoImgs || "")
+      .split("\n")
+      .map((l) => cleanUrl(l))
+      .filter(Boolean);
+    const invalid = lines.filter((u) => !isValidHttpUrl(u));
+    if (invalid.length > 0) {
+      return alert("Tem URL inválida nas imagens. Precisa começar com http/https.");
+    }
+
+    const estoqueNum = Math.max(0, Number(novoEstoque || 0));
+    const precoNum = novoPreco.trim() === "" ? null : Number(novoPreco);
+    const precoPromoNum = novoPrecoPromo.trim() === "" ? null : Number(novoPrecoPromo);
+    const offNum = novoOff.trim() === "" ? null : Number(novoOff);
+
+    setNovoSaving(true);
+
+    try {
+      // 1) tenta achar produto pelo EAN (evita duplicar)
+      const { data: found, error: eFind } = await supabase
+        .from(PROD_TABLE)
+        .select("id")
+        .eq("ean", eanDigits)
+        .limit(1);
+
+      if (eFind) throw eFind;
+
+      let produtoId: string | null = found?.[0]?.id ?? null;
+
+      // 2) se não existir, cria na tabela master
+      if (!produtoId) {
+        const { data: created, error: eCreate } = await supabase
+          .from(PROD_TABLE)
+          .insert({
+            ean: eanDigits,
+            nome: novoNome.trim(),
+            laboratorio: novoLab.trim() || null,
+            categoria: novoCategoria.trim() || null,
+            apresentacao: novoApresentacao.trim() || null,
+            imagens: imgs.length ? imgs : null,
+          })
+          .select("id")
+          .single();
+
+        if (eCreate) throw eCreate;
+        produtoId = created?.id;
+      } else {
+        // opcional: atualiza dados master se já existe (mantém alinhado)
+        const { error: eUpd } = await supabase
+          .from(PROD_TABLE)
+          .update({
+            nome: novoNome.trim(),
+            laboratorio: novoLab.trim() || null,
+            categoria: novoCategoria.trim() || null,
+            apresentacao: novoApresentacao.trim() || null,
+            imagens: imgs.length ? imgs : null,
+          })
+          .eq("id", produtoId);
+
+        if (eUpd) throw eUpd;
+      }
+
+      if (!produtoId) throw new Error("Não foi possível obter produto_id.");
+
+      // 3) vincula na loja (WRITE_TABLE)
+      const { error: eLink } = await supabase
+        .from(WRITE_TABLE)
+        .upsert(
+          {
+            farmacia_slug: FARMACIA_SLUG,
+            produto_id: produtoId,
+            ativo: !!novoAtivo,
+            estoque: estoqueNum,
+            preco_venda: precoNum,
+            em_promocao: !!novoPromo,
+            preco_promocional: precoPromoNum,
+            percentual_off: offNum,
+            destaque_home: !!novoDestaque,
+            imagens: imgs.length ? imgs : null, // opcional: também salva aqui
+          },
+          { onConflict: "farmacia_slug,produto_id" }
+        );
+
+      if (eLink) throw eLink;
+
+      toast("✅ Produto cadastrado!");
+      fecharNovoProduto();
+
+      // recarrega do começo pra aparecer
+      setBusca(eanDigits);
+      setPage(1);
+      carregar(1);
+    } catch (e: any) {
+      console.error(e);
+      alert(e?.message || "Erro ao cadastrar produto.");
+    } finally {
+      setNovoSaving(false);
     }
   }
 
@@ -482,11 +636,22 @@ export default function AdminPageFabiano() {
       <div className="max-w-7xl mx-auto">
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-blue-700">Administração — {FARMACIA_SLUG}</h1>
-            <p className="text-sm text-gray-600">50 itens por página • autosave + botão manual • imagens por item.</p>
+            <h1 className="text-2xl sm:text-3xl font-bold text-blue-700">
+              Administração — {FARMACIA_SLUG}
+            </h1>
+            <p className="text-sm text-gray-600">
+              50 itens por página • autosave + botão manual • imagens por item • novo cadastro por modal.
+            </p>
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-wrap justify-end">
+            <button
+              onClick={abrirNovoProduto}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-xl font-semibold"
+            >
+              ➕ Novo Produto
+            </button>
+
             <button
               onClick={() => carregar(page)}
               className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-semibold"
@@ -552,12 +717,20 @@ export default function AdminPageFabiano() {
 
             <div className="md:col-span-2 flex items-end gap-3">
               <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={somenteAtivos} onChange={(e) => setSomenteAtivos(e.target.checked)} />
+                <input
+                  type="checkbox"
+                  checked={somenteAtivos}
+                  onChange={(e) => setSomenteAtivos(e.target.checked)}
+                />
                 Somente ativos
               </label>
 
               <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={somenteZerados} onChange={(e) => setSomenteZerados(e.target.checked)} />
+                <input
+                  type="checkbox"
+                  checked={somenteZerados}
+                  onChange={(e) => setSomenteZerados(e.target.checked)}
+                />
                 Só zerados
               </label>
             </div>
@@ -597,12 +770,19 @@ export default function AdminPageFabiano() {
           <div className="flex flex-col lg:flex-row lg:items-center gap-3 justify-between">
             <div className="flex items-center gap-3">
               <label className="text-sm font-semibold text-gray-700">
-                Selecionados (página): <span className="text-blue-700">{selecionadosIds.length}</span>
+                Selecionados (página):{" "}
+                <span className="text-blue-700">{selecionadosIds.length}</span>
               </label>
-              <button onClick={() => toggleAll(true)} className="text-sm px-3 py-1 rounded-xl border bg-white hover:bg-gray-50">
+              <button
+                onClick={() => toggleAll(true)}
+                className="text-sm px-3 py-1 rounded-xl border bg-white hover:bg-gray-50"
+              >
                 Marcar todos (página)
               </button>
-              <button onClick={() => toggleAll(false)} className="text-sm px-3 py-1 rounded-xl border bg-white hover:bg-gray-50">
+              <button
+                onClick={() => toggleAll(false)}
+                className="text-sm px-3 py-1 rounded-xl border bg-white hover:bg-gray-50"
+              >
                 Desmarcar
               </button>
             </div>
@@ -634,7 +814,10 @@ export default function AdminPageFabiano() {
                 <option value="nao">Inativar</option>
               </select>
 
-              <button onClick={aplicarEmMassa} className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-semibold">
+              <button
+                onClick={aplicarEmMassa}
+                className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-xl font-semibold"
+              >
                 Aplicar
               </button>
             </div>
@@ -857,7 +1040,9 @@ export default function AdminPageFabiano() {
           <div className="bg-white w-full max-w-3xl rounded-2xl shadow-2xl overflow-hidden">
             <div className="p-4 border-b flex items-start justify-between gap-3">
               <div className="min-w-0">
-                <h3 className="text-lg font-bold text-blue-700 truncate">🖼️ Imagens — {imgProduto.nome || "Produto"}</h3>
+                <h3 className="text-lg font-bold text-blue-700 truncate">
+                  🖼️ Imagens — {imgProduto.nome || "Produto"}
+                </h3>
                 <p className="text-xs text-gray-500">
                   Cole URLs (http/https). Uma por linha. A primeira vira a principal. (Salva como JSONB array)
                 </p>
@@ -929,6 +1114,231 @@ export default function AdminPageFabiano() {
 
                 <div className="mt-3 text-[11px] text-gray-500">
                   Dica: a primeira URL da lista é a que aparece no PDV.
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODAL NOVO PRODUTO (NOVO) */}
+      {novoOpen && (
+        <div className="fixed inset-0 z-[9998] bg-black/60 flex items-center justify-center px-3">
+          <div className="bg-white w-full max-w-4xl rounded-2xl shadow-2xl overflow-hidden">
+            <div className="p-4 border-b flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h3 className="text-lg font-bold text-emerald-700 truncate">➕ Novo Produto (novo cadastro)</h3>
+                <p className="text-xs text-gray-500">
+                  Cria/atualiza em <b>{PROD_TABLE}</b> e vincula em <b>{WRITE_TABLE}</b>.
+                </p>
+              </div>
+              <button onClick={fecharNovoProduto} className="text-gray-500 hover:text-gray-800 text-xl">
+                ×
+              </button>
+            </div>
+
+            <div className="p-4 grid grid-cols-1 lg:grid-cols-2 gap-4">
+              {/* Coluna Produto */}
+              <div className="border rounded-xl p-3">
+                <div className="text-sm font-semibold text-gray-700 mb-2">Dados do produto</div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="text-xs text-gray-600 font-semibold">EAN*</label>
+                    <input
+                      value={novoEAN}
+                      onChange={(e) => setNovoEAN(e.target.value)}
+                      placeholder="789..."
+                      className="w-full border rounded-xl px-3 py-2"
+                      inputMode="numeric"
+                    />
+                    <div className="text-[11px] text-gray-500 mt-1">Só números. Se já existir, reaproveita.</div>
+                  </div>
+
+                  <div>
+                    <label className="text-xs text-gray-600 font-semibold">Categoria</label>
+                    <input
+                      value={novoCategoria}
+                      onChange={(e) => setNovoCategoria(e.target.value)}
+                      placeholder="Ex: Analgésicos"
+                      className="w-full border rounded-xl px-3 py-2"
+                    />
+                  </div>
+
+                  <div className="sm:col-span-2">
+                    <label className="text-xs text-gray-600 font-semibold">Nome*</label>
+                    <input
+                      value={novoNome}
+                      onChange={(e) => setNovoNome(e.target.value)}
+                      placeholder="Ex: Dorflex 36 comprimidos"
+                      className="w-full border rounded-xl px-3 py-2"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs text-gray-600 font-semibold">Laboratório</label>
+                    <input
+                      value={novoLab}
+                      onChange={(e) => setNovoLab(e.target.value)}
+                      placeholder="Ex: Sanofi"
+                      className="w-full border rounded-xl px-3 py-2"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs text-gray-600 font-semibold">Apresentação</label>
+                    <input
+                      value={novoApresentacao}
+                      onChange={(e) => setNovoApresentacao(e.target.value)}
+                      placeholder="Ex: cx 36 comp"
+                      className="w-full border rounded-xl px-3 py-2"
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-3">
+                  <label className="text-xs text-gray-600 font-semibold">Imagens (URLs http/https, 1 por linha)</label>
+                  <textarea
+                    value={novoImgs}
+                    onChange={(e) => setNovoImgs(e.target.value)}
+                    placeholder={"https://.../img1.png\nhttps://.../img2.png"}
+                    className="w-full border rounded-xl p-2 text-sm min-h-[120px]"
+                  />
+                  <div className="mt-2 text-[11px] text-gray-500">A primeira URL vira a principal no card.</div>
+                </div>
+
+                <div className="mt-3 border rounded-xl p-3 bg-gray-50">
+                  <div className="text-xs font-semibold text-gray-700 mb-2">Preview</div>
+                  <div className="w-full h-44 bg-white border rounded-xl flex items-center justify-center overflow-hidden">
+                    <Image
+                      src={urlsToJsonb(novoImgs)[0] || "/produtos/caixa-padrao.png"}
+                      alt="Preview"
+                      width={520}
+                      height={320}
+                      className="object-contain"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Coluna Loja */}
+              <div className="border rounded-xl p-3">
+                <div className="text-sm font-semibold text-gray-700 mb-2">Dados na loja (estoque/preço)</div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="flex items-center gap-2 mt-1">
+                    <input
+                      type="checkbox"
+                      checked={novoAtivo}
+                      onChange={(e) => setNovoAtivo(e.target.checked)}
+                    />
+                    <span className="text-sm font-semibold text-gray-700">Ativo na loja</span>
+                  </div>
+
+                  <div className="flex items-center gap-2 mt-1">
+                    <input
+                      type="checkbox"
+                      checked={novoDestaque}
+                      onChange={(e) => setNovoDestaque(e.target.checked)}
+                    />
+                    <span className="text-sm font-semibold text-gray-700">Destaque home</span>
+                  </div>
+
+                  <div>
+                    <label className="text-xs text-gray-600 font-semibold">Estoque</label>
+                    <input
+                      type="number"
+                      min={0}
+                      value={novoEstoque}
+                      onChange={(e) => setNovoEstoque(e.target.value)}
+                      className="w-full border rounded-xl px-3 py-2"
+                    />
+                    <div className="mt-2">
+                      <span className={`text-xs px-2 py-1 rounded-full border ${stockBadge(Math.max(0, Number(novoEstoque || 0)))}`}>
+                        {Math.max(0, Number(novoEstoque || 0)) <= 0
+                          ? "ZERADO"
+                          : Math.max(0, Number(novoEstoque || 0)) <= 5
+                          ? "BAIXO"
+                          : "OK"}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="text-xs text-gray-600 font-semibold">Preço venda</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={novoPreco}
+                      onChange={(e) => setNovoPreco(e.target.value)}
+                      className="w-full border rounded-xl px-3 py-2"
+                      placeholder="R$"
+                    />
+                    <div className="text-[11px] text-gray-500 mt-1">
+                      {novoPreco.trim() !== "" && !Number.isNaN(Number(novoPreco)) ? brl(Number(novoPreco)) : "—"}
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 mt-1">
+                    <input
+                      type="checkbox"
+                      checked={novoPromo}
+                      onChange={(e) => setNovoPromo(e.target.checked)}
+                    />
+                    <span className="text-sm font-semibold text-gray-700">Em promoção</span>
+                  </div>
+
+                  <div />
+
+                  <div>
+                    <label className="text-xs text-gray-600 font-semibold">Preço promocional</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={novoPrecoPromo}
+                      onChange={(e) => setNovoPrecoPromo(e.target.value)}
+                      className="w-full border rounded-xl px-3 py-2"
+                      placeholder="R$"
+                      disabled={!novoPromo}
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs text-gray-600 font-semibold">% Off</label>
+                    <input
+                      type="number"
+                      step="0.01"
+                      value={novoOff}
+                      onChange={(e) => setNovoOff(e.target.value)}
+                      className="w-full border rounded-xl px-3 py-2"
+                      placeholder="%"
+                      disabled={!novoPromo}
+                    />
+                  </div>
+                </div>
+
+                <div className="mt-4 flex items-center justify-end gap-2">
+                  <button
+                    onClick={fecharNovoProduto}
+                    className="px-4 py-2 rounded-xl border bg-white hover:bg-gray-50 font-semibold"
+                    disabled={novoSaving}
+                  >
+                    Cancelar
+                  </button>
+
+                  <button
+                    onClick={salvarNovoProduto}
+                    disabled={novoSaving}
+                    className={`px-4 py-2 rounded-xl font-semibold text-white ${
+                      novoSaving ? "bg-emerald-300" : "bg-emerald-600 hover:bg-emerald-700"
+                    }`}
+                  >
+                    {novoSaving ? "Salvando..." : "✅ Cadastrar Produto"}
+                  </button>
+                </div>
+
+                <div className="mt-3 text-[11px] text-gray-500">
+                  Se o EAN já existir em <b>{PROD_TABLE}</b>, ele atualiza os dados master e só vincula na loja.
                 </div>
               </div>
             </div>
