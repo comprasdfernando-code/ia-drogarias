@@ -4,12 +4,18 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 
+/* =========================
+   TIPOS
+========================= */
 type ItemPedido = {
   produto_id?: string;
   ean?: string;
   nome: string;
   qtd: number;
-  preco: number;
+  // compat: pode vir preco ou preco_unit
+  preco?: number;
+  preco_unit?: number;
+  total_item?: number;
 };
 
 type Pedido = {
@@ -17,7 +23,7 @@ type Pedido = {
   created_at: string;
   status: "NOVO" | "PREPARO" | "PRONTO" | "ENTREGUE" | string;
 
-  canal?: "PDV" | "SITE" | string;
+  canal?: "PDV" | "FV" | "SITE" | string;
   comanda?: string | null;
 
   cliente_nome?: string | null;
@@ -36,11 +42,34 @@ type Pedido = {
   itens?: ItemPedido[];
 };
 
+/* =========================
+   STATUS UI
+========================= */
 const STATUS_STYLE: Record<string, { badge: string; card: string; btn: string; label: string }> = {
-  NOVO: { badge: "bg-yellow-200 text-yellow-950 border border-yellow-300", card: "border-l-8 border-yellow-500", btn: "bg-yellow-600 hover:bg-yellow-700", label: "NOVO" },
-  PREPARO:{ badge: "bg-blue-200 text-blue-950 border border-blue-300", card: "border-l-8 border-blue-600", btn: "bg-blue-700 hover:bg-blue-800", label: "PREPARO" },
-  PRONTO:{ badge: "bg-purple-200 text-purple-950 border border-purple-300", card: "border-l-8 border-purple-600", btn: "bg-purple-700 hover:bg-purple-800", label: "PRONTO" },
-  ENTREGUE:{ badge: "bg-green-200 text-green-950 border border-green-300", card: "border-l-8 border-green-600", btn: "bg-green-700 hover:bg-green-800", label: "ENTREGUE" },
+  NOVO: {
+    badge: "bg-yellow-200 text-yellow-950 border border-yellow-300",
+    card: "border-l-8 border-yellow-500",
+    btn: "bg-yellow-600 hover:bg-yellow-700",
+    label: "NOVO",
+  },
+  PREPARO: {
+    badge: "bg-blue-200 text-blue-950 border border-blue-300",
+    card: "border-l-8 border-blue-600",
+    btn: "bg-blue-700 hover:bg-blue-800",
+    label: "PREPARO",
+  },
+  PRONTO: {
+    badge: "bg-purple-200 text-purple-950 border border-purple-300",
+    card: "border-l-8 border-purple-600",
+    btn: "bg-purple-700 hover:bg-purple-800",
+    label: "PRONTO",
+  },
+  ENTREGUE: {
+    badge: "bg-green-200 text-green-950 border border-green-300",
+    card: "border-l-8 border-green-600",
+    btn: "bg-green-700 hover:bg-green-800",
+    label: "ENTREGUE",
+  },
 };
 
 function proximoStatus(s: string) {
@@ -49,20 +78,82 @@ function proximoStatus(s: string) {
   if (s === "PRONTO") return "ENTREGUE";
   return "ENTREGUE";
 }
-function brl(n: number) {
-  return Number(n || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
+function brl(v: number | null | undefined) {
+  return Number(v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
+
 function onlyDigits(v: string) {
   return (v || "").replace(/\D/g, "");
 }
-function buildWhatsappStatusMsg(p: Pedido) {
-  const idCurto = p.id.slice(0, 6).toUpperCase();
-  const st = (STATUS_STYLE[p.status]?.label || p.status || "NOVO").toUpperCase();
-  const total = brl(p.total);
-  const comanda = p.comanda ? `\nComanda: ${p.comanda}` : "";
-  return `Olá, ${p.cliente_nome || "cliente"}! 😊\nSeu pedido ${idCurto} está em: *${st}*.\nTotal: ${total}${comanda}\n\nDrogaria Rede Fabiano`;
+
+function safeDateBR(d: string) {
+  try {
+    return new Date(d).toLocaleString("pt-BR");
+  } catch {
+    return d;
+  }
 }
 
+function labelStatus(s: string) {
+  if (s === "NOVO") return "Novo";
+  if (s === "PREPARO") return "Em preparo";
+  if (s === "PRONTO") return "Pronto";
+  if (s === "ENTREGUE") return "Entregue";
+  return s;
+}
+
+function buildWhatsAppLink(phone: string, msg: string) {
+  const clean = onlyDigits(phone);
+  const text = encodeURIComponent(msg);
+  // phone aqui vem só com DDD+numero, ex: 11999999999
+  return `https://wa.me/55${clean}?text=${text}`;
+}
+
+function itemPrecoUnit(i: any) {
+  const v = Number(i?.preco_unit ?? i?.preco ?? 0);
+  return Number.isFinite(v) ? v : 0;
+}
+
+function itemTotal(i: any) {
+  const t = Number(i?.total_item ?? 0);
+  if (t && Number.isFinite(t)) return t;
+  return itemPrecoUnit(i) * Number(i?.qtd || 0);
+}
+
+function msgStatusPedido(p: Pedido) {
+  const entrega = p.tipo_entrega === "ENTREGA" ? "Entrega" : "Retirada";
+  const when = safeDateBR(p.created_at);
+  const idCurto = p.id.slice(0, 6).toUpperCase();
+
+  const itens = (p.itens || [])
+    .slice(0, 12)
+    .map((i) => `• ${i.qtd}x ${i.nome}`)
+    .join("\n");
+
+  const end =
+    p.tipo_entrega === "ENTREGA"
+      ? `\nEndereço: ${p.endereco || "-"}, ${p.numero || "-"} - ${p.bairro || "-"}`
+      : "";
+
+  const comanda = p.comanda ? `\nComanda: ${p.comanda}` : "";
+
+  return (
+    `Olá, ${p.cliente_nome || "tudo bem"}! 🙂\n` +
+    `Seu pedido ${idCurto} está com status: *${labelStatus(p.status)}*.\n` +
+    `Tipo: ${entrega} • Pagamento: ${p.pagamento}${comanda}\n` +
+    `Total: ${brl(Number(p.total || 0))}\n` +
+    `${end}\n\n` +
+    `Itens:\n${itens || "• (sem itens)"}\n\n` +
+    `Pedido feito em: ${when}\n` +
+    `Qualquer dúvida, me chama por aqui. ✅\n` +
+    `Entrega em até 24h (normalmente entre 8h e 15h). ✅`
+  );
+}
+
+/* =========================
+   PAGE
+========================= */
 export default function PainelPedidosDRF() {
   const TABLE = "drf_pedidos";
 
@@ -70,41 +161,52 @@ export default function PainelPedidosDRF() {
   const [loading, setLoading] = useState(true);
   const [filtro, setFiltro] = useState("TODOS");
   const [abertos, setAbertos] = useState<Record<string, boolean>>({});
+  const [erroAcao, setErroAcao] = useState<string | null>(null);
 
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const idsRef = useRef<Set<string>>(new Set());
 
+  /* =========================
+     LOAD PEDIDOS
+  ========================= */
   async function carregar() {
+    setErroAcao(null);
     setLoading(true);
+
     const { data, error } = await supabase.from(TABLE).select("*").order("created_at", { ascending: false });
+
     if (error) {
       console.error(error);
+      setErroAcao(error.message || "Erro ao carregar pedidos.");
       setLoading(false);
       return;
     }
+
     setPedidos((data || []) as Pedido[]);
     idsRef.current = new Set((data || []).map((p: any) => p.id));
     setLoading(false);
   }
 
+  /* =========================
+     STATUS
+  ========================= */
   async function mudarStatus(id: string, status: string) {
+    setErroAcao(null);
+
     const { error } = await supabase.from(TABLE).update({ status }).eq("id", id);
+
     if (error) {
       console.error(error);
       alert("Erro ao mudar status (RLS?).");
       return;
     }
+
     setPedidos((prev) => prev.map((p) => (p.id === id ? { ...p, status } : p)));
   }
 
-  function enviarWhatsStatus(p: Pedido) {
-    const tel = onlyDigits(p.cliente_whatsapp || "");
-    if (tel.length < 10) return alert("Cliente sem WhatsApp válido.");
-    const msg = buildWhatsappStatusMsg(p);
-    const url = `https://wa.me/55${tel}?text=${encodeURIComponent(msg)}`;
-    window.open(url, "_blank");
-  }
-
+  /* =========================
+     REALTIME
+  ========================= */
   useEffect(() => {
     carregar();
 
@@ -112,17 +214,24 @@ export default function PainelPedidosDRF() {
       .channel("drf-painel-pedidos")
       .on("postgres_changes", { event: "*", schema: "public", table: TABLE }, async (payload) => {
         await carregar();
+
         if (payload.eventType === "INSERT") {
           const id = (payload.new as any)?.id;
           if (id && !idsRef.current.has(id)) {
             idsRef.current.add(id);
-            try { await audioRef.current?.play(); } catch {}
+            try {
+              await audioRef.current?.play();
+            } catch {
+              // navegador pode bloquear até 1 clique
+            }
           }
         }
       })
       .subscribe();
 
-    return () => { supabase.removeChannel(channel); };
+    return () => {
+      supabase.removeChannel(channel);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -135,6 +244,7 @@ export default function PainelPedidosDRF() {
     <div className="min-h-screen bg-gray-50 p-4">
       <audio ref={audioRef} src="/sounds/new-order.mp3" preload="auto" />
 
+      {/* HEADER */}
       <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-3 mb-4">
         <div>
           <h1 className="text-2xl font-extrabold text-gray-950">📥 Painel de Pedidos – DRF</h1>
@@ -163,16 +273,25 @@ export default function PainelPedidosDRF() {
         </div>
       </div>
 
+      {erroAcao ? (
+        <div className="mb-3 bg-red-50 border border-red-200 rounded-2xl p-3 text-red-900 font-semibold">
+          {erroAcao}
+        </div>
+      ) : null}
+
       {loading ? (
         <div className="bg-white border border-gray-200 rounded-2xl p-4 text-gray-900 font-semibold">Carregando...</div>
       ) : null}
 
+      {/* LISTA */}
       <div className="space-y-3">
         {filtrados.map((p) => {
           const st = STATUS_STYLE[p.status] || STATUS_STYLE["NOVO"];
           const itens = (p.itens as any[]) || [];
           const qtdItens = itens.reduce((s, i) => s + Number(i.qtd || 0), 0);
+
           const entregaLabel = p.tipo_entrega === "ENTREGA" ? "🚚 Entrega" : "🏪 Retirada";
+          const canalLabel = p.canal ? `(${p.canal})` : "";
 
           return (
             <div key={p.id} className={`bg-white rounded-2xl border border-gray-200 shadow-sm p-4 ${st.card}`}>
@@ -182,11 +301,11 @@ export default function PainelPedidosDRF() {
                     <strong className="text-gray-950 text-base">
                       Pedido {p.id.slice(0, 6).toUpperCase()}
                       {p.comanda ? <span className="ml-2 text-gray-800 font-extrabold">• Comanda {p.comanda}</span> : null}
-                      {p.canal ? <span className="ml-2 text-xs text-gray-700 font-semibold">({p.canal})</span> : null}
+                      {canalLabel ? <span className="ml-2 text-xs text-gray-700 font-semibold">{canalLabel}</span> : null}
                     </strong>
 
                     <span className={`text-xs px-2 py-1 rounded-full font-extrabold ${st.badge}`}>{st.label}</span>
-                    <span className="text-xs text-gray-800 font-semibold">{new Date(p.created_at).toLocaleString("pt-BR")}</span>
+                    <span className="text-xs text-gray-800 font-semibold">{safeDateBR(p.created_at)}</span>
                   </div>
 
                   <p className="text-sm mt-1 text-gray-950 font-semibold">
@@ -195,6 +314,7 @@ export default function PainelPedidosDRF() {
                     {qtdItens > 0 ? <span className="text-gray-800"> • {qtdItens} itens</span> : null}
                   </p>
 
+                  {/* CLIENTE */}
                   <div className="mt-3 text-sm bg-gray-50 border border-gray-200 rounded-xl p-3">
                     <div className="flex items-center justify-between gap-2 flex-wrap">
                       <div className="font-extrabold text-gray-950">{entregaLabel}</div>
@@ -214,6 +334,7 @@ export default function PainelPedidosDRF() {
                     ) : null}
                   </div>
 
+                  {/* ITENS */}
                   <div className="mt-3">
                     <button
                       onClick={() => setAbertos((x) => ({ ...x, [p.id]: !x[p.id] }))}
@@ -229,9 +350,13 @@ export default function PainelPedidosDRF() {
                         ) : (
                           itens.map((i: any, idx: number) => (
                             <div key={idx} className="flex justify-between gap-3">
-                              <span className="text-gray-950 font-semibold truncate">{i.qtd}x {i.nome}</span>
+                              <span className="text-gray-950 font-semibold truncate">
+                                {Number(i.qtd || 0)}x {i.nome}{" "}
+                                {i.ean ? <span className="text-gray-700 font-bold">• EAN {i.ean}</span> : null}
+                              </span>
+
                               <span className="text-gray-950 font-extrabold whitespace-nowrap">
-                                {brl((Number(i.preco) || 0) * (Number(i.qtd) || 0))}
+                                {brl(itemTotal(i))}
                               </span>
                             </div>
                           ))
@@ -241,6 +366,7 @@ export default function PainelPedidosDRF() {
                   </div>
                 </div>
 
+                {/* AÇÕES */}
                 <div className="flex flex-row lg:flex-col items-stretch lg:items-end gap-2">
                   <Link
                     href={`/drogarias/drogariaredefabiano/cupom/${p.id}`}
@@ -250,13 +376,22 @@ export default function PainelPedidosDRF() {
                     🖨️ Imprimir
                   </Link>
 
-                  <button
-                    onClick={() => enviarWhatsStatus(p)}
-                    className="px-3 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white font-extrabold"
-                    title="Enviar status no WhatsApp"
+                  <a
+                    href={p.cliente_whatsapp ? buildWhatsAppLink(p.cliente_whatsapp, msgStatusPedido(p)) : undefined}
+                    target="_blank"
+                    rel="noreferrer"
+                    className={`px-3 py-2 rounded-xl text-center font-extrabold border ${
+                      p.cliente_whatsapp
+                        ? "bg-green-700 hover:bg-green-800 text-white border-green-800"
+                        : "bg-gray-200 text-gray-600 border-gray-300 cursor-not-allowed"
+                    }`}
+                    title={p.cliente_whatsapp ? "Enviar status no WhatsApp" : "Cliente sem WhatsApp"}
+                    onClick={(e) => {
+                      if (!p.cliente_whatsapp) e.preventDefault();
+                    }}
                   >
-                    💬 Whats
-                  </button>
+                    💬 WhatsApp
+                  </a>
 
                   <button
                     onClick={() => mudarStatus(p.id, proximoStatus(p.status))}
@@ -268,6 +403,7 @@ export default function PainelPedidosDRF() {
                 </div>
               </div>
 
+              {/* STATUS MANUAL */}
               <div className="flex gap-2 mt-4 flex-wrap">
                 {(["NOVO", "PREPARO", "PRONTO", "ENTREGUE"] as const).map((s) => (
                   <button
