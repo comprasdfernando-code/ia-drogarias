@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
 import { useCart } from "./_components/cart";
@@ -74,10 +74,8 @@ function waLink(phone: string, msg: string) {
 }
 
 function precoFinal(p: DRFProdutoView) {
-  // prioridade: preco_venda da loja
   const loja = Number(p.preco_venda || 0);
 
-  // se não tiver preço loja, tenta promo global
   const promo = Number(p.preco_promocional || 0);
   const emPromo = !!p.em_promocao && promo > 0;
 
@@ -89,7 +87,6 @@ function precoFinal(p: DRFProdutoView) {
 
 export default function DrogariaRedeFabianoHome() {
   const router = useRouter();
-  const searchParams = useSearchParams();
   const openedByQueryRef = useRef(false);
 
   const [loadingHome, setLoadingHome] = useState(true);
@@ -116,19 +113,24 @@ export default function DrogariaRedeFabianoHome() {
     return m;
   }, [homeProdutos, resultado]);
 
-  // ✅ ABRIR CARRINHO QUANDO VIER ?openCart=1 (vindo da página do produto)
+  // ✅ ABRIR CARRINHO QUANDO VIER ?openCart=1 (sem useSearchParams -> build OK)
   useEffect(() => {
-    const v = searchParams.get("openCart");
-    if (v === "1" && !openedByQueryRef.current) {
+    if (typeof window === "undefined") return;
+    if (openedByQueryRef.current) return;
+
+    const sp = new URLSearchParams(window.location.search);
+    const v = sp.get("openCart");
+
+    if (v === "1") {
       openedByQueryRef.current = true;
       setCartOpen(true);
 
-      // remove o param da URL para não ficar reabrindo
-      const url = new URL(window.location.href);
-      url.searchParams.delete("openCart");
-      router.replace(url.pathname + (url.search || ""), { scroll: false });
+      sp.delete("openCart");
+      const newQs = sp.toString();
+      const newUrl = window.location.pathname + (newQs ? `?${newQs}` : "");
+      window.history.replaceState({}, "", newUrl);
     }
-  }, [searchParams, router]);
+  }, []);
 
   // HOME
   useEffect(() => {
