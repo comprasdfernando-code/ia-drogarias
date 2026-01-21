@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
 import { useCart } from "./_components/cart";
@@ -15,9 +14,9 @@ import FVBanners from "./_components/FVBanners";
 ========================= */
 const LOJA_SLUG = "drogariaredefabiano";
 const PREFIX = "/drogarias/drogariaredefabiano";
-const WHATS_DRF = "5511948343725";
+const WHATS_DRF = "5511952068432";
 
-// VIEW loja x catálogo (precisa ter: farmacia_slug, ean, nome, imagens, estoque, preco_venda, disponivel_farmacia)
+// VIEW loja x catálogo
 const VIEW_LOJA = "fv_produtos_loja_view";
 
 const HOME_LIMIT = 150;
@@ -33,28 +32,23 @@ type DRFProdutoView = {
   laboratorio: string | null;
   categoria: string | null;
   apresentacao: string | null;
-  imagens: string[] | null;
+  imagens: any; // jsonb pode vir array/string
 
-  // da loja
-  estoque: number | null;
-  preco_venda: number | null;
-  disponivel_farmacia: boolean | null;
-
-  // do catálogo (se existir na view)
-  pmc: number | null; // ✅ ADICIONADO (fallback global)
+  // catálogo (✅ agora existe na view pelo SQL acima)
+  pmc: number | null;
   em_promocao: boolean | null;
   preco_promocional: number | null;
   percentual_off: number | null;
+
+  // loja
+  estoque: number | null;
+  preco_venda: number | null;
+  disponivel_farmacia: boolean | null;
 };
 
 function brl(v: number | null | undefined) {
   if (v === null || v === undefined || Number.isNaN(v)) return "—";
   return Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-}
-
-function firstImg(imagens?: string[] | null) {
-  if (Array.isArray(imagens) && imagens.length > 0 && imagens[0]) return imagens[0];
-  return "/produtos/caixa-padrao.png";
 }
 
 function onlyDigits(v: string) {
@@ -74,11 +68,38 @@ function waLink(phone: string, msg: string) {
   return `https://wa.me/${clean}?text=${encodeURIComponent(msg)}`;
 }
 
+/** blindagem: jsonb pode vir array, string JSON, etc */
+function normalizeImgs(v: any): string[] {
+  if (!v) return [];
+  if (Array.isArray(v)) return v.map(String).filter(Boolean);
+
+  if (typeof v === "string") {
+    try {
+      const parsed = JSON.parse(v);
+      if (Array.isArray(parsed)) return parsed.map(String).filter(Boolean);
+    } catch {}
+  }
+
+  // jsonb object -> values
+  if (v && typeof v === "object") {
+    const vals = Object.values(v).map(String).filter(Boolean);
+    return vals;
+  }
+
+  return [];
+}
+
+function firstImg(imagens?: any) {
+  const arr = normalizeImgs(imagens);
+  if (arr.length > 0 && arr[0]) return arr[0];
+  return "/produtos/caixa-padrao.png";
+}
+
 /**
- * ✅ MESMA LÓGICA DO PDV
- * 1) usa preco_venda da loja se > 0
- * 2) senão: usa promo se válida (em_promocao + promo >0 e (sem pmc OU promo < pmc))
- * 3) senão: usa pmc
+ * ✅ mesma lógica do PDV:
+ * 1) se loja tem preco_venda > 0, usa
+ * 2) senão, se em promoção e promo válida (promo > 0 e (pmc==0/null ou promo < pmc)), usa promo
+ * 3) senão usa pmc
  */
 function precoFinal(p: DRFProdutoView) {
   const loja = Number(p.preco_venda || 0);
@@ -86,21 +107,14 @@ function precoFinal(p: DRFProdutoView) {
   const pmc = Number(p.pmc || 0);
   const promo = Number(p.preco_promocional || 0);
 
-  const emPromo =
-    !!p.em_promocao &&
-    promo > 0 &&
-    (!pmc || promo < pmc); // ✅ igual PDV
-
-  const global = emPromo ? promo : pmc;
-  const final = loja > 0 ? loja : Number(global || 0);
+  const emPromo = !!p.em_promocao && promo > 0 && (!pmc || promo < pmc);
+  const final = loja > 0 ? loja : emPromo ? promo : pmc;
 
   const off = Number(p.percentual_off || 0);
-
-  return { final, emPromo, off };
+  return { final: Number(final || 0), emPromo, off };
 }
 
 export default function DrogariaRedeFabianoHome() {
-  const router = useRouter();
   const openedByQueryRef = useRef(false);
 
   const [loadingHome, setLoadingHome] = useState(true);
@@ -127,7 +141,7 @@ export default function DrogariaRedeFabianoHome() {
     return m;
   }, [homeProdutos, resultado]);
 
-  // ✅ ABRIR CARRINHO QUANDO VIER ?openCart=1 (sem useSearchParams -> build OK)
+  // ✅ ABRIR CARRINHO QUANDO VIER ?openCart=1
   useEffect(() => {
     if (typeof window === "undefined") return;
     if (openedByQueryRef.current) return;
@@ -155,8 +169,7 @@ export default function DrogariaRedeFabianoHome() {
         const { data, error } = await supabase
           .from(VIEW_LOJA)
           .select(
-            // ✅ ADICIONADO pmc NO SELECT
-            "produto_id,farmacia_slug,ean,nome,laboratorio,categoria,apresentacao,imagens,estoque,preco_venda,disponivel_farmacia,pmc,em_promocao,preco_promocional,percentual_off"
+            "produto_id,farmacia_slug,ean,nome,laboratorio,categoria,apresentacao,imagens,pmc,estoque,preco_venda,disponivel_farmacia,em_promocao,preco_promocional,percentual_off"
           )
           .eq("farmacia_slug", LOJA_SLUG)
           .eq("disponivel_farmacia", true)
@@ -198,8 +211,7 @@ export default function DrogariaRedeFabianoHome() {
         let q = supabase
           .from(VIEW_LOJA)
           .select(
-            // ✅ ADICIONADO pmc NO SELECT
-            "produto_id,farmacia_slug,ean,nome,laboratorio,categoria,apresentacao,imagens,estoque,preco_venda,disponivel_farmacia,pmc,em_promocao,preco_promocional,percentual_off"
+            "produto_id,farmacia_slug,ean,nome,laboratorio,categoria,apresentacao,imagens,pmc,estoque,preco_venda,disponivel_farmacia,em_promocao,preco_promocional,percentual_off"
           )
           .eq("farmacia_slug", LOJA_SLUG)
           .eq("disponivel_farmacia", true)
@@ -227,6 +239,17 @@ export default function DrogariaRedeFabianoHome() {
     const timer = setTimeout(search, SEARCH_DEBOUNCE);
     return () => clearTimeout(timer);
   }, [busca]);
+
+  function encomendarDRF(p: DRFProdutoView) {
+    const msg =
+      `Olá! Quero encomendar este item:\n\n` +
+      `• ${p.nome} (EAN: ${p.ean})\n` +
+      (p.apresentacao ? `• Apresentação: ${p.apresentacao}\n` : "") +
+      (p.laboratorio ? `• Laboratório: ${p.laboratorio}\n` : "") +
+      `\nPode me avisar prazo e valor?`;
+
+    window.open(waLink(WHATS_DRF, msg), "_blank");
+  }
 
   return (
     <main className="min-h-screen bg-gray-50 pb-24">
@@ -403,17 +426,6 @@ export default function DrogariaRedeFabianoHome() {
       <CartModal open={cartOpen} onClose={closeCart} estoqueByEan={estoqueByEan} />
     </main>
   );
-
-  function encomendarDRF(p: DRFProdutoView) {
-    const msg =
-      `Olá! Quero encomendar este item:\n\n` +
-      `• ${p.nome} (EAN: ${p.ean})\n` +
-      (p.apresentacao ? `• Apresentação: ${p.apresentacao}\n` : "") +
-      (p.laboratorio ? `• Laboratório: ${p.laboratorio}\n` : "") +
-      `\nPode me avisar prazo e valor?`;
-
-    window.open(waLink(WHATS_DRF, msg), "_blank");
-  }
 }
 
 /* =========================
@@ -820,7 +832,7 @@ function CartModal({
 }
 
 /* =========================
-   PRODUTO CARD (padrão DF)
+   PRODUTO CARD
 ========================= */
 function ProdutoCardUltra({
   p,
