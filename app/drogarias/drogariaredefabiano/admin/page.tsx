@@ -542,6 +542,9 @@ export default function AdminPageFabiano() {
             categoria: novoCategoria.trim() || null,
             apresentacao: novoApresentacao.trim() || null,
             imagens: imgs.length ? imgs : null,
+
+            // ✅ ALTERAÇÃO: garante que pmc nunca vai null (coluna NOT NULL)
+            pmc: 0,
           })
           .select("id")
           .single();
@@ -558,6 +561,9 @@ export default function AdminPageFabiano() {
             categoria: novoCategoria.trim() || null,
             apresentacao: novoApresentacao.trim() || null,
             imagens: imgs.length ? imgs : null,
+
+            // ✅ ALTERAÇÃO: garante que pmc nunca vai null (coluna NOT NULL)
+            pmc: 0,
           })
           .eq("id", produtoId);
 
@@ -1254,7 +1260,11 @@ export default function AdminPageFabiano() {
                       className="w-full border rounded-xl px-3 py-2"
                     />
                     <div className="mt-2">
-                      <span className={`text-xs px-2 py-1 rounded-full border ${stockBadge(Math.max(0, Number(novoEstoque || 0)))}`}>
+                      <span
+                        className={`text-xs px-2 py-1 rounded-full border ${stockBadge(
+                          Math.max(0, Number(novoEstoque || 0))
+                        )}`}
+                      >
                         {Math.max(0, Number(novoEstoque || 0)) <= 0
                           ? "ZERADO"
                           : Math.max(0, Number(novoEstoque || 0)) <= 5
