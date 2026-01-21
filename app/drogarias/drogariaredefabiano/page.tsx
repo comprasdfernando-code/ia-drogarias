@@ -295,13 +295,7 @@ export default function DrogariaRedeFabianoHome() {
               )}
             </button>
 
-            <Link
-              href={`${PREFIX}/carrinho`}
-              className="text-white font-extrabold bg-white/10 hover:bg-white/15 px-4 py-2 rounded-full"
-              title="Abrir página do carrinho"
-            >
-              Ver carrinho
-            </Link>
+            
           </div>
         </div>
       </header>
