@@ -365,7 +365,12 @@ export default function DrogariaRedeFabianoHome() {
         </div>
       </section>
 
-      <CartModal open={cartOpen} onClose={closeCart} whats={WHATS_DRF} estoqueByEan={estoqueByEan} />
+      <CartModal
+  open={cartOpen}
+  onClose={closeCart}
+  estoqueByEan={estoqueByEan}
+/>
+
     </main>
   );
 
@@ -382,20 +387,19 @@ export default function DrogariaRedeFabianoHome() {
 }
 
 /* =========================
-   CART MODAL (WhatsApp)
+   CART MODAL (Finaliza no Supabase - drf_pedidos)
 ========================= */
 function CartModal({
   open,
   onClose,
-  whats,
   estoqueByEan,
 }: {
   open: boolean;
   onClose: () => void;
-  whats: string;
   estoqueByEan: Map<string, number>;
 }) {
   const cart = useCart();
+  const { push } = useToast();
 
   const [clienteNome, setClienteNome] = useState("");
   const [clienteTelefone, setClienteTelefone] = useState("");
@@ -406,6 +410,10 @@ function CartModal({
   const [bairro, setBairro] = useState("");
 
   const [pagamento, setPagamento] = useState<"PIX" | "CARTAO" | "DINHEIRO" | "COMBINAR">("PIX");
+
+  const [submitting, setSubmitting] = useState(false);
+  const [success, setSuccess] = useState(false);
+  const [pedidoId, setPedidoId] = useState<string | null>(null);
 
   const taxaEntrega = tipoEntrega === "ENTREGA" ? 10 : 0;
   const total = cart.subtotal + taxaEntrega;
@@ -423,11 +431,6 @@ function CartModal({
     }
     return true;
   }, [cart.items.length, clienteNome, clienteTelefone, tipoEntrega, endereco, numero, bairro]);
-
-  function waLinkLocal(phone: string, msg: string) {
-    const clean = phone.replace(/\D/g, "");
-    return `https://wa.me/${clean}?text=${encodeURIComponent(msg)}`;
-  }
 
   function incSafe(ean: string) {
     const est = Number(estoqueByEan.get(ean) ?? 0);
@@ -449,187 +452,382 @@ function CartModal({
     if (final < it.qtd) for (let i = 0; i < it.qtd - final; i++) cart.dec(ean);
   }
 
-  const mensagem = useMemo(() => {
-    let msg = `🧾 *Pedido Drogaria Rede Fabiano*\n\n`;
-    msg += `👤 Cliente: ${clienteNome || "—"}\n`;
-    msg += `📞 WhatsApp: ${clienteTelefone || "—"}\n\n`;
+  function clearCartSafe() {
+    const anyCart = cart as any;
+    if (typeof anyCart.clear === "function") {
+      anyCart.clear();
+      return;
+    }
+    // fallback
+    cart.items.forEach((i) => cart.remove(i.ean));
+  }
 
-    msg +=
-      tipoEntrega === "ENTREGA"
-        ? `🚚 *Entrega*\n${endereco}, ${numero} - ${bairro}\nTaxa: ${brl(taxaEntrega)}\n\n`
-        : `🏪 *Retirada na loja*\n\n`;
+  async function finalizarPedido() {
+    if (!canCheckout || submitting) return;
 
-    msg += `💳 Pagamento: ${pagamento}\n\n🛒 *Itens:*\n`;
-    cart.items.forEach((i) => {
-      msg += `• ${i.nome} (${i.ean}) — ${i.qtd}x — ${brl(i.preco * i.qtd)}\n`;
-    });
+    try {
+      setSubmitting(true);
 
-    msg += `\nSubtotal: ${brl(cart.subtotal)}\n`;
-    msg += `Taxa: ${brl(taxaEntrega)}\n`;
-    msg += `Total: ${brl(total)}\n\n`;
-    msg += `Pode confirmar disponibilidade e prazo?`;
+      // Monta itens no formato do jsonb da drf_pedidos
+      const itens = cart.items.map((i) => ({
+        ean: i.ean,
+        nome: i.nome,
+        qtd: i.qtd,
+        preco_unit: Number(i.preco || 0),
+        total_item: Number((i.preco || 0) * i.qtd),
+        imagem: i.imagem || null,
+      }));
 
-    return msg;
-  }, [cart.items, clienteNome, clienteTelefone, tipoEntrega, endereco, numero, bairro, pagamento, taxaEntrega, total, cart.subtotal]);
+      const payload = {
+        // status default NOVO (pode mandar ou deixar o default)
+        status: "NOVO",
+        // canal default PDV no banco; aqui é FV (se quiser manter PDV, pode remover essa linha)
+        canal: "FV",
+        comanda: null,
+
+        cliente_nome: clienteNome.trim(),
+        cliente_whatsapp: onlyDigitsLocal(clienteTelefone),
+
+        tipo_entrega: tipoEntrega, // "ENTREGA" | "RETIRADA"
+        endereco: tipoEntrega === "ENTREGA" ? endereco.trim() : null,
+        numero: tipoEntrega === "ENTREGA" ? numero.trim() : null,
+        bairro: tipoEntrega === "ENTREGA" ? bairro.trim() : null,
+
+        pagamento, // "PIX" | "CARTAO" | "DINHEIRO" | "COMBINAR"
+
+        taxa_entrega: Number(taxaEntrega.toFixed(2)),
+        subtotal: Number(Number(cart.subtotal || 0).toFixed(2)),
+        total: Number(Number(total || 0).toFixed(2)),
+
+        itens, // jsonb
+      };
+
+      const { data, error } = await supabase
+        .from("drf_pedidos")
+        .insert(payload)
+        .select("id")
+        .single();
+
+      if (error) throw error;
+
+      setPedidoId(data?.id || null);
+      setSuccess(true);
+      clearCartSafe();
+
+      push({ title: "Pedido enviado ✅", desc: "Seu pedido foi registrado com sucesso." });
+    } catch (e: any) {
+      console.error("Erro ao finalizar pedido:", e);
+      push({
+        title: "Falha ao enviar 😕",
+        desc: e?.message ? String(e.message) : "Tente novamente.",
+      });
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  function fecharTudo() {
+    setSuccess(false);
+    setPedidoId(null);
+    setSubmitting(false);
+    onClose();
+  }
+
+  // reseta sucesso ao abrir/fechar
+  useEffect(() => {
+    if (!open) {
+      setSuccess(false);
+      setPedidoId(null);
+      setSubmitting(false);
+    }
+  }, [open]);
 
   if (!open) return null;
 
   return (
     <div className="fixed inset-0 z-[60]">
-      <div className="absolute inset-0 bg-black/40" onClick={onClose} />
+      <div className="absolute inset-0 bg-black/40" onClick={success ? fecharTudo : onClose} />
 
       <div className="absolute right-0 top-0 h-full w-full sm:w-[520px] bg-white p-4 overflow-auto">
         <div className="flex items-center justify-between">
-          <h2 className="text-xl font-extrabold">Carrinho</h2>
-          <button onClick={onClose} className="px-3 py-2 rounded-xl border font-extrabold">
-            Continuar comprando
+          <h2 className="text-xl font-extrabold">{success ? "Pedido enviado" : "Carrinho"}</h2>
+
+          <button
+            onClick={success ? fecharTudo : onClose}
+            className="px-3 py-2 rounded-xl border font-extrabold"
+          >
+            {success ? "Fechar" : "Continuar comprando"}
           </button>
         </div>
 
-        {/* ITENS */}
-        <div className="mt-4">
-          {cart.items.length === 0 ? (
-            <div className="text-gray-600 bg-gray-50 border rounded-2xl p-4">Seu carrinho está vazio.</div>
-          ) : (
-            cart.items.map((it) => {
-              const est = Number(estoqueByEan.get(it.ean) ?? 0);
-              const max = Math.max(1, est || 1);
-              const travado = est > 0 ? Math.min(it.qtd, est) : it.qtd;
-
-              return (
-                <div key={it.ean} className="border rounded-2xl p-3 mb-2">
-                  <div className="flex gap-3">
-                    <div className="h-14 w-14 bg-gray-50 rounded-xl overflow-hidden flex items-center justify-center">
-                      <Image src={it.imagem || "/produtos/caixa-padrao.png"} alt={it.nome} width={64} height={64} className="object-contain" />
-                    </div>
-
-                    <div className="flex-1">
-                      <div className="font-extrabold">{it.nome}</div>
-                      <div className="text-xs text-gray-500">EAN: {it.ean}</div>
-
-                      <div className="mt-1 text-sm font-extrabold text-blue-900">{brl(it.preco)}</div>
-
-                      <div className="mt-2 flex items-center gap-2">
-                        <button onClick={() => cart.dec(it.ean)} className="px-3 py-1 bg-gray-200 rounded font-extrabold">
-                          -
-                        </button>
-
-                        <input
-                          type="number"
-                          min={1}
-                          max={max}
-                          value={travado}
-                          onChange={(e) => setQtdSafe(it.ean, Number(e.target.value))}
-                          className="w-16 border rounded px-2 py-1 text-center font-extrabold"
-                        />
-
-                        <button
-                          onClick={() => incSafe(it.ean)}
-                          disabled={est > 0 ? it.qtd >= est : false}
-                          className={`px-3 py-1 rounded font-extrabold ${
-                            est > 0 && it.qtd >= est ? "bg-gray-200 text-gray-500 cursor-not-allowed" : "bg-blue-600 text-white"
-                          }`}
-                        >
-                          +
-                        </button>
-
-                        <button onClick={() => cart.remove(it.ean)} className="ml-auto text-red-600 font-extrabold">
-                          Excluir
-                        </button>
-                      </div>
-
-                      <div className="mt-2 text-xs text-gray-600">
-                        {est > 0 ? (
-                          <span>
-                            Disponível: <b>{est}</b>
-                          </span>
-                        ) : (
-                          <span className="text-red-600 font-bold">Atenção: estoque não encontrado (0)</span>
-                        )}
-                      </div>
-
-                      <div className="mt-2 font-extrabold text-blue-900">Total item: {brl(it.preco * it.qtd)}</div>
-                    </div>
-                  </div>
-                </div>
-              );
-            })
-          )}
-        </div>
-
-        {/* DADOS CLIENTE */}
-        <div className="mt-4 space-y-2">
-          <input placeholder="Nome do cliente" value={clienteNome} onChange={(e) => setClienteNome(e.target.value)} className="w-full border p-2 rounded" />
-          <input placeholder="WhatsApp" value={clienteTelefone} onChange={(e) => setClienteTelefone(e.target.value)} className="w-full border p-2 rounded" />
-          <div className="text-[11px] text-gray-500">Dica: informe com DDD (ex: 11999999999)</div>
-        </div>
-
-        {/* ENTREGA */}
-        <div className="mt-4">
-          <div className="font-bold mb-2">Entrega</div>
-
-          <div className="flex gap-2">
-            <button onClick={() => setTipoEntrega("ENTREGA")} className={`px-3 py-2 rounded flex-1 ${tipoEntrega === "ENTREGA" ? "bg-blue-600 text-white" : "bg-gray-200"}`}>
-              Entrega
-            </button>
-
-            <button onClick={() => setTipoEntrega("RETIRADA")} className={`px-3 py-2 rounded flex-1 ${tipoEntrega === "RETIRADA" ? "bg-blue-600 text-white" : "bg-gray-200"}`}>
-              Retirada
-            </button>
-          </div>
-
-          {tipoEntrega === "ENTREGA" && (
-            <div className="mt-3 space-y-2">
-              <input placeholder="Endereço" value={endereco} onChange={(e) => setEndereco(e.target.value)} className="w-full border p-2 rounded" />
-              <input placeholder="Número" value={numero} onChange={(e) => setNumero(e.target.value)} className="w-full border p-2 rounded" />
-              <input placeholder="Bairro" value={bairro} onChange={(e) => setBairro(e.target.value)} className="w-full border p-2 rounded" />
-              <div className="text-sm font-bold">Taxa fixa: {brl(taxaEntrega)}</div>
+        {/* SUCESSO */}
+        {success ? (
+          <div className="mt-6 bg-green-50 border border-green-200 rounded-2xl p-4">
+            <div className="text-lg font-extrabold text-green-800">✅ Pedido enviado com sucesso!</div>
+            <div className="mt-2 text-sm text-green-900">
+              {pedidoId ? (
+                <>
+                  Número do pedido: <b className="break-all">{pedidoId}</b>
+                </>
+              ) : (
+                "Pedido registrado."
+              )}
             </div>
-          )}
-        </div>
 
-        {/* PAGAMENTO */}
-        <div className="mt-4">
-          <div className="font-bold mb-2">Pagamento</div>
-
-          <div className="flex flex-wrap gap-2">
-            {(["PIX", "CARTAO", "DINHEIRO", "COMBINAR"] as const).map((p) => (
-              <button key={p} onClick={() => setPagamento(p)} className={`px-3 py-2 rounded ${pagamento === p ? "bg-blue-600 text-white" : "bg-gray-200"}`}>
-                {p}
+            <div className="mt-4 flex gap-2">
+              <button
+                onClick={() => {
+                  if (pedidoId) navigator.clipboard?.writeText(pedidoId);
+                  push({ title: "Copiado ✅", desc: "ID do pedido copiado." });
+                }}
+                className="flex-1 py-3 rounded-xl font-extrabold bg-white border hover:bg-gray-50"
+                disabled={!pedidoId}
+              >
+                Copiar ID
               </button>
-            ))}
+
+              <button
+                onClick={fecharTudo}
+                className="flex-1 py-3 rounded-xl font-extrabold bg-blue-700 hover:bg-blue-800 text-white"
+              >
+                OK
+              </button>
+            </div>
           </div>
-        </div>
+        ) : null}
 
-        {/* TOTAL */}
-        <div className="mt-4 border-t pt-3">
-          <div>Subtotal: {brl(cart.subtotal)}</div>
-          <div>Taxa: {brl(taxaEntrega)}</div>
-          <div className="font-extrabold text-lg">Total: {brl(total)}</div>
-        </div>
+        {/* CONTEÚDO NORMAL (quando NÃO sucesso) */}
+        {!success ? (
+          <>
+            {/* ITENS */}
+            <div className="mt-4">
+              {cart.items.length === 0 ? (
+                <div className="text-gray-600 bg-gray-50 border rounded-2xl p-4">
+                  Seu carrinho está vazio.
+                </div>
+              ) : (
+                cart.items.map((it) => {
+                  const est = Number(estoqueByEan.get(it.ean) ?? 0);
+                  const max = Math.max(1, est || 1);
+                  const travado = est > 0 ? Math.min(it.qtd, est) : it.qtd;
 
-        {/* FINALIZAR (Whats) */}
-        <button
-          disabled={!canCheckout}
-          onClick={() => window.open(waLinkLocal(whats, mensagem), "_blank", "noopener,noreferrer")}
-          className={`w-full mt-4 text-center py-3 rounded-xl font-extrabold ${
-            canCheckout ? "bg-green-600 hover:bg-green-700 text-white" : "bg-gray-200 text-gray-500"
-          }`}
-          title={canCheckout ? "Finalizar no WhatsApp" : "Preencha nome/Whats e itens (e endereço se entrega)."}
-        >
-          Finalizar no WhatsApp
-        </button>
+                  return (
+                    <div key={it.ean} className="border rounded-2xl p-3 mb-2">
+                      <div className="flex gap-3">
+                        <div className="h-14 w-14 bg-gray-50 rounded-xl overflow-hidden flex items-center justify-center">
+                          <Image
+                            src={it.imagem || "/produtos/caixa-padrao.png"}
+                            alt={it.nome}
+                            width={64}
+                            height={64}
+                            className="object-contain"
+                          />
+                        </div>
 
-        {!canCheckout ? (
-          <div className="mt-2 text-xs text-gray-500">
-            Para liberar o botão: informe <b>Nome</b>, <b>WhatsApp</b>, e adicione itens. Se escolher <b>Entrega</b>, preencha{" "}
-            <b>Endereço/Número/Bairro</b>.
-          </div>
+                        <div className="flex-1">
+                          <div className="font-extrabold">{it.nome}</div>
+                          <div className="text-xs text-gray-500">EAN: {it.ean}</div>
+
+                          <div className="mt-1 text-sm font-extrabold text-blue-900">
+                            {brl(it.preco)}
+                          </div>
+
+                          <div className="mt-2 flex items-center gap-2">
+                            <button
+                              onClick={() => cart.dec(it.ean)}
+                              className="px-3 py-1 bg-gray-200 rounded font-extrabold"
+                              disabled={submitting}
+                            >
+                              -
+                            </button>
+
+                            <input
+                              type="number"
+                              min={1}
+                              max={max}
+                              value={travado}
+                              onChange={(e) => setQtdSafe(it.ean, Number(e.target.value))}
+                              className="w-16 border rounded px-2 py-1 text-center font-extrabold"
+                              disabled={submitting}
+                            />
+
+                            <button
+                              onClick={() => incSafe(it.ean)}
+                              disabled={submitting || (est > 0 ? it.qtd >= est : false)}
+                              className={`px-3 py-1 rounded font-extrabold ${
+                                est > 0 && it.qtd >= est
+                                  ? "bg-gray-200 text-gray-500 cursor-not-allowed"
+                                  : "bg-blue-600 text-white"
+                              }`}
+                            >
+                              +
+                            </button>
+
+                            <button
+                              onClick={() => cart.remove(it.ean)}
+                              className="ml-auto text-red-600 font-extrabold"
+                              disabled={submitting}
+                            >
+                              Excluir
+                            </button>
+                          </div>
+
+                          <div className="mt-2 text-xs text-gray-600">
+                            {est > 0 ? (
+                              <span>
+                                Disponível: <b>{est}</b>
+                              </span>
+                            ) : (
+                              <span className="text-red-600 font-bold">
+                                Atenção: estoque não encontrado (0)
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="mt-2 font-extrabold text-blue-900">
+                            Total item: {brl(it.preco * it.qtd)}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+
+            {/* DADOS CLIENTE */}
+            <div className="mt-4 space-y-2">
+              <input
+                placeholder="Nome do cliente"
+                value={clienteNome}
+                onChange={(e) => setClienteNome(e.target.value)}
+                className="w-full border p-2 rounded"
+                disabled={submitting}
+              />
+              <input
+                placeholder="WhatsApp"
+                value={clienteTelefone}
+                onChange={(e) => setClienteTelefone(e.target.value)}
+                className="w-full border p-2 rounded"
+                disabled={submitting}
+              />
+              <div className="text-[11px] text-gray-500">
+                Dica: informe com DDD (ex: 11999999999)
+              </div>
+            </div>
+
+            {/* ENTREGA */}
+            <div className="mt-4">
+              <div className="font-bold mb-2">Entrega</div>
+
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setTipoEntrega("ENTREGA")}
+                  className={`px-3 py-2 rounded flex-1 ${
+                    tipoEntrega === "ENTREGA" ? "bg-blue-600 text-white" : "bg-gray-200"
+                  }`}
+                  disabled={submitting}
+                >
+                  Entrega
+                </button>
+
+                <button
+                  onClick={() => setTipoEntrega("RETIRADA")}
+                  className={`px-3 py-2 rounded flex-1 ${
+                    tipoEntrega === "RETIRADA" ? "bg-blue-600 text-white" : "bg-gray-200"
+                  }`}
+                  disabled={submitting}
+                >
+                  Retirada
+                </button>
+              </div>
+
+              {tipoEntrega === "ENTREGA" && (
+                <div className="mt-3 space-y-2">
+                  <input
+                    placeholder="Endereço"
+                    value={endereco}
+                    onChange={(e) => setEndereco(e.target.value)}
+                    className="w-full border p-2 rounded"
+                    disabled={submitting}
+                  />
+                  <input
+                    placeholder="Número"
+                    value={numero}
+                    onChange={(e) => setNumero(e.target.value)}
+                    className="w-full border p-2 rounded"
+                    disabled={submitting}
+                  />
+                  <input
+                    placeholder="Bairro"
+                    value={bairro}
+                    onChange={(e) => setBairro(e.target.value)}
+                    className="w-full border p-2 rounded"
+                    disabled={submitting}
+                  />
+                  <div className="text-sm font-bold">Taxa fixa: {brl(taxaEntrega)}</div>
+                </div>
+              )}
+            </div>
+
+            {/* PAGAMENTO */}
+            <div className="mt-4">
+              <div className="font-bold mb-2">Pagamento</div>
+
+              <div className="flex flex-wrap gap-2">
+                {(["PIX", "CARTAO", "DINHEIRO", "COMBINAR"] as const).map((p) => (
+                  <button
+                    key={p}
+                    onClick={() => setPagamento(p)}
+                    className={`px-3 py-2 rounded ${
+                      pagamento === p ? "bg-blue-600 text-white" : "bg-gray-200"
+                    }`}
+                    disabled={submitting}
+                  >
+                    {p}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* TOTAL */}
+            <div className="mt-4 border-t pt-3">
+              <div>Subtotal: {brl(cart.subtotal)}</div>
+              <div>Taxa: {brl(taxaEntrega)}</div>
+              <div className="font-extrabold text-lg">Total: {brl(total)}</div>
+            </div>
+
+            {/* FINALIZAR (Supabase) */}
+            <button
+              disabled={!canCheckout || submitting}
+              onClick={finalizarPedido}
+              className={`w-full mt-4 text-center py-3 rounded-xl font-extrabold ${
+                canCheckout && !submitting
+                  ? "bg-green-600 hover:bg-green-700 text-white"
+                  : "bg-gray-200 text-gray-500"
+              }`}
+              title={
+                canCheckout
+                  ? "Finalizar pedido"
+                  : "Preencha nome/Whats e itens (e endereço se entrega)."
+              }
+            >
+              {submitting ? "Enviando pedido..." : "Finalizar pedido"}
+            </button>
+
+            {!canCheckout ? (
+              <div className="mt-2 text-xs text-gray-500">
+                Para liberar o botão: informe <b>Nome</b>, <b>WhatsApp</b>, e adicione itens. Se escolher{" "}
+                <b>Entrega</b>, preencha <b>Endereço/Número/Bairro</b>.
+              </div>
+            ) : null}
+          </>
         ) : null}
       </div>
     </div>
   );
 }
+
 
 /* =========================
    PRODUTO CARD (padrão DF)
