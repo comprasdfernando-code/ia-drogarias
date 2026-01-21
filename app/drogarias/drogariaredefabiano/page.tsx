@@ -41,6 +41,7 @@ type DRFProdutoView = {
   disponivel_farmacia: boolean | null;
 
   // do catálogo (se existir na view)
+  pmc: number | null; // ✅ ADICIONADO (fallback global)
   em_promocao: boolean | null;
   preco_promocional: number | null;
   percentual_off: number | null;
@@ -73,13 +74,26 @@ function waLink(phone: string, msg: string) {
   return `https://wa.me/${clean}?text=${encodeURIComponent(msg)}`;
 }
 
+/**
+ * ✅ MESMA LÓGICA DO PDV
+ * 1) usa preco_venda da loja se > 0
+ * 2) senão: usa promo se válida (em_promocao + promo >0 e (sem pmc OU promo < pmc))
+ * 3) senão: usa pmc
+ */
 function precoFinal(p: DRFProdutoView) {
   const loja = Number(p.preco_venda || 0);
 
+  const pmc = Number(p.pmc || 0);
   const promo = Number(p.preco_promocional || 0);
-  const emPromo = !!p.em_promocao && promo > 0;
 
-  const final = loja > 0 ? loja : emPromo ? promo : 0;
+  const emPromo =
+    !!p.em_promocao &&
+    promo > 0 &&
+    (!pmc || promo < pmc); // ✅ igual PDV
+
+  const global = emPromo ? promo : pmc;
+  const final = loja > 0 ? loja : Number(global || 0);
+
   const off = Number(p.percentual_off || 0);
 
   return { final, emPromo, off };
@@ -141,7 +155,8 @@ export default function DrogariaRedeFabianoHome() {
         const { data, error } = await supabase
           .from(VIEW_LOJA)
           .select(
-            "produto_id,farmacia_slug,ean,nome,laboratorio,categoria,apresentacao,imagens,estoque,preco_venda,disponivel_farmacia,em_promocao,preco_promocional,percentual_off"
+            // ✅ ADICIONADO pmc NO SELECT
+            "produto_id,farmacia_slug,ean,nome,laboratorio,categoria,apresentacao,imagens,estoque,preco_venda,disponivel_farmacia,pmc,em_promocao,preco_promocional,percentual_off"
           )
           .eq("farmacia_slug", LOJA_SLUG)
           .eq("disponivel_farmacia", true)
@@ -183,7 +198,8 @@ export default function DrogariaRedeFabianoHome() {
         let q = supabase
           .from(VIEW_LOJA)
           .select(
-            "produto_id,farmacia_slug,ean,nome,laboratorio,categoria,apresentacao,imagens,estoque,preco_venda,disponivel_farmacia,em_promocao,preco_promocional,percentual_off"
+            // ✅ ADICIONADO pmc NO SELECT
+            "produto_id,farmacia_slug,ean,nome,laboratorio,categoria,apresentacao,imagens,estoque,preco_venda,disponivel_farmacia,pmc,em_promocao,preco_promocional,percentual_off"
           )
           .eq("farmacia_slug", LOJA_SLUG)
           .eq("disponivel_farmacia", true)
