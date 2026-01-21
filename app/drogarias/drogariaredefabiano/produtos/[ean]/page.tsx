@@ -6,6 +6,10 @@ import Image from "next/image";
 import Link from "next/link";
 import { createClient } from "@supabase/supabase-js";
 
+// ✅ usa o MESMO carrinho/toast da HOME
+import { useCart } from "../../_components/cart"; // ajuste o caminho se necessário
+import { useToast } from "../../_components/toast"; // ajuste o caminho se necessário
+
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
@@ -13,9 +17,6 @@ const supabase = createClient(
 
 const FARMACIA_SLUG = "drogariaredefabiano";
 const VIEW = "fv_produtos_loja_view";
-
-// carrinho simples via localStorage
-const CART_KEY = `fv_cart_${FARMACIA_SLUG}`;
 
 type ProdutoRow = {
   farmacia_slug: string;
@@ -35,16 +36,6 @@ type ProdutoRow = {
   preco_promocional: number | null;
   percentual_off: number | null;
   destaque_home: boolean | null;
-};
-
-type CartItem = {
-  produto_id: string;
-  ean: string;
-  nome: string;
-  imagem: string | null;
-  preco: number;
-  qtd: number;
-  farmacia_slug: string;
 };
 
 function onlyDigits(s: string) {
@@ -82,25 +73,12 @@ function getFinalPrice(p: ProdutoRow) {
   return 0;
 }
 
-function readCart(): CartItem[] {
-  try {
-    const raw = localStorage.getItem(CART_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-    return parsed;
-  } catch {
-    return [];
-  }
-}
-
-function writeCart(items: CartItem[]) {
-  localStorage.setItem(CART_KEY, JSON.stringify(items));
-}
-
 export default function ProdutoPorEANPage() {
   const params = useParams();
   const router = useRouter();
+
+  const cart = useCart();
+  const { push } = useToast();
 
   const eanParam = useMemo(() => {
     const raw = (params as any)?.ean ?? "";
@@ -117,13 +95,6 @@ export default function ProdutoPorEANPage() {
   const imgs = useMemo(() => (produto ? normalizeImgs(produto.imagens) : []), [produto]);
 
   const [qtd, setQtd] = useState(1);
-  const [toast, setToast] = useState<string | null>(null);
-
-  function showToast(msg: string) {
-    setToast(msg);
-    window.clearTimeout((showToast as any)._t);
-    (showToast as any)._t = window.setTimeout(() => setToast(null), 1800);
-  }
 
   async function carregarProduto() {
     try {
@@ -192,46 +163,68 @@ export default function ProdutoPorEANPage() {
   function addToCart(openCart = false) {
     if (!produto) return;
 
-    if (!ativo) return showToast("Produto inativo na loja");
-    if (estoque <= 0) return showToast("Sem estoque");
-
-    const item: CartItem = {
-      produto_id: produto.produto_id,
-      ean: produto.ean || ean,
-      nome: produto.nome || "Produto",
-      imagem: firstImg(produto.imagens),
-      preco: finalPrice,
-      qtd: Math.max(1, Number(qtd || 1)),
-      farmacia_slug: FARMACIA_SLUG,
-    };
-
-    const cart = readCart();
-    const idx = cart.findIndex((x) => x.produto_id === item.produto_id);
-
-    if (idx >= 0) {
-      cart[idx] = { ...cart[idx], qtd: cart[idx].qtd + item.qtd, preco: item.preco };
-    } else {
-      cart.push(item);
+    if (!ativo) {
+      push({ title: "Indisponível", desc: "Produto inativo na loja." });
+      return;
     }
-    writeCart(cart);
-
-    showToast(openCart ? "Adicionado! Abrindo carrinho..." : "✅ Adicionado ao carrinho");
-
-    if (openCart) {
-      // ajuste se seu carrinho fica em outra rota
-      router.push(`/drogarias/${FARMACIA_SLUG}?openCart=1`);
+    if (estoque <= 0) {
+      push({ title: "Sem estoque", desc: "Produto sem estoque no momento." });
+      return;
     }
+
+    const want = Math.max(1, Number(qtd || 1));
+    const already = cart.items.find((x) => x.ean === (produto.ean || ean))?.qtd ?? 0;
+
+    // trava pelo estoque
+    if (already + want > estoque) {
+      const canAdd = Math.max(0, estoque - already);
+      if (canAdd <= 0) {
+        push({ title: "Sem estoque 😕", desc: "Você já atingiu o limite disponível." });
+        return;
+      }
+
+      cart.addItem(
+        {
+          ean: produto.ean || ean,
+          nome: produto.nome || "Produto",
+          laboratorio: produto.laboratorio,
+          apresentacao: produto.apresentacao,
+          imagem: firstImg(produto.imagens),
+          preco: finalPrice || 0,
+        },
+        canAdd
+      );
+
+      push({ title: "Adicionado ✅", desc: `${produto.nome} • ${canAdd}x (limite do estoque)` });
+      setQtd(1);
+
+      if (openCart) router.push(`/drogarias/${FARMACIA_SLUG}?openCart=1`);
+      return;
+    }
+
+    cart.addItem(
+      {
+        ean: produto.ean || ean,
+        nome: produto.nome || "Produto",
+        laboratorio: produto.laboratorio,
+        apresentacao: produto.apresentacao,
+        imagem: firstImg(produto.imagens),
+        preco: finalPrice || 0,
+      },
+      want
+    );
+
+    push({ title: "Adicionado ✅", desc: `${produto.nome} • ${want}x` });
+    setQtd(1);
+
+    if (openCart) router.push(`/drogarias/${FARMACIA_SLUG}?openCart=1`);
   }
 
   return (
     <main className="min-h-screen bg-gray-50 px-4 py-6">
       <div className="max-w-6xl mx-auto">
-        {/* topo */}
         <div className="flex items-center justify-between gap-3">
-          <Link
-            href={`/drogarias/${FARMACIA_SLUG}`}
-            className="text-sm font-semibold text-blue-700 hover:underline"
-          >
+          <Link href={`/drogarias/${FARMACIA_SLUG}`} className="text-sm font-semibold text-blue-700 hover:underline">
             ← Voltar para a loja
           </Link>
 
@@ -243,13 +236,6 @@ export default function ProdutoPorEANPage() {
           </Link>
         </div>
 
-        {toast && (
-          <div className="mt-4 bg-emerald-50 border border-emerald-200 text-emerald-800 px-4 py-2 rounded-xl">
-            {toast}
-          </div>
-        )}
-
-        {/* loading / erro */}
         {loading && (
           <div className="mt-6 bg-white border rounded-2xl p-6 shadow-sm text-gray-700">
             Carregando produto...
@@ -267,7 +253,6 @@ export default function ProdutoPorEANPage() {
 
         {!loading && produto && (
           <div className="mt-6 grid grid-cols-1 lg:grid-cols-2 gap-5">
-            {/* imagens */}
             <div className="bg-white border rounded-2xl shadow-sm p-4">
               <div className="w-full h-[360px] bg-gray-50 border rounded-2xl flex items-center justify-center overflow-hidden">
                 <Image
@@ -297,7 +282,6 @@ export default function ProdutoPorEANPage() {
               )}
             </div>
 
-            {/* infos */}
             <div className="bg-white border rounded-2xl shadow-sm p-5">
               <div className="text-xs text-gray-500">
                 {produto.categoria || "Sem categoria"} • EAN: <b>{produto.ean || "—"}</b>
@@ -375,9 +359,7 @@ export default function ProdutoPorEANPage() {
                   onClick={() => addToCart(false)}
                   disabled={!ativo || estoque <= 0}
                   className={`px-4 py-3 rounded-2xl font-semibold border ${
-                    !ativo || estoque <= 0
-                      ? "bg-gray-100 text-gray-400"
-                      : "bg-white hover:bg-gray-50 text-gray-900"
+                    !ativo || estoque <= 0 ? "bg-gray-100 text-gray-400" : "bg-white hover:bg-gray-50 text-gray-900"
                   }`}
                 >
                   🧺 Adicionar ao carrinho

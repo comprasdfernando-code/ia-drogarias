@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
 import { useCart } from "./_components/cart";
@@ -87,6 +88,10 @@ function precoFinal(p: DRFProdutoView) {
 }
 
 export default function DrogariaRedeFabianoHome() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const openedByQueryRef = useRef(false);
+
   const [loadingHome, setLoadingHome] = useState(true);
   const [loadingBusca, setLoadingBusca] = useState(false);
   const [busca, setBusca] = useState("");
@@ -110,6 +115,20 @@ export default function DrogariaRedeFabianoHome() {
     for (const p of resultado) m.set(p.ean, Number(p.estoque ?? 0));
     return m;
   }, [homeProdutos, resultado]);
+
+  // ✅ ABRIR CARRINHO QUANDO VIER ?openCart=1 (vindo da página do produto)
+  useEffect(() => {
+    const v = searchParams.get("openCart");
+    if (v === "1" && !openedByQueryRef.current) {
+      openedByQueryRef.current = true;
+      setCartOpen(true);
+
+      // remove o param da URL para não ficar reabrindo
+      const url = new URL(window.location.href);
+      url.searchParams.delete("openCart");
+      router.replace(url.pathname + (url.search || ""), { scroll: false });
+    }
+  }, [searchParams, router]);
 
   // HOME
   useEffect(() => {
@@ -294,8 +313,6 @@ export default function DrogariaRedeFabianoHome() {
                 </span>
               )}
             </button>
-
-            
           </div>
         </div>
       </header>
@@ -365,12 +382,7 @@ export default function DrogariaRedeFabianoHome() {
         </div>
       </section>
 
-      <CartModal
-  open={cartOpen}
-  onClose={closeCart}
-  estoqueByEan={estoqueByEan}
-/>
-
+      <CartModal open={cartOpen} onClose={closeCart} estoqueByEan={estoqueByEan} />
     </main>
   );
 
@@ -458,7 +470,6 @@ function CartModal({
       anyCart.clear();
       return;
     }
-    // fallback
     cart.items.forEach((i) => cart.remove(i.ean));
   }
 
@@ -468,7 +479,6 @@ function CartModal({
     try {
       setSubmitting(true);
 
-      // Monta itens no formato do jsonb da drf_pedidos
       const itens = cart.items.map((i) => ({
         ean: i.ean,
         nome: i.nome,
@@ -479,35 +489,28 @@ function CartModal({
       }));
 
       const payload = {
-        // status default NOVO (pode mandar ou deixar o default)
         status: "NOVO",
-        // canal default PDV no banco; aqui é FV (se quiser manter PDV, pode remover essa linha)
         canal: "FV",
         comanda: null,
 
         cliente_nome: clienteNome.trim(),
         cliente_whatsapp: onlyDigitsLocal(clienteTelefone),
 
-        tipo_entrega: tipoEntrega, // "ENTREGA" | "RETIRADA"
+        tipo_entrega: tipoEntrega,
         endereco: tipoEntrega === "ENTREGA" ? endereco.trim() : null,
         numero: tipoEntrega === "ENTREGA" ? numero.trim() : null,
         bairro: tipoEntrega === "ENTREGA" ? bairro.trim() : null,
 
-        pagamento, // "PIX" | "CARTAO" | "DINHEIRO" | "COMBINAR"
+        pagamento,
 
         taxa_entrega: Number(taxaEntrega.toFixed(2)),
         subtotal: Number(Number(cart.subtotal || 0).toFixed(2)),
         total: Number(Number(total || 0).toFixed(2)),
 
-        itens, // jsonb
+        itens,
       };
 
-      const { data, error } = await supabase
-        .from("drf_pedidos")
-        .insert(payload)
-        .select("id")
-        .single();
-
+      const { data, error } = await supabase.from("drf_pedidos").insert(payload).select("id").single();
       if (error) throw error;
 
       setPedidoId(data?.id || null);
@@ -533,7 +536,6 @@ function CartModal({
     onClose();
   }
 
-  // reseta sucesso ao abrir/fechar
   useEffect(() => {
     if (!open) {
       setSuccess(false);
@@ -552,15 +554,11 @@ function CartModal({
         <div className="flex items-center justify-between">
           <h2 className="text-xl font-extrabold">{success ? "Pedido enviado" : "Carrinho"}</h2>
 
-          <button
-            onClick={success ? fecharTudo : onClose}
-            className="px-3 py-2 rounded-xl border font-extrabold"
-          >
+          <button onClick={success ? fecharTudo : onClose} className="px-3 py-2 rounded-xl border font-extrabold">
             {success ? "Fechar" : "Continuar comprando"}
           </button>
         </div>
 
-        {/* SUCESSO */}
         {success ? (
           <div className="mt-6 bg-green-50 border border-green-200 rounded-2xl p-4">
             <div className="text-lg font-extrabold text-green-800">✅ Pedido enviado com sucesso!</div>
@@ -596,15 +594,11 @@ function CartModal({
           </div>
         ) : null}
 
-        {/* CONTEÚDO NORMAL (quando NÃO sucesso) */}
         {!success ? (
           <>
-            {/* ITENS */}
             <div className="mt-4">
               {cart.items.length === 0 ? (
-                <div className="text-gray-600 bg-gray-50 border rounded-2xl p-4">
-                  Seu carrinho está vazio.
-                </div>
+                <div className="text-gray-600 bg-gray-50 border rounded-2xl p-4">Seu carrinho está vazio.</div>
               ) : (
                 cart.items.map((it) => {
                   const est = Number(estoqueByEan.get(it.ean) ?? 0);
@@ -628,9 +622,7 @@ function CartModal({
                           <div className="font-extrabold">{it.nome}</div>
                           <div className="text-xs text-gray-500">EAN: {it.ean}</div>
 
-                          <div className="mt-1 text-sm font-extrabold text-blue-900">
-                            {brl(it.preco)}
-                          </div>
+                          <div className="mt-1 text-sm font-extrabold text-blue-900">{brl(it.preco)}</div>
 
                           <div className="mt-2 flex items-center gap-2">
                             <button
@@ -678,15 +670,11 @@ function CartModal({
                                 Disponível: <b>{est}</b>
                               </span>
                             ) : (
-                              <span className="text-red-600 font-bold">
-                                Atenção: estoque não encontrado (0)
-                              </span>
+                              <span className="text-red-600 font-bold">Atenção: estoque não encontrado (0)</span>
                             )}
                           </div>
 
-                          <div className="mt-2 font-extrabold text-blue-900">
-                            Total item: {brl(it.preco * it.qtd)}
-                          </div>
+                          <div className="mt-2 font-extrabold text-blue-900">Total item: {brl(it.preco * it.qtd)}</div>
                         </div>
                       </div>
                     </div>
@@ -695,7 +683,6 @@ function CartModal({
               )}
             </div>
 
-            {/* DADOS CLIENTE */}
             <div className="mt-4 space-y-2">
               <input
                 placeholder="Nome do cliente"
@@ -711,12 +698,9 @@ function CartModal({
                 className="w-full border p-2 rounded"
                 disabled={submitting}
               />
-              <div className="text-[11px] text-gray-500">
-                Dica: informe com DDD (ex: 11999999999)
-              </div>
+              <div className="text-[11px] text-gray-500">Dica: informe com DDD (ex: 11999999999)</div>
             </div>
 
-            {/* ENTREGA */}
             <div className="mt-4">
               <div className="font-bold mb-2">Entrega</div>
 
@@ -770,7 +754,6 @@ function CartModal({
               )}
             </div>
 
-            {/* PAGAMENTO */}
             <div className="mt-4">
               <div className="font-bold mb-2">Pagamento</div>
 
@@ -779,9 +762,7 @@ function CartModal({
                   <button
                     key={p}
                     onClick={() => setPagamento(p)}
-                    className={`px-3 py-2 rounded ${
-                      pagamento === p ? "bg-blue-600 text-white" : "bg-gray-200"
-                    }`}
+                    className={`px-3 py-2 rounded ${pagamento === p ? "bg-blue-600 text-white" : "bg-gray-200"}`}
                     disabled={submitting}
                   >
                     {p}
@@ -790,27 +771,19 @@ function CartModal({
               </div>
             </div>
 
-            {/* TOTAL */}
             <div className="mt-4 border-t pt-3">
               <div>Subtotal: {brl(cart.subtotal)}</div>
               <div>Taxa: {brl(taxaEntrega)}</div>
               <div className="font-extrabold text-lg">Total: {brl(total)}</div>
             </div>
 
-            {/* FINALIZAR (Supabase) */}
             <button
               disabled={!canCheckout || submitting}
               onClick={finalizarPedido}
               className={`w-full mt-4 text-center py-3 rounded-xl font-extrabold ${
-                canCheckout && !submitting
-                  ? "bg-green-600 hover:bg-green-700 text-white"
-                  : "bg-gray-200 text-gray-500"
+                canCheckout && !submitting ? "bg-green-600 hover:bg-green-700 text-white" : "bg-gray-200 text-gray-500"
               }`}
-              title={
-                canCheckout
-                  ? "Finalizar pedido"
-                  : "Preencha nome/Whats e itens (e endereço se entrega)."
-              }
+              title={canCheckout ? "Finalizar pedido" : "Preencha nome/Whats e itens (e endereço se entrega)."}
             >
               {submitting ? "Enviando pedido..." : "Finalizar pedido"}
             </button>
@@ -827,7 +800,6 @@ function CartModal({
     </div>
   );
 }
-
 
 /* =========================
    PRODUTO CARD (padrão DF)
@@ -900,8 +872,17 @@ function ProdutoCardUltra({
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition overflow-hidden flex flex-col">
       <div className="relative p-3">
-        <Link href={`${prefix}/produtos/${p.ean}`} className="bg-gray-50 rounded-xl p-2 flex items-center justify-center hover:opacity-95 transition">
-          <Image src={firstImg(p.imagens)} alt={p.nome || "Produto"} width={240} height={240} className="rounded object-contain h-24 sm:h-28" />
+        <Link
+          href={`${prefix}/produtos/${p.ean}`}
+          className="bg-gray-50 rounded-xl p-2 flex items-center justify-center hover:opacity-95 transition"
+        >
+          <Image
+            src={firstImg(p.imagens)}
+            alt={p.nome || "Produto"}
+            width={240}
+            height={240}
+            className="rounded object-contain h-24 sm:h-28"
+          />
         </Link>
 
         {!!p.em_promocao && pr.off > 0 && (
@@ -914,7 +895,10 @@ function ProdutoCardUltra({
       <div className="px-3 pb-3 flex-1 flex flex-col">
         <div className="text-[11px] text-gray-500 line-clamp-1">{p.laboratorio || "—"}</div>
 
-        <Link href={`${prefix}/produtos/${p.ean}`} className="mt-1 font-semibold text-blue-950 text-xs sm:text-sm line-clamp-2 hover:underline">
+        <Link
+          href={`${prefix}/produtos/${p.ean}`}
+          className="mt-1 font-semibold text-blue-950 text-xs sm:text-sm line-clamp-2 hover:underline"
+        >
           {p.nome}
         </Link>
 
@@ -934,11 +918,19 @@ function ProdutoCardUltra({
 
         <div className="mt-3 flex items-center gap-2">
           <div className="flex items-center border rounded-xl overflow-hidden">
-            <button onClick={() => setQtd((x) => Math.max(1, x - 1))} className="w-9 h-9 bg-white hover:bg-gray-50 font-extrabold" disabled={indisponivel}>
+            <button
+              onClick={() => setQtd((x) => Math.max(1, x - 1))}
+              className="w-9 h-9 bg-white hover:bg-gray-50 font-extrabold"
+              disabled={indisponivel}
+            >
               –
             </button>
             <div className="w-10 text-center font-extrabold text-sm">{qtd}</div>
-            <button onClick={() => setQtd((x) => x + 1)} className="w-9 h-9 bg-white hover:bg-gray-50 font-extrabold" disabled={indisponivel}>
+            <button
+              onClick={() => setQtd((x) => x + 1)}
+              className="w-9 h-9 bg-white hover:bg-gray-50 font-extrabold"
+              disabled={indisponivel}
+            >
               +
             </button>
           </div>
@@ -955,7 +947,10 @@ function ProdutoCardUltra({
         </div>
 
         {indisponivel ? (
-          <button onClick={onEncomendar} className="mt-2 w-full bg-green-600 hover:bg-green-700 text-white py-2.5 rounded-xl text-xs sm:text-sm font-extrabold">
+          <button
+            onClick={onEncomendar}
+            className="mt-2 w-full bg-green-600 hover:bg-green-700 text-white py-2.5 rounded-xl text-xs sm:text-sm font-extrabold"
+          >
             Encomendar
           </button>
         ) : null}
