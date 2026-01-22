@@ -14,6 +14,18 @@ export default function RootClientLayout({ children }: { children: React.ReactNo
   if (typeof window !== "undefined" && window.location.pathname.startsWith("/gigante")) {
     return <>{children}</>;
   }
+  if (typeof window !== "undefined" && window.location.pathname.startsWith("/cadastro")) {
+    return <>{children}</>;
+  }
+  if (typeof window !== "undefined" && window.location.pathname.startsWith("/cadastro/drogarias")) {
+    return <>{children}</>;
+  }
+  if (typeof window !== "undefined" && window.location.pathname.startsWith("/cadastro/usuarios")) {
+    return <>{children}</>;
+  }
+  if (typeof window !== "undefined" && window.location.pathname.startsWith("/cadastro/profissionais")) {
+    return <>{children}</>;
+  }
   if (typeof window !== "undefined" && window.location.pathname.startsWith("/servicos")) {
     return <>{children}</>;
   }
