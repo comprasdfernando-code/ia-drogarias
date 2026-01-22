@@ -1,7 +1,5 @@
-"use client";
+import { redirect } from "next/navigation";
 
-import PortalStories from "@/components/PortalStories";
-
-export default function HomePage() {
-  return <PortalStories />;
+export default function Home() {
+  redirect("/fv");
 }
