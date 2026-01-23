@@ -106,7 +106,7 @@ export default function AdminLojaNinhoCar() {
     setErr(null);
 
     const { data, error } = await supabase
-      .from("produtos")
+      .from("ninhocar_produtos")
       .select(
         "id,nome,slug,ean,estoque,preco,preco_promocional,em_promocao,imagens,categoria,ativo,created_at"
       )
@@ -234,7 +234,7 @@ export default function AdminLojaNinhoCar() {
       setItems((prev) => prev.map((x) => (x.id === editing.id ? ({ ...x, ...payload } as any) : x)));
     } else {
       const { data, error } = await supabase
-        .from("produtos")
+        .from("ninhocar_produtos")
         .insert([payload])
         .select(
           "id,nome,slug,ean,estoque,preco,preco_promocional,em_promocao,imagens,categoria,ativo,created_at"

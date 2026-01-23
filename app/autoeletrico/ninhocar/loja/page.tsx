@@ -69,7 +69,7 @@ export default function LojaNinhoCar() {
       setLoading(true);
 
       const { data, error } = await supabase
-        .from("produtos")
+        .from("ninhocar_produtos")
         .select(
           "id,nome,slug,ean,preco,preco_promocional,em_promocao,imagens,categoria,ativo"
         )
