@@ -6,23 +6,27 @@ import Image from "next/image";
 import { supabase } from "@/lib/supabaseClient";
 import { brl } from "@/lib/brl";
 
-/** =========================
- *  CONFIG NINHO CAR
-========================= */
+/** CONFIG */
 const BASE = "/autoeletrico/ninhocar";
-const SENHA_ADMIN = "102030"; // troque se quiser
-const BUCKET = "ninho_car";   // ✅ seu bucket já existe e está PUBLIC
+const SENHA_ADMIN = "102030";
+const BUCKET = "ninho_car";
 
 type Produto = {
   id: string;
   nome: string | null;
   slug: string | null;
+
+  ean: string | null;
+  estoque: number | null;
+
   preco: number | null;
   preco_promocional: number | null;
   em_promocao: boolean | null;
+
   imagens: string[] | null;
   categoria: string | null;
   ativo: boolean | null;
+
   created_at?: string | null;
 };
 
@@ -37,8 +41,6 @@ function isConv(categoria: string | null) {
   const c = norm(categoria || "");
   return c.includes("conven") || c.includes("conveni") || c === "conv";
 }
-
-// Tudo que não for conveniência cai em Auto Elétrico (simples e prático)
 function isAutoEletrico(categoria: string | null) {
   return !isConv(categoria);
 }
@@ -57,15 +59,16 @@ function slugify(input: string) {
 }
 
 function onlyNumber(v: string) {
-  // aceita 10,99 ou 10.99
   const cleaned = v.replace(/[^\d,.-]/g, "").replace(",", ".");
   const n = Number(cleaned);
   return Number.isFinite(n) ? n : 0;
 }
 
-/** =========================
- *  STORAGE HELPERS
-========================= */
+function onlyDigits(v: string) {
+  return (v || "").replace(/\D/g, "");
+}
+
+/** STORAGE */
 async function uploadFotoNinhoCar(file: File) {
   const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
   const safeExt = ["jpg", "jpeg", "png", "webp"].includes(ext) ? ext : "jpg";
@@ -81,14 +84,10 @@ async function uploadFotoNinhoCar(file: File) {
 
   if (error) throw new Error(error.message);
 
-  // bucket é PUBLIC, então podemos pegar URL pública
   const { data } = supabase.storage.from(BUCKET).getPublicUrl(storagePath);
   return data.publicUrl;
 }
 
-/** =========================
- *  PAGE
-========================= */
 export default function AdminLojaNinhoCar() {
   const [ok, setOk] = useState(false);
   const [senha, setSenha] = useState("");
@@ -108,7 +107,9 @@ export default function AdminLojaNinhoCar() {
 
     const { data, error } = await supabase
       .from("produtos")
-      .select("id,nome,slug,preco,preco_promocional,em_promocao,imagens,categoria,ativo,created_at")
+      .select(
+        "id,nome,slug,ean,estoque,preco,preco_promocional,em_promocao,imagens,categoria,ativo,created_at"
+      )
       .order("nome", { ascending: true });
 
     if (error) {
@@ -128,17 +129,20 @@ export default function AdminLojaNinhoCar() {
 
   const filtered = useMemo(() => {
     const qq = norm(q);
+    const qDigits = onlyDigits(q);
 
     const list =
       tab === "conveniencia"
         ? items.filter((p) => isConv(p.categoria))
         : items.filter((p) => isAutoEletrico(p.categoria));
 
-    if (!qq) return list;
+    if (!qq && !qDigits) return list;
 
     return list.filter((p) => {
-      const blob = norm(`${p.nome || ""} ${p.slug || ""} ${p.categoria || ""}`);
-      return blob.includes(qq);
+      const blob = norm(`${p.nome || ""} ${p.slug || ""} ${p.categoria || ""} ${p.ean || ""}`);
+      if (qq && blob.includes(qq)) return true;
+      if (qDigits && onlyDigits(p.ean || "").includes(qDigits)) return true;
+      return false;
     });
   }, [items, q, tab]);
 
@@ -173,7 +177,6 @@ export default function AdminLojaNinhoCar() {
     setEditing(null);
     setModalOpen(true);
   }
-
   function openEdit(p: Produto) {
     setEditing(p);
     setModalOpen(true);
@@ -183,6 +186,10 @@ export default function AdminLojaNinhoCar() {
     nome: string;
     slug: string;
     categoria: string;
+
+    ean: string | null;
+    estoque: number;
+
     preco: number;
     em_promocao: boolean;
     preco_promocional: number | null;
@@ -192,60 +199,54 @@ export default function AdminLojaNinhoCar() {
     if (!values.nome.trim()) return alert("Nome é obrigatório.");
     if (!values.slug.trim()) return alert("Slug é obrigatório.");
     if (!values.categoria.trim()) return alert("Categoria é obrigatória.");
+    if (values.estoque < 0) return alert("Estoque não pode ser negativo.");
+
+    // valida EAN básico (só dígitos, 8 a 14 comum; mas vou aceitar 6+ pra ser flexível)
+    if (values.ean && onlyDigits(values.ean).length < 6) {
+      return alert("EAN muito curto. Se não tiver, deixe em branco.");
+    }
+
+    const payload = {
+      nome: values.nome,
+      slug: values.slug,
+      categoria: values.categoria,
+
+      ean: values.ean ? onlyDigits(values.ean) : null,
+      estoque: values.estoque,
+
+      preco: values.preco,
+      em_promocao: values.em_promocao,
+      preco_promocional: values.em_promocao ? values.preco_promocional : null,
+      ativo: values.ativo,
+      imagens: values.imagens,
+    };
 
     if (editing) {
-      const { error } = await supabase
-        .from("produtos")
-        .update({
-          nome: values.nome,
-          slug: values.slug,
-          categoria: values.categoria,
-          preco: values.preco,
-          em_promocao: values.em_promocao,
-          preco_promocional: values.em_promocao ? values.preco_promocional : null,
-          ativo: values.ativo,
-          imagens: values.imagens,
-        })
-        .eq("id", editing.id);
+      const { error } = await supabase.from("produtos").update(payload).eq("id", editing.id);
+      if (error) {
+        // erro típico de EAN duplicado (unique)
+        if (String(error.message || "").toLowerCase().includes("duplicate")) {
+          return alert("Esse EAN já existe em outro produto.");
+        }
+        return alert("Erro ao salvar: " + error.message);
+      }
 
-      if (error) return alert("Erro ao salvar: " + error.message);
-
-      setItems((prev) =>
-        prev.map((x) =>
-          x.id === editing.id
-            ? {
-                ...x,
-                nome: values.nome,
-                slug: values.slug,
-                categoria: values.categoria,
-                preco: values.preco,
-                em_promocao: values.em_promocao,
-                preco_promocional: values.em_promocao ? values.preco_promocional : null,
-                ativo: values.ativo,
-                imagens: values.imagens,
-              }
-            : x
-        )
-      );
+      setItems((prev) => prev.map((x) => (x.id === editing.id ? ({ ...x, ...payload } as any) : x)));
     } else {
       const { data, error } = await supabase
         .from("produtos")
-        .insert([
-          {
-            nome: values.nome,
-            slug: values.slug,
-            categoria: values.categoria,
-            preco: values.preco,
-            em_promocao: values.em_promocao,
-            preco_promocional: values.em_promocao ? values.preco_promocional : null,
-            ativo: values.ativo,
-            imagens: values.imagens,
-          },
-        ])
-        .select("id,nome,slug,preco,preco_promocional,em_promocao,imagens,categoria,ativo,created_at")
+        .insert([payload])
+        .select(
+          "id,nome,slug,ean,estoque,preco,preco_promocional,em_promocao,imagens,categoria,ativo,created_at"
+        )
         .single();
 
-      if (error) return alert("Erro ao cadastrar: " + error.message);
+      if (error) {
+        if (String(error.message || "").toLowerCase().includes("duplicate")) {
+          return alert("Esse EAN já existe em outro produto.");
+        }
+        return alert("Erro ao cadastrar: " + error.message);
+      }
 
       setItems((prev) => [data as Produto, ...prev]);
     }
@@ -254,9 +255,7 @@ export default function AdminLojaNinhoCar() {
     setEditing(null);
   }
 
-  /** =========================
-   *  LOGIN SIMPLES
-  ========================= */
+  /** LOGIN */
   if (!ok) {
     return (
       <div className="min-h-screen bg-zinc-950 text-zinc-100">
@@ -286,9 +285,7 @@ export default function AdminLojaNinhoCar() {
         <main className="mx-auto max-w-md px-4 py-10">
           <div className="rounded-3xl border border-zinc-800 bg-zinc-900/30 p-6">
             <h1 className="text-xl font-black">Acesso Admin</h1>
-            <p className="mt-2 text-sm text-zinc-400">
-              Digite a senha para administrar os itens da Ninho Car.
-            </p>
+            <p className="mt-2 text-sm text-zinc-400">Digite a senha para administrar os itens.</p>
 
             <input
               value={senha}
@@ -304,19 +301,13 @@ export default function AdminLojaNinhoCar() {
             >
               Entrar
             </button>
-
-            <div className="mt-4 text-xs text-zinc-500">
-              Depois, se quiser, trocamos isso por Auth (Supabase).
-            </div>
           </div>
         </main>
       </div>
     );
   }
 
-  /** =========================
-   *  ADMIN
-  ========================= */
+  /** ADMIN */
   return (
     <div className="min-h-screen bg-zinc-950 text-zinc-100">
       <header className="border-b border-zinc-800/60 bg-zinc-950/85 backdrop-blur sticky top-0 z-40">
@@ -358,7 +349,6 @@ export default function AdminLojaNinhoCar() {
         </div>
       </header>
 
-      {/* Marca d’água */}
       <div
         className="pointer-events-none fixed inset-0 bg-center bg-no-repeat opacity-[0.03]"
         style={{ backgroundImage: "url('/ninhocar/logo-bg.png')", backgroundSize: "560px" }}
@@ -371,7 +361,7 @@ export default function AdminLojaNinhoCar() {
               Admin <span className="text-yellow-400">Ninho Car</span>
             </h1>
             <p className="mt-1 text-sm text-zinc-400">
-              Cadastre e edite itens da <b>Conveniência</b> e do <b>Auto Elétrico</b>.
+              Agora com <b>EAN</b> + <b>Estoque</b>.
             </p>
           </div>
 
@@ -405,15 +395,11 @@ export default function AdminLojaNinhoCar() {
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder={
-                tab === "conveniencia"
-                  ? "Buscar na conveniência (café, bebidas, carregadores...)"
-                  : "Buscar auto elétrico (lâmpadas, som, acessórios...)"
-              }
+              placeholder="Buscar por nome, categoria, slug ou EAN..."
               className="w-full rounded-2xl border border-zinc-800 bg-zinc-900/60 px-4 py-3 text-sm outline-none focus:border-yellow-400/60"
             />
             <div className="mt-2 text-xs text-zinc-500">
-              Regra: categoria contendo “Conveniência” vai pra aba Conveniência. O resto vai pra Auto Elétrico.
+              Dica: cole o EAN aqui e ele acha na hora.
             </div>
           </div>
 
@@ -452,6 +438,10 @@ export default function AdminLojaNinhoCar() {
                 const precoFinal =
                   p.em_promocao && p.preco_promocional ? p.preco_promocional : p.preco;
 
+                const est = p.estoque ?? 0;
+                const low = est > 0 && est <= 3;
+                const zero = est <= 0;
+
                 return (
                   <div
                     key={p.id}
@@ -468,15 +458,25 @@ export default function AdminLojaNinhoCar() {
                         <div className="flex items-center gap-2">
                           <div className="truncate text-sm font-extrabold">{p.nome || "Sem nome"}</div>
 
+                          {p.em_promocao ? (
+                            <span className="rounded-full bg-yellow-400/15 px-2 py-1 text-[11px] font-bold text-yellow-300">
+                              Promo
+                            </span>
+                          ) : null}
+
                           {!p.ativo ? (
                             <span className="rounded-full bg-red-500/15 px-2 py-1 text-[11px] font-bold text-red-300">
                               Inativo
                             </span>
                           ) : null}
 
-                          {p.em_promocao ? (
-                            <span className="rounded-full bg-yellow-400/15 px-2 py-1 text-[11px] font-bold text-yellow-300">
-                              Promo
+                          {zero ? (
+                            <span className="rounded-full bg-red-500/15 px-2 py-1 text-[11px] font-bold text-red-200">
+                              Sem estoque
+                            </span>
+                          ) : low ? (
+                            <span className="rounded-full bg-yellow-400/15 px-2 py-1 text-[11px] font-bold text-yellow-200">
+                              Baixo estoque
                             </span>
                           ) : null}
                         </div>
@@ -485,8 +485,13 @@ export default function AdminLojaNinhoCar() {
                           <span className="rounded-full border border-zinc-800 bg-zinc-950/40 px-2 py-1">
                             {p.categoria || "Sem categoria"}
                           </span>
+
                           <span className="rounded-full border border-zinc-800 bg-zinc-950/40 px-2 py-1">
-                            slug: {p.slug || "—"}
+                            EAN: {p.ean || "—"}
+                          </span>
+
+                          <span className="rounded-full border border-zinc-800 bg-zinc-950/40 px-2 py-1">
+                            Est: <b className="text-zinc-200">{est}</b>
                           </span>
                         </div>
 
@@ -531,21 +536,13 @@ export default function AdminLojaNinhoCar() {
             </div>
           )}
         </div>
-
-        <div className="mt-10">
-          <Link
-            href={`${BASE}`}
-            className="inline-flex rounded-xl border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm font-semibold hover:bg-zinc-800"
-          >
-            ← Voltar para Home
-          </Link>
-        </div>
       </main>
 
       {modalOpen ? (
         <ProdutoModal
           tab={tab}
           initial={editing}
+          allItems={items}
           onClose={() => {
             setModalOpen(false);
             setEditing(null);
@@ -557,22 +554,23 @@ export default function AdminLojaNinhoCar() {
   );
 }
 
-/** =========================
- *  MODAL
-========================= */
 function ProdutoModal({
   tab,
   initial,
+  allItems,
   onClose,
   onSave,
 }: {
   tab: "conveniencia" | "autoeletrico";
   initial: Produto | null;
+  allItems: Produto[];
   onClose: () => void;
   onSave: (values: {
     nome: string;
     slug: string;
     categoria: string;
+    ean: string | null;
+    estoque: number;
     preco: number;
     em_promocao: boolean;
     preco_promocional: number | null;
@@ -588,6 +586,9 @@ function ProdutoModal({
     initial?.categoria || (tab === "conveniencia" ? "Conveniência" : "Auto Elétrico")
   );
 
+  const [ean, setEan] = useState(initial?.ean || "");
+  const [estoque, setEstoque] = useState(String(initial?.estoque ?? 0));
+
   const [preco, setPreco] = useState(initial?.preco != null ? String(initial.preco) : "");
   const [emPromo, setEmPromo] = useState(!!initial?.em_promocao);
   const [precoPromo, setPrecoPromo] = useState(
@@ -597,7 +598,6 @@ function ProdutoModal({
   const [ativo, setAtivo] = useState(initial?.ativo ?? true);
   const [imgs, setImgs] = useState((initial?.imagens || []).join("\n"));
 
-  // upload/camera
   const [uploading, setUploading] = useState(false);
   const [preview, setPreview] = useState<string | null>(null);
 
@@ -608,16 +608,25 @@ function ProdutoModal({
       .filter(Boolean);
   }
 
-  // auto-slug (somente novo)
   useEffect(() => {
     if (isEdit) return;
     setSlug(slugify(nome || ""));
   }, [nome, isEdit]);
 
+  const capa = preview || parseImgs(imgs)[0];
+
+  const eanDigits = onlyDigits(ean);
+  const eanDuplicado = useMemo(() => {
+    if (!eanDigits) return false;
+    return allItems.some((p) => {
+      if (initial && p.id === initial.id) return false;
+      return onlyDigits(p.ean || "") === eanDigits;
+    });
+  }, [allItems, eanDigits, initial]);
+
   async function handleFilePick(file?: File | null) {
     if (!file) return;
 
-    // preview local
     const localUrl = URL.createObjectURL(file);
     setPreview(localUrl);
 
@@ -625,7 +634,6 @@ function ProdutoModal({
       setUploading(true);
       const publicUrl = await uploadFotoNinhoCar(file);
 
-      // coloca como capa (primeira linha)
       const current = parseImgs(imgs);
       const next = [publicUrl, ...current.filter((u) => u !== publicUrl)];
       setImgs(next.join("\n"));
@@ -637,6 +645,11 @@ function ProdutoModal({
   }
 
   function handleSubmit() {
+    const est = Number(onlyDigits(estoque || "0") || "0");
+    if (est < 0) return alert("Estoque não pode ser negativo.");
+
+    if (eanDuplicado) return alert("Esse EAN já existe em outro produto.");
+
     const p = preco ? onlyNumber(preco) : 0;
     const pp = precoPromo ? onlyNumber(precoPromo) : 0;
 
@@ -644,6 +657,10 @@ function ProdutoModal({
       nome: nome.trim(),
       slug: (slug || slugify(nome)).trim(),
       categoria: categoria.trim(),
+
+      ean: eanDigits ? eanDigits : null,
+      estoque: est,
+
       preco: p,
       em_promocao: emPromo,
       preco_promocional: emPromo ? pp : null,
@@ -651,8 +668,6 @@ function ProdutoModal({
       imagens: parseImgs(imgs),
     });
   }
-
-  const capa = preview || parseImgs(imgs)[0];
 
   return (
     <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center">
@@ -668,7 +683,7 @@ function ProdutoModal({
               </span>
             </div>
             <div className="mt-1 text-xs text-zinc-400">
-              Foto pelo celular + cadastro rápido.
+              Agora com EAN + Estoque + Foto (câmera).
             </div>
           </div>
 
@@ -680,14 +695,12 @@ function ProdutoModal({
           </button>
         </div>
 
-        {/* FOTO (CAMERA) */}
+        {/* FOTO */}
         <div className="mt-5 rounded-2xl border border-zinc-800 bg-zinc-950/40 p-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <div className="text-sm font-extrabold">Foto do item</div>
-              <div className="text-xs text-zinc-400">
-                No celular abre a câmera (traseira) pra tirar foto e já subir.
-              </div>
+              <div className="text-xs text-zinc-400">No celular abre a câmera traseira.</div>
             </div>
 
             <label
@@ -712,7 +725,7 @@ function ProdutoModal({
                 <Image src={capa} alt="Prévia" fill className="object-cover" />
               </div>
               <div className="text-xs text-zinc-400">
-                A foto enviada entra como <b>capa</b> (primeira imagem).
+                A foto enviada vira a <b>capa</b>.
               </div>
             </div>
           ) : null}
@@ -731,16 +744,41 @@ function ProdutoModal({
           </div>
 
           <div>
+            <label className="text-xs text-zinc-400">EAN</label>
+            <input
+              value={ean}
+              onChange={(e) => setEan(e.target.value)}
+              placeholder="Código de barras"
+              className={`mt-1 w-full rounded-2xl border px-4 py-3 text-sm outline-none ${
+                eanDuplicado ? "border-red-500/60 bg-red-500/5" : "border-zinc-800 bg-zinc-900/60 focus:border-yellow-400/60"
+              }`}
+            />
+            {eanDuplicado ? (
+              <div className="mt-1 text-[11px] text-red-300">EAN duplicado — já existe em outro produto.</div>
+            ) : (
+              <div className="mt-1 text-[11px] text-zinc-500">Pode colar com espaços, eu limpo pra só dígitos.</div>
+            )}
+          </div>
+
+          <div>
+            <label className="text-xs text-zinc-400">Estoque</label>
+            <input
+              value={estoque}
+              onChange={(e) => setEstoque(e.target.value)}
+              placeholder="0"
+              inputMode="numeric"
+              className="mt-1 w-full rounded-2xl border border-zinc-800 bg-zinc-900/60 px-4 py-3 text-sm outline-none focus:border-yellow-400/60"
+            />
+          </div>
+
+          <div>
             <label className="text-xs text-zinc-400">Slug</label>
             <input
               value={slug}
               onChange={(e) => setSlug(e.target.value)}
-              placeholder="auto-gerado pelo nome"
+              placeholder="auto-gerado"
               className="mt-1 w-full rounded-2xl border border-zinc-800 bg-zinc-900/60 px-4 py-3 text-sm outline-none focus:border-yellow-400/60"
             />
-            <div className="mt-1 text-[11px] text-zinc-500">
-              URL: <span className="text-zinc-300">/loja/produto/{slug || "seu-slug"}</span>
-            </div>
           </div>
 
           <div>
@@ -751,9 +789,6 @@ function ProdutoModal({
               placeholder={tab === "conveniencia" ? "Conveniência" : "Auto Elétrico"}
               className="mt-1 w-full rounded-2xl border border-zinc-800 bg-zinc-900/60 px-4 py-3 text-sm outline-none focus:border-yellow-400/60"
             />
-            <div className="mt-1 text-[11px] text-zinc-500">
-              Se contiver “Conveniência”, cai na aba Conveniência.
-            </div>
           </div>
 
           <div>
@@ -768,22 +803,12 @@ function ProdutoModal({
 
           <div className="flex items-center gap-3">
             <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={emPromo}
-                onChange={(e) => setEmPromo(e.target.checked)}
-                className="h-4 w-4"
-              />
+              <input type="checkbox" checked={emPromo} onChange={(e) => setEmPromo(e.target.checked)} className="h-4 w-4" />
               <span className="font-bold">Em promoção</span>
             </label>
 
             <label className="flex items-center gap-2 text-sm">
-              <input
-                type="checkbox"
-                checked={ativo}
-                onChange={(e) => setAtivo(e.target.checked)}
-                className="h-4 w-4"
-              />
+              <input type="checkbox" checked={ativo} onChange={(e) => setAtivo(e.target.checked)} className="h-4 w-4" />
               <span className="font-bold">Ativo</span>
             </label>
           </div>
@@ -796,9 +821,7 @@ function ProdutoModal({
               placeholder="Ex.: 14,90"
               disabled={!emPromo}
               className={`mt-1 w-full rounded-2xl border px-4 py-3 text-sm outline-none ${
-                emPromo
-                  ? "border-zinc-800 bg-zinc-900/60 focus:border-yellow-400/60"
-                  : "border-zinc-800 bg-zinc-900/20 opacity-60"
+                emPromo ? "border-zinc-800 bg-zinc-900/60 focus:border-yellow-400/60" : "border-zinc-800 bg-zinc-900/20 opacity-60"
               }`}
             />
           </div>
@@ -808,27 +831,16 @@ function ProdutoModal({
             <textarea
               value={imgs}
               onChange={(e) => setImgs(e.target.value)}
-              placeholder={`https://.../imagem1.jpg\nhttps://.../imagem2.jpg`}
               className="mt-1 w-full min-h-[110px] rounded-2xl border border-zinc-800 bg-zinc-900/60 px-4 py-3 text-sm outline-none focus:border-yellow-400/60"
             />
-            <div className="mt-1 text-[11px] text-zinc-500">
-              A primeira URL vira a imagem principal (capa).
-            </div>
           </div>
         </div>
 
         <div className="mt-5 flex flex-wrap gap-2 justify-end">
-          <button
-            onClick={onClose}
-            className="rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-2 text-sm font-bold hover:bg-zinc-800"
-          >
+          <button onClick={onClose} className="rounded-xl border border-zinc-800 bg-zinc-900 px-4 py-2 text-sm font-bold hover:bg-zinc-800">
             Cancelar
           </button>
-
-          <button
-            onClick={handleSubmit}
-            className="rounded-xl bg-yellow-400 px-4 py-2 text-sm font-extrabold text-zinc-950 hover:brightness-110"
-          >
+          <button onClick={handleSubmit} className="rounded-xl bg-yellow-400 px-4 py-2 text-sm font-extrabold text-zinc-950 hover:brightness-110">
             {isEdit ? "Salvar alterações" : "Cadastrar item"}
           </button>
         </div>
