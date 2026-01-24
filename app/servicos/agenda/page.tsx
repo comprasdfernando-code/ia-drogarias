@@ -2,8 +2,16 @@
 
 import dynamic from "next/dynamic";
 
-const AgendaClient = dynamic(() => import("./AgendaClient"), { ssr: false });
+// Carrega o client-only (evita erro de useSearchParams / window)
+const AgendaClient = dynamic(
+  () => import("./AgendaClient"),
+  { ssr: false }
+);
 
 export default function AgendaPage() {
-  return <AgendaClient />;
+  return (
+    <main className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
+      <AgendaClient />
+    </main>
+  );
 }
