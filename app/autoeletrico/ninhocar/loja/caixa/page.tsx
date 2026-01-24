@@ -1,283 +1,280 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
+import { brl } from "@/lib/brl";
+
+const BASE = "/autoeletrico/ninhocar";
 
 type Comanda = {
   id: string;
-  created_at: string;
   status: string;
-  forma_pagamento?: string | null;
-  observacao?: string | null;
-  cliente_nome?: string | null;
-  cliente_whatsapp?: string | null;
+  cliente_nome: string | null;
+  cliente_whatsapp: string | null;
   subtotal: number;
+  desconto: number;
   total: number;
+  observacao: string | null;
+  created_at: string;
+  closed_at: string | null;
 };
 
 type Item = {
   id: string;
   comanda_id: string;
+  produto_id: string | null;
   nome: string;
-  qtd: number;
+  ean: string | null;
   preco: number;
+  quantidade: number;
   subtotal: number;
 };
 
-function brl(v: number) {
-  return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-}
-
-function fmt(dt: string) {
-  try {
-    return new Date(dt).toLocaleString("pt-BR");
-  } catch {
-    return dt;
-  }
-}
-
-export default function CaixaPage() {
-  const [list, setList] = useState<Comanda[]>([]);
+export default function CaixaNinhoCar() {
   const [loading, setLoading] = useState(true);
-
-  const [status, setStatus] = useState("TODOS");
-  const [q, setQ] = useState("");
-
+  const [comandas, setComandas] = useState<Comanda[]>([]);
   const [openId, setOpenId] = useState<string | null>(null);
   const [itens, setItens] = useState<Item[]>([]);
-  const [loadingItens, setLoadingItens] = useState(false);
+  const [finalizando, setFinalizando] = useState(false);
 
-  const [msg, setMsg] = useState<string | null>(null);
-  const [err, setErr] = useState<string | null>(null);
+  const [metodo, setMetodo] = useState<"PIX" | "DINHEIRO" | "CARTAO" | "OUTROS">("PIX");
+  const [valorPago, setValorPago] = useState<string>("0");
+  const [troco, setTroco] = useState<string>("0");
 
   async function load() {
     setLoading(true);
-    setMsg(null);
-    setErr(null);
-
-    let query = supabase
+    const { data, error } = await supabase
       .from("ninhocar_comandas")
-      .select("id,created_at,status,forma_pagamento,observacao,cliente_nome,cliente_whatsapp,subtotal,total")
-      .order("created_at", { ascending: false })
-      .limit(200);
+      .select("id,status,cliente_nome,cliente_whatsapp,subtotal,desconto,total,observacao,created_at,closed_at")
+      .eq("status", "ABERTA")
+      .order("created_at", { ascending: false });
 
-    if (status !== "TODOS") query = query.eq("status", status);
-
-    const { data, error } = await query;
-    if (error) setErr(error.message);
-    else setList((data || []) as any);
-
+    if (error) {
+      console.error(error.message);
+      setComandas([]);
+    } else {
+      setComandas((data || []) as Comanda[]);
+    }
     setLoading(false);
+  }
+
+  async function openComanda(id: string) {
+    setOpenId(id);
+    const { data, error } = await supabase
+      .from("ninhocar_comanda_itens")
+      .select("id,comanda_id,produto_id,nome,ean,preco,quantidade,subtotal")
+      .eq("comanda_id", id)
+      .order("created_at", { ascending: true });
+
+    if (error) {
+      console.error(error.message);
+      setItens([]);
+    } else {
+      setItens((data || []) as Item[]);
+    }
+
+    const cmd = comandas.find((c) => c.id === id);
+    if (cmd) {
+      setValorPago(String(cmd.total || 0));
+      setTroco("0");
+    }
   }
 
   useEffect(() => {
     load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [status]);
+  }, []);
 
-  const filtered = useMemo(() => {
-    const qq = q.trim().toLowerCase();
-    if (!qq) return list;
+  const current = useMemo(() => comandas.find((c) => c.id === openId) || null, [comandas, openId]);
 
-    return list.filter((c) => {
-      return (
-        c.id.toLowerCase().includes(qq) ||
-        (c.cliente_nome || "").toLowerCase().includes(qq) ||
-        (c.cliente_whatsapp || "").toLowerCase().includes(qq)
-      );
-    });
-  }, [list, q]);
+  async function finalizar() {
+    if (!current) return;
 
-  async function open(comandaId: string) {
-    setOpenId(comandaId);
-    setItens([]);
-    setLoadingItens(true);
-    setErr(null);
+    const v = Number((valorPago || "0").replace(",", "."));
+    const t = Number((troco || "0").replace(",", "."));
+    if (!v || v <= 0) {
+      alert("Informe o valor pago.");
+      return;
+    }
 
-    const { data, error } = await supabase
-      .from("ninhocar_comanda_itens")
-      .select("id,comanda_id,nome,qtd,preco,subtotal")
-      .eq("comanda_id", comandaId)
-      .order("created_at", { ascending: true });
+    setFinalizando(true);
+    try {
+      const { error } = await supabase.rpc("ninhocar_finalizar_comanda", {
+        p_comanda_id: current.id,
+        p_metodo: metodo,
+        p_valor: v,
+        p_troco: t,
+      });
 
-    if (error) setErr(error.message);
-    else setItens((data || []) as any);
+      if (error) throw new Error(error.message);
 
-    setLoadingItens(false);
-  }
-
-  async function setStatusComanda(comandaId: string, novo: string) {
-    setMsg(null);
-    setErr(null);
-
-    const { error } = await supabase
-      .from("ninhocar_comandas")
-      .update({ status: novo })
-      .eq("id", comandaId);
-
-    if (error) setErr(error.message);
-    else {
-      setMsg(`Status atualizado: ${novo}`);
+      alert("✅ Venda finalizada e estoque baixado!");
+      setOpenId(null);
+      setItens([]);
       await load();
-      if (openId === comandaId) await open(comandaId);
+    } catch (e: any) {
+      console.error(e);
+      alert(`Erro ao finalizar: ${e?.message || "erro"}`);
+    } finally {
+      setFinalizando(false);
     }
   }
 
-  const resumo = useMemo(() => {
-    const total = filtered.reduce((acc, c) => acc + Number(c.total || 0), 0);
-    const qtd = filtered.length;
-    return { qtd, total };
-  }, [filtered]);
-
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="max-w-6xl mx-auto px-4 py-6">
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <div className="text-xl font-black text-gray-900">Caixa • Ninho Car</div>
-            <div className="text-sm text-gray-600">Comandas da Loja</div>
+    <div className="min-h-screen bg-zinc-950 text-zinc-100">
+      <header className="border-b border-zinc-800/60 bg-zinc-950/85 backdrop-blur sticky top-0 z-40">
+        <div className="mx-auto max-w-6xl px-4 py-3 flex items-center justify-between gap-3">
+          <Link href={`${BASE}/loja`} className="font-extrabold">
+            ← Voltar pra Loja
+          </Link>
+
+          <div className="text-sm text-zinc-300">
+            Caixa • <span className="text-yellow-300 font-extrabold">Ninho Car</span>
           </div>
 
-          <button onClick={load} className="px-4 py-2 rounded-xl border text-sm font-semibold">
+          <button
+            onClick={load}
+            className="rounded-xl border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm font-semibold hover:bg-zinc-800"
+          >
             Atualizar
           </button>
         </div>
+      </header>
 
-        <div className="mt-4 grid md:grid-cols-3 gap-2">
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Buscar por ID / nome / whatsapp..."
-            className="w-full border rounded-xl px-3 py-2 text-sm md:col-span-2"
-          />
+      <main className="mx-auto max-w-6xl px-4 py-8 grid gap-4 lg:grid-cols-3">
+        <section className="lg:col-span-1 rounded-3xl border border-zinc-800 bg-zinc-900/30 p-4">
+          <div className="text-lg font-extrabold">Comandas Abertas</div>
+          <div className="mt-2 text-xs text-zinc-400">Clique para abrir e finalizar.</div>
 
-          <select
-            value={status}
-            onChange={(e) => setStatus(e.target.value)}
-            className="w-full border rounded-xl px-3 py-2 text-sm"
-          >
-            <option value="TODOS">TODOS</option>
-            <option value="ABERTA">ABERTA</option>
-            <option value="PAGA">PAGA</option>
-            <option value="ENTREGUE">ENTREGUE</option>
-            <option value="CANCELADA">CANCELADA</option>
-          </select>
-        </div>
-
-        <div className="mt-3 flex items-center justify-between rounded-2xl border bg-white p-3">
-          <div className="text-sm text-gray-600">
-            {loading ? "Carregando..." : `${resumo.qtd} comanda(s)`}
-          </div>
-          <div className="text-sm font-bold text-gray-900">Total: {brl(resumo.total)}</div>
-        </div>
-
-        {msg ? <div className="mt-3 p-3 rounded-xl border bg-green-50 text-sm text-green-700">{msg}</div> : null}
-        {err ? <div className="mt-3 p-3 rounded-xl border bg-red-50 text-sm text-red-700">{err}</div> : null}
-
-        <div className="mt-4 grid md:grid-cols-2 gap-4">
-          {/* LISTA */}
-          <div className="rounded-2xl border bg-white overflow-hidden">
-            <div className="p-3 border-b text-sm text-gray-600">Comandas</div>
-
-            <div className="divide-y">
-              {filtered.map((c) => (
+          <div className="mt-4 grid gap-2">
+            {loading ? (
+              <div className="text-sm text-zinc-400">Carregando...</div>
+            ) : comandas.length === 0 ? (
+              <div className="text-sm text-zinc-400">Nenhuma comanda aberta.</div>
+            ) : (
+              comandas.map((c) => (
                 <button
                   key={c.id}
-                  onClick={() => open(c.id)}
-                  className={[
-                    "w-full text-left p-3 hover:bg-gray-50",
-                    openId === c.id ? "bg-gray-50" : "",
-                  ].join(" ")}
+                  onClick={() => openComanda(c.id)}
+                  className={`rounded-2xl border px-3 py-3 text-left ${
+                    openId === c.id
+                      ? "border-yellow-400 bg-yellow-400/10"
+                      : "border-zinc-800 bg-zinc-950/40 hover:bg-zinc-950/70"
+                  }`}
                 >
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="font-bold text-gray-900 truncate">{c.id}</div>
-                      <div className="text-xs text-gray-600">
-                        {fmt(c.created_at)} • {c.forma_pagamento || "-"}
-                        {c.cliente_nome ? ` • ${c.cliente_nome}` : ""}
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <div className="text-sm font-black">{brl(Number(c.total || 0))}</div>
-                      <div className="text-xs font-semibold text-gray-600">{c.status}</div>
-                    </div>
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="font-extrabold">#{c.id.slice(0, 6)}</div>
+                    <div className="text-yellow-300 font-extrabold">{brl(c.total)}</div>
+                  </div>
+                  <div className="mt-1 text-xs text-zinc-400">
+                    {c.cliente_nome ? `Cliente: ${c.cliente_nome}` : "Cliente: —"} •{" "}
+                    {new Date(c.created_at).toLocaleString()}
                   </div>
                 </button>
-              ))}
-
-              {!loading && filtered.length === 0 ? (
-                <div className="p-6 text-sm text-gray-500">Sem comandas.</div>
-              ) : null}
-            </div>
-          </div>
-
-          {/* DETALHE */}
-          <div className="rounded-2xl border bg-white overflow-hidden">
-            <div className="p-3 border-b text-sm text-gray-600">Detalhes</div>
-
-            {!openId ? (
-              <div className="p-6 text-sm text-gray-500">Selecione uma comanda para ver os itens.</div>
-            ) : (
-              <div className="p-4">
-                <div className="font-black text-gray-900 break-all">{openId}</div>
-
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <button
-                    onClick={() => setStatusComanda(openId, "ABERTA")}
-                    className="px-3 py-2 rounded-xl border text-sm font-semibold"
-                  >
-                    ABERTA
-                  </button>
-                  <button
-                    onClick={() => setStatusComanda(openId, "PAGA")}
-                    className="px-3 py-2 rounded-xl border text-sm font-semibold"
-                  >
-                    PAGA
-                  </button>
-                  <button
-                    onClick={() => setStatusComanda(openId, "ENTREGUE")}
-                    className="px-3 py-2 rounded-xl border text-sm font-semibold"
-                  >
-                    ENTREGUE
-                  </button>
-                  <button
-                    onClick={() => setStatusComanda(openId, "CANCELADA")}
-                    className="px-3 py-2 rounded-xl border text-sm font-semibold"
-                  >
-                    CANCELADA
-                  </button>
-                </div>
-
-                <div className="mt-4 border rounded-xl overflow-hidden">
-                  <div className="p-2 border-b text-xs text-gray-600">Itens</div>
-
-                  {loadingItens ? (
-                    <div className="p-4 text-sm text-gray-500">Carregando itens...</div>
-                  ) : (
-                    <div className="divide-y">
-                      {itens.map((it) => (
-                        <div key={it.id} className="p-3 flex items-center justify-between gap-3">
-                          <div className="min-w-0">
-                            <div className="font-semibold text-gray-900 truncate">{it.nome}</div>
-                            <div className="text-xs text-gray-600">
-                              {it.qtd} × {brl(Number(it.preco))}
-                            </div>
-                          </div>
-                          <div className="text-sm font-black">{brl(Number(it.subtotal))}</div>
-                        </div>
-                      ))}
-
-                      {itens.length === 0 ? (
-                        <div className="p-4 text-sm text-gray-500">Sem itens.</div>
-                      ) : null}
-                    </div>
-                  )}
-                </div>
-              </div>
+              ))
             )}
           </div>
-        </div>
-      </div>
+        </section>
+
+        <section className="lg:col-span-2 rounded-3xl border border-zinc-800 bg-zinc-900/30 p-4">
+          {!current ? (
+            <div className="text-sm text-zinc-400">Abra uma comanda à esquerda.</div>
+          ) : (
+            <>
+              <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <div className="text-lg font-extrabold">Comanda #{current.id.slice(0, 6)}</div>
+                  <div className="text-xs text-zinc-400">
+                    {current.cliente_nome ? `Cliente: ${current.cliente_nome}` : "Cliente: —"}{" "}
+                    {current.observacao ? `• Obs: ${current.observacao}` : ""}
+                  </div>
+                </div>
+                <div className="text-yellow-300 font-extrabold">{brl(current.total)}</div>
+              </div>
+
+              <div className="mt-4 rounded-2xl border border-zinc-800 bg-zinc-950/40 p-3">
+                <div className="text-sm font-extrabold">Itens</div>
+                <div className="mt-2 grid gap-2">
+                  {itens.map((i) => (
+                    <div
+                      key={i.id}
+                      className="flex items-center justify-between gap-3 rounded-2xl border border-zinc-800 bg-zinc-900/30 p-3"
+                    >
+                      <div>
+                        <div className="text-sm font-bold">{i.nome}</div>
+                        <div className="text-xs text-zinc-400">
+                          {i.ean ? `EAN: ${i.ean}` : "Sem EAN"} • {i.quantidade} x {brl(i.preco)}
+                        </div>
+                      </div>
+                      <div className="text-sm font-extrabold text-yellow-300">{brl(i.subtotal)}</div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <div className="rounded-2xl border border-zinc-800 bg-zinc-950/40 p-3">
+                  <div className="text-sm font-extrabold">Pagamento</div>
+
+                  <label className="mt-2 block text-xs text-zinc-400">Método</label>
+                  <select
+                    value={metodo}
+                    onChange={(e) => setMetodo(e.target.value as any)}
+                    className="mt-1 w-full rounded-2xl border border-zinc-800 bg-zinc-950 px-3 py-3 text-sm"
+                  >
+                    <option value="PIX">PIX</option>
+                    <option value="DINHEIRO">DINHEIRO</option>
+                    <option value="CARTAO">CARTÃO</option>
+                    <option value="OUTROS">OUTROS</option>
+                  </select>
+
+                  <label className="mt-2 block text-xs text-zinc-400">Valor pago</label>
+                  <input
+                    value={valorPago}
+                    onChange={(e) => setValorPago(e.target.value)}
+                    className="mt-1 w-full rounded-2xl border border-zinc-800 bg-zinc-950 px-3 py-3 text-sm"
+                    placeholder="0"
+                  />
+
+                  <label className="mt-2 block text-xs text-zinc-400">Troco (se houver)</label>
+                  <input
+                    value={troco}
+                    onChange={(e) => setTroco(e.target.value)}
+                    className="mt-1 w-full rounded-2xl border border-zinc-800 bg-zinc-950 px-3 py-3 text-sm"
+                    placeholder="0"
+                  />
+                </div>
+
+                <div className="rounded-2xl border border-zinc-800 bg-zinc-950/40 p-3">
+                  <div className="text-sm font-extrabold">Fechamento</div>
+                  <div className="mt-2 flex items-center justify-between text-sm">
+                    <span className="text-zinc-300">Total</span>
+                    <span className="font-extrabold text-yellow-300">{brl(current.total)}</span>
+                  </div>
+
+                  <button
+                    onClick={finalizar}
+                    disabled={finalizando}
+                    className="mt-4 w-full rounded-2xl bg-yellow-400 px-5 py-3 text-sm font-extrabold text-zinc-950 hover:brightness-110 disabled:opacity-60"
+                  >
+                    {finalizando ? "Finalizando..." : "Finalizar venda"}
+                  </button>
+
+                  <button
+                    onClick={() => {
+                      setOpenId(null);
+                      setItens([]);
+                    }}
+                    className="mt-2 w-full rounded-2xl border border-zinc-800 bg-zinc-950 px-5 py-3 text-sm font-bold hover:bg-zinc-900"
+                  >
+                    Fechar comanda
+                  </button>
+                </div>
+              </div>
+            </>
+          )}
+        </section>
+      </main>
     </div>
   );
 }
