@@ -1,17 +1,19 @@
-"use client";
+// app/servicos/agenda/page.tsx
+import { Suspense } from "react";
+import AgendaClient from "./AgendaClient";
 
-import dynamic from "next/dynamic";
-
-// Carrega o client-only (evita erro de useSearchParams / window)
-const AgendaClient = dynamic(
-  () => import("./AgendaClient"),
-  { ssr: false }
-);
+function Loading() {
+  return (
+    <div className="min-h-screen flex items-center justify-center bg-white">
+      <div className="text-sm text-slate-600">Carregando agenda...</div>
+    </div>
+  );
+}
 
 export default function AgendaPage() {
   return (
-    <main className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
+    <Suspense fallback={<Loading />}>
       <AgendaClient />
-    </main>
+    </Suspense>
   );
 }
