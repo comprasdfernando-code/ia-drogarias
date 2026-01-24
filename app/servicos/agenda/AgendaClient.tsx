@@ -1,7 +1,7 @@
 "use client";
 
+import React, { useEffect, useMemo, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
 import { supabase } from "@/lib/supabaseClient";
@@ -33,16 +33,34 @@ function buildSlots(start = "08:00", end = "20:00", stepMin = 30) {
   return out;
 }
 
+function normalizeSpaces(s: string) {
+  return (s || "").replace(/\s+/g, " ").trim();
+}
+
+const TAXA_LOCOMOCAO_PADRAO = 20;
+
 type CatalogoServico = {
-  nome: string;
+  nome: string | null;
   preco: number | null;
-  taxa_locomocao: number | null;
+  // pode existir ou não na tabela
+  taxa_locomocao?: number | null;
+  ativo?: boolean | null;
 };
 
 export default function AgendaClient() {
   const searchParams = useSearchParams();
   const router = useRouter();
-  const servicoURL = searchParams.get("servico") || "";
+
+  const servicoURLRaw = searchParams.get("servico") || "";
+
+  // ✅ CORREÇÃO PRINCIPAL: decodifica e normaliza o nome do serviço
+  const servicoNome = useMemo(() => {
+    try {
+      return normalizeSpaces(decodeURIComponent(servicoURLRaw));
+    } catch {
+      return normalizeSpaces(servicoURLRaw);
+    }
+  }, [servicoURLRaw]);
 
   const [form, setForm] = useState({
     nome: "",
@@ -61,38 +79,162 @@ export default function AgendaClient() {
   const slots = useMemo(() => buildSlots("08:00", "20:00", 30), []);
 
   useEffect(() => {
-    if (servicoURL) setForm((p) => ({ ...p, servico: servicoURL }));
-  }, [servicoURL]);
+    if (servicoNome) setForm((p) => ({ ...p, servico: servicoNome }));
+  }, [servicoNome]);
 
-  // Busca valores do serviço
+  // ✅ Busca valores do serviço (match exato + fallback ilike com % %)
   useEffect(() => {
     let alive = true;
 
     async function load() {
-      if (!servicoURL) {
+      if (!servicoNome) {
         setCatalogo(null);
         return;
       }
+
       setLoadingCatalogo(true);
+
       try {
-        // ✅ Ajuste aqui se sua tabela tiver outro nome/colunas:
-        // public.servicos_catalogo: nome, preco, taxa_locomocao
-        const { data, error } = await supabase
-          .from("servicos_catalogo")
-          .select("nome, preco, taxa_locomocao")
-          .ilike("nome", servicoURL)
-          .limit(1)
-          .maybeSingle();
+        // 1) tenta buscar com taxa_locomocao (se existir) + ativo
+        const exactWithTaxaActive = async () =>
+          supabase
+            .from("servicos_catalogo")
+            .select("nome,preco,taxa_locomocao,ativo")
+            .eq("ativo", true)
+            .eq("nome", servicoNome)
+            .maybeSingle();
 
-        if (!alive) return;
+        // 2) fallback se coluna taxa_locomocao não existir
+        const exactNoTaxaActive = async () =>
+          supabase
+            .from("servicos_catalogo")
+            .select("nome,preco,ativo")
+            .eq("ativo", true)
+            .eq("nome", servicoNome)
+            .maybeSingle();
 
-        if (error) {
-          console.error(error);
-          setCatalogo(null);
-          return;
-        }
-        if (data) setCatalogo(data as any);
-        else setCatalogo(null);
+        // 3) fallback se coluna ativo não existir
+        const exactWithTaxa = async () =>
+          supabase
+            .from("servicos_catalogo")
+            .select("nome,preco,taxa_locomocao")
+            .eq("nome", servicoNome)
+            .maybeSingle();
+
+        const exactNoTaxa = async () =>
+          supabase
+            .from("servicos_catalogo")
+            .select("nome,preco")
+            .eq("nome", servicoNome)
+            .maybeSingle();
+
+        // 4) fallback ilike (caso o texto da URL esteja um pouco diferente)
+        const ilikeWithTaxaActive = async () =>
+          supabase
+            .from("servicos_catalogo")
+            .select("nome,preco,taxa_locomocao,ativo")
+            .eq("ativo", true)
+            .ilike("nome", `%${servicoNome}%`)
+            .order("nome", { ascending: true })
+            .limit(1)
+            .maybeSingle();
+
+        const ilikeNoTaxaActive = async () =>
+          supabase
+            .from("servicos_catalogo")
+            .select("nome,preco,ativo")
+            .eq("ativo", true)
+            .ilike("nome", `%${servicoNome}%`)
+            .order("nome", { ascending: true })
+            .limit(1)
+            .maybeSingle();
+
+        const ilikeWithTaxa = async () =>
+          supabase
+            .from("servicos_catalogo")
+            .select("nome,preco,taxa_locomocao")
+            .ilike("nome", `%${servicoNome}%`)
+            .order("nome", { ascending: true })
+            .limit(1)
+            .maybeSingle();
+
+        const ilikeNoTaxa = async () =>
+          supabase
+            .from("servicos_catalogo")
+            .select("nome,preco")
+            .ilike("nome", `%${servicoNome}%`)
+            .order("nome", { ascending: true })
+            .limit(1)
+            .maybeSingle();
+
+        // ✅ 1) tenta buscar EXATO (prioridade)
+let data: any = null;
+let error: any = null;
+
+const nomeBusca = servicoNome; // já decodificado e normalizado
+
+// tenta com 'ativo' primeiro (se existir)
+let r = await supabase
+  .from("servicos_catalogo")
+  .select("nome,preco,ativo")
+  .eq("ativo", true)
+  .eq("nome", nomeBusca)
+  .maybeSingle();
+
+data = r.data;
+error = r.error;
+
+// se a coluna 'ativo' não existir, refaz sem ela (sem quebrar)
+if (error?.code === "42703" && String(error?.message || "").includes("ativo")) {
+  r = await supabase
+    .from("servicos_catalogo")
+    .select("nome,preco")
+    .eq("nome", nomeBusca)
+    .maybeSingle();
+
+  data = r.data;
+  error = r.error;
+}
+
+// ✅ 2) se não achou no EXATO, tenta ILIKE com % % (pega diferenças no texto)
+if (!error && !data) {
+  r = await supabase
+    .from("servicos_catalogo")
+    .select("nome,preco,ativo")
+    .eq("ativo", true)
+    .ilike("nome", `%${nomeBusca}%`)
+    .order("nome", { ascending: true })
+    .limit(1)
+    .maybeSingle();
+
+  data = r.data;
+  error = r.error;
+
+  // se 'ativo' não existir, refaz sem ele
+  if (error?.code === "42703" && String(error?.message || "").includes("ativo")) {
+    r = await supabase
+      .from("servicos_catalogo")
+      .select("nome,preco")
+      .ilike("nome", `%${nomeBusca}%`)
+      .order("nome", { ascending: true })
+      .limit(1)
+      .maybeSingle();
+
+    data = r.data;
+    error = r.error;
+  }
+}
+
+// agora você usa data?.preco normalmente
+if (error) {
+  console.error("ERRO CATALOGO:", error);
+  setCatalogo(null);
+} else {
+  setCatalogo(data ? (data as any) : null);
+}
+
+
+        setCatalogo((data as CatalogoServico) ?? null);
       } finally {
         if (alive) setLoadingCatalogo(false);
       }
@@ -102,13 +244,21 @@ export default function AgendaClient() {
     return () => {
       alive = false;
     };
-  }, [servicoURL]);
+  }, [servicoNome]);
 
-  const total = useMemo(() => {
-    const p = catalogo?.preco ?? 0;
-    const t = catalogo?.taxa_locomocao ?? 0;
-    return p + t;
+  const precoServico = useMemo(() => {
+    const n = Number(catalogo?.preco ?? 0);
+    return Number.isFinite(n) ? n : 0;
   }, [catalogo]);
+
+  const taxaLocomocao = useMemo(() => {
+    const v = catalogo?.taxa_locomocao;
+    if (v === null || v === undefined) return TAXA_LOCOMOCAO_PADRAO;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : TAXA_LOCOMOCAO_PADRAO;
+  }, [catalogo]);
+
+  const total = useMemo(() => precoServico + taxaLocomocao, [precoServico, taxaLocomocao]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target;
@@ -137,10 +287,12 @@ export default function AgendaClient() {
     try {
       const payload = {
         ...form,
+        servico: servicoNome || form.servico,
         telefone: onlyDigits(form.telefone),
-        preco_servico: catalogo?.preco ?? null,
-        taxa_locomocao: catalogo?.taxa_locomocao ?? null,
-        total: catalogo ? total : null,
+
+        preco_servico: catalogo ? precoServico : null,
+        taxa_locomocao: taxaLocomocao, // sempre tem fallback
+        total: catalogo ? total : taxaLocomocao,
       };
 
       const response = await fetch("/api/agendamentos", {
@@ -162,7 +314,7 @@ export default function AgendaClient() {
           nome: "",
           telefone: "",
           endereco: "",
-          servico: servicoURL,
+          servico: servicoNome,
           data: todayISO(),
           horario: "",
           observacoes: "",
@@ -188,11 +340,11 @@ export default function AgendaClient() {
   };
 
   const gotoSolicitar = () => {
-    if (!servicoURL) {
+    if (!servicoNome) {
       toast.error("Serviço inválido na URL.", { position: "top-center", autoClose: 2500, theme: "colored" });
       return;
     }
-    router.push(`/servicos/solicitar?servico=${encodeURIComponent(servicoURL)}`);
+    router.push(`/servicos/solicitar?servico=${encodeURIComponent(servicoNome)}`);
   };
 
   return (
@@ -265,7 +417,7 @@ export default function AgendaClient() {
                 className="mt-1 w-full rounded-2xl border bg-slate-100 px-3 py-3 text-sm text-slate-700"
                 readOnly
               />
-              {!servicoURL ? (
+              {!servicoNome ? (
                 <div className="mt-1 text-xs text-rose-600">
                   Atenção: nenhum serviço veio na URL. Ex.: <b>?servico=Aferição%20de%20Pressão%20Arterial</b>
                 </div>
@@ -370,28 +522,22 @@ export default function AgendaClient() {
                   <div className="mt-2 space-y-1 text-sm">
                     <div className="flex justify-between">
                       <span className="text-slate-600">Serviço</span>
-                      <span className="font-semibold">R$ {(catalogo.preco ?? 0).toFixed(2).replace(".", ",")}</span>
+                      <span className="font-semibold">{`R$ ${(precoServico ?? 0).toFixed(2).replace(".", ",")}`}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-slate-600">Locomoção (ida/volta)</span>
-                      <span className="font-semibold">
-                        R$ {(catalogo.taxa_locomocao ?? 0).toFixed(2).replace(".", ",")}
-                      </span>
+                      <span className="font-semibold">{`R$ ${(taxaLocomocao ?? 0).toFixed(2).replace(".", ",")}`}</span>
                     </div>
                     <div className="mt-2 flex justify-between border-t pt-2">
                       <span className="text-slate-700">Total</span>
-                      <span className="text-slate-900 font-bold">
-                        R$ {total.toFixed(2).replace(".", ",")}
-                      </span>
+                      <span className="text-slate-900 font-bold">{`R$ ${total.toFixed(2).replace(".", ",")}`}</span>
                     </div>
                     <div className="mt-1 text-[11px] text-slate-500">
                       * Valores do catálogo (se cadastrado). Atendimento “Solicitar agora” usa esses valores.
                     </div>
                   </div>
                 ) : (
-                  <div className="mt-2 text-xs text-slate-500">
-                    Sem valores no catálogo para esse serviço.
-                  </div>
+                  <div className="mt-2 text-xs text-slate-500">Sem valores no catálogo para esse serviço.</div>
                 )}
               </div>
 
@@ -409,9 +555,7 @@ export default function AgendaClient() {
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-slate-500">WhatsApp</span>
-                <span className="font-semibold text-slate-900">
-                  {onlyDigits(form.telefone) ? onlyDigits(form.telefone) : "—"}
-                </span>
+                <span className="font-semibold text-slate-900">{onlyDigits(form.telefone) ? onlyDigits(form.telefone) : "—"}</span>
               </div>
             </div>
 
