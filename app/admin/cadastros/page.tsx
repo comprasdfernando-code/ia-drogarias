@@ -3,19 +3,13 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 
-/* =========================
-   SUPABASE
-========================= */
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
 );
 
-/* =========================
-   CONFIG
-========================= */
 const SENHA_ADMIN = "102030";
-const TABELA = "usuarios"; // ✅ sua tabela
+const TABELA = "usuarios";
 
 type UsuarioRow = {
   id: string;
@@ -33,6 +27,73 @@ function fmtData(dt: string | null) {
 
 function onlyDigits(v: string) {
   return (v || "").replace(/\D/g, "");
+}
+
+/** normaliza tel pra 55 + DDD + número */
+function normalizeBRPhone(raw: string | null | undefined) {
+  const d = onlyDigits(raw || "");
+  if (!d) return null;
+  // já tem 55?
+  if (d.startsWith("55") && (d.length === 12 || d.length === 13)) return d;
+  // tem DDD (11 dígitos celular / 10 fixo)
+  if (d.length === 10 || d.length === 11) return "55" + d;
+  // fallback
+  if (d.length > 11) return d;
+  return null;
+}
+
+function waLink(phone55: string, message: string) {
+  const text = encodeURIComponent(message);
+  return `https://wa.me/${phone55}?text=${text}`;
+}
+
+/** textos padrão (edita livre) */
+function msgAgradecer(nome: string) {
+  return `Olá ${nome}! 😊
+
+Aqui é da IA Drogarias.
+
+Obrigado por se cadastrar como profissional na nossa plataforma. Seu cadastro foi recebido com sucesso ✅
+
+Em breve você já poderá começar a receber solicitações de serviços com total flexibilidade (você define dias e horários).
+
+Se quiser, me diga sua cidade/bairro e sua principal área de atuação pra eu já deixar seu perfil mais completo.`;
+}
+
+function msgProximosPassos(nome: string) {
+  return `Olá ${nome}! 😊
+
+Só pra te explicar os próximos passos na IA Drogarias:
+
+1) Você define seus dias/horários disponíveis
+2) Quando chegar um serviço, você vê região e valores a receber
+3) Você pode aceitar ou recusar — total flexibilidade ✅
+
+Se puder, me confirme:
+• Cidade/bairro
+• Área principal (ex.: serviços farmacêuticos, estética, etc.)
+• Melhor horário para atendimentos`;
+}
+
+function msgDocs(nome: string) {
+  return `Olá ${nome}! 😊
+
+Para deixar seu perfil com mais credibilidade na IA Drogarias, você pode me enviar (se tiver):
+
+• Documento profissional (ex.: CRF, certificado, etc.)
+• Foto/Logo (opcional)
+• Uma frase curta do seu atendimento
+
+Assim seu perfil fica completo e passa mais confiança pros pacientes ✅`;
+}
+
+async function copyToClipboard(text: string) {
+  try {
+    await navigator.clipboard.writeText(text);
+    alert("Texto copiado ✅");
+  } catch {
+    alert("Não consegui copiar automaticamente. Se quiser, eu ajusto pra fallback.");
+  }
 }
 
 export default function AdminCadastroPage() {
@@ -88,12 +149,11 @@ export default function AdminCadastroPage() {
       let query = supabase
         .from(TABELA)
         .select("id,nome,email,tipo,criado_em,telefone", { count: "exact" })
-        .eq("tipo", aba) // ✅ aqui filtra profissionais/cliente
+        .eq("tipo", aba)
         .order("criado_em", { ascending: false })
         .range(range.from, range.to);
 
       if (qq) {
-        // busca em nome/email/telefone
         const parts: string[] = [];
         parts.push(`nome.ilike.%${qq}%`);
         parts.push(`email.ilike.%${qq}%`);
@@ -120,60 +180,6 @@ export default function AdminCadastroPage() {
     carregar();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [authed, aba, page, range.from, range.to]);
-
-  async function exportarCSV() {
-    setLoading(true);
-    try {
-      const qq = q.trim();
-      const dig = onlyDigits(qq);
-
-      let query = supabase
-        .from(TABELA)
-        .select("id,nome,email,tipo,criado_em,telefone")
-        .eq("tipo", aba)
-        .order("criado_em", { ascending: false });
-
-      if (qq) {
-        const parts: string[] = [];
-        parts.push(`nome.ilike.%${qq}%`);
-        parts.push(`email.ilike.%${qq}%`);
-        parts.push(`telefone.ilike.%${qq}%`);
-        if (dig.length >= 6) parts.push(`telefone.ilike.%${dig}%`);
-        query = query.or(parts.join(","));
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
-
-      const rows = (data as UsuarioRow[]) || [];
-      const headers = ["criado_em", "tipo", "nome", "telefone", "email", "id"];
-
-      const esc = (s: any) => {
-        const v = (s ?? "").toString();
-        if (v.includes(",") || v.includes('"') || v.includes("\n"))
-          return `"${v.replace(/"/g, '""')}"`;
-        return v;
-      };
-
-      const csv = [
-        headers.join(","),
-        ...rows.map((r) => headers.map((h) => esc((r as any)[h])).join(",")),
-      ].join("\n");
-
-      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `cadastros_${aba}_${new Date().toISOString().slice(0, 10)}.csv`;
-      a.click();
-      URL.revokeObjectURL(url);
-    } catch (e: any) {
-      console.error(e);
-      alert(e?.message || "Erro ao exportar.");
-    } finally {
-      setLoading(false);
-    }
-  }
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
@@ -220,7 +226,7 @@ export default function AdminCadastroPage() {
   }
 
   return (
-    <div style={{ maxWidth: 1100, margin: "24px auto", padding: 16 }}>
+    <div style={{ maxWidth: 1200, margin: "24px auto", padding: 16 }}>
       <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "center" }}>
         <h1 style={{ fontSize: 22, fontWeight: 900 }}>Cadastros (tabela usuarios)</h1>
         <button onClick={sair} style={{ padding: "10px 12px", borderRadius: 10, cursor: "pointer" }}>
@@ -229,7 +235,7 @@ export default function AdminCadastroPage() {
       </div>
 
       {/* Abas */}
-      <div style={{ display: "flex", gap: 10, marginTop: 14, alignItems: "center" }}>
+      <div style={{ display: "flex", gap: 10, marginTop: 14, alignItems: "center", flexWrap: "wrap" }}>
         <button
           onClick={() => setAba("farmaceutico")}
           style={{
@@ -240,7 +246,7 @@ export default function AdminCadastroPage() {
             border: aba === "farmaceutico" ? "2px solid #111" : "1px solid #ddd",
           }}
         >
-          Profissionais (farmaceutico)
+          Profissionais
         </button>
 
         <button
@@ -253,16 +259,16 @@ export default function AdminCadastroPage() {
             border: aba === "cliente" ? "2px solid #111" : "1px solid #ddd",
           }}
         >
-          Clientes (cliente)
+          Clientes
         </button>
 
         <div style={{ flex: 1 }} />
 
         <button
-          onClick={exportarCSV}
-          style={{ padding: "10px 12px", borderRadius: 10, cursor: "pointer", fontWeight: 800 }}
+          onClick={() => carregar()}
+          style={{ padding: "10px 12px", borderRadius: 10, cursor: "pointer", fontWeight: 900 }}
         >
-          Exportar CSV
+          Atualizar
         </button>
       </div>
 
@@ -287,51 +293,138 @@ export default function AdminCadastroPage() {
         </button>
       </div>
 
-      {/* Tabela */}
-      <div style={{ marginTop: 14, border: "1px solid #e5e5e5", borderRadius: 14, overflow: "hidden" }}>
-        <div style={{ padding: 12, borderBottom: "1px solid #eee", display: "flex", justifyContent: "space-between" }}>
-          <div>
-            <b>{total}</b> registros • página <b>{page}</b> de <b>{totalPages}</b>
+      {/* LISTA EM CARDS (melhor pra botões do WhatsApp) */}
+      <div style={{ marginTop: 14 }}>
+        <div style={{ opacity: 0.8, marginBottom: 10 }}>
+          <b>{total}</b> registros • página <b>{page}</b> de <b>{totalPages}</b> {loading ? "• carregando..." : ""}
+        </div>
+
+        {rows.length === 0 && !loading && (
+          <div style={{ padding: 14, border: "1px solid #eee", borderRadius: 12 }}>
+            Nenhum registro encontrado.
           </div>
-          <div>{loading ? "Carregando..." : ""}</div>
-        </div>
+        )}
 
-        <div style={{ overflowX: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse" }}>
-            <thead>
-              <tr style={{ background: "#fafafa" }}>
-                <th style={{ textAlign: "left", padding: 12, borderBottom: "1px solid #eee" }}>Criado em</th>
-                <th style={{ textAlign: "left", padding: 12, borderBottom: "1px solid #eee" }}>Nome</th>
-                <th style={{ textAlign: "left", padding: 12, borderBottom: "1px solid #eee" }}>Telefone</th>
-                <th style={{ textAlign: "left", padding: 12, borderBottom: "1px solid #eee" }}>Email</th>
-                <th style={{ textAlign: "left", padding: 12, borderBottom: "1px solid #eee" }}>Tipo</th>
-              </tr>
-            </thead>
+        {rows.map((r) => {
+          const nome = (r.nome || "tudo bem").trim();
+          const phone55 = normalizeBRPhone(r.telefone);
+          const isProf = r.tipo === "farmaceutico";
 
-            <tbody>
-              {rows.length === 0 && !loading && (
-                <tr>
-                  <td colSpan={5} style={{ padding: 14 }}>
-                    Nenhum registro encontrado.
-                  </td>
-                </tr>
+          // mensagens (somente pra profissional faz sentido esses textos)
+          const m1 = msgAgradecer(nome);
+          const m2 = msgProximosPassos(nome);
+          const m3 = msgDocs(nome);
+
+          return (
+            <div
+              key={r.id}
+              style={{
+                border: "1px solid #eaeaea",
+                borderRadius: 14,
+                padding: 14,
+                marginBottom: 12,
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
+                <div>
+                  <div style={{ fontSize: 16, fontWeight: 900 }}>{r.nome || "—"}</div>
+                  <div style={{ opacity: 0.8, marginTop: 4 }}>
+                    <b>Telefone:</b> {r.telefone || "—"} • <b>Email:</b> {r.email || "—"}
+                  </div>
+                  <div style={{ opacity: 0.75, marginTop: 4 }}>
+                    <b>Tipo:</b> {r.tipo || "—"} • <b>Criado:</b> {fmtData(r.criado_em)}
+                  </div>
+                </div>
+
+                <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                  {phone55 ? (
+                    <a
+                      href={waLink(phone55, `Olá ${nome}! 😊`)}
+                      target="_blank"
+                      rel="noreferrer"
+                      style={{
+                        padding: "10px 12px",
+                        borderRadius: 10,
+                        border: "1px solid #ddd",
+                        textDecoration: "none",
+                        fontWeight: 900,
+                      }}
+                    >
+                      Abrir WhatsApp
+                    </a>
+                  ) : (
+                    <span style={{ padding: "10px 12px", borderRadius: 10, border: "1px dashed #ddd", opacity: 0.7 }}>
+                      Sem telefone válido
+                    </span>
+                  )}
+                </div>
+              </div>
+
+              {/* Ações WhatsApp só para profissionais */}
+              {isProf && (
+                <div style={{ marginTop: 12, display: "flex", gap: 10, flexWrap: "wrap" }}>
+                  <button
+                    disabled={!phone55}
+                    onClick={() => phone55 && window.open(waLink(phone55, m1), "_blank")}
+                    style={{
+                      padding: "10px 12px",
+                      borderRadius: 10,
+                      cursor: phone55 ? "pointer" : "not-allowed",
+                      border: "1px solid #ddd",
+                      fontWeight: 900,
+                    }}
+                  >
+                    WhatsApp • Agradecer
+                  </button>
+
+                  <button
+                    disabled={!phone55}
+                    onClick={() => phone55 && window.open(waLink(phone55, m2), "_blank")}
+                    style={{
+                      padding: "10px 12px",
+                      borderRadius: 10,
+                      cursor: phone55 ? "pointer" : "not-allowed",
+                      border: "1px solid #ddd",
+                      fontWeight: 900,
+                    }}
+                  >
+                    WhatsApp • Próximos passos
+                  </button>
+
+                  <button
+                    disabled={!phone55}
+                    onClick={() => phone55 && window.open(waLink(phone55, m3), "_blank")}
+                    style={{
+                      padding: "10px 12px",
+                      borderRadius: 10,
+                      cursor: phone55 ? "pointer" : "not-allowed",
+                      border: "1px solid #ddd",
+                      fontWeight: 900,
+                    }}
+                  >
+                    WhatsApp • Docs/Validação
+                  </button>
+
+                  <button
+                    onClick={() => copyToClipboard(m1)}
+                    style={{
+                      padding: "10px 12px",
+                      borderRadius: 10,
+                      cursor: "pointer",
+                      border: "1px solid #ddd",
+                      fontWeight: 900,
+                    }}
+                  >
+                    Copiar texto (Agradecer)
+                  </button>
+                </div>
               )}
-
-              {rows.map((r) => (
-                <tr key={r.id}>
-                  <td style={{ padding: 12, borderBottom: "1px solid #f0f0f0" }}>{fmtData(r.criado_em)}</td>
-                  <td style={{ padding: 12, borderBottom: "1px solid #f0f0f0" }}>{r.nome || "—"}</td>
-                  <td style={{ padding: 12, borderBottom: "1px solid #f0f0f0" }}>{r.telefone || "—"}</td>
-                  <td style={{ padding: 12, borderBottom: "1px solid #f0f0f0" }}>{r.email || "—"}</td>
-                  <td style={{ padding: 12, borderBottom: "1px solid #f0f0f0" }}>{r.tipo || "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+            </div>
+          );
+        })}
 
         {/* Paginação */}
-        <div style={{ display: "flex", gap: 10, padding: 12, justifyContent: "flex-end", borderTop: "1px solid #eee" }}>
+        <div style={{ display: "flex", gap: 10, paddingTop: 8, justifyContent: "flex-end" }}>
           <button
             onClick={() => setPage((p) => Math.max(1, p - 1))}
             disabled={page <= 1 || loading}
