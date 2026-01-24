@@ -96,22 +96,35 @@ function firstImg(imagens?: any) {
 }
 
 /**
- * ✅ mesma lógica do PDV:
- * 1) se loja tem preco_venda > 0, usa
- * 2) senão, se em promoção e promo válida (promo > 0 e (pmc==0/null ou promo < pmc)), usa promo
- * 3) senão usa pmc
+ * ✅ LÓGICA CORRIGIDA (Home = Produto)
+ * base = preco_venda (se >0) senão pmc
+ * se em promoção e promo válida (promo >0 e promo < base) => usa promo
+ * off: usa percentual_off se vier, senão calcula
  */
 function precoFinal(p: DRFProdutoView) {
   const loja = Number(p.preco_venda || 0);
-
   const pmc = Number(p.pmc || 0);
   const promo = Number(p.preco_promocional || 0);
 
-  const emPromo = !!p.em_promocao && promo > 0 && (!pmc || promo < pmc);
-  const final = loja > 0 ? loja : emPromo ? promo : pmc;
+  // preço cheio (referência)
+  const base = loja > 0 ? loja : pmc;
 
-  const off = Number(p.percentual_off || 0);
-  return { final: Number(final || 0), emPromo, off };
+  // promoção só é válida se for menor que o preço cheio
+  const emPromo = !!p.em_promocao && promo > 0 && base > 0 && promo < base;
+
+  const final = emPromo ? promo : base;
+
+  const offView = Number(p.percentual_off || 0);
+  const offCalc = emPromo ? Math.round(100 - (promo / base) * 100) : 0;
+  const off = offView > 0 ? offView : offCalc;
+
+  return {
+    final: Number(final || 0),
+    emPromo,
+    off,
+    base: Number(base || 0),
+    promo: Number(promo || 0),
+  };
 }
 
 export default function DrogariaRedeFabianoHome() {
@@ -915,7 +928,8 @@ function ProdutoCardUltra({
           />
         </Link>
 
-        {!!p.em_promocao && pr.off > 0 && (
+        {/* ✅ Badge OFF corrigido */}
+        {pr.emPromo && pr.off > 0 && (
           <span className="absolute top-3 right-3 text-[11px] font-extrabold bg-red-600 text-white px-2 py-1 rounded-full shadow-sm">
             {pr.off}% OFF
           </span>
@@ -934,8 +948,17 @@ function ProdutoCardUltra({
 
         {p.apresentacao && <div className="text-[11px] text-gray-600 mt-1 line-clamp-1">{p.apresentacao}</div>}
 
+        {/* ✅ “de/por” + economia */}
         <div className="mt-2">
+          {pr.emPromo && pr.base > pr.final ? (
+            <div className="text-[11px] text-gray-500 line-through">{brl(pr.base)}</div>
+          ) : null}
+
           <div className="text-base font-extrabold text-blue-900">{brl(pr.final)}</div>
+
+          {pr.emPromo && pr.base > pr.final ? (
+            <div className="text-[11px] font-bold text-green-700">Você economiza {brl(pr.base - pr.final)}</div>
+          ) : null}
         </div>
 
         <div className="mt-2 text-[11px]">
