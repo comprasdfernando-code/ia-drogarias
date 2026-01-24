@@ -1,13 +1,10 @@
-"use client";
-
-import dynamic from "next/dynamic";
-
-const SolicitarClient = dynamic(() => import("./SolicitarClient"), { ssr: false });
+import { Suspense } from "react";
+import SolicitarClient from "./SolicitarClient";
 
 export default function SolicitarPage() {
   return (
-    <main className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
+    <Suspense fallback={<div className="p-6 text-sm text-slate-600">Carregando…</div>}>
       <SolicitarClient />
-    </main>
+    </Suspense>
   );
 }
