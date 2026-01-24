@@ -5,7 +5,18 @@ const nextConfig = {
     esmExternals: true,
   },
   images: {
-    domains: ["skzcvpkmcktjryvstctl.supabase.co"], // ✅ CORRETO: ctl
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "skzcvpkmcktjryvstctl.supabase.co",
+        pathname: "/storage/v1/object/public/**",
+      },
+      {
+        protocol: "https",
+        hostname: "distro.fbitstatic.net",
+        pathname: "/**",
+      },
+    ],
   },
 };
 
