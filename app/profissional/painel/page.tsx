@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
 function brl(v: number) {
@@ -47,9 +47,13 @@ export default function PainelProfissional() {
   const [loadingProf, setLoadingProf] = useState(false);
 
   const [online, setOnline] = useState(false);
+  const [onlineSaving, setOnlineSaving] = useState(false);
 
   const [chamados, setChamados] = useState<Chamado[]>([]);
   const [loadingChamados, setLoadingChamados] = useState(false);
+
+  // Realtime channel ref (evita duplicar subscribe)
+  const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
 
   // -------- Auth boot --------
   useEffect(() => {
@@ -78,6 +82,12 @@ export default function PainelProfissional() {
   }
 
   async function signOut() {
+    // tenta desligar no banco antes de sair
+    try {
+      await setOnlineToDB(false);
+    } catch {
+      // ignore
+    }
     await supabase.auth.signOut();
     setProf(null);
     setOnline(false);
@@ -121,6 +131,14 @@ export default function PainelProfissional() {
 
     setProf((p as any) || null);
     setLoadingProf(false);
+
+    // Depois de carregar prof, tenta ler status online do banco (tabela profissionais)
+    // (não bloqueia se tabela/policies ainda não estiverem prontas)
+    try {
+      await loadOnlineFromDB(user.id);
+    } catch {
+      // ignore
+    }
   }
 
   useEffect(() => {
@@ -128,22 +146,121 @@ export default function PainelProfissional() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user?.id]);
 
+  // -------- ONLINE: DB (tabela public.profissionais) --------
+  async function ensureProfRowInProfissionais(userId: string) {
+    // cria/atualiza registro na tabela public.profissionais (fonte da verdade do online)
+    // requer RLS: insert/update self (auth.uid() = user_id)
+    const payload = {
+      user_id: userId,
+      nome: prof?.nome || user?.user_metadata?.nome || user?.email || "Profissional",
+      whatsapp: prof?.whatsapp || null,
+      updated_at: new Date().toISOString(),
+    };
+
+    await supabase
+      .from("profissionais")
+      .upsert(payload, { onConflict: "user_id" });
+  }
+
+  async function loadOnlineFromDB(userId: string) {
+    const { data, error } = await supabase
+      .from("profissionais")
+      .select("online")
+      .eq("user_id", userId)
+      .maybeSingle();
+
+    if (error) return; // não trava o painel
+    if (data?.online === true || data?.online === false) setOnline(!!data.online);
+  }
+
+  async function setOnlineToDB(nextOnline: boolean) {
+    if (!user?.id) return;
+
+    setOnlineSaving(true);
+    try {
+      // garante que existe linha do profissional antes do update
+      await ensureProfRowInProfissionais(user.id);
+
+      const { error } = await supabase
+        .from("profissionais")
+        .update({
+          online: nextOnline,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("user_id", user.id);
+
+      if (error) {
+        console.error("Erro salvando online:", error);
+        throw error;
+      }
+    } finally {
+      setOnlineSaving(false);
+    }
+  }
+
+  async function toggleOnline() {
+    const next = !online;
+    setOnline(next); // otimista
+    try {
+      await setOnlineToDB(next);
+    } catch (e) {
+      // reverte se falhou
+      setOnline(!next);
+      alert("Não consegui salvar seu status Online/Offline. Verifique as policies do Supabase.");
+    }
+  }
+
+  // Desliga online ao fechar/atualizar a página (best-effort)
+  useEffect(() => {
+    if (!user?.id) return;
+
+    const handler = () => {
+      // não dá pra await no unload; best-effort
+      try {
+        supabase
+          .from("profissionais")
+          .update({ online: false, updated_at: new Date().toISOString() })
+          .eq("user_id", user.id);
+      } catch {
+        // ignore
+      }
+    };
+
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [user?.id]);
+
   // -------- Load chamados + realtime (only when online) --------
   async function refreshChamados() {
     setLoadingChamados(true);
-    const { data } = await supabase
+
+    const { data, error } = await supabase
       .from("chamados")
       .select("*")
       .eq("status", "procurando")
       .order("created_at", { ascending: false })
       .limit(50);
 
+    if (error) {
+      console.error("Erro carregando chamados:", error);
+      setChamados([]);
+      setLoadingChamados(false);
+      return;
+    }
+
     setChamados((data as any) || []);
     setLoadingChamados(false);
   }
 
   useEffect(() => {
+    // limpa subscribe anterior
+    if (channelRef.current) {
+      supabase.removeChannel(channelRef.current);
+      channelRef.current = null;
+    }
+
     if (!online) return;
+
     refreshChamados();
 
     const channel = supabase
@@ -152,14 +269,18 @@ export default function PainelProfissional() {
         "postgres_changes",
         { event: "*", schema: "public", table: "chamados" },
         () => {
-          // simples e robusto no MVP
           refreshChamados();
         }
       )
       .subscribe();
 
+    channelRef.current = channel;
+
     return () => {
-      supabase.removeChannel(channel);
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [online]);
@@ -176,6 +297,8 @@ export default function PainelProfissional() {
         status: "aceito",
         profissional_id: prof.id,
         profissional_nome: prof.nome || "Profissional",
+        // importante: vincula auth.uid() (para policies seguras)
+        profissional_uid: user?.id || null,
       })
       .eq("id", chamadoId)
       .eq("status", "procurando") // trava concorrência
@@ -226,6 +349,7 @@ export default function PainelProfissional() {
                   onChange={(e) => setEmail(e.target.value)}
                   className="mt-1 w-full rounded-2xl border px-3 py-3 text-sm outline-none focus:border-slate-900"
                   placeholder="email@exemplo.com"
+                  autoComplete="email"
                 />
               </div>
               <div>
@@ -236,6 +360,7 @@ export default function PainelProfissional() {
                   onChange={(e) => setSenha(e.target.value)}
                   className="mt-1 w-full rounded-2xl border px-3 py-3 text-sm outline-none focus:border-slate-900"
                   placeholder="••••••••"
+                  autoComplete="current-password"
                 />
               </div>
 
@@ -274,7 +399,8 @@ export default function PainelProfissional() {
                   {loadingProf ? "Carregando cadastro…" : prof?.nome || "Cadastro não vinculado"}
                 </div>
                 <div className="mt-1 text-xs text-slate-600">
-                  {prof?.area ? `Área: ${prof.area}` : "—"} • {prof?.whatsapp ? `WhatsApp: ${onlyDigits(prof.whatsapp)}` : "—"}
+                  {prof?.area ? `Área: ${prof.area}` : "—"} •{" "}
+                  {prof?.whatsapp ? `WhatsApp: ${onlyDigits(prof.whatsapp)}` : "—"}
                 </div>
 
                 {!prof ? (
@@ -288,14 +414,18 @@ export default function PainelProfissional() {
               <div className="mt-4 flex items-center justify-between rounded-2xl border p-4">
                 <div>
                   <div className="text-sm font-semibold text-slate-900">Disponibilidade</div>
-                  <div className="text-xs text-slate-500">Ative para receber chamados em tempo real.</div>
+                  <div className="text-xs text-slate-500">
+                    Ative para receber chamados em tempo real {onlineSaving ? "(salvando…)" : ""}.
+                  </div>
                 </div>
 
                 <button
-                  onClick={() => setOnline((v) => !v)}
+                  onClick={toggleOnline}
+                  disabled={onlineSaving}
                   className={[
                     "rounded-2xl px-4 py-2 text-sm font-semibold transition",
                     online ? "bg-emerald-600 text-white" : "bg-slate-200 text-slate-900",
+                    onlineSaving ? "opacity-60 cursor-not-allowed" : "",
                   ].join(" ")}
                 >
                   {online ? "Online" : "Offline"}
@@ -303,7 +433,7 @@ export default function PainelProfissional() {
               </div>
 
               <div className="mt-3 text-xs text-slate-500">
-                * No MVP, “online” controla sua tela/alerta. Depois a gente salva isso no banco e filtra por região.
+                * Agora o status <b>Online</b> é salvo na tabela <b>public.profissionais</b> (usado no Admin Operação).
               </div>
             </div>
 
@@ -339,7 +469,8 @@ export default function PainelProfissional() {
                         <div>
                           <div className="text-sm font-semibold text-slate-900">{c.servico}</div>
                           <div className="mt-1 text-xs text-slate-600">
-                            {c.endereco || "Sem endereço"} • {c.cliente_nome || "Cliente"} • {onlyDigits(c.cliente_whatsapp || "")}
+                            {c.endereco || "Sem endereço"} • {c.cliente_nome || "Cliente"} •{" "}
+                            {onlyDigits(c.cliente_whatsapp || "")}
                           </div>
                           {c.observacoes ? (
                             <div className="mt-2 text-xs text-slate-600">Obs: {c.observacoes}</div>
