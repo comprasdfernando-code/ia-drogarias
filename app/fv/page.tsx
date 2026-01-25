@@ -1,3 +1,4 @@
+
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -10,47 +11,47 @@ import { ToastProvider, useToast } from "./_components/toast";
 import FVBanners from "./_components/FVBanners";
 import { CartUIProvider, useCartUI } from "./_components/cart-ui";
 
-/* ✅ ADD: BANNERS LATERAIS (Serviços) */
+/* =========================
+   SERVIÇOS (BANNERS LATERAIS - DESKTOP)
+   - Desktop: usa as artes verticais e abre a agenda
+   - Mobile: NÃO aparece aqui (pra não ficar no topo)
+========================= */
 type ServiceAd = {
   key: string;
   title: string;
-  subtitle: string;
   href: string;
   img: string;
 };
-const WHATS_SERVICOS = "5511948343725"; // ajuste se quiser outro WhatsApp
-const wpp = (text: string) => `https://wa.me/${WHATS_SERVICOS}?text=${encodeURIComponent(text)}`;
 
-/* ✅ ADD: componente local, sem mexer no resto */
+function serviceLink(servico: string) {
+  return `/servicos/agenda?servico=${encodeURIComponent(servico)}`;
+}
+
 function ServiceSideAds() {
   const ads: ServiceAd[] = useMemo(
     () => [
       {
         key: "pressao",
         title: "Aferição de Pressão",
-        subtitle: "Rápido e prático",
-        href: wpp("Olá! Quero solicitar aferição de pressão. Pode me ajudar?"),
+        href: serviceLink("Aferição de Pressão Arterial"),
         img: "/banners/pressao-vertical.jpg",
       },
       {
         key: "glicemia",
         title: "Teste de Glicemia",
-        subtitle: "Resultado na hora",
-        href: wpp("Olá! Quero agendar um teste de glicemia. Como funciona?"),
+        href: serviceLink("Teste de Glicemia"),
         img: "/banners/glicemia-vertical.jpg",
       },
       {
         key: "injecao",
         title: "Aplicação de Injeção",
-        subtitle: "Com profissional",
-        href: wpp("Olá! Quero solicitar aplicação de injeção. Pode me orientar?"),
+        href: serviceLink("Aplicação de Injeção"),
         img: "/banners/injecao-vertical.jpg",
       },
       {
         key: "revisao",
         title: "Revisão de Medicamentos",
-        subtitle: "Mais segurança no tratamento",
-        href: wpp("Olá! Quero uma revisão de medicamentos e orientação. Como agendo?"),
+        href: serviceLink("Revisão de Medicamentos"),
         img: "/banners/revisao-vertical.jpg",
       },
     ],
@@ -71,7 +72,7 @@ function ServiceSideAds() {
     <>
       {/* LATERAIS (somente desktop grande) */}
       <div className="hidden xl:flex fixed top-28 left-3 z-40">
-        <Link href={left.href} target="_blank" className="group" title={left.title}>
+        <Link href={left.href} className="group" title={left.title}>
           <div className="relative w-[160px] h-[520px] rounded-xl overflow-hidden shadow-lg">
             <Image
               src={left.img}
@@ -85,7 +86,7 @@ function ServiceSideAds() {
       </div>
 
       <div className="hidden xl:flex fixed top-28 right-3 z-40">
-        <Link href={right.href} target="_blank" className="group" title={right.title}>
+        <Link href={right.href} className="group" title={right.title}>
           <div className="relative w-[160px] h-[520px] rounded-xl overflow-hidden shadow-lg">
             <Image
               src={right.img}
@@ -97,31 +98,13 @@ function ServiceSideAds() {
           </div>
         </Link>
       </div>
-
-      {/* MOBILE/TABLET: faixa serviços rápidos */}
-      <div className="xl:hidden px-3 mt-3">
-        <div className="rounded-2xl border bg-white p-3 shadow-sm">
-          <div className="font-extrabold text-sm mb-2">Serviços rápidos</div>
-          <div className="grid grid-cols-2 gap-2">
-            {ads.map((a) => (
-              <Link
-                key={a.key}
-                href={a.href}
-                target="_blank"
-                className="rounded-xl border p-2 hover:shadow-sm transition"
-              >
-                <div className="text-sm font-extrabold leading-tight">{a.title}</div>
-                <div className="text-xs text-gray-600">{a.subtitle}</div>
-                <div className="text-xs font-extrabold mt-1 text-blue-700">Solicitar</div>
-              </Link>
-            ))}
-          </div>
-        </div>
-      </div>
     </>
   );
 }
 
+/* =========================
+   TIPOS / HELPERS
+========================= */
 type FVProduto = {
   id: string;
   ean: string;
@@ -137,7 +120,7 @@ type FVProduto = {
   ativo: boolean | null;
   imagens: string[] | null;
 
-  // ✅ vindo da VIEW
+  // vindo da VIEW
   estoque_total: number;
   disponivel: boolean;
 };
@@ -183,6 +166,9 @@ function firstImg(imagens?: string[] | null) {
   return "/produtos/caixa-padrao.png";
 }
 
+/* =========================
+   PAGE WRAPPER
+========================= */
 export default function FarmaciaVirtualHomePage() {
   return (
     <ToastProvider>
@@ -193,7 +179,8 @@ export default function FarmaciaVirtualHomePage() {
   );
 }
 
-const GridSkeleton: React.FC = () => {
+/* ✅ CORRIGIDO: sem React.FC (evita erro do GridSkeleton no App Router) */
+function GridSkeleton() {
   return (
     <div className="mt-6 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-5">
       {Array.from({ length: 12 }).map((_, i) => (
@@ -211,9 +198,11 @@ const GridSkeleton: React.FC = () => {
       ))}
     </div>
   );
-};
+}
 
-
+/* =========================
+   HOME
+========================= */
 function FarmaciaVirtualHome() {
   const [loadingHome, setLoadingHome] = useState(true);
   const [loadingBusca, setLoadingBusca] = useState(false);
@@ -233,9 +222,7 @@ function FarmaciaVirtualHome() {
 
   const isSearching = !!busca.trim();
 
-  // =========================================
-  // LOAD HOME (sem categoria) com paginação
-  // =========================================
+  // LOAD HOME
   async function loadHome(p = 0, append = false) {
     try {
       setLoadingHome(true);
@@ -276,9 +263,7 @@ function FarmaciaVirtualHome() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // =========================================
   // SEARCH
-  // =========================================
   useEffect(() => {
     async function search() {
       const raw = busca.trim();
@@ -289,56 +274,42 @@ function FarmaciaVirtualHome() {
 
       setLoadingBusca(true);
       try {
-        const normalized = raw
-          .toLowerCase()
-          .replace(/(\d+)\s*(mg|ml|mcg|g|ui|iu)/gi, "$1 $2")
-          .replace(/\s+/g, " ")
-          .trim();
+        // fallback direto na VIEW
+        const digits = raw.replace(/\D/g, "");
+        let query = supabase
+          .from(VIEW_HOME)
+          .select(
+            "id,ean,nome,laboratorio,categoria,apresentacao,pmc,em_promocao,preco_promocional,percentual_off,destaque_home,ativo,imagens,estoque_total,disponivel"
+          )
+          .limit(100);
 
-        void normalized;
-
-        // Se você tiver RPC, ok. Senão, usa fallback abaixo.
-        // IMPORTANTE: a RPC precisa retornar também estoque_total/disponivel,
-        // por isso aqui vamos de fallback direto na VIEW (mais garantido).
-        throw new Error("fallback");
-      } catch {
-        try {
-          const digits = raw.replace(/\D/g, "");
-          let query = supabase
-            .from(VIEW_HOME)
-            .select(
-              "id,ean,nome,laboratorio,categoria,apresentacao,pmc,em_promocao,preco_promocional,percentual_off,destaque_home,ativo,imagens,estoque_total,disponivel"
-            )
-            .limit(100);
-
-          if (digits.length >= 8 && digits.length <= 14) {
-            query = query.or(`ean.eq.${digits},nome.ilike.%${raw}%`);
-          } else {
-            query = query.ilike("nome", `%${raw}%`);
-          }
-
-          const { data, error } = await query;
-          if (error) throw error;
-
-          const ordered = ((data || []) as FVProduto[]).sort((a, b) => {
-            const pa = a.disponivel ? 1 : 0;
-            const pb = b.disponivel ? 1 : 0;
-            if (pb !== pa) return pb - pa; // disponíveis primeiro
-
-            const ppa = a.em_promocao ? 1 : 0;
-            const ppb = b.em_promocao ? 1 : 0;
-            if (ppb !== ppa) return ppb - ppa;
-
-            return (a.nome || "").localeCompare(b.nome || "");
-          });
-
-          setResultado(ordered);
-        } catch (e2) {
-          console.error("Erro search FV:", e2);
-          setResultado([]);
-        } finally {
-          setLoadingBusca(false);
+        if (digits.length >= 8 && digits.length <= 14) {
+          query = query.or(`ean.eq.${digits},nome.ilike.%${raw}%`);
+        } else {
+          query = query.ilike("nome", `%${raw}%`);
         }
+
+        const { data, error } = await query;
+        if (error) throw error;
+
+        const ordered = ((data || []) as FVProduto[]).sort((a, b) => {
+          const pa = a.disponivel ? 1 : 0;
+          const pb = b.disponivel ? 1 : 0;
+          if (pb !== pa) return pb - pa;
+
+          const ppa = a.em_promocao ? 1 : 0;
+          const ppb = b.em_promocao ? 1 : 0;
+          if (ppb !== ppa) return ppb - ppa;
+
+          return (a.nome || "").localeCompare(b.nome || "");
+        });
+
+        setResultado(ordered);
+      } catch (e2) {
+        console.error("Erro search FV:", e2);
+        setResultado([]);
+      } finally {
+        setLoadingBusca(false);
       }
     }
 
@@ -348,7 +319,7 @@ function FarmaciaVirtualHome() {
 
   return (
     <main className="min-h-screen bg-gray-50 pb-24">
-      {/* ✅ ADD: banners laterais + cards mobile (serviços) */}
+      {/* ✅ Desktop: banners laterais */}
       <ServiceSideAds />
 
       <header className="sticky top-0 z-40 bg-blue-700 shadow">
@@ -394,9 +365,7 @@ function FarmaciaVirtualHome() {
                     Limpar
                   </button>
                 ) : null}
-                <span className="text-blue-900 bg-green-400/90 px-2 py-1 rounded-full text-xs font-extrabold">
-                  🔎
-                </span>
+                <span className="text-blue-900 bg-green-400/90 px-2 py-1 rounded-full text-xs font-extrabold">🔎</span>
               </div>
             </div>
 
@@ -407,7 +376,7 @@ function FarmaciaVirtualHome() {
             )}
           </div>
 
-                    {/* DESKTOP */}
+          {/* DESKTOP */}
           <div className="hidden md:flex items-center gap-3">
             <div className="text-white font-extrabold whitespace-nowrap">
               IA Drogarias <span className="opacity-80">• FV</span>
@@ -438,7 +407,10 @@ function FarmaciaVirtualHome() {
                     </button>
                   ) : null}
 
-                  <span className="text-blue-900 bg-green-400/90 px-2 py-1 rounded-full text-xs font-extrabold" aria-hidden>
+                  <span
+                    className="text-blue-900 bg-green-400/90 px-2 py-1 rounded-full text-xs font-extrabold"
+                    aria-hidden
+                  >
                     🔎
                   </span>
                 </div>
@@ -476,7 +448,7 @@ function FarmaciaVirtualHome() {
       </div>
 
       <section className="max-w-6xl mx-auto px-4 mt-6">
-        {/* ✅ MOBILE/TABLET: carrossel de serviços */}
+        {/* ✅ MOBILE/TABLET: carrossel de serviços (AQUI, e não no topo) */}
         <ServiceQuickAds />
 
         {isSearching ? (
@@ -534,12 +506,11 @@ function FarmaciaVirtualHome() {
         )}
       </section>
 
-      {/* ✅ carrinho igual antes */}
+      {/* carrinho */}
       <CartModalPDV open={cartOpen} onClose={closeCart} />
     </main>
   );
 }
-
 function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void }) {
   const cart = useCart();
 
