@@ -42,7 +42,6 @@ const TAXA_LOCOMOCAO_PADRAO = 20;
 type CatalogoServico = {
   nome: string | null;
   preco: number | null;
-  // pode existir ou não na tabela
   taxa_locomocao?: number | null;
   ativo?: boolean | null;
 };
@@ -53,7 +52,7 @@ export default function AgendaClient() {
 
   const servicoURLRaw = searchParams.get("servico") || "";
 
-  // ✅ CORREÇÃO PRINCIPAL: decodifica e normaliza o nome do serviço
+  // ✅ decodifica + normaliza
   const servicoNome = useMemo(() => {
     try {
       return normalizeSpaces(decodeURIComponent(servicoURLRaw));
@@ -82,165 +81,133 @@ export default function AgendaClient() {
     if (servicoNome) setForm((p) => ({ ...p, servico: servicoNome }));
   }, [servicoNome]);
 
-  // ✅ Busca valores do serviço (match exato + fallback ilike com % %)
+  // ✅ Busca valores do serviço (EXATO -> ILIKE; lida com colunas ausentes)
   useEffect(() => {
     let alive = true;
 
-    async function load() {
+    async function run() {
       if (!servicoNome) {
-        setCatalogo(null);
+        if (alive) setCatalogo(null);
         return;
       }
 
-      setLoadingCatalogo(true);
+      if (alive) setLoadingCatalogo(true);
 
       try {
-        // 1) tenta buscar com taxa_locomocao (se existir) + ativo
-        const exactWithTaxaActive = async () =>
-          supabase
-            .from("servicos_catalogo")
-            .select("nome,preco,taxa_locomocao,ativo")
-            .eq("ativo", true)
-            .eq("nome", servicoNome)
-            .maybeSingle();
+        let data: any = null;
+        let error: any = null;
 
-        // 2) fallback se coluna taxa_locomocao não existir
-        const exactNoTaxaActive = async () =>
-          supabase
-            .from("servicos_catalogo")
-            .select("nome,preco,ativo")
-            .eq("ativo", true)
-            .eq("nome", servicoNome)
-            .maybeSingle();
+        const nomeBusca = servicoNome;
 
-        // 3) fallback se coluna ativo não existir
-        const exactWithTaxa = async () =>
-          supabase
-            .from("servicos_catalogo")
-            .select("nome,preco,taxa_locomocao")
-            .eq("nome", servicoNome)
-            .maybeSingle();
+        // --------- 1) EXATO com ativo + taxa
+        let r = await supabase
+          .from("servicos_catalogo")
+          .select("nome,preco,taxa_locomocao,ativo")
+          .eq("ativo", true)
+          .eq("nome", nomeBusca)
+          .maybeSingle();
 
-        const exactNoTaxa = async () =>
-          supabase
-            .from("servicos_catalogo")
-            .select("nome,preco")
-            .eq("nome", servicoNome)
-            .maybeSingle();
+        data = r.data;
+        error = r.error;
 
-        // 4) fallback ilike (caso o texto da URL esteja um pouco diferente)
-        const ilikeWithTaxaActive = async () =>
-          supabase
-            .from("servicos_catalogo")
-            .select("nome,preco,taxa_locomocao,ativo")
-            .eq("ativo", true)
-            .ilike("nome", `%${servicoNome}%`)
-            .order("nome", { ascending: true })
-            .limit(1)
-            .maybeSingle();
-
-        const ilikeNoTaxaActive = async () =>
-          supabase
+        // taxa_locomocao não existe -> refaz sem taxa
+        if (error?.code === "42703" && String(error?.message || "").includes("taxa_locomocao")) {
+          r = await supabase
             .from("servicos_catalogo")
             .select("nome,preco,ativo")
             .eq("ativo", true)
-            .ilike("nome", `%${servicoNome}%`)
-            .order("nome", { ascending: true })
-            .limit(1)
+            .eq("nome", nomeBusca)
             .maybeSingle();
 
-        const ilikeWithTaxa = async () =>
-          supabase
+          data = r.data;
+          error = r.error;
+        }
+
+        // ativo não existe -> refaz sem ativo (com taxa se existir)
+        if (error?.code === "42703" && String(error?.message || "").includes("ativo")) {
+          r = await supabase.from("servicos_catalogo").select("nome,preco,taxa_locomocao").eq("nome", nomeBusca).maybeSingle();
+
+          data = r.data;
+          error = r.error;
+
+          // se ainda der taxa_locomocao não existe
+          if (error?.code === "42703" && String(error?.message || "").includes("taxa_locomocao")) {
+            r = await supabase.from("servicos_catalogo").select("nome,preco").eq("nome", nomeBusca).maybeSingle();
+            data = r.data;
+            error = r.error;
+          }
+        }
+
+        // --------- 2) Se não achou no exato, tenta ILIKE
+        if (!error && !data) {
+          r = await supabase
             .from("servicos_catalogo")
-            .select("nome,preco,taxa_locomocao")
-            .ilike("nome", `%${servicoNome}%`)
+            .select("nome,preco,taxa_locomocao,ativo")
+            .eq("ativo", true)
+            .ilike("nome", `%${nomeBusca}%`)
             .order("nome", { ascending: true })
             .limit(1)
             .maybeSingle();
 
-        const ilikeNoTaxa = async () =>
-          supabase
-            .from("servicos_catalogo")
-            .select("nome,preco")
-            .ilike("nome", `%${servicoNome}%`)
-            .order("nome", { ascending: true })
-            .limit(1)
-            .maybeSingle();
+          data = r.data;
+          error = r.error;
 
-        // ✅ 1) tenta buscar EXATO (prioridade)
-let data: any = null;
-let error: any = null;
+          // taxa_locomocao não existe
+          if (error?.code === "42703" && String(error?.message || "").includes("taxa_locomocao")) {
+            r = await supabase
+              .from("servicos_catalogo")
+              .select("nome,preco,ativo")
+              .eq("ativo", true)
+              .ilike("nome", `%${nomeBusca}%`)
+              .order("nome", { ascending: true })
+              .limit(1)
+              .maybeSingle();
 
-const nomeBusca = servicoNome; // já decodificado e normalizado
+            data = r.data;
+            error = r.error;
+          }
 
-// tenta com 'ativo' primeiro (se existir)
-let r = await supabase
-  .from("servicos_catalogo")
-  .select("nome,preco,ativo")
-  .eq("ativo", true)
-  .eq("nome", nomeBusca)
-  .maybeSingle();
+          // ativo não existe
+          if (error?.code === "42703" && String(error?.message || "").includes("ativo")) {
+            r = await supabase
+              .from("servicos_catalogo")
+              .select("nome,preco,taxa_locomocao")
+              .ilike("nome", `%${nomeBusca}%`)
+              .order("nome", { ascending: true })
+              .limit(1)
+              .maybeSingle();
 
-data = r.data;
-error = r.error;
+            data = r.data;
+            error = r.error;
 
-// se a coluna 'ativo' não existir, refaz sem ela (sem quebrar)
-if (error?.code === "42703" && String(error?.message || "").includes("ativo")) {
-  r = await supabase
-    .from("servicos_catalogo")
-    .select("nome,preco")
-    .eq("nome", nomeBusca)
-    .maybeSingle();
+            // taxa também não existe
+            if (error?.code === "42703" && String(error?.message || "").includes("taxa_locomocao")) {
+              r = await supabase
+                .from("servicos_catalogo")
+                .select("nome,preco")
+                .ilike("nome", `%${nomeBusca}%`)
+                .order("nome", { ascending: true })
+                .limit(1)
+                .maybeSingle();
 
-  data = r.data;
-  error = r.error;
-}
+              data = r.data;
+              error = r.error;
+            }
+          }
+        }
 
-// ✅ 2) se não achou no EXATO, tenta ILIKE com % % (pega diferenças no texto)
-if (!error && !data) {
-  r = await supabase
-    .from("servicos_catalogo")
-    .select("nome,preco,ativo")
-    .eq("ativo", true)
-    .ilike("nome", `%${nomeBusca}%`)
-    .order("nome", { ascending: true })
-    .limit(1)
-    .maybeSingle();
-
-  data = r.data;
-  error = r.error;
-
-  // se 'ativo' não existir, refaz sem ele
-  if (error?.code === "42703" && String(error?.message || "").includes("ativo")) {
-    r = await supabase
-      .from("servicos_catalogo")
-      .select("nome,preco")
-      .ilike("nome", `%${nomeBusca}%`)
-      .order("nome", { ascending: true })
-      .limit(1)
-      .maybeSingle();
-
-    data = r.data;
-    error = r.error;
-  }
-}
-
-// agora você usa data?.preco normalmente
-if (error) {
-  console.error("ERRO CATALOGO:", error);
-  setCatalogo(null);
-} else {
-  setCatalogo(data ? (data as any) : null);
-}
-
-
-        setCatalogo((data as CatalogoServico) ?? null);
+        if (error) {
+          console.error("ERRO CATALOGO:", error);
+          if (alive) setCatalogo(null);
+        } else {
+          if (alive) setCatalogo(data ? (data as CatalogoServico) : null);
+        }
       } finally {
         if (alive) setLoadingCatalogo(false);
       }
     }
 
-    load();
+    run();
     return () => {
       alive = false;
     };
@@ -291,7 +258,7 @@ if (error) {
         telefone: onlyDigits(form.telefone),
 
         preco_servico: catalogo ? precoServico : null,
-        taxa_locomocao: taxaLocomocao, // sempre tem fallback
+        taxa_locomocao: taxaLocomocao,
         total: catalogo ? total : taxaLocomocao,
       };
 
@@ -360,9 +327,7 @@ if (error) {
         <div className="rounded-2xl border bg-white p-5 shadow-sm">
           <div className="mb-4">
             <h1 className="text-xl font-bold text-slate-900">Agendar atendimento</h1>
-            <p className="mt-1 text-sm text-slate-600">
-              Preencha os dados e escolha o melhor horário. Confirmação via WhatsApp.
-            </p>
+            <p className="mt-1 text-sm text-slate-600">Preencha os dados e escolha o melhor horário. Confirmação via WhatsApp.</p>
           </div>
 
           <form onSubmit={handleSubmit} className="space-y-4">
@@ -470,9 +435,7 @@ if (error) {
                   );
                 })}
               </div>
-              <div className="mt-2 text-xs text-slate-500">
-                Você pode usar os botões ou digitar no campo “Horário”.
-              </div>
+              <div className="mt-2 text-xs text-slate-500">Você pode usar os botões ou digitar no campo “Horário”.</div>
             </div>
 
             <div>
@@ -497,9 +460,7 @@ if (error) {
               {sending ? "Enviando..." : "Confirmar Agendamento"}
             </button>
 
-            <div className="text-center text-xs text-slate-500">
-              IA Drogarias • intermediação entre paciente e profissionais
-            </div>
+            <div className="text-center text-xs text-slate-500">IA Drogarias • intermediação entre paciente e profissionais</div>
           </form>
         </div>
 
@@ -522,18 +483,18 @@ if (error) {
                   <div className="mt-2 space-y-1 text-sm">
                     <div className="flex justify-between">
                       <span className="text-slate-600">Serviço</span>
-                      <span className="font-semibold">{`R$ ${(precoServico ?? 0).toFixed(2).replace(".", ",")}`}</span>
+                      <span className="font-semibold">{`R$ ${precoServico.toFixed(2).replace(".", ",")}`}</span>
                     </div>
                     <div className="flex justify-between">
                       <span className="text-slate-600">Locomoção (ida/volta)</span>
-                      <span className="font-semibold">{`R$ ${(taxaLocomocao ?? 0).toFixed(2).replace(".", ",")}`}</span>
+                      <span className="font-semibold">{`R$ ${taxaLocomocao.toFixed(2).replace(".", ",")}`}</span>
                     </div>
                     <div className="mt-2 flex justify-between border-t pt-2">
                       <span className="text-slate-700">Total</span>
                       <span className="text-slate-900 font-bold">{`R$ ${total.toFixed(2).replace(".", ",")}`}</span>
                     </div>
                     <div className="mt-1 text-[11px] text-slate-500">
-                      * Valores do catálogo (se cadastrado). Atendimento “Solicitar agora” usa esses valores.
+                      * Valores do catálogo (se cadastrado).
                     </div>
                   </div>
                 ) : (

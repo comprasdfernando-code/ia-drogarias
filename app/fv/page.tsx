@@ -193,6 +193,27 @@ export default function FarmaciaVirtualHomePage() {
   );
 }
 
+const GridSkeleton: React.FC = () => {
+  return (
+    <div className="mt-6 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-5">
+      {Array.from({ length: 12 }).map((_, i) => (
+        <div key={i} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
+          <div className="p-3">
+            <div className="h-28 bg-gray-100 rounded-xl animate-pulse" />
+          </div>
+          <div className="px-3 pb-3">
+            <div className="h-3 w-16 bg-gray-100 rounded animate-pulse" />
+            <div className="mt-2 h-4 w-40 bg-gray-100 rounded animate-pulse" />
+            <div className="mt-2 h-4 w-28 bg-gray-100 rounded animate-pulse" />
+            <div className="mt-3 h-10 bg-gray-100 rounded-xl animate-pulse" />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+};
+
+
 function FarmaciaVirtualHome() {
   const [loadingHome, setLoadingHome] = useState(true);
   const [loadingBusca, setLoadingBusca] = useState(false);
@@ -386,7 +407,7 @@ function FarmaciaVirtualHome() {
             )}
           </div>
 
-          {/* DESKTOP */}
+                    {/* DESKTOP */}
           <div className="hidden md:flex items-center gap-3">
             <div className="text-white font-extrabold whitespace-nowrap">
               IA Drogarias <span className="opacity-80">• FV</span>
@@ -395,9 +416,12 @@ function FarmaciaVirtualHome() {
             <div className="flex-1">
               <div className="relative">
                 <input
+                  type="search"
                   value={busca}
                   onChange={(e) => setBusca(e.target.value)}
                   placeholder="Digite o nome do medicamento ou EAN..."
+                  enterKeyHint="search"
+                  aria-label="Buscar produto"
                   className="w-full rounded-full bg-white/95 px-4 py-2.5 text-sm outline-none focus:ring-4 focus:ring-white/20"
                 />
 
@@ -408,20 +432,24 @@ function FarmaciaVirtualHome() {
                       onClick={() => setBusca("")}
                       className="text-xs font-extrabold px-2 py-1 rounded-full bg-gray-100 hover:bg-gray-200 text-gray-700"
                       title="Limpar"
+                      aria-label="Limpar busca"
                     >
                       Limpar
                     </button>
                   ) : null}
-                  <span className="text-blue-900 bg-green-400/90 px-2 py-1 rounded-full text-xs font-extrabold">
+
+                  <span className="text-blue-900 bg-green-400/90 px-2 py-1 rounded-full text-xs font-extrabold" aria-hidden>
                     🔎
                   </span>
                 </div>
               </div>
 
-              {isSearching && (
-                <div className="mt-1 text-[11px] text-white/80">
-                  {loadingBusca ? "Buscando…" : resultado.length ? `${resultado.length} resultado(s)` : " "}
+              {isSearching ? (
+                <div className="mt-1 text-[11px] text-white/80 min-h-[16px]">
+                  {loadingBusca ? "Buscando…" : resultado.length ? `${resultado.length} resultado(s)` : "Nenhum resultado"}
                 </div>
+              ) : (
+                <div className="mt-1 text-[11px] text-white/80 min-h-[16px]"> </div>
               )}
             </div>
 
@@ -448,6 +476,9 @@ function FarmaciaVirtualHome() {
       </div>
 
       <section className="max-w-6xl mx-auto px-4 mt-6">
+        {/* ✅ MOBILE/TABLET: carrossel de serviços */}
+        <ServiceQuickAds />
+
         {isSearching ? (
           <>
             <div className="flex items-end justify-between gap-3 mb-3">
@@ -1089,80 +1120,80 @@ function ProdutoCardUltra({ p, onComprar }: { p: FVProduto; onComprar: () => voi
  * <ServiceQuickAds />
  */
 function ServiceQuickAds() {
-  const WHATS = "5511948343725";
-  const wpp = (text: string) => `https://wa.me/${WHATS}?text=${encodeURIComponent(text)}`;
+  const base = "/servicos/agenda";
+  const link = (servico: string) => `${base}?servico=${encodeURIComponent(servico)}`;
 
-  const ads = [
+  const cards = [
     {
       key: "pressao",
       title: "Aferição de Pressão",
       subtitle: "Rápido e prático",
-      href: wpp("Olá! Quero solicitar aferição de pressão. Pode me ajudar?"),
+      href: link("Aferição de Pressão Arterial"),
+      emoji: "🩺",
+      gradient: "from-blue-600 to-blue-400",
     },
     {
       key: "glicemia",
       title: "Teste de Glicemia",
       subtitle: "Resultado na hora",
-      href: wpp("Olá! Quero agendar um teste de glicemia. Como funciona?"),
+      href: link("Teste de Glicemia"),
+      emoji: "🩸",
+      gradient: "from-orange-500 to-amber-400",
     },
     {
       key: "injecao",
       title: "Aplicação de Injeção",
       subtitle: "Com profissional",
-      href: wpp("Olá! Quero solicitar aplicação de injeção. Pode me orientar?"),
+      href: link("Aplicação de Injeção"),
+      emoji: "💉",
+      gradient: "from-emerald-600 to-green-400",
     },
     {
       key: "revisao",
       title: "Revisão de Medicamentos",
-      subtitle: "Mais segurança no tratamento",
-      href: wpp("Olá! Quero uma revisão de medicamentos e orientação. Como agendo?"),
+      subtitle: "Mais segurança",
+      href: link("Revisão de Medicamentos"),
+      emoji: "📋",
+      gradient: "from-indigo-600 to-sky-400",
     },
   ];
 
   return (
-    <div className="xl:hidden px-0 mt-4">
-      <div className="rounded-2xl border bg-white p-3 shadow-sm">
-        <div className="flex items-center justify-between gap-2">
-          <div className="font-extrabold text-sm text-gray-900">Serviços rápidos</div>
-          <div className="text-[11px] text-gray-500">Atendimento via WhatsApp</div>
-        </div>
+    <div className="xl:hidden mt-4">
+      <div className="flex items-center justify-between mb-2">
+        <div className="font-extrabold text-sm text-gray-900">Serviços</div>
+        <div className="text-[11px] text-gray-500">Arraste →</div>
+      </div>
 
-        <div className="mt-3 grid grid-cols-2 gap-2">
-          {ads.map((a) => (
-            <a
-              key={a.key}
-              href={a.href}
-              target="_blank"
-              rel="noreferrer"
-              className="rounded-xl border p-2 hover:shadow-sm transition bg-gray-50 hover:bg-gray-100"
+      <div className="overflow-x-auto pb-2 -mx-1 px-1">
+        <div className="flex gap-3 min-w-max snap-x snap-mandatory">
+          {cards.map((c) => (
+            <Link
+              key={c.key}
+              href={c.href}
+              className={`snap-start w-[240px] rounded-2xl p-4 text-white shadow-sm border border-white/10 bg-gradient-to-br ${c.gradient} active:scale-[0.99] transition`}
             >
-              <div className="text-sm font-extrabold leading-tight text-blue-950">{a.title}</div>
-              <div className="text-xs text-gray-600 mt-0.5">{a.subtitle}</div>
-              <div className="text-xs font-extrabold mt-1 text-green-700">Solicitar</div>
-            </a>
+              <div className="flex items-start justify-between">
+                <div className="text-3xl">{c.emoji}</div>
+                <span className="text-[11px] font-extrabold bg-white/15 px-2 py-1 rounded-full">
+                  Agendar
+                </span>
+              </div>
+
+              <div className="mt-3">
+                <div className="text-base font-extrabold leading-tight">{c.title}</div>
+                <div className="text-xs text-white/90 mt-1">{c.subtitle}</div>
+              </div>
+
+              <div className="mt-4">
+                <div className="inline-flex items-center gap-2 bg-white text-blue-900 font-extrabold text-xs px-3 py-2 rounded-xl">
+                  Abrir agenda →
+                </div>
+              </div>
+            </Link>
           ))}
         </div>
       </div>
-    </div>
-  );
-}
-
-function GridSkeleton() {
-  return (
-    <div className="mt-6 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-5">
-      {Array.from({ length: 12 }).map((_, i) => (
-        <div key={i} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-          <div className="p-3">
-            <div className="h-28 bg-gray-100 rounded-xl animate-pulse" />
-          </div>
-          <div className="px-3 pb-3">
-            <div className="h-3 w-16 bg-gray-100 rounded animate-pulse" />
-            <div className="mt-2 h-4 w-40 bg-gray-100 rounded animate-pulse" />
-            <div className="mt-2 h-4 w-28 bg-gray-100 rounded animate-pulse" />
-            <div className="mt-3 h-10 bg-gray-100 rounded-xl animate-pulse" />
-          </div>
-        </div>
-      ))}
     </div>
   );
 }
