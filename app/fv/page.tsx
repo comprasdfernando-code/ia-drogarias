@@ -10,6 +10,118 @@ import { ToastProvider, useToast } from "./_components/toast";
 import FVBanners from "./_components/FVBanners";
 import { CartUIProvider, useCartUI } from "./_components/cart-ui";
 
+/* ✅ ADD: BANNERS LATERAIS (Serviços) */
+type ServiceAd = {
+  key: string;
+  title: string;
+  subtitle: string;
+  href: string;
+  img: string;
+};
+const WHATS_SERVICOS = "5511948343725"; // ajuste se quiser outro WhatsApp
+const wpp = (text: string) => `https://wa.me/${WHATS_SERVICOS}?text=${encodeURIComponent(text)}`;
+
+/* ✅ ADD: componente local, sem mexer no resto */
+function ServiceSideAds() {
+  const ads: ServiceAd[] = useMemo(
+    () => [
+      {
+        key: "pressao",
+        title: "Aferição de Pressão",
+        subtitle: "Rápido e prático",
+        href: wpp("Olá! Quero solicitar aferição de pressão. Pode me ajudar?"),
+        img: "/banners/pressao-vertical.jpg",
+      },
+      {
+        key: "glicemia",
+        title: "Teste de Glicemia",
+        subtitle: "Resultado na hora",
+        href: wpp("Olá! Quero agendar um teste de glicemia. Como funciona?"),
+        img: "/banners/glicemia-vertical.jpg",
+      },
+      {
+        key: "injecao",
+        title: "Aplicação de Injeção",
+        subtitle: "Com profissional",
+        href: wpp("Olá! Quero solicitar aplicação de injeção. Pode me orientar?"),
+        img: "/banners/injecao-vertical.jpg",
+      },
+      {
+        key: "revisao",
+        title: "Revisão de Medicamentos",
+        subtitle: "Mais segurança no tratamento",
+        href: wpp("Olá! Quero uma revisão de medicamentos e orientação. Como agendo?"),
+        img: "/banners/revisao-vertical.jpg",
+      },
+    ],
+    []
+  );
+
+  const [idx, setIdx] = useState(0);
+
+  useEffect(() => {
+    const t = setInterval(() => setIdx((i) => (i + 1) % ads.length), 7000);
+    return () => clearInterval(t);
+  }, [ads.length]);
+
+  const left = ads[idx % ads.length];
+  const right = ads[(idx + 1) % ads.length];
+
+  return (
+    <>
+      {/* LATERAIS (somente desktop grande) */}
+      <div className="hidden xl:flex fixed top-28 left-3 z-40">
+        <Link href={left.href} target="_blank" className="group" title={left.title}>
+          <div className="relative w-[160px] h-[520px] rounded-xl overflow-hidden shadow-lg">
+            <Image
+              src={left.img}
+              alt={left.title}
+              fill
+              className="object-cover group-hover:scale-[1.03] transition"
+              sizes="160px"
+            />
+          </div>
+        </Link>
+      </div>
+
+      <div className="hidden xl:flex fixed top-28 right-3 z-40">
+        <Link href={right.href} target="_blank" className="group" title={right.title}>
+          <div className="relative w-[160px] h-[520px] rounded-xl overflow-hidden shadow-lg">
+            <Image
+              src={right.img}
+              alt={right.title}
+              fill
+              className="object-cover group-hover:scale-[1.03] transition"
+              sizes="160px"
+            />
+          </div>
+        </Link>
+      </div>
+
+      {/* MOBILE/TABLET: faixa serviços rápidos */}
+      <div className="xl:hidden px-3 mt-3">
+        <div className="rounded-2xl border bg-white p-3 shadow-sm">
+          <div className="font-extrabold text-sm mb-2">Serviços rápidos</div>
+          <div className="grid grid-cols-2 gap-2">
+            {ads.map((a) => (
+              <Link
+                key={a.key}
+                href={a.href}
+                target="_blank"
+                className="rounded-xl border p-2 hover:shadow-sm transition"
+              >
+                <div className="text-sm font-extrabold leading-tight">{a.title}</div>
+                <div className="text-xs text-gray-600">{a.subtitle}</div>
+                <div className="text-xs font-extrabold mt-1 text-blue-700">Solicitar</div>
+              </Link>
+            ))}
+          </div>
+        </div>
+      </div>
+    </>
+  );
+}
+
 type FVProduto = {
   id: string;
   ean: string;
@@ -162,6 +274,8 @@ function FarmaciaVirtualHome() {
           .replace(/\s+/g, " ")
           .trim();
 
+        void normalized;
+
         // Se você tiver RPC, ok. Senão, usa fallback abaixo.
         // IMPORTANTE: a RPC precisa retornar também estoque_total/disponivel,
         // por isso aqui vamos de fallback direto na VIEW (mais garantido).
@@ -213,6 +327,9 @@ function FarmaciaVirtualHome() {
 
   return (
     <main className="min-h-screen bg-gray-50 pb-24">
+      {/* ✅ ADD: banners laterais + cards mobile (serviços) */}
+      <ServiceSideAds />
+
       <header className="sticky top-0 z-40 bg-blue-700 shadow">
         <div className="mx-auto max-w-6xl px-4 py-3">
           {/* MOBILE */}
@@ -256,7 +373,9 @@ function FarmaciaVirtualHome() {
                     Limpar
                   </button>
                 ) : null}
-                <span className="text-blue-900 bg-green-400/90 px-2 py-1 rounded-full text-xs font-extrabold">🔎</span>
+                <span className="text-blue-900 bg-green-400/90 px-2 py-1 rounded-full text-xs font-extrabold">
+                  🔎
+                </span>
               </div>
             </div>
 
@@ -293,7 +412,9 @@ function FarmaciaVirtualHome() {
                       Limpar
                     </button>
                   ) : null}
-                  <span className="text-blue-900 bg-green-400/90 px-2 py-1 rounded-full text-xs font-extrabold">🔎</span>
+                  <span className="text-blue-900 bg-green-400/90 px-2 py-1 rounded-full text-xs font-extrabold">
+                    🔎
+                  </span>
                 </div>
               </div>
 
@@ -527,7 +648,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
         });
       }
 
-      // ENCOMENDA (sem taxa? você decide; aqui mantém taxa igual para não confundir)
+      // ENCOMENDA
       if (encomenda.length) {
         const subEnc = encomenda.reduce((acc, it) => acc + Number(it.subtotal || 0), 0);
         const totalEnc = subEnc + taxaEntrega;
@@ -562,7 +683,11 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
         {/* HEADER */}
         <div className="p-4 border-b flex items-center justify-between">
           <div className="font-extrabold text-lg">🛒 Carrinho</div>
-          <button type="button" onClick={onClose} className="px-3 py-2 rounded-xl border font-extrabold bg-white hover:bg-gray-50">
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-3 py-2 rounded-xl border font-extrabold bg-white hover:bg-gray-50"
+          >
             Continuar comprando
           </button>
         </div>
@@ -609,7 +734,13 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
               {cart.items.map((it) => (
                 <div key={it.ean} className="border rounded-2xl p-3 flex gap-3">
                   <div className="h-14 w-14 bg-gray-50 rounded-xl overflow-hidden flex items-center justify-center">
-                    <Image src={it.imagem || "/produtos/caixa-padrao.png"} alt={it.nome} width={64} height={64} className="object-contain" />
+                    <Image
+                      src={it.imagem || "/produtos/caixa-padrao.png"}
+                      alt={it.nome}
+                      width={64}
+                      height={64}
+                      className="object-contain"
+                    />
                   </div>
 
                   <div className="flex-1 min-w-0">
@@ -618,7 +749,9 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
 
                     <div className="mt-1 flex items-center justify-between gap-2">
                       <div className="font-extrabold text-blue-900">{brl(it.preco)}</div>
-                      <div className="text-xs font-bold text-gray-600">Item: {brl(Number(it.preco || 0) * Number(it.qtd || 0))}</div>
+                      <div className="text-xs font-bold text-gray-600">
+                        Item: {brl(Number(it.preco || 0) * Number(it.qtd || 0))}
+                      </div>
                     </div>
 
                     <div className="mt-2 flex items-center gap-2">
@@ -631,7 +764,9 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
                         –
                       </button>
 
-                      <div className="w-10 h-10 rounded-xl border bg-gray-50 flex items-center justify-center font-extrabold">{it.qtd}</div>
+                      <div className="w-10 h-10 rounded-xl border bg-gray-50 flex items-center justify-center font-extrabold">
+                        {it.qtd}
+                      </div>
 
                       <button
                         type="button"
@@ -688,7 +823,9 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
               <button
                 type="button"
                 onClick={() => setTipoEntrega("ENTREGA")}
-                className={`flex-1 px-3 py-2.5 rounded-xl font-extrabold ${tipoEntrega === "ENTREGA" ? "bg-blue-700 text-white" : "bg-gray-100 hover:bg-gray-200"}`}
+                className={`flex-1 px-3 py-2.5 rounded-xl font-extrabold ${
+                  tipoEntrega === "ENTREGA" ? "bg-blue-700 text-white" : "bg-gray-100 hover:bg-gray-200"
+                }`}
                 disabled={saving || !!pedidoCriado}
               >
                 Entrega
@@ -697,7 +834,9 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
               <button
                 type="button"
                 onClick={() => setTipoEntrega("RETIRADA")}
-                className={`flex-1 px-3 py-2.5 rounded-xl font-extrabold ${tipoEntrega === "RETIRADA" ? "bg-blue-700 text-white" : "bg-gray-100 hover:bg-gray-200"}`}
+                className={`flex-1 px-3 py-2.5 rounded-xl font-extrabold ${
+                  tipoEntrega === "RETIRADA" ? "bg-blue-700 text-white" : "bg-gray-100 hover:bg-gray-200"
+                }`}
                 disabled={saving || !!pedidoCriado}
               >
                 Retirada
@@ -733,7 +872,9 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
                 <div className="text-sm font-extrabold text-blue-900">Taxa fixa: {brl(taxaEntrega)}</div>
               </div>
             ) : (
-              <div className="mt-3 text-sm text-gray-600">Você pode retirar na loja. Assim que confirmar, enviamos o endereço/horário.</div>
+              <div className="mt-3 text-sm text-gray-600">
+                Você pode retirar na loja. Assim que confirmar, enviamos o endereço/horário.
+              </div>
             )}
           </div>
 
@@ -747,7 +888,9 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
                   type="button"
                   key={p}
                   onClick={() => setPagamento(p)}
-                  className={`px-3 py-2 rounded-xl font-extrabold ${pagamento === p ? "bg-blue-700 text-white" : "bg-gray-100 hover:bg-gray-200"}`}
+                  className={`px-3 py-2 rounded-xl font-extrabold ${
+                    pagamento === p ? "bg-blue-700 text-white" : "bg-gray-100 hover:bg-gray-200"
+                  }`}
                   disabled={saving || !!pedidoCriado}
                 >
                   {p}
@@ -788,9 +931,9 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
               type="button"
               disabled={!canCheckout || saving || !!pedidoCriado}
               onClick={finalizarPedido}
-              className={`px-4 py-3 rounded-2xl font-extrabold text-center ${canCheckout ? "bg-green-600 hover:bg-green-700 text-white" : "bg-gray-200 text-gray-500"} ${
-                saving ? "opacity-70 cursor-wait" : ""
-              }`}
+              className={`px-4 py-3 rounded-2xl font-extrabold text-center ${
+                canCheckout ? "bg-green-600 hover:bg-green-700 text-white" : "bg-gray-200 text-gray-500"
+              } ${saving ? "opacity-70 cursor-wait" : ""}`}
             >
               {saving ? "Finalizando..." : "Finalizar pedido"}
             </button>
@@ -798,7 +941,8 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
 
           {!canCheckout ? (
             <div className="mt-2 text-xs text-gray-500">
-              Para liberar: informe <b>Nome</b>, <b>WhatsApp</b> e adicione itens. Se escolher <b>Entrega</b>, preencha <b>Endereço/Número/Bairro</b>.
+              Para liberar: informe <b>Nome</b>, <b>WhatsApp</b> e adicione itens. Se escolher <b>Entrega</b>,
+              preencha <b>Endereço/Número/Bairro</b>.
             </div>
           ) : null}
         </div>
@@ -806,26 +950,29 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
     </div>
   );
 }
-
-
 function ProdutoCardUltra({ p, onComprar }: { p: FVProduto; onComprar: () => void }) {
   const pr = precoFinal(p);
-  const { addItem } = useCart();
+  const cart = useCart();
   const { push } = useToast();
   const [qtd, setQtd] = useState(1);
 
   const disponivel = !!p.disponivel;
   const estoque = Number(p.estoque_total || 0);
 
+  const hrefProduto = `/fv/produtos/${p.ean}`;
+
   function addEAbreCarrinho() {
-    addItem(
+    const ean = String(p.ean || "").trim();
+    if (!ean) return;
+
+    cart.addItem(
       {
-        ean: p.ean,
+        ean,
         nome: p.nome,
         laboratorio: p.laboratorio,
         apresentacao: p.apresentacao,
         imagem: firstImg(p.imagens),
-        preco: pr.final || 0,
+        preco: Number(pr.final || 0),
       },
       qtd
     );
@@ -841,17 +988,26 @@ function ProdutoCardUltra({ p, onComprar }: { p: FVProduto; onComprar: () => voi
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition overflow-hidden flex flex-col">
+      {/* IMAGEM + TAGS */}
       <div className="relative p-3">
-        <Link href={`/fv/produtos/${p.ean}`} className="bg-gray-50 rounded-xl p-2 flex items-center justify-center hover:opacity-95 transition">
-          <Image src={firstImg(p.imagens)} alt={p.nome || "Produto"} width={240} height={240} className="rounded object-contain h-24 sm:h-28" />
+        <Link href={hrefProduto} className="bg-gray-50 rounded-xl p-2 flex items-center justify-center hover:opacity-95 transition">
+          <Image
+            src={firstImg(p.imagens)}
+            alt={p.nome || "Produto"}
+            width={240}
+            height={240}
+            className="rounded object-contain h-24 sm:h-28"
+          />
         </Link>
 
-        {pr.emPromo && pr.off > 0 && (
+        {/* OFF */}
+        {pr.emPromo && pr.off > 0 ? (
           <span className="absolute top-3 right-3 text-[11px] font-extrabold bg-red-600 text-white px-2 py-1 rounded-full shadow-sm">
             {pr.off}% OFF
           </span>
-        )}
+        ) : null}
 
+        {/* ESTOQUE */}
         <span
           className={`absolute top-3 left-3 text-[11px] font-extrabold px-2 py-1 rounded-full shadow-sm ${
             disponivel ? "bg-green-600 text-white" : "bg-gray-200 text-gray-700"
@@ -862,15 +1018,17 @@ function ProdutoCardUltra({ p, onComprar }: { p: FVProduto; onComprar: () => voi
         </span>
       </div>
 
+      {/* INFO */}
       <div className="px-3 pb-3 flex-1 flex flex-col">
         <div className="text-[11px] text-gray-500 line-clamp-1">{p.laboratorio || "—"}</div>
 
-        <Link href={`/fv/produtos/${p.ean}`} className="mt-1 font-semibold text-blue-950 text-xs sm:text-sm line-clamp-2 hover:underline">
+        <Link href={hrefProduto} className="mt-1 font-semibold text-blue-950 text-xs sm:text-sm line-clamp-2 hover:underline">
           {p.nome}
         </Link>
 
-        {p.apresentacao && <div className="text-[11px] text-gray-600 mt-1 line-clamp-1">{p.apresentacao}</div>}
+        {p.apresentacao ? <div className="text-[11px] text-gray-600 mt-1 line-clamp-1">{p.apresentacao}</div> : null}
 
+        {/* PREÇO */}
         <div className="mt-2">
           {pr.emPromo ? (
             <>
@@ -884,13 +1042,24 @@ function ProdutoCardUltra({ p, onComprar }: { p: FVProduto; onComprar: () => voi
           )}
         </div>
 
+        {/* AÇÕES */}
         <div className="mt-3 flex items-center gap-2">
           <div className="flex items-center border rounded-xl overflow-hidden">
-            <button type="button" onClick={() => setQtd((x) => Math.max(1, x - 1))} className="w-9 h-9 bg-white hover:bg-gray-50 font-extrabold">
+            <button
+              type="button"
+              onClick={() => setQtd((x) => Math.max(1, x - 1))}
+              className="w-9 h-9 bg-white hover:bg-gray-50 font-extrabold"
+              aria-label="Diminuir quantidade"
+            >
               –
             </button>
             <div className="w-10 text-center font-extrabold text-sm">{qtd}</div>
-            <button type="button" onClick={() => setQtd((x) => x + 1)} className="w-9 h-9 bg-white hover:bg-gray-50 font-extrabold">
+            <button
+              type="button"
+              onClick={() => setQtd((x) => x + 1)}
+              className="w-9 h-9 bg-white hover:bg-gray-50 font-extrabold"
+              aria-label="Aumentar quantidade"
+            >
               +
             </button>
           </div>
@@ -904,6 +1073,74 @@ function ProdutoCardUltra({ p, onComprar }: { p: FVProduto; onComprar: () => voi
           >
             {disponivel ? "Comprar" : "Encomendar"}
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * ✅ OPÇÃO 3 (MOBILE/TABLET): faixa "Serviços rápidos"
+ * - aparece só em telas menores que xl
+ * - chama WhatsApp com mensagem pronta
+ *
+ * COMO USAR:
+ * Dentro do seu <section ...> antes da grid, coloque:
+ * <ServiceQuickAds />
+ */
+function ServiceQuickAds() {
+  const WHATS = "5511948343725";
+  const wpp = (text: string) => `https://wa.me/${WHATS}?text=${encodeURIComponent(text)}`;
+
+  const ads = [
+    {
+      key: "pressao",
+      title: "Aferição de Pressão",
+      subtitle: "Rápido e prático",
+      href: wpp("Olá! Quero solicitar aferição de pressão. Pode me ajudar?"),
+    },
+    {
+      key: "glicemia",
+      title: "Teste de Glicemia",
+      subtitle: "Resultado na hora",
+      href: wpp("Olá! Quero agendar um teste de glicemia. Como funciona?"),
+    },
+    {
+      key: "injecao",
+      title: "Aplicação de Injeção",
+      subtitle: "Com profissional",
+      href: wpp("Olá! Quero solicitar aplicação de injeção. Pode me orientar?"),
+    },
+    {
+      key: "revisao",
+      title: "Revisão de Medicamentos",
+      subtitle: "Mais segurança no tratamento",
+      href: wpp("Olá! Quero uma revisão de medicamentos e orientação. Como agendo?"),
+    },
+  ];
+
+  return (
+    <div className="xl:hidden px-0 mt-4">
+      <div className="rounded-2xl border bg-white p-3 shadow-sm">
+        <div className="flex items-center justify-between gap-2">
+          <div className="font-extrabold text-sm text-gray-900">Serviços rápidos</div>
+          <div className="text-[11px] text-gray-500">Atendimento via WhatsApp</div>
+        </div>
+
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          {ads.map((a) => (
+            <a
+              key={a.key}
+              href={a.href}
+              target="_blank"
+              rel="noreferrer"
+              className="rounded-xl border p-2 hover:shadow-sm transition bg-gray-50 hover:bg-gray-100"
+            >
+              <div className="text-sm font-extrabold leading-tight text-blue-950">{a.title}</div>
+              <div className="text-xs text-gray-600 mt-0.5">{a.subtitle}</div>
+              <div className="text-xs font-extrabold mt-1 text-green-700">Solicitar</div>
+            </a>
+          ))}
         </div>
       </div>
     </div>
