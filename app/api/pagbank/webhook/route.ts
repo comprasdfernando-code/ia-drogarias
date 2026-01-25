@@ -1,34 +1,77 @@
 import { NextResponse } from "next/server";
-import { supabase } from "@/lib/supabaseClient";
+import { createClient } from "@supabase/supabase-js";
+
+const supabaseAdmin = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.SUPABASE_SERVICE_ROLE_KEY!
+);
 
 export async function POST(req: Request) {
-  const secret = req.headers.get("x-webhook-secret");
+  try {
+    // ✅ headers úteis do PagBank
+    const productOrigin = req.headers.get("x-product-origin"); // ORDER / CHECKOUT
+    const productId = req.headers.get("x-product-id");
+    // docs citam confirmação via SHA256 (assunto chato no sandbox)
+    // const authenticity = req.headers.get("x-authenticity-token");
+    // const signature = req.headers.get("x-payload-signature");
 
-  if (secret !== process.env.PAGBANK_WEBHOOK_SECRET) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
+    const payload = await req.json();
 
-  const payload = await req.json();
-  const pagbankId = payload.id;
-  const status = payload.charges?.[0]?.status?.toLowerCase();
+    // payload típico de ORDER vem com charges/status
+    const orderId = payload?.id || null;
+    const charge = payload?.charges?.[0];
+    const chargeId = charge?.id || null;
+    const status = String(charge?.status || payload?.status || "").toUpperCase();
 
-  // Atualiza venda
-  await supabase
-    .from("vendas_site")
-    .update({
-      status,
-      etapa: status === "paid" ? 2 : undefined,
-      pagbank_id: pagbankId
-    })
-    .eq("pagbank_id", pagbankId);
+    if (!orderId) {
+      return NextResponse.json({ ok: true, ignored: true });
+    }
 
-  if (status === "paid") {
-    await supabase.from("vendas_site_rastreamento").insert({
-      venda_id: pagbankId,
-      etapa: 2,
-      descricao: "Pagamento aprovado"
+    // ✅ atualiza venda pela order_id do pagbank
+    const { data: venda } = await supabaseAdmin
+      .from("vendas_site")
+      .select("id")
+      .eq("pagbank_order_id", orderId)
+      .maybeSingle();
+
+    await supabaseAdmin
+      .from("vendas_site")
+      .update({
+        status_pagamento: status || null,
+        pagbank_charge_id: chargeId,
+        pagbank_product_origin: productOrigin,
+        pagbank_product_id: productId,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("pagbank_order_id", orderId);
+
+    // log (opcional, mas MUITO bom pra debugar)
+    await supabaseAdmin.from("pagbank_webhook_logs").insert({
+      pagbank_order_id: orderId,
+      pagbank_charge_id: chargeId,
+      status: status || null,
+      payload,
     });
-  }
 
-  return NextResponse.json({ ok: true });
+    // ✅ se pago, avança etapa
+    if (status === "PAID" && venda?.id) {
+      await supabaseAdmin
+        .from("vendas_site")
+        .update({ etapa: 2 })
+        .eq("id", venda.id);
+
+      await supabaseAdmin.from("vendas_site_rastreamento").insert({
+        venda_id: venda.id,
+        etapa: 2,
+        descricao: "Pagamento aprovado (PagBank)",
+      });
+    }
+
+    return NextResponse.json({ ok: true });
+  } catch (e) {
+    return NextResponse.json(
+      { error: "Falha webhook PagBank", detalhes: String(e) },
+      { status: 500 }
+    );
+  }
 }
