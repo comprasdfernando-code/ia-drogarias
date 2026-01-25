@@ -132,22 +132,47 @@ export async function POST(req: Request) {
     };
 
     const resp = await fetch(`${getBaseUrl()}/orders`, {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.PAGBANK_TOKEN}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify(payload),
-    });
+  method: "POST",
+  headers: {
+    Authorization: `Bearer ${process.env.PAGBANK_TOKEN}`,
+    "Content-Type": "application/json",
+  },
+  body: JSON.stringify(payload),
+});
 
-    const data = await resp.json();
+let data: any = null;
+try {
+  data = await resp.json();
+} catch {
+  data = null;
+}
 
-    if (!resp.ok || !data?.id) {
-      return NextResponse.json(
-        { error: "Erro ao gerar pagamento", detalhes: data },
-        { status: 400 }
-      );
-    }
+if (!resp.ok) {
+  console.error("❌ PagBank ERROR", {
+    status: resp.status,
+    payload_enviado: payload,
+    resposta: data,
+  });
+
+  return NextResponse.json(
+    {
+      error: "Erro PagBank",
+      status: resp.status,
+      resposta: data,
+    },
+    { status: 400 }
+  );
+}
+
+if (!data?.id) {
+  console.error("❌ PagBank SEM ID", data);
+
+  return NextResponse.json(
+    { error: "Resposta inválida PagBank", resposta: data },
+    { status: 400 }
+  );
+}
+
 
     const charge0 = data.charges?.[0] || null;
 
