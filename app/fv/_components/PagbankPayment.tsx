@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import Script from "next/script";
 
 type CheckoutItem = {
   reference_id?: string;
@@ -30,22 +31,6 @@ function moneyFromCents(v: number) {
   return (v / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
-function splitPhoneBR(phoneDigits: string) {
-  // espera "5511999998888" ou "11999998888"
-  let p = onlyDigits(phoneDigits || "");
-  if (!p) return null;
-
-  // remove 55 se vier
-  if (p.length >= 12 && p.startsWith("55")) p = p.slice(2);
-
-  // precisa pelo menos DDD + número
-  if (p.length < 10) return null;
-
-  const area = p.slice(0, 2);
-  const number = p.slice(2); // 8 ou 9 dígitos
-  return { country: "55", area, number, type: "MOBILE" as const };
-}
-
 export default function PagbankPayment({
   orderId,
   cliente,
@@ -59,15 +44,10 @@ export default function PagbankPayment({
 }) {
   const [method, setMethod] = useState<"PIX" | "CREDIT_CARD">("PIX");
 
-  // PIX UI
+  // PIX UI (novo formato)
   const [pixQrPngUrl, setPixQrPngUrl] = useState<string | null>(null);
   const [pixQrBase64, setPixQrBase64] = useState<string | null>(null);
   const [pixCopiaCola, setPixCopiaCola] = useState<string | null>(null);
-  const [pixExpiresAt, setPixExpiresAt] = useState<string | null>(null);
-
-  // Status/UI
-  const [statusMsg, setStatusMsg] = useState<string | null>(null);
-  const pollRef = useRef<number | null>(null);
 
   // Cartão UI
   const [cardNumber, setCardNumber] = useState("");
@@ -80,13 +60,17 @@ export default function PagbankPayment({
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [publicKey, setPublicKey] = useState<string | null>(null);
+
+  // ✅ novo: estado do SDK
+  const [sdkReady, setSdkReady] = useState(false);
+
   const [copied, setCopied] = useState(false);
 
   const total = useMemo(() => {
     return items.reduce((acc, it) => acc + (it.unit_amount || 0) * (it.quantity || 0), 0);
   }, [items]);
 
-  // garante dados mínimos pro PagBank
+  // garante dados mínimos pro PagBank (tax_id e phone)
   const clienteSafe = useMemo(() => {
     const tax = onlyDigits(cliente?.tax_id || "");
     const phone = onlyDigits(cliente?.phone || "");
@@ -97,16 +81,6 @@ export default function PagbankPayment({
       phone: phone || undefined,
     };
   }, [cliente]);
-
-  // limpa polling ao desmontar
-  useEffect(() => {
-    return () => {
-      if (pollRef.current) {
-        window.clearInterval(pollRef.current);
-        pollRef.current = null;
-      }
-    };
-  }, []);
 
   // 1) pega public_key do seu endpoint
   useEffect(() => {
@@ -121,19 +95,7 @@ export default function PagbankPayment({
     })();
   }, []);
 
-  // 2) carrega sdk do PagSeguro (criptografia) — só cartão
-  useEffect(() => {
-    if (method !== "CREDIT_CARD") return;
-    if (window.PagSeguro) return;
-
-    const script = document.createElement("script");
-    script.src = "https://assets.pagseguro.com.br/checkout-sdk-js/1.0.0/checkout-sdk-js.js";
-    script.async = true;
-    document.body.appendChild(script);
-  }, [method]);
-
   async function fetchBase64FromUrl(url: string) {
-    // endpoint do PagBank de BASE64 geralmente retorna texto puro base64
     const r = await fetch(url, { method: "GET" });
     const t = await r.text();
     const base64 = (t || "").trim();
@@ -141,116 +103,51 @@ export default function PagbankPayment({
     return base64;
   }
 
-  async function pollPaidOnce() {
-    const r = await fetch("/api/pagbank/order-status", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ order_id: orderId }),
-    });
-    const j = await r.json().catch(() => ({}));
-    const st = String(j?.venda?.status || "").toLowerCase();
-    return st;
-  }
-
-  function startPollingPaid() {
-    // evita múltiplos intervals
-    if (pollRef.current) {
-      window.clearInterval(pollRef.current);
-      pollRef.current = null;
-    }
-
-    let tries = 0;
-    setStatusMsg("Aguardando pagamento...");
-
-    pollRef.current = window.setInterval(async () => {
-      tries += 1;
-      try {
-        const st = await pollPaidOnce();
-        if (st === "pago" || st === "paid" || st === "confirmed" || st === "approved") {
-          if (pollRef.current) window.clearInterval(pollRef.current);
-          pollRef.current = null;
-          setStatusMsg("Pagamento aprovado ✅");
-          onPaid?.();
-          return;
-        }
-
-        // 10 min (100 tentativas * 6s)
-        if (tries >= 100) {
-          if (pollRef.current) window.clearInterval(pollRef.current);
-          pollRef.current = null;
-          setStatusMsg("PIX gerado. Se pagar e não atualizar, atualize a página.");
-        }
-      } catch {
-        // ignora e tenta de novo
-      }
-    }, 6000);
-  }
-
   async function createOrderPIX() {
     setErr(null);
     setCopied(false);
     setLoading(true);
-    setStatusMsg(null);
 
-    // limpa anterior
     setPixQrPngUrl(null);
     setPixQrBase64(null);
     setPixCopiaCola(null);
-    setPixExpiresAt(null);
+
+    // ✅ valida CPF antes de chamar backend (evita 500 e bagunça)
+    if (!clienteSafe?.tax_id || onlyDigits(clienteSafe.tax_id).length !== 11) {
+      setLoading(false);
+      setErr("CPF (tax_id) é obrigatório para gerar PIX.");
+      return;
+    }
 
     try {
-      // valida mínimos (sandbox costuma exigir)
-      if (!clienteSafe?.tax_id) {
-        throw new Error("CPF (tax_id) é obrigatório para gerar PIX.");
-      }
-      if (!clienteSafe?.phone) {
-        throw new Error("Telefone (com DDD) é obrigatório para gerar PIX. Ex: 11999998888");
-      }
-
-      const phoneObj = splitPhoneBR(clienteSafe.phone);
-
       const resp = await fetch("/api/pagbank/create-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           order_id: orderId,
           forma_pagamento: "PIX",
-          // manda no formato mais compatível (tax_id + phones)
-          cliente: {
-            name: clienteSafe.name,
-            email: clienteSafe.email,
-            tax_id: clienteSafe.tax_id,
-            phones: phoneObj ? [phoneObj] : undefined,
-          },
+          cliente: clienteSafe,
           items,
         }),
       });
 
-      const data = await resp.json().catch(() => ({}));
+      const data = await resp.json();
 
       if (!resp.ok || !data?.ok) {
         throw new Error(data?.error || "Falha ao criar PIX");
       }
 
-      // NOVO: vem do backend
-      // data.qr_text, data.qr_png_url, data.qr_base64_url, data.qr_base64, data.expires_at
       setPixCopiaCola(data.qr_text || null);
       setPixQrPngUrl(data.qr_png_url || null);
-      setPixExpiresAt(data.expires_at || data.pix_expires_at || null);
 
-      // se não veio PNG, tenta buscar BASE64 via url
       if (!data.qr_png_url && data.qr_base64_url) {
         const b64 = await fetchBase64FromUrl(data.qr_base64_url);
         setPixQrBase64(b64);
       }
 
-      // se veio base64 pronto
       if (data.qr_base64) {
         setPixQrBase64(data.qr_base64);
       }
-
-      // ✅ começa a checar se pagou
-      startPollingPaid();
     } catch (e: any) {
       setErr(String(e?.message || e));
     } finally {
@@ -260,32 +157,54 @@ export default function PagbankPayment({
 
   function encryptCard() {
     if (!publicKey) throw new Error("Public Key do PagBank não carregou");
-    if (!window.PagSeguro) throw new Error("SDK PagSeguro não carregou");
+    if (!window.PagSeguro) throw new Error("SDK PagSeguro não carregou (script bloqueado ou não carregou)");
+    if (!sdkReady) throw new Error("SDK PagSeguro ainda não está pronto");
 
-    const encrypted = window.PagSeguro.encryptCard({
+    // ✅ API real do SDK retorna um OBJETO: { encryptedCard, hasErrors, errors }
+    const result = window.PagSeguro.encryptCard({
       publicKey,
-      holder: cardName,
+      holder: (cardName || "").trim(),
       number: onlyDigits(cardNumber),
       expMonth: onlyDigits(cardExpMonth),
       expYear: onlyDigits(cardExpYear),
       securityCode: onlyDigits(cardCvv),
     });
 
-    if (!encrypted) throw new Error("Falha ao criptografar cartão");
-    return encrypted;
+    if (!result) throw new Error("Falha ao criptografar cartão");
+
+    // ✅ trata erros do SDK
+    if (result.hasErrors) {
+      const msg =
+        Array.isArray(result.errors) && result.errors.length
+          ? result.errors.map((e: any) => `${e?.code || "ERRO"}: ${e?.message || ""}`).join(" | ")
+          : "Dados do cartão inválidos";
+      throw new Error(msg);
+    }
+
+    if (!result.encryptedCard) throw new Error("SDK não retornou encryptedCard");
+
+    return result.encryptedCard as string;
   }
 
   async function createOrderCard() {
     setErr(null);
     setLoading(true);
-    setStatusMsg(null);
+
+    // ✅ validações mínimas antes de criptografar
+    const cpf = onlyDigits(holderCpf || clienteSafe?.tax_id || "");
+    if (!cpf || cpf.length !== 11) {
+      setLoading(false);
+      setErr("CPF do titular é obrigatório (11 dígitos).");
+      return;
+    }
+    if (!cardName.trim()) {
+      setLoading(false);
+      setErr("Nome do titular no cartão é obrigatório.");
+      return;
+    }
 
     try {
-      if (!clienteSafe?.tax_id) {
-        throw new Error("CPF (tax_id) é obrigatório.");
-      }
-
-      const encrypted = encryptCard();
+      const encryptedCard = encryptCard();
 
       const resp = await fetch("/api/pagbank/create-order", {
         method: "POST",
@@ -296,15 +215,15 @@ export default function PagbankPayment({
           cliente: clienteSafe,
           items,
           card: {
-            encrypted,
+            encrypted: encryptedCard, // ✅ string
             holder_name: cardName || clienteSafe?.name,
-            holder_cpf: onlyDigits(holderCpf || clienteSafe?.tax_id || ""),
+            holder_cpf: cpf,
             installments: 1,
           },
         }),
       });
 
-      const data = await resp.json().catch(() => ({}));
+      const data = await resp.json();
 
       if (!resp.ok || !data?.ok) {
         throw new Error(data?.error || "Falha ao criar pagamento no cartão");
@@ -329,15 +248,16 @@ export default function PagbankPayment({
     setTimeout(() => setCopied(false), 2000);
   }
 
-  const expiresLabel = useMemo(() => {
-    if (!pixExpiresAt) return null;
-    const d = new Date(pixExpiresAt);
-    if (Number.isNaN(d.getTime())) return null;
-    return d.toLocaleString("pt-BR");
-  }, [pixExpiresAt]);
-
   return (
     <div className="w-full max-w-xl space-y-4 rounded-2xl border p-4">
+      {/* ✅ Script oficial do PagBank/PagSeguro (carrega sempre; só usa no cartão) */}
+      <Script
+        src="https://assets.pagseguro.com.br/checkout-sdk-js/src/dist/browser/pagseguro.min.js"
+        strategy="beforeInteractive"
+        onLoad={() => setSdkReady(true)}
+        onError={() => setSdkReady(false)}
+      />
+
       <div className="flex items-center justify-between gap-2">
         <div>
           <div className="text-sm opacity-70">Total</div>
@@ -353,7 +273,9 @@ export default function PagbankPayment({
             PIX
           </button>
           <button
-            className={`rounded-xl px-3 py-2 text-sm border ${method === "CREDIT_CARD" ? "font-semibold" : "opacity-70"}`}
+            className={`rounded-xl px-3 py-2 text-sm border ${
+              method === "CREDIT_CARD" ? "font-semibold" : "opacity-70"
+            }`}
             onClick={() => setMethod("CREDIT_CARD")}
             disabled={loading}
           >
@@ -368,12 +290,6 @@ export default function PagbankPayment({
         </div>
       )}
 
-      {statusMsg && (
-        <div className="rounded-xl border bg-white p-3 text-sm">
-          {statusMsg}
-        </div>
-      )}
-
       {method === "PIX" ? (
         <div className="space-y-3">
           <button
@@ -383,12 +299,6 @@ export default function PagbankPayment({
           >
             {loading ? "Gerando PIX..." : "Gerar PIX"}
           </button>
-
-          {expiresLabel && (
-            <div className="text-xs opacity-70">
-              Expira em: <span className="font-medium">{expiresLabel}</span>
-            </div>
-          )}
 
           {(pixQrPngUrl || pixQrBase64) && (
             <div className="space-y-2">
@@ -409,12 +319,7 @@ export default function PagbankPayment({
           {pixCopiaCola && (
             <div className="space-y-2">
               <div className="text-sm opacity-70">PIX Copia e Cola</div>
-              <textarea
-                className="w-full rounded-xl border p-2 text-xs"
-                rows={4}
-                value={pixCopiaCola}
-                readOnly
-              />
+              <textarea className="w-full rounded-xl border p-2 text-xs" rows={4} value={pixCopiaCola} readOnly />
               <button
                 className="w-full rounded-xl border px-4 py-3 disabled:opacity-60"
                 onClick={copyPix}
@@ -424,20 +329,19 @@ export default function PagbankPayment({
               </button>
             </div>
           )}
-
-          {!clienteSafe.tax_id && (
-            <div className="text-xs text-red-700">
-              Falta CPF (tax_id) no cliente para gerar PIX.
-            </div>
-          )}
-          {!clienteSafe.phone && (
-            <div className="text-xs text-red-700">
-              Falta telefone (com DDD) no cliente para gerar PIX. Ex: 11999998888
-            </div>
-          )}
         </div>
       ) : (
         <div className="space-y-3">
+          {/* ✅ alerta claro do SDK */}
+          {!sdkReady && (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm">
+              Carregando SDK do PagBank para criptografar o cartão...
+              <div className="text-xs opacity-70 mt-1">
+                Se travar aqui: verifique bloqueio por AdBlock, CSP, ou firewall.
+              </div>
+            </div>
+          )}
+
           <div className="grid grid-cols-1 gap-2">
             <input
               className="rounded-xl border p-2"
@@ -490,13 +394,13 @@ export default function PagbankPayment({
           <button
             className="w-full rounded-xl bg-black px-4 py-3 text-white disabled:opacity-60"
             onClick={createOrderCard}
-            disabled={loading}
+            disabled={loading || !sdkReady}
           >
             {loading ? "Processando..." : "Pagar com cartão"}
           </button>
 
           <div className="text-xs opacity-70">
-            * O cartão é criptografado no navegador e enviado como “encrypted”.
+            * O cartão é criptografado no navegador e enviado como <b>encryptedCard</b>.
           </div>
         </div>
       )}
