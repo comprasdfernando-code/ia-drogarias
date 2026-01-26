@@ -16,8 +16,7 @@ export async function GET() {
     const resp = await fetch(`${baseUrl}/public-keys`, {
       method: "GET",
       headers: {
-        Authorization: `token=${token}`,
-
+        Authorization: `Bearer ${token}`,
         "Content-Type": "application/json",
       },
       cache: "no-store",
