@@ -134,7 +134,8 @@ export async function POST(req: Request) {
     const resp = await fetch(`${getBaseUrl()}/orders`, {
   method: "POST",
   headers: {
-    Authorization: `Bearer ${process.env.PAGBANK_TOKEN}`,
+    Authorization: `token=${process.env.PAGBANK_TOKEN}`,
+
     "Content-Type": "application/json",
   },
   body: JSON.stringify(payload),
