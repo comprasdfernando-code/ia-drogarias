@@ -1,215 +1,152 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-function onlyDigits(s: string) {
-  return (s || "").replace(/\D/g, "");
+function toCents(v: any) {
+  const n = Number(v || 0);
+  return Math.round(n * 100);
 }
 
-function getBaseUrl() {
-  return process.env.PAGBANK_BASE_URL || "https://sandbox.api.pagseguro.com";
+function supabaseAdmin() {
+  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
+  const serviceKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+  if (!url) throw new Error("SUPABASE_URL não configurado");
+  if (!serviceKey) throw new Error("SUPABASE_SERVICE_KEY não configurado");
+
+  return createClient(url, serviceKey, { auth: { persistSession: false } });
 }
-
-function getSupabaseAdmin() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!url || !key) {
-    throw new Error("Supabase env vars ausentes (NEXT_PUBLIC_SUPABASE_URL / SUPABASE_SERVICE_ROLE_KEY)");
-  }
-
-  return createClient(url, key, {
-    auth: { persistSession: false },
-  });
-}
-
-type Item = {
-  reference_id?: string;
-  name: string;
-  quantity: number;
-  unit_amount: number; // centavos
-};
 
 export async function POST(req: Request) {
   try {
-    const supabaseAdmin = getSupabaseAdmin();
+    const token = process.env.PAGBANK_TOKEN;
+    const baseUrl = (process.env.PAGBANK_BASE_URL || "https://sandbox.api.pagseguro.com").trim();
+    const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || "https://iadrogarias.com.br").trim();
+
+    if (!token) {
+      return NextResponse.json({ error: "PAGBANK_TOKEN não configurado" }, { status: 500 });
+    }
 
     const body = await req.json();
 
-    const {
-      order_id,
-      forma_pagamento, // "PIX" | "CREDIT_CARD"
-      cliente,
-      items,           // ✅ obrigatório (API usa items)
-      card,            // { encrypted, holder_name, holder_tax_id }
-      shipping,        // opcional
-    } = body;
+    const order_id = body?.order_id;
+    const forma_pagamento = String(body?.forma_pagamento || "PIX").toUpperCase(); // PIX | CREDIT_CARD
+    const cliente = body?.cliente || {};
+    const itens = body?.itens || body?.items || [];
 
-    if (!order_id || !items || !Array.isArray(items) || items.length === 0) {
-      return NextResponse.json(
-        { error: "Dados insuficientes para criar pedido (order_id/items)" },
-        { status: 400 }
-      );
+    if (!order_id || !Array.isArray(itens) || itens.length === 0) {
+      return NextResponse.json({ error: "Dados insuficientes (order_id/itens)" }, { status: 400 });
     }
 
-    const forma = String(forma_pagamento || "PIX").toUpperCase();
+    // PagBank espera "items"
+    const items = itens.map((i: any) => ({
+      reference_id: String(i?.reference_id || i?.ean || i?.id || i?.sku || "item"),
+      name: String(i?.name || i?.nome || "Item"),
+      quantity: Number(i?.quantity || i?.qtd || 1),
+      unit_amount: Number(i?.unit_amount || i?.preco_centavos || i?.unitAmount || 0), // em centavos
+    }));
 
-    // total em centavos
-    const total = (items as Item[]).reduce(
-      (acc, item) => acc + Number(item.unit_amount || 0) * Number(item.quantity || 0),
-      0
-    );
+    const total = items.reduce((acc: number, it: any) => acc + (it.unit_amount * it.quantity), 0);
 
-    if (!Number.isFinite(total) || total <= 0) {
-      return NextResponse.json({ error: "Total inválido" }, { status: 400 });
+    // Monta charges conforme método
+    let charges: any[] = [];
+
+    if (forma_pagamento === "PIX") {
+      charges = [
+        {
+          reference_id: `pix-${order_id}`,
+          description: `Pedido ${order_id} (PIX)`,
+          amount: { value: total, currency: "BRL" },
+          payment_method: { type: "PIX", expires_in: 3600 },
+          notification_urls: [`${siteUrl}/api/pagbank/webhook`],
+        },
+      ];
+    } else if (forma_pagamento === "CREDIT_CARD") {
+      // Se você for pagar com cartão direto via API, precisa vir o "encrypted" do front
+      const encrypted = body?.card?.encrypted;
+      const holder = body?.card?.holder_name || cliente?.name;
+      const cpf = body?.card?.holder_cpf || cliente?.cpf;
+
+      if (!encrypted || !holder || !cpf) {
+        return NextResponse.json(
+          { error: "Para cartão: envie card.encrypted, card.holder_name e card.holder_cpf" },
+          { status: 400 }
+        );
+      }
+
+      charges = [
+        {
+          reference_id: `card-${order_id}`,
+          description: `Pedido ${order_id} (Cartão)`,
+          amount: { value: total, currency: "BRL" },
+          payment_method: {
+            type: "CREDIT_CARD",
+            installments: Number(body?.card?.installments || 1),
+            capture: true,
+            card: { encrypted },
+            holder: { name: String(holder), tax_id: String(cpf).replace(/\D/g, "") },
+          },
+          notification_urls: [`${siteUrl}/api/pagbank/webhook`],
+        },
+      ];
+    } else {
+      return NextResponse.json({ error: "forma_pagamento inválida (use PIX ou CREDIT_CARD)" }, { status: 400 });
     }
 
-    // ✅ monta charge conforme forma
-    const charge =
-      forma === "CREDIT_CARD"
-        ? {
-            reference_id: `charge-${order_id}`,
-            description: `Pedido ${order_id}`,
-            amount: { value: total, currency: "BRL" },
-            payment_method: {
-              type: "CREDIT_CARD",
-              installments: 1,
-              capture: true,
-              card: {
-                encrypted: card?.encrypted, // vem do SDK no front
-                holder: {
-                  name: card?.holder_name || cliente?.name || "Cliente",
-                  tax_id: onlyDigits(card?.holder_tax_id || cliente?.tax_id || ""),
-                },
-              },
-            },
-          }
-        : {
-            reference_id: `charge-${order_id}`,
-            description: `Pedido ${order_id}`,
-            amount: { value: total, currency: "BRL" },
-            payment_method: {
-              type: "PIX",
-              expires_in: 3600,
-            },
-          };
+    // Cria pedido no PagBank
+    const resp = await fetch(`${baseUrl}/orders`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
+        Accept: "application/json",
+      },
+      body: JSON.stringify({
+        reference_id: String(order_id),
+        customer: {
+          name: cliente?.name || "Cliente",
+          email: cliente?.email || "cliente@iadrogarias.com",
+          tax_id: cliente?.cpf ? String(cliente.cpf).replace(/\D/g, "") : undefined,
+        },
+        items,
+        charges,
+      }),
+      cache: "no-store",
+    });
 
-    if (forma === "CREDIT_CARD" && !card?.encrypted) {
-      return NextResponse.json(
-        { error: "Cartão não criptografado: 'card.encrypted' ausente" },
-        { status: 400 }
-      );
-    }
+    const data: any = await resp.json();
 
-    const siteUrl = process.env.NEXT_PUBLIC_SITE_URL;
-    if (!siteUrl) {
+    if (!resp.ok || !data?.id) {
       return NextResponse.json(
-        { error: "NEXT_PUBLIC_SITE_URL não configurado" },
+        { error: "Erro ao criar pedido PagBank", status: resp.status, dados: data },
         { status: 500 }
       );
     }
 
-    const payload = {
-      reference_id: String(order_id),
-      customer: {
-        name: cliente?.name || "Cliente IA Drogarias",
-        email: cliente?.email || "cliente@iadrogarias.com",
-        tax_id: cliente?.tax_id ? onlyDigits(cliente.tax_id) : undefined,
-        phones: cliente?.phone
-          ? [
-              {
-                country: "55",
-                area: onlyDigits(cliente.phone).slice(0, 2),
-                number: onlyDigits(cliente.phone).slice(2),
-                type: "MOBILE",
-              },
-            ]
-          : undefined,
-      },
-      items,
-      shipping: shipping || undefined,
-      notification_urls: [`${siteUrl}/api/pagbank/webhook`],
-      charges: [charge], // ✅ uma charge somente
-    };
+    // pega informações úteis (PIX)
+    const chargePix = data?.charges?.find((c: any) => c?.payment_method?.type === "PIX");
+    const qr_base64 = chargePix?.payment_method?.qr_code_base64 || null;
+    const qr_text = chargePix?.payment_method?.qr_code || null;
 
-    const resp = await fetch(`${getBaseUrl()}/orders`, {
-  method: "POST",
-  headers: {
-    Authorization: `Bearer ${process.env.PAGBANK_TOKEN}`,
-    "Content-Type": "application/json",
-  },
-  body: JSON.stringify(payload),
-});
-
-let data: any = null;
-try {
-  data = await resp.json();
-} catch {
-  data = null;
-}
-
-if (!resp.ok) {
-  console.error("❌ PagBank ERROR", {
-    status: resp.status,
-    payload_enviado: payload,
-    resposta: data,
-  });
-
-  return NextResponse.json(
-    {
-      error: "Erro PagBank",
-      status: resp.status,
-      resposta: data,
-    },
-    { status: 400 }
-  );
-}
-
-if (!data?.id) {
-  console.error("❌ PagBank SEM ID", data);
-
-  return NextResponse.json(
-    { error: "Resposta inválida PagBank", resposta: data },
-    { status: 400 }
-  );
-}
-
-
-    const charge0 = data.charges?.[0] || null;
-
-    const pix_qr_base64 = charge0?.payment_method?.qr_code_base64 || null;
-    const pix_copia_cola = charge0?.payment_method?.qr_code || null;
-
-    // ✅ salva na vendas_site
-    const upd = await supabaseAdmin
+    // salva no supabase (server-side)
+    const sb = supabaseAdmin();
+    await sb
       .from("vendas_site")
       .update({
-        pagbank_order_id: data.id,
-        pagbank_charge_id: charge0?.id || null,
-        status_pagamento: String(charge0?.status || "WAITING").toUpperCase(),
-        forma_pagamento: forma,
-        updated_at: new Date().toISOString(),
+        pagbank_id: data.id,
+        status: "pendente",
       })
       .eq("id", order_id);
 
-    // se não achou pedido pelo id
-    if (upd.error) {
-      return NextResponse.json(
-        { error: "PagBank ok, mas falhou ao atualizar vendas_site", detalhes: upd.error },
-        { status: 500 }
-      );
-    }
-
     return NextResponse.json({
       ok: true,
-      pagbank_order_id: data.id,
-      pagbank_charge_id: charge0?.id || null,
-      status: charge0?.status || null,
-      pix_qr_base64,
-      pix_copia_cola,
+      pagbank_id: data.id,
+      qr_base64,
+      qr_text,
+      raw: data,
     });
-  } catch (e) {
+  } catch (e: any) {
     return NextResponse.json(
-      { error: "Falha geral ao criar ordem PagBank", detalhes: String(e) },
+      { error: "Falha geral ao criar ordem PagBank", detalhe: String(e?.message || e) },
       { status: 500 }
     );
   }
