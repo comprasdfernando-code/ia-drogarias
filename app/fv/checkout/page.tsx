@@ -3,12 +3,12 @@
 import PagbankPayment from "../_components/PagbankPayment";
 
 export default function CheckoutPage() {
-  const vendaId = "123"; // id da venda criada no Supabase (vendas_site.id)
+  const vendaId = "123"; // id da venda no Supabase
 
   const cliente = {
     name: "Fernando Pereira",
     email: "cliente@iadrogarias.com",
-    cpf: "32328752896", // ✅ CPF correto (11 dígitos)
+    tax_id: "32328752896", // ✅ CPF correto (apenas números)
     phone: "11999998888",
   };
 
@@ -17,19 +17,18 @@ export default function CheckoutPage() {
       reference_id: "item-1",
       name: "Losartana 50mg",
       quantity: 1,
-      unit_amount: 399, // centavos
+      unit_amount: 399,
     },
     {
       reference_id: "item-2",
       name: "Atenolol 25mg",
       quantity: 1,
-      unit_amount: 399, // centavos
+      unit_amount: 399,
     },
   ];
 
   function handlePaid() {
     alert("Pagamento aprovado 🎉");
-    // router.push("/confirmacao");
   }
 
   return (
