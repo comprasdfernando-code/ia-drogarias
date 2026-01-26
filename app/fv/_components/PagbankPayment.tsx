@@ -13,7 +13,7 @@ type Cliente = {
   name: string;
   email: string;
   tax_id?: string; // CPF
-  phone?: string;  // celular com DDD
+  phone?: string; // celular com DDD (ex: 11999998888)
 };
 
 declare global {
@@ -36,14 +36,15 @@ export default function PagbankPayment({
   items,
   onPaid,
 }: {
-  orderId: string;        // id da venda/pedido no seu supabase (vendas_site.id)
+  orderId: string;
   cliente: Cliente;
   items: CheckoutItem[];
-  onPaid?: () => void;    // callback opcional
+  onPaid?: () => void;
 }) {
   const [method, setMethod] = useState<"PIX" | "CREDIT_CARD">("PIX");
 
-  // PIX UI
+  // PIX UI (novo formato)
+  const [pixQrPngUrl, setPixQrPngUrl] = useState<string | null>(null);
   const [pixQrBase64, setPixQrBase64] = useState<string | null>(null);
   const [pixCopiaCola, setPixCopiaCola] = useState<string | null>(null);
 
@@ -58,16 +59,29 @@ export default function PagbankPayment({
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [publicKey, setPublicKey] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const total = useMemo(() => {
     return items.reduce((acc, it) => acc + (it.unit_amount || 0) * (it.quantity || 0), 0);
   }, [items]);
 
+  // garante dados mínimos pro PagBank (tax_id e phone)
+  const clienteSafe = useMemo(() => {
+    const tax = onlyDigits(cliente?.tax_id || "");
+    const phone = onlyDigits(cliente?.phone || "");
+
+    return {
+      ...cliente,
+      tax_id: tax || undefined,
+      phone: phone || undefined,
+    };
+  }, [cliente]);
+
   // 1) pega public_key do seu endpoint
   useEffect(() => {
     (async () => {
       try {
-        const r = await fetch("/api/pagbank/public-key");
+        const r = await fetch("/api/pagbank/public-key", { cache: "no-store" });
         const j = await r.json();
         setPublicKey(j?.public_key || null);
       } catch {
@@ -76,27 +90,35 @@ export default function PagbankPayment({
     })();
   }, []);
 
-  // 2) carrega sdk do PagSeguro (criptografia)
+  // 2) carrega sdk do PagSeguro (criptografia) — só cartão
   useEffect(() => {
-    // só precisa para cartão
     if (method !== "CREDIT_CARD") return;
-
-    // se já existe, ok
     if (window.PagSeguro) return;
 
     const script = document.createElement("script");
     script.src = "https://assets.pagseguro.com.br/checkout-sdk-js/1.0.0/checkout-sdk-js.js";
     script.async = true;
     document.body.appendChild(script);
-
-    return () => {
-      // não remove pra evitar reload
-    };
   }, [method]);
+
+  async function fetchBase64FromUrl(url: string) {
+    // endpoint do PagBank de BASE64 geralmente retorna texto puro base64
+    const r = await fetch(url, { method: "GET" });
+    const t = await r.text();
+    const base64 = (t || "").trim();
+    if (!base64) throw new Error("Não foi possível obter QR BASE64");
+    return base64;
+  }
 
   async function createOrderPIX() {
     setErr(null);
+    setCopied(false);
     setLoading(true);
+
+    // limpa anterior
+    setPixQrPngUrl(null);
+    setPixQrBase64(null);
+    setPixCopiaCola(null);
 
     try {
       const resp = await fetch("/api/pagbank/create-order", {
@@ -105,7 +127,7 @@ export default function PagbankPayment({
         body: JSON.stringify({
           order_id: orderId,
           forma_pagamento: "PIX",
-          cliente,
+          cliente: clienteSafe,
           items,
         }),
       });
@@ -116,9 +138,21 @@ export default function PagbankPayment({
         throw new Error(data?.error || "Falha ao criar PIX");
       }
 
-      setPixQrBase64(data.pix_qr_base64 || null);
-      setPixCopiaCola(data.pix_copia_cola || null);
+      // NOVO: vem do backend
+      // data.qr_text, data.qr_png_url, data.qr_base64_url
+      setPixCopiaCola(data.qr_text || null);
+      setPixQrPngUrl(data.qr_png_url || null);
 
+      // se não veio PNG, tenta buscar BASE64 via url
+      if (!data.qr_png_url && data.qr_base64_url) {
+        const b64 = await fetchBase64FromUrl(data.qr_base64_url);
+        setPixQrBase64(b64);
+      }
+
+      // se veio base64 pronto (caso você coloque no backend depois)
+      if (data.qr_base64) {
+        setPixQrBase64(data.qr_base64);
+      }
     } catch (e: any) {
       setErr(String(e?.message || e));
     } finally {
@@ -140,7 +174,6 @@ export default function PagbankPayment({
     });
 
     if (!encrypted) throw new Error("Falha ao criptografar cartão");
-
     return encrypted;
   }
 
@@ -157,12 +190,13 @@ export default function PagbankPayment({
         body: JSON.stringify({
           order_id: orderId,
           forma_pagamento: "CREDIT_CARD",
-          cliente,
+          cliente: clienteSafe,
           items,
           card: {
             encrypted,
-            holder_name: cardName || cliente?.name,
-            holder_tax_id: onlyDigits(holderCpf || cliente?.tax_id || ""),
+            holder_name: cardName || clienteSafe?.name,
+            holder_cpf: onlyDigits(holderCpf || clienteSafe?.tax_id || ""),
+            installments: 1,
           },
         }),
       });
@@ -173,14 +207,11 @@ export default function PagbankPayment({
         throw new Error(data?.error || "Falha ao criar pagamento no cartão");
       }
 
-      // se vier PAID já pode avançar
       if (String(data?.status || "").toUpperCase() === "PAID") {
         onPaid?.();
       }
 
-      // opcional: você pode mostrar “Pagamento processado”
       alert("Pagamento enviado! Se aprovado, o pedido será atualizado automaticamente.");
-
     } catch (e: any) {
       setErr(String(e?.message || e));
     } finally {
@@ -191,7 +222,8 @@ export default function PagbankPayment({
   async function copyPix() {
     if (!pixCopiaCola) return;
     await navigator.clipboard.writeText(pixCopiaCola);
-    alert("PIX copia e cola copiado!");
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
   }
 
   return (
@@ -236,14 +268,23 @@ export default function PagbankPayment({
             {loading ? "Gerando PIX..." : "Gerar PIX"}
           </button>
 
-          {pixQrBase64 && (
+          {(pixQrPngUrl || pixQrBase64) && (
             <div className="space-y-2">
               <div className="text-sm opacity-70">Aponte a câmera ou use o app do banco</div>
-              <img
-                className="w-64 rounded-xl border"
-                src={`data:image/png;base64,${pixQrBase64}`}
-                alt="QR Code PIX"
-              />
+
+              {pixQrPngUrl ? (
+                <img
+                  className="w-64 rounded-xl border"
+                  src={pixQrPngUrl}
+                  alt="QR Code PIX"
+                />
+              ) : (
+                <img
+                  className="w-64 rounded-xl border"
+                  src={`data:image/png;base64,${pixQrBase64}`}
+                  alt="QR Code PIX"
+                />
+              )}
             </div>
           )}
 
@@ -261,7 +302,7 @@ export default function PagbankPayment({
                 onClick={copyPix}
                 disabled={loading}
               >
-                Copiar código PIX
+                {copied ? "Copiado ✅" : "Copiar código PIX"}
               </button>
             </div>
           )}

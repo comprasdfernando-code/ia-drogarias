@@ -1,21 +1,14 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-function onlyDigits(s: any) {
-  return String(s || "").replace(/\D/g, "");
-}
-
-function splitPhoneBR(phone: any) {
-  // Espera algo tipo: 11999998888 (11 + 9 dígitos) ou com máscara
-  const d = onlyDigits(phone);
-  const area = d.length >= 2 ? d.slice(0, 2) : "11";
-  const number = d.length > 2 ? d.slice(2) : "999999999";
-  return { country: "55", area, number, type: "MOBILE" as const };
+function onlyDigits(v: any) {
+  return String(v ?? "").replace(/\D/g, "");
 }
 
 function supabaseAdmin() {
   const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const serviceKey =
+    process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!url) throw new Error("SUPABASE_URL não configurado");
   if (!serviceKey) throw new Error("SUPABASE_SERVICE_KEY não configurado");
@@ -44,64 +37,71 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Dados insuficientes (order_id/itens)" }, { status: 400 });
     }
 
-    // items (centavos)
+    // PagBank espera items com unit_amount em centavos
     const items = itens.map((i: any) => ({
       reference_id: String(i?.reference_id || i?.ean || i?.id || i?.sku || "item"),
       name: String(i?.name || i?.nome || "Item"),
       quantity: Number(i?.quantity || i?.qtd || 1),
-      unit_amount: Number(i?.unit_amount ?? i?.preco_centavos ?? i?.unitAmount ?? 0),
+      unit_amount: Number(i?.unit_amount || i?.preco_centavos || i?.unitAmount || 0),
     }));
 
     const total = items.reduce((acc: number, it: any) => acc + it.unit_amount * it.quantity, 0);
 
-    // customer
-    const tax_id =
-      onlyDigits(cliente?.cpf) ||
-      onlyDigits(cliente?.tax_id) ||
-      ""; // obrigatório no PIX (e geralmente recomendado sempre)
-
-    if (!tax_id) {
+    // -------- customer (tax_id obrigatório no /orders)
+    const customerTaxId = onlyDigits(cliente?.tax_id || cliente?.cpf);
+    if (!customerTaxId) {
       return NextResponse.json(
-        { error: "CPF obrigatório: envie cliente.cpf ou cliente.tax_id (somente números)" },
+        { error: "CPF obrigatório (cliente.cpf ou cliente.tax_id)" },
         { status: 400 }
       );
     }
 
-    const customer: any = {
-      name: cliente?.name || "Cliente",
-      email: cliente?.email || "cliente@iadrogarias.com",
-      tax_id,
-    };
+    const rawPhone = onlyDigits(cliente?.phone || cliente?.whatsapp || "");
+    // tenta quebrar em DDD + número (Brasil)
+    const phone11 = rawPhone.startsWith("55") ? rawPhone.slice(2) : rawPhone; // remove 55 se veio
+    const area = phone11.length >= 10 ? phone11.slice(0, 2) : "11";
+    const number = phone11.length >= 10 ? phone11.slice(2) : "999998888";
 
-    // phone opcional, mas no seu teste ele ajudou e é bom manter
-    if (cliente?.phone) {
-      customer.phones = [splitPhoneBR(cliente.phone)];
-    }
-
-    // ====== MONTA PAYLOAD ======
-    let payload: any = {
+    const payloadBase: any = {
       reference_id: String(order_id),
-      customer,
+      customer: {
+        name: String(cliente?.name || "Cliente"),
+        email: String(cliente?.email || "cliente@iadrogarias.com"),
+        tax_id: customerTaxId,
+        phones: [
+          {
+            country: "55",
+            area,
+            number,
+            type: "MOBILE",
+          },
+        ],
+      },
       items,
       notification_urls: [`${siteUrl}/api/pagbank/webhook`],
     };
 
-    if (forma_pagamento === "PIX") {
-      // ✅ MODELO QUE DEU 201 NO SEU LOG (qr_codes)
-      const expiresMinutes = Number(body?.pix?.expires_minutes || 60);
-      const exp = new Date(Date.now() + expiresMinutes * 60 * 1000).toISOString();
+    // -------- PIX (usa qr_codes no /orders)
+    let payload: any = payloadBase;
 
-      payload.qr_codes = [
-        {
-          amount: { value: total },
-          expiration_date: exp,
-        },
-      ];
+    if (forma_pagamento === "PIX") {
+      const expiresIn = Number(body?.expires_in || 3600); // segundos
+      const exp = new Date(Date.now() + expiresIn * 1000).toISOString();
+
+      payload = {
+        ...payloadBase,
+        qr_codes: [
+          {
+            amount: { value: total },
+            expiration_date: exp,
+          },
+        ],
+      };
     } else if (forma_pagamento === "CREDIT_CARD") {
-      // Cartão via Orders + Charges (precisa encrypted do front)
+      // Mantive seu fluxo de cartão (encrypted precisa vir do front)
       const encrypted = body?.card?.encrypted;
       const holder = body?.card?.holder_name || cliente?.name;
-      const cpf = body?.card?.holder_cpf || tax_id;
+      const cpf = body?.card?.holder_cpf || cliente?.cpf || cliente?.tax_id;
 
       if (!encrypted || !holder || !cpf) {
         return NextResponse.json(
@@ -110,21 +110,24 @@ export async function POST(req: Request) {
         );
       }
 
-      payload.charges = [
-        {
-          reference_id: `card-${order_id}`,
-          description: `Pedido ${order_id} (Cartão)`,
-          amount: { value: total, currency: "BRL" },
-          payment_method: {
-            type: "CREDIT_CARD",
-            installments: Number(body?.card?.installments || 1),
-            capture: true,
-            card: { encrypted },
-            holder: { name: String(holder), tax_id: onlyDigits(cpf) },
+      payload = {
+        ...payloadBase,
+        charges: [
+          {
+            reference_id: `card-${order_id}`,
+            description: `Pedido ${order_id} (Cartão)`,
+            amount: { value: total, currency: "BRL" },
+            payment_method: {
+              type: "CREDIT_CARD",
+              installments: Number(body?.card?.installments || 1),
+              capture: true,
+              card: { encrypted },
+              holder: { name: String(holder), tax_id: onlyDigits(cpf) },
+            },
+            notification_urls: [`${siteUrl}/api/pagbank/webhook`],
           },
-          notification_urls: [`${siteUrl}/api/pagbank/webhook`],
-        },
-      ];
+        ],
+      };
     } else {
       return NextResponse.json(
         { error: "forma_pagamento inválida (use PIX ou CREDIT_CARD)" },
@@ -132,7 +135,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // ====== CHAMA PAGBANK ======
+    // -------- cria pedido
     const resp = await fetch(`${baseUrl}/orders`, {
       method: "POST",
       headers: {
@@ -153,12 +156,17 @@ export async function POST(req: Request) {
       );
     }
 
-    // PIX infos
-    const qr0 = data?.qr_codes?.[0];
-    const qr_text = qr0?.text || null;
-    const qr_links = qr0?.links || null;
+    // -------- extrai QR do retorno correto (qr_codes)
+    const qr = Array.isArray(data?.qr_codes) ? data.qr_codes[0] : null;
+    const qr_text = qr?.text || null;
 
-    // salva no supabase
+    const qr_png_url =
+      qr?.links?.find((l: any) => l?.rel === "QRCODE.PNG")?.href || null;
+
+    const qr_base64_url =
+      qr?.links?.find((l: any) => l?.rel === "QRCODE.BASE64")?.href || null;
+
+    // -------- salva no supabase (server-side)
     const sb = supabaseAdmin();
     await sb
       .from("vendas_site")
@@ -171,8 +179,9 @@ export async function POST(req: Request) {
     return NextResponse.json({
       ok: true,
       pagbank_id: data.id,
-      qr_text,     // copia e cola
-      qr_links,    // links p/ PNG e BASE64 (no sandbox)
+      qr_text,
+      qr_png_url,
+      qr_base64_url,
       raw: data,
     });
   } catch (e: any) {
