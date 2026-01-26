@@ -3,12 +3,12 @@
 import PagbankPayment from "../_components/PagbankPayment";
 
 export default function CheckoutPage() {
-  const vendaId = "123"; // id da venda no Supabase (vendas_site.id)
+  const vendaId = "123"; // id da venda criada no Supabase (vendas_site.id)
 
   const cliente = {
     name: "Fernando Pereira",
     email: "cliente@iadrogarias.com",
-    cpf: "32328752896",        // ✅ somente números
+    tax_id: "32328752896", // ✅ CPF só números
     phone: "11999998888",
   };
 
@@ -25,12 +25,7 @@ export default function CheckoutPage() {
     <div className="mx-auto max-w-2xl p-4">
       <h1 className="mb-4 text-xl font-semibold">Finalizar pagamento</h1>
 
-      <PagbankPayment
-        orderId={vendaId}
-        cliente={cliente}
-        items={items}
-        onPaid={handlePaid}
-      />
+      <PagbankPayment orderId={vendaId} cliente={cliente} items={items} onPaid={handlePaid} />
     </div>
   );
 }
