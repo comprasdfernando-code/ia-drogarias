@@ -6,6 +6,17 @@ function toCents(v: any) {
   return Math.round(n * 100);
 }
 
+function onlyDigits(v: any) {
+  return String(v ?? "").replace(/\D/g, "");
+}
+
+function isValidCpfDigits(cpf: string) {
+  // validação simples: 11 dígitos e não todos iguais
+  if (!cpf || cpf.length !== 11) return false;
+  if (/^(\d)\1{10}$/.test(cpf)) return false;
+  return true;
+}
+
 function supabaseAdmin() {
   const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -37,15 +48,57 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Dados insuficientes (order_id/itens)" }, { status: 400 });
     }
 
-    // PagBank espera "items"
-    const items = itens.map((i: any) => ({
-      reference_id: String(i?.reference_id || i?.ean || i?.id || i?.sku || "item"),
-      name: String(i?.name || i?.nome || "Item"),
-      quantity: Number(i?.quantity || i?.qtd || 1),
-      unit_amount: Number(i?.unit_amount || i?.preco_centavos || i?.unitAmount || 0), // em centavos
-    }));
+    // ✅ CPF obrigatório para PagBank (customer.tax_id)
+    const cpfDigits = onlyDigits(cliente?.cpf);
+    if (!isValidCpfDigits(cpfDigits)) {
+      return NextResponse.json(
+        { error: "CPF do cliente é obrigatório (11 dígitos) para pagamento" },
+        { status: 400 }
+      );
+    }
 
-    const total = items.reduce((acc: number, it: any) => acc + (it.unit_amount * it.quantity), 0);
+    // PagBank espera "items" com unit_amount em centavos (inteiro)
+    const items = itens.map((i: any) => {
+      const q = Number(i?.quantity || i?.qtd || 1) || 1;
+
+      // tenta achar centavos direto
+      let unit = i?.unit_amount ?? i?.preco_centavos ?? i?.unitAmount;
+
+      // se vier em reais (ex: 3.99) converte p/ centavos
+      // heurística: se for number e não for inteiro, converte; se for string com vírgula/ponto, converte
+      if (unit == null) {
+        // tenta campos comuns em reais
+        const precoReais = i?.preco ?? i?.valor ?? i?.price ?? 0;
+        unit = toCents(precoReais);
+      } else {
+        const unitNum = Number(unit);
+        if (!Number.isFinite(unitNum)) {
+          unit = 0;
+        } else if (!Number.isInteger(unitNum)) {
+          unit = toCents(unitNum);
+        } else {
+          unit = unitNum;
+        }
+      }
+
+      return {
+        reference_id: String(i?.reference_id || i?.ean || i?.id || i?.sku || "item"),
+        name: String(i?.name || i?.nome || "Item"),
+        quantity: q,
+        unit_amount: Number(unit) || 0,
+      };
+    });
+
+    // valida unit_amount
+    const badItem = items.find((it: any) => !it.unit_amount || it.unit_amount <= 0 || !it.quantity || it.quantity <= 0);
+    if (badItem) {
+      return NextResponse.json(
+        { error: "Item inválido (unit_amount/quantity)", item: badItem },
+        { status: 400 }
+      );
+    }
+
+    const total = items.reduce((acc: number, it: any) => acc + it.unit_amount * it.quantity, 0);
 
     // Monta charges conforme método
     let charges: any[] = [];
@@ -61,14 +114,16 @@ export async function POST(req: Request) {
         },
       ];
     } else if (forma_pagamento === "CREDIT_CARD") {
-      // Se você for pagar com cartão direto via API, precisa vir o "encrypted" do front
+      // Cartão direto via API: precisa do encrypted do front
       const encrypted = body?.card?.encrypted;
       const holder = body?.card?.holder_name || cliente?.name;
-      const cpf = body?.card?.holder_cpf || cliente?.cpf;
 
-      if (!encrypted || !holder || !cpf) {
+      // se não vier holder_cpf, usa o cpf do cliente
+      const holderCpfDigits = onlyDigits(body?.card?.holder_cpf || cliente?.cpf);
+
+      if (!encrypted || !holder || !isValidCpfDigits(holderCpfDigits)) {
         return NextResponse.json(
-          { error: "Para cartão: envie card.encrypted, card.holder_name e card.holder_cpf" },
+          { error: "Para cartão: envie card.encrypted, card.holder_name e card.holder_cpf (11 dígitos)" },
           { status: 400 }
         );
       }
@@ -83,13 +138,16 @@ export async function POST(req: Request) {
             installments: Number(body?.card?.installments || 1),
             capture: true,
             card: { encrypted },
-            holder: { name: String(holder), tax_id: String(cpf).replace(/\D/g, "") },
+            holder: { name: String(holder), tax_id: holderCpfDigits },
           },
           notification_urls: [`${siteUrl}/api/pagbank/webhook`],
         },
       ];
     } else {
-      return NextResponse.json({ error: "forma_pagamento inválida (use PIX ou CREDIT_CARD)" }, { status: 400 });
+      return NextResponse.json(
+        { error: "forma_pagamento inválida (use PIX ou CREDIT_CARD)" },
+        { status: 400 }
+      );
     }
 
     // Cria pedido no PagBank
@@ -105,7 +163,8 @@ export async function POST(req: Request) {
         customer: {
           name: cliente?.name || "Cliente",
           email: cliente?.email || "cliente@iadrogarias.com",
-          tax_id: cliente?.cpf ? String(cliente.cpf).replace(/\D/g, "") : undefined,
+          // ✅ NUNCA mandar undefined/null. Sempre string 11 dígitos.
+          tax_id: cpfDigits,
         },
         items,
         charges,
@@ -113,12 +172,18 @@ export async function POST(req: Request) {
       cache: "no-store",
     });
 
-    const data: any = await resp.json();
+    let data: any = null;
+    try {
+      data = await resp.json();
+    } catch {
+      data = null;
+    }
 
     if (!resp.ok || !data?.id) {
+      // devolve o status real do PagBank pra você enxergar (sem mascarar tudo em 500)
       return NextResponse.json(
         { error: "Erro ao criar pedido PagBank", status: resp.status, dados: data },
-        { status: 500 }
+        { status: resp.status >= 400 && resp.status <= 599 ? resp.status : 500 }
       );
     }
 
