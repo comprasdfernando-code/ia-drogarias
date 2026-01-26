@@ -1,22 +1,6 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
-function toCents(v: any) {
-  const n = Number(v || 0);
-  return Math.round(n * 100);
-}
-
-function onlyDigits(v: any) {
-  return String(v ?? "").replace(/\D/g, "");
-}
-
-function isValidCpfDigits(cpf: string) {
-  // validação simples: 11 dígitos e não todos iguais
-  if (!cpf || cpf.length !== 11) return false;
-  if (/^(\d)\1{10}$/.test(cpf)) return false;
-  return true;
-}
-
 function supabaseAdmin() {
   const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
   const serviceKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
@@ -27,9 +11,18 @@ function supabaseAdmin() {
   return createClient(url, serviceKey, { auth: { persistSession: false } });
 }
 
+function onlyDigits(v: any) {
+  return String(v || "").replace(/\D/g, "");
+}
+
+function addSecondsISO(seconds: number) {
+  const d = new Date(Date.now() + seconds * 1000);
+  return d.toISOString(); // PagBank aceita ISO (ex: 2026-01-26T14:15:59.000Z)
+}
+
 export async function POST(req: Request) {
   try {
-    const token = process.env.PAGBANK_TOKEN;
+    const token = (process.env.PAGBANK_TOKEN || "").trim();
     const baseUrl = (process.env.PAGBANK_BASE_URL || "https://sandbox.api.pagseguro.com").trim();
     const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || "https://iadrogarias.com.br").trim();
 
@@ -41,6 +34,7 @@ export async function POST(req: Request) {
 
     const order_id = body?.order_id;
     const forma_pagamento = String(body?.forma_pagamento || "PIX").toUpperCase(); // PIX | CREDIT_CARD
+
     const cliente = body?.cliente || {};
     const itens = body?.itens || body?.items || [];
 
@@ -48,101 +42,95 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: "Dados insuficientes (order_id/itens)" }, { status: 400 });
     }
 
-    // ✅ CPF obrigatório para PagBank (customer.tax_id)
-    const cpfDigits = onlyDigits(cliente?.cpf);
-    if (!isValidCpfDigits(cpfDigits)) {
+    // customer.tax_id é obrigatório (11 dígitos CPF / 14 dígitos CNPJ)
+    const taxId = onlyDigits(cliente?.tax_id || cliente?.cpf);
+
+    if (!taxId) {
       return NextResponse.json(
-        { error: "CPF do cliente é obrigatório (11 dígitos) para pagamento" },
+        { error: "customer.tax_id obrigatório (CPF/CNPJ). Envie cliente.tax_id ou cliente.cpf" },
         { status: 400 }
       );
     }
 
-    // PagBank espera "items" com unit_amount em centavos (inteiro)
-    const items = itens.map((i: any) => {
-      const q = Number(i?.quantity || i?.qtd || 1) || 1;
-
-      // tenta achar centavos direto
-      let unit = i?.unit_amount ?? i?.preco_centavos ?? i?.unitAmount;
-
-      // se vier em reais (ex: 3.99) converte p/ centavos
-      // heurística: se for number e não for inteiro, converte; se for string com vírgula/ponto, converte
-      if (unit == null) {
-        // tenta campos comuns em reais
-        const precoReais = i?.preco ?? i?.valor ?? i?.price ?? 0;
-        unit = toCents(precoReais);
-      } else {
-        const unitNum = Number(unit);
-        if (!Number.isFinite(unitNum)) {
-          unit = 0;
-        } else if (!Number.isInteger(unitNum)) {
-          unit = toCents(unitNum);
-        } else {
-          unit = unitNum;
-        }
-      }
-
-      return {
-        reference_id: String(i?.reference_id || i?.ean || i?.id || i?.sku || "item"),
-        name: String(i?.name || i?.nome || "Item"),
-        quantity: q,
-        unit_amount: Number(unit) || 0,
-      };
-    });
-
-    // valida unit_amount
-    const badItem = items.find((it: any) => !it.unit_amount || it.unit_amount <= 0 || !it.quantity || it.quantity <= 0);
-    if (badItem) {
-      return NextResponse.json(
-        { error: "Item inválido (unit_amount/quantity)", item: badItem },
-        { status: 400 }
-      );
-    }
+    // PagBank espera items com unit_amount em centavos
+    const items = itens.map((i: any) => ({
+      reference_id: String(i?.reference_id || i?.ean || i?.id || i?.sku || "item"),
+      name: String(i?.name || i?.nome || "Item"),
+      quantity: Number(i?.quantity || i?.qtd || 1),
+      unit_amount: Number(i?.unit_amount || i?.preco_centavos || i?.unitAmount || 0), // centavos
+    }));
 
     const total = items.reduce((acc: number, it: any) => acc + it.unit_amount * it.quantity, 0);
 
-    // Monta charges conforme método
-    let charges: any[] = [];
+    // Monta payload base
+    const payloadBase: any = {
+      reference_id: String(order_id),
+      customer: {
+        name: String(cliente?.name || "Cliente"),
+        email: String(cliente?.email || "cliente@iadrogarias.com"),
+        tax_id: taxId,
+        // phones opcional (se você tiver no front)
+        ...(cliente?.phone
+          ? {
+              phones: [
+                {
+                  country: "55",
+                  area: onlyDigits(cliente.phone).slice(0, 2) || "11",
+                  number: onlyDigits(cliente.phone).slice(2) || "999999999",
+                  type: "MOBILE",
+                },
+              ],
+            }
+          : {}),
+      },
+      items,
+      notification_urls: [`${siteUrl}/api/pagbank/webhook`],
+    };
+
+    let payloadFinal: any = payloadBase;
 
     if (forma_pagamento === "PIX") {
-      charges = [
-        {
-          reference_id: `pix-${order_id}`,
-          description: `Pedido ${order_id} (PIX)`,
-          amount: { value: total, currency: "BRL" },
-          payment_method: { type: "PIX", expires_in: 3600 },
-          notification_urls: [`${siteUrl}/api/pagbank/webhook`],
-        },
-      ];
+      // ✅ PIX por QR Code: NÃO usa charges. Usa qr_codes.
+      payloadFinal = {
+        ...payloadBase,
+        qr_codes: [
+          {
+            amount: { value: total },
+            // você pode controlar a expiração aqui
+            expiration_date: addSecondsISO(3600), // 1h
+          },
+        ],
+      };
     } else if (forma_pagamento === "CREDIT_CARD") {
-      // Cartão direto via API: precisa do encrypted do front
+      // cartão via API precisa vir o encrypted do front
       const encrypted = body?.card?.encrypted;
-      const holder = body?.card?.holder_name || cliente?.name;
+      const holderName = body?.card?.holder_name || cliente?.name;
+      const holderCpf = body?.card?.holder_cpf || cliente?.cpf || cliente?.tax_id;
 
-      // se não vier holder_cpf, usa o cpf do cliente
-      const holderCpfDigits = onlyDigits(body?.card?.holder_cpf || cliente?.cpf);
-
-      if (!encrypted || !holder || !isValidCpfDigits(holderCpfDigits)) {
+      if (!encrypted || !holderName || !holderCpf) {
         return NextResponse.json(
-          { error: "Para cartão: envie card.encrypted, card.holder_name e card.holder_cpf (11 dígitos)" },
+          { error: "Para cartão: envie card.encrypted, card.holder_name e card.holder_cpf" },
           { status: 400 }
         );
       }
 
-      charges = [
-        {
-          reference_id: `card-${order_id}`,
-          description: `Pedido ${order_id} (Cartão)`,
-          amount: { value: total, currency: "BRL" },
-          payment_method: {
-            type: "CREDIT_CARD",
-            installments: Number(body?.card?.installments || 1),
-            capture: true,
-            card: { encrypted },
-            holder: { name: String(holder), tax_id: holderCpfDigits },
+      payloadFinal = {
+        ...payloadBase,
+        charges: [
+          {
+            reference_id: `card-${order_id}`,
+            description: `Pedido ${order_id} (Cartão)`,
+            amount: { value: total, currency: "BRL" },
+            payment_method: {
+              type: "CREDIT_CARD",
+              installments: Number(body?.card?.installments || 1),
+              capture: true,
+              card: { encrypted },
+              holder: { name: String(holderName), tax_id: onlyDigits(holderCpf) },
+            },
           },
-          notification_urls: [`${siteUrl}/api/pagbank/webhook`],
-        },
-      ];
+        ],
+      };
     } else {
       return NextResponse.json(
         { error: "forma_pagamento inválida (use PIX ou CREDIT_CARD)" },
@@ -150,7 +138,7 @@ export async function POST(req: Request) {
       );
     }
 
-    // Cria pedido no PagBank
+    // Chamada PagBank
     const resp = await fetch(`${baseUrl}/orders`, {
       method: "POST",
       headers: {
@@ -158,39 +146,21 @@ export async function POST(req: Request) {
         "Content-Type": "application/json",
         Accept: "application/json",
       },
-      body: JSON.stringify({
-        reference_id: String(order_id),
-        customer: {
-          name: cliente?.name || "Cliente",
-          email: cliente?.email || "cliente@iadrogarias.com",
-          // ✅ NUNCA mandar undefined/null. Sempre string 11 dígitos.
-          tax_id: cpfDigits,
-        },
-        items,
-        charges,
-      }),
+      body: JSON.stringify(payloadFinal),
       cache: "no-store",
     });
 
-    let data: any = null;
-    try {
-      data = await resp.json();
-    } catch {
-      data = null;
-    }
+    const data: any = await resp.json().catch(() => null);
 
     if (!resp.ok || !data?.id) {
-      // devolve o status real do PagBank pra você enxergar (sem mascarar tudo em 500)
       return NextResponse.json(
         { error: "Erro ao criar pedido PagBank", status: resp.status, dados: data },
-        { status: resp.status >= 400 && resp.status <= 599 ? resp.status : 500 }
+        { status: 500 }
       );
     }
 
-    // pega informações úteis (PIX)
-    const chargePix = data?.charges?.find((c: any) => c?.payment_method?.type === "PIX");
-    const qr_base64 = chargePix?.payment_method?.qr_code_base64 || null;
-    const qr_text = chargePix?.payment_method?.qr_code || null;
+    // PIX: o retorno costuma vir em data.qr_codes
+    const qr = data?.qr_codes?.[0] || null;
 
     // salva no supabase (server-side)
     const sb = supabaseAdmin();
@@ -205,8 +175,8 @@ export async function POST(req: Request) {
     return NextResponse.json({
       ok: true,
       pagbank_id: data.id,
-      qr_base64,
-      qr_text,
+      qr_codes: data?.qr_codes || null,
+      qr, // atalho
       raw: data,
     });
   } catch (e: any) {
