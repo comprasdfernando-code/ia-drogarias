@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type CheckoutItem = {
   reference_id?: string;
@@ -30,6 +30,22 @@ function moneyFromCents(v: number) {
   return (v / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
+function splitPhoneBR(phoneDigits: string) {
+  // espera "5511999998888" ou "11999998888"
+  let p = onlyDigits(phoneDigits || "");
+  if (!p) return null;
+
+  // remove 55 se vier
+  if (p.length >= 12 && p.startsWith("55")) p = p.slice(2);
+
+  // precisa pelo menos DDD + número
+  if (p.length < 10) return null;
+
+  const area = p.slice(0, 2);
+  const number = p.slice(2); // 8 ou 9 dígitos
+  return { country: "55", area, number, type: "MOBILE" as const };
+}
+
 export default function PagbankPayment({
   orderId,
   cliente,
@@ -43,10 +59,15 @@ export default function PagbankPayment({
 }) {
   const [method, setMethod] = useState<"PIX" | "CREDIT_CARD">("PIX");
 
-  // PIX UI (novo formato)
+  // PIX UI
   const [pixQrPngUrl, setPixQrPngUrl] = useState<string | null>(null);
   const [pixQrBase64, setPixQrBase64] = useState<string | null>(null);
   const [pixCopiaCola, setPixCopiaCola] = useState<string | null>(null);
+  const [pixExpiresAt, setPixExpiresAt] = useState<string | null>(null);
+
+  // Status/UI
+  const [statusMsg, setStatusMsg] = useState<string | null>(null);
+  const pollRef = useRef<number | null>(null);
 
   // Cartão UI
   const [cardNumber, setCardNumber] = useState("");
@@ -65,7 +86,7 @@ export default function PagbankPayment({
     return items.reduce((acc, it) => acc + (it.unit_amount || 0) * (it.quantity || 0), 0);
   }, [items]);
 
-  // garante dados mínimos pro PagBank (tax_id e phone)
+  // garante dados mínimos pro PagBank
   const clienteSafe = useMemo(() => {
     const tax = onlyDigits(cliente?.tax_id || "");
     const phone = onlyDigits(cliente?.phone || "");
@@ -76,6 +97,16 @@ export default function PagbankPayment({
       phone: phone || undefined,
     };
   }, [cliente]);
+
+  // limpa polling ao desmontar
+  useEffect(() => {
+    return () => {
+      if (pollRef.current) {
+        window.clearInterval(pollRef.current);
+        pollRef.current = null;
+      }
+    };
+  }, []);
 
   // 1) pega public_key do seu endpoint
   useEffect(() => {
@@ -110,38 +141,102 @@ export default function PagbankPayment({
     return base64;
   }
 
+  async function pollPaidOnce() {
+    const r = await fetch("/api/pagbank/order-status", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ order_id: orderId }),
+    });
+    const j = await r.json().catch(() => ({}));
+    const st = String(j?.venda?.status || "").toLowerCase();
+    return st;
+  }
+
+  function startPollingPaid() {
+    // evita múltiplos intervals
+    if (pollRef.current) {
+      window.clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+
+    let tries = 0;
+    setStatusMsg("Aguardando pagamento...");
+
+    pollRef.current = window.setInterval(async () => {
+      tries += 1;
+      try {
+        const st = await pollPaidOnce();
+        if (st === "pago" || st === "paid" || st === "confirmed" || st === "approved") {
+          if (pollRef.current) window.clearInterval(pollRef.current);
+          pollRef.current = null;
+          setStatusMsg("Pagamento aprovado ✅");
+          onPaid?.();
+          return;
+        }
+
+        // 10 min (100 tentativas * 6s)
+        if (tries >= 100) {
+          if (pollRef.current) window.clearInterval(pollRef.current);
+          pollRef.current = null;
+          setStatusMsg("PIX gerado. Se pagar e não atualizar, atualize a página.");
+        }
+      } catch {
+        // ignora e tenta de novo
+      }
+    }, 6000);
+  }
+
   async function createOrderPIX() {
     setErr(null);
     setCopied(false);
     setLoading(true);
+    setStatusMsg(null);
 
     // limpa anterior
     setPixQrPngUrl(null);
     setPixQrBase64(null);
     setPixCopiaCola(null);
+    setPixExpiresAt(null);
 
     try {
+      // valida mínimos (sandbox costuma exigir)
+      if (!clienteSafe?.tax_id) {
+        throw new Error("CPF (tax_id) é obrigatório para gerar PIX.");
+      }
+      if (!clienteSafe?.phone) {
+        throw new Error("Telefone (com DDD) é obrigatório para gerar PIX. Ex: 11999998888");
+      }
+
+      const phoneObj = splitPhoneBR(clienteSafe.phone);
+
       const resp = await fetch("/api/pagbank/create-order", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           order_id: orderId,
           forma_pagamento: "PIX",
-          cliente: clienteSafe,
+          // manda no formato mais compatível (tax_id + phones)
+          cliente: {
+            name: clienteSafe.name,
+            email: clienteSafe.email,
+            tax_id: clienteSafe.tax_id,
+            phones: phoneObj ? [phoneObj] : undefined,
+          },
           items,
         }),
       });
 
-      const data = await resp.json();
+      const data = await resp.json().catch(() => ({}));
 
       if (!resp.ok || !data?.ok) {
         throw new Error(data?.error || "Falha ao criar PIX");
       }
 
       // NOVO: vem do backend
-      // data.qr_text, data.qr_png_url, data.qr_base64_url
+      // data.qr_text, data.qr_png_url, data.qr_base64_url, data.qr_base64, data.expires_at
       setPixCopiaCola(data.qr_text || null);
       setPixQrPngUrl(data.qr_png_url || null);
+      setPixExpiresAt(data.expires_at || data.pix_expires_at || null);
 
       // se não veio PNG, tenta buscar BASE64 via url
       if (!data.qr_png_url && data.qr_base64_url) {
@@ -149,10 +244,13 @@ export default function PagbankPayment({
         setPixQrBase64(b64);
       }
 
-      // se veio base64 pronto (caso você coloque no backend depois)
+      // se veio base64 pronto
       if (data.qr_base64) {
         setPixQrBase64(data.qr_base64);
       }
+
+      // ✅ começa a checar se pagou
+      startPollingPaid();
     } catch (e: any) {
       setErr(String(e?.message || e));
     } finally {
@@ -180,8 +278,13 @@ export default function PagbankPayment({
   async function createOrderCard() {
     setErr(null);
     setLoading(true);
+    setStatusMsg(null);
 
     try {
+      if (!clienteSafe?.tax_id) {
+        throw new Error("CPF (tax_id) é obrigatório.");
+      }
+
       const encrypted = encryptCard();
 
       const resp = await fetch("/api/pagbank/create-order", {
@@ -201,7 +304,7 @@ export default function PagbankPayment({
         }),
       });
 
-      const data = await resp.json();
+      const data = await resp.json().catch(() => ({}));
 
       if (!resp.ok || !data?.ok) {
         throw new Error(data?.error || "Falha ao criar pagamento no cartão");
@@ -225,6 +328,13 @@ export default function PagbankPayment({
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }
+
+  const expiresLabel = useMemo(() => {
+    if (!pixExpiresAt) return null;
+    const d = new Date(pixExpiresAt);
+    if (Number.isNaN(d.getTime())) return null;
+    return d.toLocaleString("pt-BR");
+  }, [pixExpiresAt]);
 
   return (
     <div className="w-full max-w-xl space-y-4 rounded-2xl border p-4">
@@ -258,6 +368,12 @@ export default function PagbankPayment({
         </div>
       )}
 
+      {statusMsg && (
+        <div className="rounded-xl border bg-white p-3 text-sm">
+          {statusMsg}
+        </div>
+      )}
+
       {method === "PIX" ? (
         <div className="space-y-3">
           <button
@@ -268,16 +384,18 @@ export default function PagbankPayment({
             {loading ? "Gerando PIX..." : "Gerar PIX"}
           </button>
 
+          {expiresLabel && (
+            <div className="text-xs opacity-70">
+              Expira em: <span className="font-medium">{expiresLabel}</span>
+            </div>
+          )}
+
           {(pixQrPngUrl || pixQrBase64) && (
             <div className="space-y-2">
               <div className="text-sm opacity-70">Aponte a câmera ou use o app do banco</div>
 
               {pixQrPngUrl ? (
-                <img
-                  className="w-64 rounded-xl border"
-                  src={pixQrPngUrl}
-                  alt="QR Code PIX"
-                />
+                <img className="w-64 rounded-xl border" src={pixQrPngUrl} alt="QR Code PIX" />
               ) : (
                 <img
                   className="w-64 rounded-xl border"
@@ -304,6 +422,17 @@ export default function PagbankPayment({
               >
                 {copied ? "Copiado ✅" : "Copiar código PIX"}
               </button>
+            </div>
+          )}
+
+          {!clienteSafe.tax_id && (
+            <div className="text-xs text-red-700">
+              Falta CPF (tax_id) no cliente para gerar PIX.
+            </div>
+          )}
+          {!clienteSafe.phone && (
+            <div className="text-xs text-red-700">
+              Falta telefone (com DDD) no cliente para gerar PIX. Ex: 11999998888
             </div>
           )}
         </div>

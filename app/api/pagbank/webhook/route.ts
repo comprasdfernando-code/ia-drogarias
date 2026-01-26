@@ -11,51 +11,94 @@ function supabaseAdmin() {
   return createClient(url, serviceKey, { auth: { persistSession: false } });
 }
 
+/**
+ * Webhook PagBank:
+ * - você configurou notification_urls no pedido
+ * - aqui a gente recebe os eventos e atualiza sua tabela
+ *
+ * Obs: o formato exato do payload pode variar por produto (PIX/Orders).
+ * Por isso, este webhook é "tolerante": tenta extrair campos úteis
+ * e registra o payload pra auditoria.
+ */
 export async function POST(req: Request) {
   try {
-    // Se você estiver usando um “segredo seu” no webhook:
-    const secret = req.headers.get("x-webhook-secret");
-    const expected = process.env.PAGBANK_WEBHOOK_SECRET;
-
-    if (expected && secret !== expected) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-    }
-
-    const payload: any = await req.json();
-
-    // Pode variar conforme o evento; aqui tentamos capturar o id do pedido/cobrança
-    const pagbankId = payload?.id || payload?.order_id || payload?.reference_id;
-    const statusRaw = payload?.charges?.[0]?.status || payload?.status || "";
-    const status = String(statusRaw).toLowerCase();
-
-    if (!pagbankId) {
-      return NextResponse.json({ ok: true, warn: "Sem id no payload" });
-    }
-
     const sb = supabaseAdmin();
 
-    await sb
-      .from("vendas_site")
-      .update({
-        status,
-        etapa: status === "paid" ? 2 : undefined,
-        pagbank_id: String(pagbankId),
-      })
-      .eq("pagbank_id", String(pagbankId));
+    const payload = await req.json().catch(() => ({}));
+    const raw = payload || {};
 
-    if (status === "paid") {
-      await sb.from("vendas_site_rastreamento").insert({
-        venda_id: String(pagbankId),
-        etapa: 2,
-        descricao: "Pagamento aprovado",
-      });
+    // Tenta extrair o que normalmente vem
+    const event = String(raw?.event || raw?.type || raw?.notification_type || "").toUpperCase();
+    const status = String(raw?.status || raw?.data?.status || raw?.charge?.status || "").toUpperCase();
+
+    // IDs PagBank que podem vir:
+    const pagbankOrderId =
+      raw?.id ||
+      raw?.order_id ||
+      raw?.data?.id ||
+      raw?.data?.order_id ||
+      raw?.resource?.id ||
+      null;
+
+    // Seu reference_id (você manda "123" etc)
+    const referenceId =
+      raw?.reference_id ||
+      raw?.data?.reference_id ||
+      raw?.resource?.reference_id ||
+      null;
+
+    // ✅ decisão de "pago"
+    // Dependendo do produto, pode vir PAID / PAID_OUT / CONFIRMED etc.
+    const isPaid =
+      status === "PAID" ||
+      status === "PAID_OUT" ||
+      status === "CONFIRMED" ||
+      event.includes("PAID") ||
+      event.includes("CONFIRMED");
+
+    const newStatus = isPaid ? "pago" : (status ? status.toLowerCase() : "notificado");
+
+    // 1) salva log (recomendado)
+    // crie essa tabela se quiser: pagbank_webhooks (id uuid, created_at, payload jsonb)
+    // se não existir, comente o bloco.
+    try {
+      await sb.from("pagbank_webhooks").insert({ payload: raw });
+    } catch {
+      // ok não ter tabela
+    }
+
+    // 2) atualiza sua venda
+    // Preferência: achar por pagbank_id; fallback: por reference_id (= seu order_id)
+    if (pagbankOrderId) {
+      await sb
+        .from("vendas_site")
+        .update({
+          status: newStatus,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("pagbank_id", String(pagbankOrderId));
+    }
+
+    if (referenceId) {
+      await sb
+        .from("vendas_site")
+        .update({
+          status: newStatus,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", String(referenceId));
     }
 
     return NextResponse.json({ ok: true });
   } catch (e: any) {
     return NextResponse.json(
-      { error: "Falha no webhook", detalhe: String(e?.message || e) },
+      { ok: false, error: "Falha no webhook", detalhe: String(e?.message || e) },
       { status: 500 }
     );
   }
+}
+
+// opcional: PagBank pode pingar GET
+export async function GET() {
+  return NextResponse.json({ ok: true });
 }
