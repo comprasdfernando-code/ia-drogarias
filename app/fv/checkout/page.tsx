@@ -8,7 +8,7 @@ export default function CheckoutPage() {
   const cliente = {
     name: "Fernando Pereira",
     email: "cliente@iadrogarias.com",
-    tax_id: "12345678909",
+    cpf: "32328752896", // ✅ CPF correto (11 dígitos)
     phone: "11999998888",
   };
 
@@ -23,7 +23,7 @@ export default function CheckoutPage() {
       reference_id: "item-2",
       name: "Atenolol 25mg",
       quantity: 1,
-      unit_amount: 399,
+      unit_amount: 399, // centavos
     },
   ];
 
