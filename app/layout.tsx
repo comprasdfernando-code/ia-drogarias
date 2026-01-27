@@ -2,6 +2,8 @@ import "./globals.css";
 import type { Metadata } from "next";
 import RootClientLayout from "./root-client-layout";
 import { CartProvider } from "./contexts/CartContext";
+import "leaflet/dist/leaflet.css";
+
 
 export const metadata: Metadata = {
   title: "IA Drogarias",
