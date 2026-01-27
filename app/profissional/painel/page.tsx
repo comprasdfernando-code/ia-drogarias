@@ -4,24 +4,33 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
 /* =========================
+   CONFIG STATUS (IGUAL SEU BANCO)
+========================= */
+const STATUS_PROCURANDO = "procurando";   // existe
+const STATUS_SOLICITADO = "SOLICITADO";   // existe
+const STATUS_ACEITO = "aceito";           // existe
+const STATUS_EM_ANDAMENTO = "em_andamento"; // existe (print)
+const STATUS_FINALIZADO = "finalizado";   // se ainda não tiver, tudo bem (não quebra)
+
+/* =========================
    HELPERS
 ========================= */
 function brl(v: number) {
-  return (v || 0).toLocaleString("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  });
+  return (Number(v) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 function onlyDigits(s: string) {
   return (s || "").replace(/\D/g, "");
 }
-
-/* =========================
-   ENUMS (BATEM COM O BANCO)
-========================= */
-const STATUS_PROCURANDO = "procurando";
-const STATUS_SOLICITADO = "SOLICITADO";
-const STATUS_ACEITO = "aceito";
+function mapsLinkFromEndereco(endereco?: string | null) {
+  if (!endereco) return "https://www.google.com/maps";
+  return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(endereco)}`;
+}
+function wppLink(phone?: string | null, text?: string) {
+  const p = onlyDigits(phone || "");
+  if (!p) return "#";
+  const msg = text ? `?text=${encodeURIComponent(text)}` : "";
+  return `https://wa.me/55${p}${msg}`;
+}
 
 /* =========================
    TYPES
@@ -47,43 +56,53 @@ type Chamado = {
   preco_servico: number | null;
   taxa_locomocao: number | null;
   total: number | null;
+  profissional_id: string | null;
+  profissional_nome: string | null;
+  profissional_uid?: string | null;
 };
 
-/* =========================
-   COMPONENT
-========================= */
-export default function PainelProfissional() {
+export default function PainelProfissionalPremium() {
   const [user, setUser] = useState<any>(null);
   const [authLoading, setAuthLoading] = useState(true);
 
+  // login form (caso precise)
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
   const [authMsg, setAuthMsg] = useState("");
 
   const [prof, setProf] = useState<Prof | null>(null);
-  const [online, setOnline] = useState(false);
+  const [online, setOnline] = useState(true);
 
   const [chamados, setChamados] = useState<Chamado[]>([]);
   const [loadingChamados, setLoadingChamados] = useState(false);
 
+  // chamado ativo (aceito por mim)
+  const [meuChamado, setMeuChamado] = useState<Chamado | null>(null);
+  const [loadingMeuChamado, setLoadingMeuChamado] = useState(false);
+
+  // realtime channel
   const channelRef = useRef<any>(null);
 
+  // SOUND
+  const [soundArmed, setSoundArmed] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const lastTopIdRef = useRef<string>("");
+
   /* =========================
-     AUTH
+     AUTH BOOT
   ========================= */
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => {
+    (async () => {
+      const { data } = await supabase.auth.getUser();
       setUser(data?.user || null);
       setAuthLoading(false);
+    })();
+
+    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
+      setUser(session?.user || null);
     });
 
-    const { data: sub } = supabase.auth.onAuthStateChange(
-      (_e, session) => setUser(session?.user || null)
-    );
-
-    return () => {
-      sub?.subscription?.unsubscribe();
-    };
+    return () => sub?.subscription?.unsubscribe();
   }, []);
 
   async function signIn() {
@@ -92,32 +111,129 @@ export default function PainelProfissional() {
       email: email.trim(),
       password: senha,
     });
-    if (error) setAuthMsg("Falha no login.");
+    if (error) setAuthMsg("Falha no login. Verifique email e senha.");
   }
 
   async function signOut() {
-    setOnline(false);
+    try {
+      await saveOnline(false);
+    } catch {}
     await supabase.auth.signOut();
     setProf(null);
+    setMeuChamado(null);
     setChamados([]);
+    setOnline(false);
   }
 
   /* =========================
-     LOAD PROFISSIONAL
+     LOAD PROF (por user_id, senão por email)
   ========================= */
   useEffect(() => {
     if (!user?.id) return;
 
-    supabase
-      .from("cadastros_profissionais")
-      .select("id,user_id,nome,whatsapp,email,area")
-      .or(`user_id.eq.${user.id},email.eq.${user.email}`)
-      .maybeSingle()
-      .then(({ data }) => setProf(data || null));
+    (async () => {
+      // 1) tenta por user_id
+      let { data: p } = await supabase
+        .from("cadastros_profissionais")
+        .select("id,user_id,nome,whatsapp,email,area")
+        .eq("user_id", user.id)
+        .maybeSingle();
+
+      // 2) tenta por email e vincula
+      if (!p && user?.email) {
+        const { data: byEmail } = await supabase
+          .from("cadastros_profissionais")
+          .select("id,user_id,nome,whatsapp,email,area")
+          .eq("email", user.email)
+          .maybeSingle();
+
+        if (byEmail && !byEmail.user_id) {
+          const { data: updated } = await supabase
+            .from("cadastros_profissionais")
+            .update({ user_id: user.id })
+            .eq("id", byEmail.id)
+            .select("id,user_id,nome,whatsapp,email,area")
+            .maybeSingle();
+          p = updated || byEmail;
+        } else {
+          p = byEmail || null;
+        }
+      }
+
+      setProf((p as any) || null);
+    })();
   }, [user?.id]);
 
   /* =========================
-     CHAMADOS
+     ONLINE (tabela public.profissionais)
+     - SEM updated_at pra evitar erro em tabelas sem coluna
+  ========================= */
+  async function ensureProfRow(userId: string) {
+    await supabase
+      .from("profissionais")
+      .upsert(
+        {
+          user_id: userId,
+          nome: prof?.nome || user?.email || "Profissional",
+          whatsapp: prof?.whatsapp || null,
+        },
+        { onConflict: "user_id" }
+      );
+  }
+
+  async function saveOnline(next: boolean) {
+    if (!user?.id) return;
+    try {
+      await ensureProfRow(user.id);
+      await supabase.from("profissionais").update({ online: next }).eq("user_id", user.id);
+    } catch (e) {
+      // não trava o app por causa de policy/coluna
+      console.warn("Não consegui salvar online/offline na tabela profissionais:", e);
+    }
+  }
+
+  async function toggleOnline() {
+    const next = !online;
+    setOnline(next);
+    await saveOnline(next);
+  }
+
+  /* =========================
+     SOUND (precisa de gesto do usuário no celular)
+     Coloque um arquivo em: /public/sounds/farma.mp3
+  ========================= */
+  useEffect(() => {
+    audioRef.current = new Audio("/sounds/farma.mp3");
+    audioRef.current.preload = "auto";
+    audioRef.current.volume = 1;
+  }, []);
+
+  async function armSound() {
+    try {
+      // toca baixinho 0.1s pra liberar autoplay
+      if (!audioRef.current) return;
+      audioRef.current.currentTime = 0;
+      await audioRef.current.play();
+      audioRef.current.pause();
+      audioRef.current.currentTime = 0;
+      setSoundArmed(true);
+      alert("Alertas sonoros ativados ✅");
+    } catch {
+      alert("Seu navegador bloqueou o som. Tente de novo tocando no botão.");
+    }
+  }
+
+  async function playAlert() {
+    if (!soundArmed) return;
+    try {
+      if (!audioRef.current) return;
+      audioRef.current.currentTime = 0;
+      await audioRef.current.play();
+    } catch {}
+  }
+
+  /* =========================
+     LOAD CHAMADOS (PROCURANDO + SOLICITADO)
   ========================= */
   async function refreshChamados() {
     setLoadingChamados(true);
@@ -127,49 +243,104 @@ export default function PainelProfissional() {
       .select("*")
       .in("status", [STATUS_PROCURANDO, STATUS_SOLICITADO])
       .order("created_at", { ascending: false })
-      .limit(20);
-
-    if (error) {
-      console.error(error);
-      setChamados([]);
-    } else {
-      setChamados(data || []);
-    }
+      .limit(50);
 
     setLoadingChamados(false);
-  }
 
-  useEffect(() => {
-    if (!online) return;
-
-    refreshChamados();
-
-    if (channelRef.current) {
-      supabase.removeChannel(channelRef.current);
+    if (error) {
+      console.error("Erro carregando chamados:", error);
+      setChamados([]);
+      return;
     }
 
-    channelRef.current = supabase
-      .channel("chamados-realtime")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "chamados" },
-        () => refreshChamados()
-      )
-      .subscribe();
+    const rows = (data as any as Chamado[]) || [];
+    setChamados(rows);
 
-    return () => {
-      if (channelRef.current) {
-        supabase.removeChannel(channelRef.current);
-      }
-    };
-  }, [online]);
+    // ALERTA: tocamos quando muda o topo (novo chamado)
+    const topId = rows?.[0]?.id || "";
+    if (topId && topId !== lastTopIdRef.current) {
+      // não tocar no primeiro load "vazio"
+      if (lastTopIdRef.current) await playAlert();
+      lastTopIdRef.current = topId;
+    }
+  }
 
   /* =========================
-     ACEITAR CHAMADO
+     MEU CHAMADO (o que eu aceitei)
   ========================= */
-  async function aceitarChamado(id: string) {
+  async function loadMeuChamado() {
+    if (!user?.id) return;
+    setLoadingMeuChamado(true);
+
+    const { data, error } = await supabase
+      .from("chamados")
+      .select("*")
+      .eq("profissional_uid", user.id)
+      .in("status", [STATUS_ACEITO, STATUS_EM_ANDAMENTO])
+      .order("created_at", { ascending: false })
+      .limit(1);
+
+    setLoadingMeuChamado(false);
+
+    if (error) {
+      console.error("Erro carregando meu chamado:", error);
+      setMeuChamado(null);
+      return;
+    }
+    setMeuChamado(((data as any[])?.[0] as Chamado) || null);
+  }
+
+  /* =========================
+     REALTIME + FALLBACK POLLING
+  ========================= */
+  useEffect(() => {
+    // limpa subscribe anterior
+    if (channelRef.current) {
+      supabase.removeChannel(channelRef.current);
+      channelRef.current = null;
+    }
+
+    if (!user?.id || !online) return;
+
+    // primeira carga
+    refreshChamados();
+    loadMeuChamado();
+
+    // realtime
+    const ch = supabase
+      .channel("realtime-chamados-pro")
+      .on("postgres_changes", { event: "*", schema: "public", table: "chamados" }, () => {
+        refreshChamados();
+        loadMeuChamado();
+      })
+      .subscribe();
+
+    channelRef.current = ch;
+
+    // fallback polling (caso realtime caia)
+    const t = setInterval(() => {
+      refreshChamados();
+      loadMeuChamado();
+    }, 5000);
+
+    return () => {
+      clearInterval(t);
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, online, soundArmed]);
+
+  /* =========================
+     ACEITAR (SEM MENTIR)
+     - tenta update se status em (procurando|SOLICITADO)
+     - se não atualizou, checa status atual no banco e mostra real
+  ========================= */
+  async function aceitarChamado(chamadoId: string) {
     if (!prof?.id) {
-      alert("Cadastro profissional não vinculado.");
+      alert("Seu cadastro profissional não está vinculado ao login.");
       return;
     }
 
@@ -178,174 +349,426 @@ export default function PainelProfissional() {
       .update({
         status: STATUS_ACEITO,
         profissional_id: prof.id,
-        profissional_nome: prof.nome,
-        profissional_uid: user.id,
+        profissional_nome: prof.nome || "Profissional",
+        profissional_uid: user?.id || null,
       })
-      .eq("id", id)
+      .eq("id", chamadoId)
       .in("status", [STATUS_PROCURANDO, STATUS_SOLICITADO])
-      .select("id")
+      .select("id,status,profissional_id,profissional_nome")
       .maybeSingle();
 
-    if (error || !data) {
-      alert("Outro profissional aceitou antes.");
-      refreshChamados();
+    if (error) {
+      console.error("Erro aceitarChamado:", error);
+      alert("Erro ao aceitar. Veja o console (policy/status).");
+      await refreshChamados();
       return;
     }
 
-    alert("Chamado aceito com sucesso 🚀");
-    refreshChamados();
+    if (!data) {
+      const check = await supabase
+        .from("chamados")
+        .select("status,profissional_nome,profissional_id")
+        .eq("id", chamadoId)
+        .maybeSingle();
+
+      const st = String(check.data?.status || "");
+      if (st === STATUS_ACEITO) {
+        alert("Esse chamado já foi aceito ✅");
+      } else {
+        alert(`Não consegui aceitar. Status atual: ${st || "desconhecido"}`);
+      }
+
+      await refreshChamados();
+      return;
+    }
+
+    alert("Chamado aceito ✅");
+    await refreshChamados();
+    await loadMeuChamado();
   }
 
-  async function aceitarPrimeiro() {
+  async function aceitarPrimeiroAgora() {
     if (!chamados.length) return;
-    aceitarChamado(chamados[0].id);
+    await aceitarChamado(chamados[0].id);
   }
+
+  /* =========================
+     AÇÕES DO MEU CHAMADO
+  ========================= */
+  async function updateMeuChamadoStatus(nextStatus: string) {
+    if (!meuChamado?.id) return;
+
+    const { error } = await supabase
+      .from("chamados")
+      .update({ status: nextStatus })
+      .eq("id", meuChamado.id)
+      .eq("profissional_uid", user?.id || "");
+
+    if (error) {
+      console.error("Erro mudando status:", error);
+      alert("Não consegui mudar o status. Veja o console.");
+      return;
+    }
+    await loadMeuChamado();
+    await refreshChamados();
+  }
+
+  /* =========================
+     HEADER TITLE
+  ========================= */
+  const headerTitle = useMemo(() => {
+    if (authLoading) return "Carregando…";
+    if (!user) return "Login do profissional";
+    return "Painel do profissional";
+  }, [authLoading, user]);
 
   /* =========================
      UI
   ========================= */
-  if (authLoading) {
-    return <div className="p-10 text-center">Carregando…</div>;
-  }
-
-  if (!user) {
-    return (
-      <main className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow">
-          <h1 className="text-lg font-bold">Login profissional</h1>
-
-          <input
-            className="mt-4 w-full rounded-xl border px-3 py-2"
-            placeholder="Email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-          />
-          <input
-            type="password"
-            className="mt-2 w-full rounded-xl border px-3 py-2"
-            placeholder="Senha"
-            value={senha}
-            onChange={(e) => setSenha(e.target.value)}
-          />
-
-          {authMsg && (
-            <div className="mt-2 text-sm text-red-600">{authMsg}</div>
-          )}
-
-          <button
-            onClick={signIn}
-            className="mt-4 w-full rounded-xl bg-emerald-600 py-2 text-white font-semibold"
-          >
-            Entrar
-          </button>
-        </div>
-      </main>
-    );
-  }
-
   return (
-    <main className="min-h-screen bg-slate-50 p-6">
-      {/* BANNER PRIORIDADE */}
-      {online && chamados.length > 0 && (
-        <div className="mb-6 rounded-2xl bg-emerald-600 p-4 text-white flex items-center justify-between shadow-lg">
-          <div>
-            <div className="font-bold text-lg">
-              🚨 CHAMADO DISPONÍVEL AGORA
-            </div>
-            <div className="text-sm">
-              Clique para pegar o atendimento imediatamente
-            </div>
+    <main className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
+      {/* Top bar */}
+      <div className="sticky top-0 z-30 border-b bg-white/80 backdrop-blur">
+        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
+          <div className="flex items-center gap-2">
+            <div className="text-sm font-extrabold text-slate-900">IA Drogarias</div>
+            <span className="rounded-full bg-slate-100 px-2 py-1 text-[11px] font-semibold text-slate-700">
+              Profissional
+            </span>
           </div>
-          <button
-            onClick={aceitarPrimeiro}
-            className="rounded-xl bg-white px-5 py-2 font-bold text-emerald-700"
-          >
-            ✅ ACEITAR O PRIMEIRO AGORA
-          </button>
+          <div className="text-xs text-slate-500">{headerTitle}</div>
         </div>
-      )}
+      </div>
 
-      <div className="grid gap-6 md:grid-cols-2">
-        {/* PERFIL */}
-        <div className="rounded-2xl bg-white p-5 shadow">
-          <div className="flex justify-between">
-            <div>
-              <div className="font-semibold">{prof?.nome}</div>
-              <div className="text-sm text-slate-500">
-                WhatsApp: {onlyDigits(prof?.whatsapp || "")}
+      <div className="mx-auto max-w-6xl px-4 py-6">
+        {/* LOGIN */}
+        {!user ? (
+          <div className="mx-auto max-w-md rounded-2xl border bg-white p-6 shadow-sm">
+            <h1 className="text-lg font-bold text-slate-900">Entrar</h1>
+            <p className="mt-1 text-sm text-slate-600">Acesso exclusivo para profissionais.</p>
+
+            <div className="mt-4 space-y-3">
+              <div>
+                <label className="text-xs font-semibold text-slate-700">Email</label>
+                <input
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="mt-1 w-full rounded-2xl border px-3 py-3 text-sm outline-none focus:border-slate-900"
+                  placeholder="email@exemplo.com"
+                  autoComplete="email"
+                />
               </div>
-            </div>
-            <button onClick={signOut} className="text-sm text-red-600">
-              Sair
-            </button>
-          </div>
-
-          <div className="mt-4 flex items-center justify-between rounded-xl border p-4">
-            <div>
-              <div className="font-semibold">Disponibilidade</div>
-              <div className="text-sm text-slate-500">
-                Receber chamados em tempo real
+              <div>
+                <label className="text-xs font-semibold text-slate-700">Senha</label>
+                <input
+                  type="password"
+                  value={senha}
+                  onChange={(e) => setSenha(e.target.value)}
+                  className="mt-1 w-full rounded-2xl border px-3 py-3 text-sm outline-none focus:border-slate-900"
+                  placeholder="••••••••"
+                  autoComplete="current-password"
+                />
               </div>
-            </div>
-            <button
-              onClick={() => setOnline(!online)}
-              className={`rounded-xl px-4 py-2 font-semibold ${
-                online
-                  ? "bg-emerald-600 text-white"
-                  : "bg-slate-200 text-slate-800"
-              }`}
-            >
-              {online ? "Online" : "Offline"}
-            </button>
-          </div>
-        </div>
 
-        {/* CHAMADOS */}
-        <div className="rounded-2xl bg-white p-5 shadow">
-          <div className="flex justify-between mb-3">
-            <div className="font-semibold">
-              Chamados procurando ({chamados.length})
-            </div>
-            <button onClick={refreshChamados} className="text-sm">
-              Atualizar
-            </button>
-          </div>
+              {authMsg ? <div className="text-sm text-rose-600">{authMsg}</div> : null}
 
-          {loadingChamados && (
-            <div className="text-sm text-slate-500">Carregando…</div>
-          )}
-
-          {!loadingChamados && chamados.length === 0 && (
-            <div className="text-sm text-slate-500">
-              Nenhum chamado no momento.
-            </div>
-          )}
-
-          <div className="space-y-3">
-            {chamados.map((c) => (
-              <div
-                key={c.id}
-                className="rounded-xl border p-4 flex justify-between items-start"
+              <button
+                onClick={signIn}
+                className="w-full rounded-2xl bg-slate-900 px-4 py-3 text-sm font-semibold text-white hover:opacity-95"
               >
-                <div>
-                  <div className="font-semibold">{c.servico}</div>
-                  <div className="text-sm text-slate-500">
-                    {c.endereco}
+                Entrar
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            {/* Banner urgente (quando tem chamados) */}
+            {online && chamados.length > 0 ? (
+              <div className="mb-5 rounded-3xl border border-emerald-200 bg-emerald-600 p-4 text-white shadow-lg">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <div className="text-base font-extrabold tracking-wide">
+                      🚨 CHAMADO DISPONÍVEL AGORA
+                    </div>
+                    <div className="text-sm opacity-95">
+                      Clique em <b>ACEITAR O PRIMEIRO AGORA</b> para pegar imediatamente.
+                    </div>
                   </div>
-                  <div className="text-sm mt-1">
-                    Total: <b>{brl(c.total || 0)}</b>
+
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                    {!soundArmed ? (
+                      <button
+                        onClick={armSound}
+                        className="rounded-2xl bg-white px-4 py-2 text-sm font-extrabold text-emerald-700 shadow hover:opacity-95"
+                      >
+                        🔊 Ativar alertas
+                      </button>
+                    ) : (
+                      <span className="rounded-2xl bg-white/15 px-3 py-2 text-xs font-semibold">
+                        🔊 Alertas ON
+                      </span>
+                    )}
+
+                    <button
+                      onClick={aceitarPrimeiroAgora}
+                      className="rounded-2xl bg-white px-5 py-3 text-sm font-extrabold text-emerald-700 shadow hover:opacity-95"
+                    >
+                      ✅ ACEITAR O PRIMEIRO AGORA
+                    </button>
                   </div>
                 </div>
-                <button
-                  onClick={() => aceitarChamado(c.id)}
-                  className="rounded-xl bg-slate-900 px-4 py-2 text-white font-semibold"
-                >
-                  Aceitar
-                </button>
               </div>
-            ))}
-          </div>
-        </div>
+            ) : null}
+
+            <div className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
+              {/* Coluna esquerda */}
+              <div className="space-y-6">
+                {/* Perfil */}
+                <div className="rounded-3xl border bg-white p-5 shadow-sm">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <div className="text-sm font-semibold text-slate-900">Seu perfil</div>
+                      <div className="mt-1 text-xs text-slate-500">{user.email}</div>
+                    </div>
+                    <button
+                      onClick={signOut}
+                      className="rounded-2xl border px-3 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-50"
+                    >
+                      Sair
+                    </button>
+                  </div>
+
+                  <div className="mt-4 rounded-3xl bg-slate-50 p-4">
+                    <div className="text-sm font-extrabold text-slate-900">
+                      {prof?.nome || "Cadastro não vinculado"}
+                    </div>
+                    <div className="mt-1 text-xs text-slate-700">
+                      {prof?.area ? `Área: ${prof.area}` : "—"} •{" "}
+                      {prof?.whatsapp ? `WhatsApp: ${onlyDigits(prof.whatsapp)}` : "—"}
+                    </div>
+
+                    {!prof ? (
+                      <div className="mt-3 text-xs text-rose-600">
+                        Não encontrei seu cadastro em <b>cadastros_profissionais</b> por <b>user_id</b> nem por email.
+                      </div>
+                    ) : null}
+                  </div>
+
+                  {/* Online */}
+                  <div className="mt-4 flex items-center justify-between rounded-3xl border p-4">
+                    <div>
+                      <div className="text-sm font-semibold text-slate-900">Disponibilidade</div>
+                      <div className="text-xs text-slate-500">Receber chamados em tempo real</div>
+                    </div>
+
+                    <button
+                      onClick={toggleOnline}
+                      className={[
+                        "rounded-2xl px-4 py-2 text-sm font-extrabold transition",
+                        online ? "bg-emerald-600 text-white" : "bg-slate-200 text-slate-900",
+                      ].join(" ")}
+                    >
+                      {online ? "Online" : "Offline"}
+                    </button>
+                  </div>
+
+                  {/* Sound */}
+                  <div className="mt-3 flex items-center justify-between rounded-3xl border p-4">
+                    <div>
+                      <div className="text-sm font-semibold text-slate-900">Alertas sonoros</div>
+                      <div className="text-xs text-slate-500">
+                        Para tocar no celular, precisa ativar 1 vez.
+                      </div>
+                    </div>
+
+                    {!soundArmed ? (
+                      <button
+                        onClick={armSound}
+                        className="rounded-2xl bg-slate-900 px-4 py-2 text-sm font-extrabold text-white hover:opacity-95"
+                      >
+                        🔊 Ativar
+                      </button>
+                    ) : (
+                      <span className="rounded-2xl bg-emerald-100 px-4 py-2 text-xs font-extrabold text-emerald-800">
+                        ATIVO ✅
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Meu chamado (após aceitar) */}
+                <div className="rounded-3xl border bg-white p-5 shadow-sm">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-sm font-semibold text-slate-900">Minha corrida</div>
+                      <div className="text-xs text-slate-500">O atendimento que você aceitou</div>
+                    </div>
+                    <button
+                      onClick={loadMeuChamado}
+                      className="rounded-2xl border px-3 py-2 text-sm font-semibold hover:bg-slate-50"
+                    >
+                      Atualizar
+                    </button>
+                  </div>
+
+                  {loadingMeuChamado ? (
+                    <div className="mt-4 text-sm text-slate-500">Carregando…</div>
+                  ) : !meuChamado ? (
+                    <div className="mt-4 rounded-3xl bg-slate-50 p-4 text-sm text-slate-600">
+                      Você ainda não aceitou nenhum chamado.
+                    </div>
+                  ) : (
+                    <div className="mt-4 rounded-3xl border p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <div className="text-sm font-extrabold text-slate-900">{meuChamado.servico}</div>
+                          <div className="mt-1 text-xs text-slate-600">
+                            {meuChamado.endereco || "Sem endereço"} • {meuChamado.cliente_nome || "Cliente"}
+                          </div>
+                          {meuChamado.observacoes ? (
+                            <div className="mt-2 text-xs text-slate-600">Obs: {meuChamado.observacoes}</div>
+                          ) : null}
+                          <div className="mt-2 text-xs text-slate-700">
+                            Total: <b>{brl(Number(meuChamado.total || 0))}</b>
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col gap-2">
+                          <a
+                            href={mapsLinkFromEndereco(meuChamado.endereco)}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="rounded-2xl bg-slate-900 px-4 py-2 text-center text-sm font-extrabold text-white hover:opacity-95"
+                          >
+                            🗺️ Abrir rota
+                          </a>
+                          <a
+                            href={wppLink(meuChamado.cliente_whatsapp, "Olá! Sou o profissional da IA Drogarias. Estou a caminho do seu atendimento.")}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="rounded-2xl border px-4 py-2 text-center text-sm font-extrabold text-slate-900 hover:bg-slate-50"
+                          >
+                            💬 Whats do cliente
+                          </a>
+                        </div>
+                      </div>
+
+                      <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                        <button
+                          onClick={() => updateMeuChamadoStatus(STATUS_EM_ANDAMENTO)}
+                          className="rounded-2xl bg-emerald-600 px-4 py-2 text-sm font-extrabold text-white hover:opacity-95"
+                        >
+                          🚗 A CAMINHO
+                        </button>
+                        <button
+                          onClick={() => updateMeuChamadoStatus("cheguei")}
+                          className="rounded-2xl bg-slate-900 px-4 py-2 text-sm font-extrabold text-white hover:opacity-95"
+                        >
+                          📍 CHEGUEI
+                        </button>
+                        <button
+                          onClick={() => updateMeuChamadoStatus(STATUS_FINALIZADO)}
+                          className="rounded-2xl border px-4 py-2 text-sm font-extrabold text-slate-900 hover:bg-slate-50"
+                        >
+                          ✅ FINALIZAR
+                        </button>
+                      </div>
+
+                      <div className="mt-2 text-xs text-slate-500">
+                        Status atual: <b>{meuChamado.status}</b>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Coluna direita */}
+              <div className="rounded-3xl border bg-white p-5 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-sm font-semibold text-slate-900">Chamados disponíveis</div>
+                    <div className="text-xs text-slate-500">
+                      {online ? "Atualiza sozinho (Realtime + fallback)" : "Ative Online"}
+                    </div>
+                  </div>
+                  <button
+                    onClick={refreshChamados}
+                    className="rounded-2xl border px-3 py-2 text-sm font-semibold hover:bg-slate-50"
+                  >
+                    Atualizar
+                  </button>
+                </div>
+
+                {!online ? (
+                  <div className="mt-6 text-sm text-slate-500">Ative “Online” para ver e aceitar chamados.</div>
+                ) : loadingChamados ? (
+                  <div className="mt-6 text-sm text-slate-500">Carregando chamados…</div>
+                ) : chamados.length === 0 ? (
+                  <div className="mt-6 text-sm text-slate-500">Nenhum chamado no momento.</div>
+                ) : (
+                  <div className="mt-4 space-y-3">
+                    {chamados.map((c) => (
+                      <div key={c.id} className="rounded-3xl border p-4 hover:shadow-sm transition">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <div className="text-sm font-extrabold text-slate-900">{c.servico}</div>
+                              <span className="rounded-full bg-emerald-100 px-2 py-1 text-[11px] font-extrabold text-emerald-800">
+                                {String(c.status)}
+                              </span>
+                            </div>
+                            <div className="mt-1 text-xs text-slate-600">
+                              {c.endereco || "Sem endereço"} • {c.cliente_nome || "Cliente"}
+                            </div>
+                            {c.observacoes ? (
+                              <div className="mt-2 text-xs text-slate-600">Obs: {c.observacoes}</div>
+                            ) : null}
+
+                            <div className="mt-2 text-xs text-slate-700">
+                              Serviço: <b>{brl(Number(c.preco_servico || 0))}</b> • Locomoção:{" "}
+                              <b>{brl(Number(c.taxa_locomocao || 0))}</b> • Total:{" "}
+                              <b>{brl(Number(c.total || 0))}</b>
+                            </div>
+
+                            <div className="mt-2 flex gap-2">
+                              <a
+                                href={mapsLinkFromEndereco(c.endereco)}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="rounded-2xl border px-3 py-2 text-xs font-extrabold text-slate-900 hover:bg-slate-50"
+                              >
+                                🗺️ Rota
+                              </a>
+                              <a
+                                href={`/servicos/chamado/${c.id}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="rounded-2xl border px-3 py-2 text-xs font-extrabold text-slate-900 hover:bg-slate-50"
+                              >
+                                🔎 Ver tela do cliente
+                              </a>
+                            </div>
+                          </div>
+
+                          <button
+                            onClick={() => aceitarChamado(c.id)}
+                            disabled={!prof?.id}
+                            className={[
+                              "rounded-2xl px-5 py-3 text-sm font-extrabold text-white transition",
+                              !prof?.id ? "bg-slate-400 cursor-not-allowed" : "bg-slate-900 hover:opacity-95",
+                            ].join(" ")}
+                          >
+                            Aceitar
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          </>
+        )}
       </div>
     </main>
   );
