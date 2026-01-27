@@ -2,29 +2,12 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
-import dynamic from "next/dynamic";
 import { supabase } from "@/lib/supabaseClient";
 
-/* =========================
-   HELPERS
-========================= */
 function brl(v: number) {
-  return (Number(v) || 0).toLocaleString("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  });
+  return (Number(v) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
-/* =========================
-   MAPA (dynamic / sem SSR)
-========================= */
-const ChamadoMapa = dynamic(() => import("./_components/ChamadoMapa"), {
-  ssr: false,
-});
-
-/* =========================
-   TYPES
-========================= */
 type Chamado = {
   id: string;
   created_at: string;
@@ -44,11 +27,32 @@ type Chamado = {
   profissional_nome: string | null;
   profissional_uid: string | null;
 
-  cliente_lat?: number | null;
-  cliente_lng?: number | null;
+  // ✅ Se você já tiver GPS no chamado, deixe estes campos na tabela e no select:
   profissional_lat?: number | null;
   profissional_lng?: number | null;
+  gps_updated_at?: string | null;
 };
+
+function normStatus(raw: any) {
+  const s = String(raw || "").trim();
+  const up = s.toUpperCase();
+
+  // aceita variações antigas/novas
+  if (up === "SOLICITADO" || s === "procurando" || s === "PROCURANDO") return "SOLICITADO";
+  if (up === "ACEITO" || s === "aceito") return "ACEITO";
+
+  // A CAMINHO
+  if (up === "A_CAMINHO" || up === "EM_ANDAMENTO" || s === "em_andamento") return "A_CAMINHO";
+
+  // CHEGOU
+  if (up === "CHEGOU" || s === "cheguei" || up === "CHEGUEI") return "CHEGOU";
+
+  if (up === "FINALIZADO" || s === "finalizado") return "FINALIZADO";
+  if (up === "CANCELADO" || s === "cancelado") return "CANCELADO";
+
+  // fallback
+  return up || s || "";
+}
 
 export default function ChamadoClientePage() {
   const params = useParams();
@@ -56,65 +60,72 @@ export default function ChamadoClientePage() {
 
   const [loading, setLoading] = useState(true);
   const [chamado, setChamado] = useState<Chamado | null>(null);
-  const [errMsg, setErrMsg] = useState("");
+  const [errMsg, setErrMsg] = useState<string>("");
 
   const channelRef = useRef<any>(null);
+  const lastLoadRef = useRef<number>(0);
 
-  /* =========================
-     STATUS LABEL (ENUM SAFE)
-  ========================= */
+  const st = useMemo(() => normStatus(chamado?.status), [chamado?.status]);
+
   const statusLabel = useMemo(() => {
-    const st = String(chamado?.status || "");
+    if (!st) return "Atualizando status…";
+    if (st === "SOLICITADO") return "Procurando profissional disponível…";
+    if (st === "ACEITO") return "Profissional encontrado ✅";
+    if (st === "A_CAMINHO") return "Profissional a caminho 🚗";
+    if (st === "CHEGOU") return "Profissional chegou 📍";
+    if (st === "FINALIZADO") return "Atendimento finalizado ✅";
+    if (st === "CANCELADO") return "Chamado cancelado ❌";
+    return `Status: ${String(chamado?.status || st)}`;
+  }, [st, chamado?.status]);
 
-    switch (st) {
-      case "SOLICITADO":
-        return "Procurando profissional disponível…";
-      case "ACEITO":
-        return "Profissional encontrado ✅";
-      case "A_CAMINHO":
-        return "Profissional a caminho 🚗";
-      case "CHEGOU":
-        return "Profissional chegou 📍";
-      case "FINALIZADO":
-        return "Atendimento finalizado ✅";
-      case "CANCELADO":
-        return "Chamado cancelado ❌";
-      default:
-        return "Atualizando status…";
-    }
-  }, [chamado?.status]);
+  const statusPill = useMemo(() => {
+    const base =
+      "inline-flex items-center rounded-full px-3 py-1 text-xs font-semibold border";
 
-  /* =========================
-     LOAD CHAMADO
-  ========================= */
+    if (st === "SOLICITADO") return `${base} bg-slate-50 text-slate-700 border-slate-200`;
+    if (st === "ACEITO") return `${base} bg-emerald-50 text-emerald-800 border-emerald-200`;
+    if (st === "A_CAMINHO") return `${base} bg-blue-50 text-blue-800 border-blue-200`;
+    if (st === "CHEGOU") return `${base} bg-violet-50 text-violet-800 border-violet-200`;
+    if (st === "FINALIZADO") return `${base} bg-emerald-50 text-emerald-800 border-emerald-200`;
+    if (st === "CANCELADO") return `${base} bg-rose-50 text-rose-800 border-rose-200`;
+    return `${base} bg-slate-50 text-slate-700 border-slate-200`;
+  }, [st]);
+
   async function load() {
     if (!id) return;
 
-    setLoading(true);
+    // evita spam de load em cascata (realtime + interval)
+    const now = Date.now();
+    if (now - lastLoadRef.current < 600) return;
+    lastLoadRef.current = now;
+
     setErrMsg("");
+    setLoading(true);
 
     const { data, error } = await supabase
       .from("chamados")
-      .select(`
-        id,
-        created_at,
-        status,
-        servico,
-        cliente_nome,
-        cliente_whatsapp,
-        endereco,
-        observacoes,
-        preco_servico,
-        taxa_locomocao,
-        total,
-        profissional_id,
-        profissional_nome,
-        profissional_uid,
-        cliente_lat,
-        cliente_lng,
-        profissional_lat,
-        profissional_lng
-      `)
+      .select(
+        [
+          "id",
+          "created_at",
+          "status",
+          "servico",
+          "cliente_nome",
+          "cliente_whatsapp",
+          "endereco",
+          "observacoes",
+          "preco_servico",
+          "taxa_locomocao",
+          "total",
+          "profissional_id",
+          "profissional_nome",
+          "profissional_uid",
+          // ✅ se existir no banco, descomenta:
+          // "profissional_lat",
+          // "profissional_lng",
+          // "gps_updated_at",
+        ].join(",")
+      )
       .eq("id", id)
       .maybeSingle();
 
@@ -123,17 +134,15 @@ export default function ChamadoClientePage() {
     if (error || !data) {
       console.error("Erro load chamado:", error);
       setChamado(null);
-      setErrMsg("Não consegui carregar este chamado.");
+      setErrMsg("Não consegui carregar este chamado. (Verifique se ele existe e se está público)");
       return;
     }
 
-    setChamado(data as Chamado);
+    setChamado(data as any);
   }
 
-  /* =========================
-     REALTIME + FALLBACK
-  ========================= */
   useEffect(() => {
+    // limpa canal anterior
     if (channelRef.current) {
       supabase.removeChannel(channelRef.current);
       channelRef.current = null;
@@ -141,24 +150,22 @@ export default function ChamadoClientePage() {
 
     load();
 
+    // realtime
     const ch = supabase
       .channel(`realtime-chamado-${id}`)
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "chamados" },
-        (payload) => {
-          const rowId =
-            (payload as any)?.new?.id ||
-            (payload as any)?.old?.id ||
-            "";
-          if (String(rowId) === id) load();
-        }
-      )
-      .subscribe();
+      .on("postgres_changes", { event: "*", schema: "public", table: "chamados" }, (payload) => {
+        const rowId = (payload as any)?.new?.id || (payload as any)?.old?.id || "";
+        if (String(rowId) === String(id)) load();
+      })
+      .subscribe((status) => {
+        // se realtime cair, o polling segura
+        // console.log("Realtime status:", status);
+      });
 
     channelRef.current = ch;
 
-    const t = setInterval(load, 3000);
+    // fallback polling
+    const t = setInterval(() => load(), 2500);
 
     return () => {
       clearInterval(t);
@@ -170,20 +177,18 @@ export default function ChamadoClientePage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
-  /* =========================
-     RENDER
-  ========================= */
   return (
     <main className="min-h-screen bg-slate-50">
       <div className="mx-auto max-w-4xl px-4 py-10">
         <div className="rounded-3xl border bg-white p-6 shadow-sm">
-          {/* HEADER */}
-          <div className="flex flex-col gap-3 sm:flex-row sm:justify-between">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <div className="text-xl font-extrabold text-slate-900">
-                {statusLabel}
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="text-xl font-extrabold text-slate-900">{statusLabel}</div>
+                <span className={statusPill}>{st || "—"}</span>
               </div>
-              <div className="mt-1 text-sm text-slate-600">
+
+              <div className="mt-2 text-sm text-slate-600">
                 Serviço: <b>{chamado?.servico || "—"}</b>
               </div>
               <div className="mt-1 text-xs text-slate-400">ID: {id}</div>
@@ -201,21 +206,18 @@ export default function ChamadoClientePage() {
             </div>
           </div>
 
-          {/* BODY */}
           {loading ? (
-            <div className="mt-6 rounded-2xl bg-slate-50 p-4 text-sm">
-              Carregando…
+            <div className="mt-6 rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">
+              Atualizando…
             </div>
           ) : errMsg ? (
-            <div className="mt-6 rounded-2xl bg-rose-50 p-4 text-sm text-rose-700">
-              {errMsg}
-            </div>
+            <div className="mt-6 rounded-2xl bg-rose-50 p-4 text-sm text-rose-700">{errMsg}</div>
           ) : (
             <>
               <div className="mt-6 grid gap-4 md:grid-cols-2">
                 <div className="rounded-2xl border p-4">
-                  <div className="text-sm font-bold">Dados do cliente</div>
-                  <div className="mt-2 text-sm">
+                  <div className="text-sm font-bold text-slate-900">Dados do cliente</div>
+                  <div className="mt-2 text-sm text-slate-700">
                     <div>Nome: {chamado?.cliente_nome || "—"}</div>
                     <div>Endereço: {chamado?.endereco || "—"}</div>
                     <div>Obs: {chamado?.observacoes || "—"}</div>
@@ -223,16 +225,12 @@ export default function ChamadoClientePage() {
                 </div>
 
                 <div className="rounded-2xl border p-4">
-                  <div className="text-sm font-bold">Profissional</div>
-                  <div className="mt-2 text-sm">
+                  <div className="text-sm font-bold text-slate-900">Profissional</div>
+                  <div className="mt-2 text-sm text-slate-700">
                     {chamado?.profissional_nome ? (
-                      <div className="font-semibold text-emerald-700">
-                        {chamado.profissional_nome}
-                      </div>
+                      <div className="font-semibold text-emerald-700">{chamado.profissional_nome}</div>
                     ) : (
-                      <div className="text-slate-500">
-                        Aguardando alguém aceitar…
-                      </div>
+                      <div className="text-slate-500">Aguardando alguém aceitar…</div>
                     )}
                     <div className="mt-2 text-xs text-slate-500">
                       Não feche esta tela — ela atualiza automaticamente.
@@ -241,17 +239,18 @@ export default function ChamadoClientePage() {
                 </div>
               </div>
 
-              {/* MAPA */}
-              {(chamado?.cliente_lat || chamado?.profissional_lat) && (
-                <div className="mt-6">
-                  <ChamadoMapa
-                    clienteLat={chamado?.cliente_lat}
-                    clienteLng={chamado?.cliente_lng}
-                    profLat={chamado?.profissional_lat}
-                    profLng={chamado?.profissional_lng}
-                  />
+              {/* ✅ MAPA (somente se você já salvar lat/lng do profissional no chamado)
+              {!!chamado?.profissional_lat && !!chamado?.profissional_lng && (
+                <div className="mt-6 rounded-2xl border overflow-hidden">
+                  <div className="border-b p-3 text-sm font-medium">Acompanhamento no mapa</div>
+                  <div className="h-[360px] w-full">
+                    <ChamadoMapa
+                      profissional={{ lat: chamado.profissional_lat, lng: chamado.profissional_lng }}
+                      destinoText={chamado.endereco || ""}
+                    />
+                  </div>
                 </div>
-              )}
+              )} */}
             </>
           )}
 
