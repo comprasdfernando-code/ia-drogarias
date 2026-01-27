@@ -18,9 +18,14 @@ type UsuarioRow = {
   tipo: string | null; // "farmaceutico" | "cliente"
   criado_em: string | null; // timestamptz
   telefone: string | null;
+
+  // ✅ novos campos
+  bloqueado?: boolean | null;
+  bloqueado_em?: string | null;
+  bloqueado_motivo?: string | null;
 };
 
-function fmtData(dt: string | null) {
+function fmtData(dt: string | null | undefined) {
   if (!dt) return "—";
   return new Date(dt).toLocaleString("pt-BR");
 }
@@ -33,11 +38,8 @@ function onlyDigits(v: string) {
 function normalizeBRPhone(raw: string | null | undefined) {
   const d = onlyDigits(raw || "");
   if (!d) return null;
-  // já tem 55?
   if (d.startsWith("55") && (d.length === 12 || d.length === 13)) return d;
-  // tem DDD (11 dígitos celular / 10 fixo)
   if (d.length === 10 || d.length === 11) return "55" + d;
-  // fallback
   if (d.length > 11) return d;
   return null;
 }
@@ -92,8 +94,28 @@ async function copyToClipboard(text: string) {
     await navigator.clipboard.writeText(text);
     alert("Texto copiado ✅");
   } catch {
-    alert("Não consegui copiar automaticamente. Se quiser, eu ajusto pra fallback.");
+    alert("Não consegui copiar automaticamente.");
   }
+}
+
+/** ✅ chama API segura (service role no server) */
+async function adminUpdateUsuario(payload: {
+  id: string;
+  nome?: string | null;
+  telefone?: string | null;
+  email?: string | null;
+  bloqueado?: boolean;
+  bloqueado_motivo?: string | null;
+}) {
+  const r = await fetch("/api/admin/usuarios/update", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j?.error || "Erro ao atualizar usuário");
+  return true;
 }
 
 export default function AdminCadastroPage() {
@@ -109,6 +131,17 @@ export default function AdminCadastroPage() {
 
   const [page, setPage] = useState(1);
   const PAGE_SIZE = 50;
+
+  // ✅ modal edição (somente profissionais)
+  const [editOpen, setEditOpen] = useState(false);
+  const [editSaving, setEditSaving] = useState(false);
+  const [editRow, setEditRow] = useState<UsuarioRow | null>(null);
+
+  const [fNome, setFNome] = useState("");
+  const [fEmail, setFEmail] = useState("");
+  const [fTelefone, setFTelefone] = useState("");
+  const [fBloqueado, setFBloqueado] = useState(false);
+  const [fMotivo, setFMotivo] = useState("");
 
   const range = useMemo(() => {
     const from = (page - 1) * PAGE_SIZE;
@@ -148,7 +181,8 @@ export default function AdminCadastroPage() {
 
       let query = supabase
         .from(TABELA)
-        .select("id,nome,email,tipo,criado_em,telefone", { count: "exact" })
+        // ✅ inclui novos campos
+        .select("id,nome,email,tipo,criado_em,telefone,bloqueado,bloqueado_em,bloqueado_motivo", { count: "exact" })
         .eq("tipo", aba)
         .order("criado_em", { ascending: false })
         .range(range.from, range.to);
@@ -182,6 +216,65 @@ export default function AdminCadastroPage() {
   }, [authed, aba, page, range.from, range.to]);
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
+  function abrirEdicao(r: UsuarioRow) {
+    setEditRow(r);
+    setFNome(r.nome || "");
+    setFEmail(r.email || "");
+    setFTelefone(r.telefone || "");
+    setFBloqueado(!!r.bloqueado);
+    setFMotivo(r.bloqueado_motivo || "");
+    setEditOpen(true);
+  }
+
+  function fecharEdicao() {
+    setEditOpen(false);
+    setEditRow(null);
+    setFNome("");
+    setFEmail("");
+    setFTelefone("");
+    setFBloqueado(false);
+    setFMotivo("");
+  }
+
+  async function salvarEdicao() {
+    if (!editRow) return;
+    setEditSaving(true);
+    try {
+      await adminUpdateUsuario({
+        id: editRow.id,
+        nome: fNome.trim() || null,
+        email: fEmail.trim() || null,
+        telefone: fTelefone.trim() || null,
+        bloqueado: fBloqueado,
+        bloqueado_motivo: fBloqueado ? (fMotivo.trim() || "Bloqueado pelo administrador") : null,
+      });
+
+      alert("Atualizado ✅");
+      fecharEdicao();
+      await carregar();
+    } catch (e: any) {
+      alert(e?.message || "Erro ao salvar");
+    } finally {
+      setEditSaving(false);
+    }
+  }
+
+  async function toggleBloqueioRapido(r: UsuarioRow) {
+    const bloquear = !r.bloqueado;
+    const motivo = bloquear ? (prompt("Motivo do bloqueio (opcional):") || "") : null;
+
+    try {
+      await adminUpdateUsuario({
+        id: r.id,
+        bloqueado: !!bloquear,
+        bloqueado_motivo: bloquear ? (motivo || "Bloqueado pelo administrador") : null,
+      });
+      await carregar();
+    } catch (e: any) {
+      alert(e?.message || "Erro ao bloquear/desbloquear");
+    }
+  }
 
   if (!authed) {
     return (
@@ -293,7 +386,7 @@ export default function AdminCadastroPage() {
         </button>
       </div>
 
-      {/* LISTA EM CARDS (melhor pra botões do WhatsApp) */}
+      {/* LISTA EM CARDS */}
       <div style={{ marginTop: 14 }}>
         <div style={{ opacity: 0.8, marginBottom: 10 }}>
           <b>{total}</b> registros • página <b>{page}</b> de <b>{totalPages}</b> {loading ? "• carregando..." : ""}
@@ -309,8 +402,9 @@ export default function AdminCadastroPage() {
           const nome = (r.nome || "tudo bem").trim();
           const phone55 = normalizeBRPhone(r.telefone);
           const isProf = r.tipo === "farmaceutico";
+          const bloqueado = !!r.bloqueado;
 
-          // mensagens (somente pra profissional faz sentido esses textos)
+          // mensagens
           const m1 = msgAgradecer(nome);
           const m2 = msgProximosPassos(nome);
           const m3 = msgDocs(nome);
@@ -323,17 +417,49 @@ export default function AdminCadastroPage() {
                 borderRadius: 14,
                 padding: 14,
                 marginBottom: 12,
+                opacity: bloqueado ? 0.85 : 1,
               }}
             >
               <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap" }}>
                 <div>
-                  <div style={{ fontSize: 16, fontWeight: 900 }}>{r.nome || "—"}</div>
+                  <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                    <div style={{ fontSize: 16, fontWeight: 900 }}>{r.nome || "—"}</div>
+
+                    {bloqueado && (
+                      <span
+                        style={{
+                          padding: "4px 8px",
+                          borderRadius: 999,
+                          border: "1px solid #f3b7b7",
+                          background: "#fff5f5",
+                          fontWeight: 900,
+                          color: "#b42318",
+                          fontSize: 12,
+                        }}
+                      >
+                        BLOQUEADO
+                      </span>
+                    )}
+                  </div>
+
                   <div style={{ opacity: 0.8, marginTop: 4 }}>
                     <b>Telefone:</b> {r.telefone || "—"} • <b>Email:</b> {r.email || "—"}
                   </div>
+
                   <div style={{ opacity: 0.75, marginTop: 4 }}>
                     <b>Tipo:</b> {r.tipo || "—"} • <b>Criado:</b> {fmtData(r.criado_em)}
                   </div>
+
+                  {bloqueado && (
+                    <div style={{ opacity: 0.85, marginTop: 6, fontSize: 13 }}>
+                      <b>Bloqueado em:</b> {fmtData(r.bloqueado_em || null)}{" "}
+                      {r.bloqueado_motivo ? (
+                        <>
+                          • <b>Motivo:</b> {r.bloqueado_motivo}
+                        </>
+                      ) : null}
+                    </div>
+                  )}
                 </div>
 
                 <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
@@ -356,6 +482,37 @@ export default function AdminCadastroPage() {
                     <span style={{ padding: "10px 12px", borderRadius: 10, border: "1px dashed #ddd", opacity: 0.7 }}>
                       Sem telefone válido
                     </span>
+                  )}
+
+                  {/* ✅ Edição e bloqueio rápido só para profissionais */}
+                  {isProf && (
+                    <>
+                      <button
+                        onClick={() => abrirEdicao(r)}
+                        style={{
+                          padding: "10px 12px",
+                          borderRadius: 10,
+                          cursor: "pointer",
+                          border: "1px solid #ddd",
+                          fontWeight: 900,
+                        }}
+                      >
+                        Editar
+                      </button>
+
+                      <button
+                        onClick={() => toggleBloqueioRapido(r)}
+                        style={{
+                          padding: "10px 12px",
+                          borderRadius: 10,
+                          cursor: "pointer",
+                          border: "1px solid #ddd",
+                          fontWeight: 900,
+                        }}
+                      >
+                        {bloqueado ? "Desbloquear" : "Bloquear"}
+                      </button>
+                    </>
                   )}
                 </div>
               </div>
@@ -445,6 +602,130 @@ export default function AdminCadastroPage() {
       <p style={{ opacity: 0.7, marginTop: 10, fontSize: 13 }}>
         Lendo: <b>public.usuarios</b> • filtro: <b>tipo = {aba}</b> • ordenado por <b>criado_em</b>
       </p>
+
+      {/* ✅ MODAL DE EDIÇÃO (PROFISSIONAL) */}
+      {editOpen && editRow && (
+        <div
+          onClick={fecharEdicao}
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "rgba(0,0,0,.35)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: 16,
+            zIndex: 9999,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: "100%",
+              maxWidth: 560,
+              background: "#fff",
+              borderRadius: 14,
+              padding: 16,
+              border: "1px solid #eee",
+            }}
+          >
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "center" }}>
+              <div>
+                <div style={{ fontSize: 18, fontWeight: 900 }}>Editar profissional</div>
+                <div style={{ opacity: 0.7, fontSize: 13 }}>ID: {editRow.id}</div>
+              </div>
+
+              <button
+                onClick={fecharEdicao}
+                style={{ padding: "10px 12px", borderRadius: 10, cursor: "pointer" }}
+              >
+                Fechar
+              </button>
+            </div>
+
+            <div style={{ marginTop: 12, display: "grid", gap: 10 }}>
+              <label style={{ display: "grid", gap: 6 }}>
+                <b>Nome</b>
+                <input
+                  value={fNome}
+                  onChange={(e) => setFNome(e.target.value)}
+                  style={{ padding: 12, borderRadius: 12, border: "1px solid #ddd" }}
+                />
+              </label>
+
+              <label style={{ display: "grid", gap: 6 }}>
+                <b>Email</b>
+                <input
+                  value={fEmail}
+                  onChange={(e) => setFEmail(e.target.value)}
+                  style={{ padding: 12, borderRadius: 12, border: "1px solid #ddd" }}
+                />
+              </label>
+
+              <label style={{ display: "grid", gap: 6 }}>
+                <b>Telefone</b>
+                <input
+                  value={fTelefone}
+                  onChange={(e) => setFTelefone(e.target.value)}
+                  style={{ padding: 12, borderRadius: 12, border: "1px solid #ddd" }}
+                />
+              </label>
+
+              <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+                <label style={{ display: "flex", gap: 10, alignItems: "center" }}>
+                  <input
+                    type="checkbox"
+                    checked={fBloqueado}
+                    onChange={(e) => setFBloqueado(e.target.checked)}
+                  />
+                  <b>Bloqueado</b>
+                </label>
+
+                {fBloqueado && (
+                  <span style={{ fontSize: 13, opacity: 0.75 }}>
+                    (se marcar, o profissional não entra no painel)
+                  </span>
+                )}
+              </div>
+
+              {fBloqueado && (
+                <label style={{ display: "grid", gap: 6 }}>
+                  <b>Motivo do bloqueio</b>
+                  <textarea
+                    value={fMotivo}
+                    onChange={(e) => setFMotivo(e.target.value)}
+                    rows={3}
+                    style={{ padding: 12, borderRadius: 12, border: "1px solid #ddd", resize: "vertical" }}
+                  />
+                </label>
+              )}
+            </div>
+
+            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 14 }}>
+              <button
+                onClick={fecharEdicao}
+                style={{ padding: "10px 12px", borderRadius: 10, cursor: "pointer" }}
+              >
+                Cancelar
+              </button>
+
+              <button
+                onClick={salvarEdicao}
+                disabled={editSaving}
+                style={{
+                  padding: "10px 12px",
+                  borderRadius: 10,
+                  cursor: editSaving ? "not-allowed" : "pointer",
+                  fontWeight: 900,
+                  border: "1px solid #ddd",
+                }}
+              >
+                {editSaving ? "Salvando..." : "Salvar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
