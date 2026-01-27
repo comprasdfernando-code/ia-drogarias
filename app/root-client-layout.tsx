@@ -11,6 +11,9 @@ export default function RootClientLayout({ children }: { children: React.ReactNo
   const [cartCount, setCartCount] = useState(0);
 
   // 🚫 Desativa layout padrão nas rotas do Gigante
+  if (typeof window !== "undefined" && window.location.pathname.startsWith("/profissional/painel")) {
+    return <>{children}</>;
+  }
   if (typeof window !== "undefined" && window.location.pathname.startsWith("/gigante")) {
     return <>{children}</>;
   }
