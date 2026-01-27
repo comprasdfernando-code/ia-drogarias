@@ -118,6 +118,30 @@ async function adminUpdateUsuario(payload: {
   return true;
 }
 
+/** ✅ confirmar email no Auth (service role no server) */
+async function adminConfirmEmail(email: string) {
+  const r = await fetch("/api/admin/auth/confirm-email", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j?.error || "Erro ao confirmar e-mail");
+  return true;
+}
+
+/** ✅ reenviar confirmação (service role no server) */
+async function adminResendConfirmation(email: string) {
+  const r = await fetch("/api/admin/auth/resend-confirmation", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ email }),
+  });
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j?.error || "Erro ao reenviar confirmação");
+  return true;
+}
+
 export default function AdminCadastroPage() {
   const [authed, setAuthed] = useState(false);
   const [senha, setSenha] = useState("");
@@ -142,6 +166,9 @@ export default function AdminCadastroPage() {
   const [fTelefone, setFTelefone] = useState("");
   const [fBloqueado, setFBloqueado] = useState(false);
   const [fMotivo, setFMotivo] = useState("");
+
+  const [confirming, setConfirming] = useState(false);
+  const [resending, setResending] = useState(false);
 
   const range = useMemo(() => {
     const from = (page - 1) * PAGE_SIZE;
@@ -181,7 +208,6 @@ export default function AdminCadastroPage() {
 
       let query = supabase
         .from(TABELA)
-        // ✅ inclui novos campos
         .select("id,nome,email,tipo,criado_em,telefone,bloqueado,bloqueado_em,bloqueado_motivo", { count: "exact" })
         .eq("tipo", aba)
         .order("criado_em", { ascending: false })
@@ -235,6 +261,8 @@ export default function AdminCadastroPage() {
     setFTelefone("");
     setFBloqueado(false);
     setFMotivo("");
+    setConfirming(false);
+    setResending(false);
   }
 
   async function salvarEdicao() {
@@ -276,12 +304,36 @@ export default function AdminCadastroPage() {
     }
   }
 
+  async function confirmarEmailRapido(r: UsuarioRow) {
+    if (!r.email) return alert("Esse usuário não tem e-mail.");
+    setConfirming(true);
+    try {
+      await adminConfirmEmail(r.email);
+      alert("E-mail confirmado no Auth ✅");
+    } catch (e: any) {
+      alert(e?.message || "Erro ao confirmar e-mail");
+    } finally {
+      setConfirming(false);
+    }
+  }
+
+  async function reenviarConfirmacaoRapido(r: UsuarioRow) {
+    if (!r.email) return alert("Esse usuário não tem e-mail.");
+    setResending(true);
+    try {
+      await adminResendConfirmation(r.email);
+      alert("Confirmação reenviada ✅ (caixa de entrada / spam)");
+    } catch (e: any) {
+      alert(e?.message || "Erro ao reenviar confirmação");
+    } finally {
+      setResending(false);
+    }
+  }
+
   if (!authed) {
     return (
       <div style={{ maxWidth: 520, margin: "40px auto", padding: 16 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 800, marginBottom: 12 }}>
-          Admin • Cadastros (Usuários)
-        </h1>
+        <h1 style={{ fontSize: 22, fontWeight: 800, marginBottom: 12 }}>Admin • Cadastros (Usuários)</h1>
 
         <div style={{ border: "1px solid #e5e5e5", borderRadius: 12, padding: 16 }}>
           <p style={{ marginBottom: 10 }}>Digite a senha do admin:</p>
@@ -404,7 +456,6 @@ export default function AdminCadastroPage() {
           const isProf = r.tipo === "farmaceutico";
           const bloqueado = !!r.bloqueado;
 
-          // mensagens
           const m1 = msgAgradecer(nome);
           const m2 = msgProximosPassos(nome);
           const m3 = msgDocs(nome);
@@ -484,7 +535,6 @@ export default function AdminCadastroPage() {
                     </span>
                   )}
 
-                  {/* ✅ Edição e bloqueio rápido só para profissionais */}
                   {isProf && (
                     <>
                       <button
@@ -511,6 +561,34 @@ export default function AdminCadastroPage() {
                         }}
                       >
                         {bloqueado ? "Desbloquear" : "Bloquear"}
+                      </button>
+
+                      <button
+                        onClick={() => confirmarEmailRapido(r)}
+                        disabled={confirming}
+                        style={{
+                          padding: "10px 12px",
+                          borderRadius: 10,
+                          cursor: confirming ? "not-allowed" : "pointer",
+                          border: "1px solid #ddd",
+                          fontWeight: 900,
+                        }}
+                      >
+                        {confirming ? "Confirmando..." : "Confirmar e-mail"}
+                      </button>
+
+                      <button
+                        onClick={() => reenviarConfirmacaoRapido(r)}
+                        disabled={resending}
+                        style={{
+                          padding: "10px 12px",
+                          borderRadius: 10,
+                          cursor: resending ? "not-allowed" : "pointer",
+                          border: "1px solid #ddd",
+                          fontWeight: 900,
+                        }}
+                      >
+                        {resending ? "Enviando..." : "Reenviar confirmação"}
                       </button>
                     </>
                   )}
@@ -603,7 +681,7 @@ export default function AdminCadastroPage() {
         Lendo: <b>public.usuarios</b> • filtro: <b>tipo = {aba}</b> • ordenado por <b>criado_em</b>
       </p>
 
-      {/* ✅ MODAL DE EDIÇÃO (PROFISSIONAL) */}
+      {/* ✅ MODAL DE EDIÇÃO */}
       {editOpen && editRow && (
         <div
           onClick={fecharEdicao}
@@ -635,10 +713,7 @@ export default function AdminCadastroPage() {
                 <div style={{ opacity: 0.7, fontSize: 13 }}>ID: {editRow.id}</div>
               </div>
 
-              <button
-                onClick={fecharEdicao}
-                style={{ padding: "10px 12px", borderRadius: 10, cursor: "pointer" }}
-              >
+              <button onClick={fecharEdicao} style={{ padding: "10px 12px", borderRadius: 10, cursor: "pointer" }}>
                 Fechar
               </button>
             </div>
@@ -673,19 +748,11 @@ export default function AdminCadastroPage() {
 
               <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
                 <label style={{ display: "flex", gap: 10, alignItems: "center" }}>
-                  <input
-                    type="checkbox"
-                    checked={fBloqueado}
-                    onChange={(e) => setFBloqueado(e.target.checked)}
-                  />
+                  <input type="checkbox" checked={fBloqueado} onChange={(e) => setFBloqueado(e.target.checked)} />
                   <b>Bloqueado</b>
                 </label>
 
-                {fBloqueado && (
-                  <span style={{ fontSize: 13, opacity: 0.75 }}>
-                    (se marcar, o profissional não entra no painel)
-                  </span>
-                )}
+                {fBloqueado && <span style={{ fontSize: 13, opacity: 0.75 }}>(não entra no painel)</span>}
               </div>
 
               {fBloqueado && (
@@ -699,13 +766,62 @@ export default function AdminCadastroPage() {
                   />
                 </label>
               )}
+
+              <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+                <button
+                  onClick={async () => {
+                    if (!fEmail.trim()) return alert("Informe um e-mail válido no campo Email.");
+                    setConfirming(true);
+                    try {
+                      await adminConfirmEmail(fEmail.trim());
+                      alert("E-mail confirmado no Auth ✅");
+                    } catch (e: any) {
+                      alert(e?.message || "Erro ao confirmar e-mail");
+                    } finally {
+                      setConfirming(false);
+                    }
+                  }}
+                  disabled={confirming}
+                  style={{
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    cursor: confirming ? "not-allowed" : "pointer",
+                    fontWeight: 900,
+                    border: "1px solid #ddd",
+                  }}
+                >
+                  {confirming ? "Confirmando..." : "Confirmar e-mail (Auth)"}
+                </button>
+
+                <button
+                  onClick={async () => {
+                    if (!fEmail.trim()) return alert("Informe um e-mail válido no campo Email.");
+                    setResending(true);
+                    try {
+                      await adminResendConfirmation(fEmail.trim());
+                      alert("Confirmação reenviada ✅");
+                    } catch (e: any) {
+                      alert(e?.message || "Erro ao reenviar confirmação");
+                    } finally {
+                      setResending(false);
+                    }
+                  }}
+                  disabled={resending}
+                  style={{
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    cursor: resending ? "not-allowed" : "pointer",
+                    fontWeight: 900,
+                    border: "1px solid #ddd",
+                  }}
+                >
+                  {resending ? "Enviando..." : "Reenviar confirmação (Auth)"}
+                </button>
+              </div>
             </div>
 
             <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 14 }}>
-              <button
-                onClick={fecharEdicao}
-                style={{ padding: "10px 12px", borderRadius: 10, cursor: "pointer" }}
-              >
+              <button onClick={fecharEdicao} style={{ padding: "10px 12px", borderRadius: 10, cursor: "pointer" }}>
                 Cancelar
               </button>
 

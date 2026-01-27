@@ -6,12 +6,11 @@ import { supabase } from "@/lib/supabaseClient";
 /* =========================
    CONFIG STATUS (IGUAL SEU BANCO)
 ========================= */
-const STATUS_PROCURANDO = "procurando";
-const STATUS_SOLICITADO = "SOLICITADO";
-const STATUS_ACEITO = "aceito";
-const STATUS_EM_ANDAMENTO = "em_andamento";
-const STATUS_CHEGUEI = "cheguei";
-const STATUS_FINALIZADO = "finalizado";
+const STATUS_PROCURANDO = "procurando"; // existe
+const STATUS_SOLICITADO = "SOLICITADO"; // existe
+const STATUS_ACEITO = "aceito"; // existe
+const STATUS_EM_ANDAMENTO = "em_andamento"; // existe (print)
+const STATUS_FINALIZADO = "finalizado"; // se ainda não tiver, ok
 
 /* =========================
    HELPERS
@@ -30,21 +29,9 @@ function wppLink(phone?: string | null, text?: string) {
   const p = onlyDigits(phone || "");
   if (!p) return "#";
   const msg = text ? `?text=${encodeURIComponent(text)}` : "";
+  // ⚠️ aqui você já passa o DDD+numero sem +55 geralmente. Então:
+  // se o profissional salva com 11... (Brasil), mantenho como 55 + digits.
   return `https://wa.me/55${p}${msg}`;
-}
-function friendlyAuthError(msg?: string) {
-  const m = String(msg || "").toLowerCase();
-  if (!m) return "Falha no login. Verifique email e senha.";
-  if (m.includes("email not confirmed") || m.includes("email_not_confirmed")) {
-    return "Seu e-mail ainda não foi confirmado. Verifique sua caixa de entrada ou peça ao admin para confirmar.";
-  }
-  if (m.includes("invalid login credentials")) {
-    return "Falha no login. Verifique email e senha.";
-  }
-  if (m.includes("too many requests")) {
-    return "Muitas tentativas. Aguarde um pouco e tente novamente.";
-  }
-  return msg || "Falha no login.";
 }
 
 /* =========================
@@ -59,21 +46,11 @@ type Prof = {
   area: string | null;
 };
 
-type UsuarioRow = {
-  id: string;
-  email: string | null;
-  tipo: string | null;
-  bloqueado?: boolean | null;
-  bloqueado_motivo?: string | null;
-  bloqueado_em?: string | null;
-};
-
 type Chamado = {
   id: string;
   created_at: string;
   status: string;
   servico: string;
-
   cliente_nome: string | null;
   cliente_whatsapp: string | null;
   endereco: string | null;
@@ -87,6 +64,7 @@ type Chamado = {
   profissional_nome: string | null;
   profissional_uid?: string | null;
 
+  // ✅ GPS (se existir na tabela, ótimo; se não existir, não quebra no TS)
   profissional_lat?: number | null;
   profissional_lng?: number | null;
   profissional_pos_at?: string | null;
@@ -96,17 +74,10 @@ export default function PainelProfissionalPremium() {
   const [user, setUser] = useState<any>(null);
   const [authLoading, setAuthLoading] = useState(true);
 
-  // login form
+  // login form (caso precise)
   const [email, setEmail] = useState("");
   const [senha, setSenha] = useState("");
   const [authMsg, setAuthMsg] = useState("");
-
-  // checks
-  const [emailConfirmed, setEmailConfirmed] = useState<boolean>(true);
-  const [checkingGate, setCheckingGate] = useState(false);
-  const [blockedInfo, setBlockedInfo] = useState<{ blocked: boolean; motivo?: string; em?: string }>({
-    blocked: false,
-  });
 
   const [prof, setProf] = useState<Prof | null>(null);
   const [online, setOnline] = useState(true);
@@ -114,6 +85,7 @@ export default function PainelProfissionalPremium() {
   const [chamados, setChamados] = useState<Chamado[]>([]);
   const [loadingChamados, setLoadingChamados] = useState(false);
 
+  // chamado ativo (aceito por mim)
   const [meuChamado, setMeuChamado] = useState<Chamado | null>(null);
   const [loadingMeuChamado, setLoadingMeuChamado] = useState(false);
 
@@ -125,7 +97,7 @@ export default function PainelProfissionalPremium() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const lastTopIdRef = useRef<string>("");
 
-  // GPS
+  // ✅ GPS
   const watchIdRef = useRef<number | null>(null);
   const [gpsOn, setGpsOn] = useState(false);
 
@@ -133,11 +105,8 @@ export default function PainelProfissionalPremium() {
      AUTH BOOT
   ========================= */
   useEffect(() => {
-    let mounted = true;
-
     (async () => {
       const { data } = await supabase.auth.getUser();
-      if (!mounted) return;
       setUser(data?.user || null);
       setAuthLoading(false);
     })();
@@ -146,10 +115,7 @@ export default function PainelProfissionalPremium() {
       setUser(session?.user || null);
     });
 
-    return () => {
-      mounted = false;
-      sub?.subscription?.unsubscribe();
-    };
+    return () => sub?.subscription?.unsubscribe();
   }, []);
 
   async function signIn() {
@@ -158,14 +124,7 @@ export default function PainelProfissionalPremium() {
       email: email.trim(),
       password: senha,
     });
-
-    if (error) {
-      console.log("LOGIN ERROR:", error);
-      setAuthMsg(friendlyAuthError(error.message));
-      return;
-    }
-
-    setAuthMsg("");
+    if (error) setAuthMsg("Falha no login. Verifique email e senha.");
   }
 
   async function signOut() {
@@ -179,95 +138,6 @@ export default function PainelProfissionalPremium() {
     setChamados([]);
     setOnline(false);
     setGpsOn(false);
-    setEmailConfirmed(true);
-    setBlockedInfo({ blocked: false });
-  }
-
-  /* =========================
-     GATE: email confirmado + bloqueio admin
-     - Usa user.identities / user.email_confirmed_at (quando disponível)
-     - E verifica tabela public.usuarios (bloqueado)
-  ========================= */
-  async function checkEmailConfirmed(u: any) {
-    // padrões do supabase: email_confirmed_at (string) ou confirmed_at
-    const v1 = u?.email_confirmed_at || u?.confirmed_at;
-    if (v1) return true;
-
-    // fallback: identities (alguns casos)
-    const identities = u?.identities || [];
-    const anyConfirmed = identities?.some((id: any) => {
-      const identData = id?.identity_data || {};
-      return !!identData?.email_verified || !!identData?.email_confirmed;
-    });
-    return !!anyConfirmed;
-  }
-
-  async function gateAccess() {
-    if (!user?.id) return;
-    setCheckingGate(true);
-    try {
-      // 1) email confirmado
-      const confirmed = await checkEmailConfirmed(user);
-      setEmailConfirmed(confirmed);
-
-      // 2) bloqueio admin (public.usuarios)
-      //    Observação: seu admin/cadastros usa tabela "usuarios" com tipo "farmaceutico"
-      if (user?.email) {
-        const { data: urow, error } = await supabase
-          .from("usuarios")
-          .select("id,email,tipo,bloqueado,bloqueado_motivo,bloqueado_em")
-          .eq("email", user.email)
-          .maybeSingle<UsuarioRow>();
-
-        if (error) console.warn("gate usuarios error:", error);
-
-        if (urow?.bloqueado) {
-          setBlockedInfo({
-            blocked: true,
-            motivo: urow.bloqueado_motivo || "Acesso bloqueado pelo administrador.",
-            em: urow.bloqueado_em || undefined,
-          });
-
-          // derruba sessão pra não ficar preso
-          try {
-            await supabase.auth.signOut();
-          } catch {}
-          setUser(null);
-          return;
-        } else {
-          setBlockedInfo({ blocked: false });
-        }
-      } else {
-        setBlockedInfo({ blocked: false });
-      }
-    } finally {
-      setCheckingGate(false);
-    }
-  }
-
-  // roda gate sempre que user muda
-  useEffect(() => {
-    if (!user?.id) return;
-    gateAccess();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id]);
-
-  async function resendConfirmation() {
-    if (!user?.email) return;
-    try {
-      const { error } = await supabase.auth.resend({
-        type: "signup",
-        email: user.email,
-        options: {
-          // ajuste se você tiver callback específico
-          emailRedirectTo: `${window.location.origin}/profissional/painel`,
-        },
-      });
-      if (error) throw error;
-      alert("Reenviei o e-mail de confirmação ✅ (veja caixa de entrada e spam)");
-    } catch (e: any) {
-      alert(e?.message || "Não consegui reenviar agora.");
-    }
   }
 
   /* =========================
@@ -292,7 +162,6 @@ export default function PainelProfissionalPremium() {
           .eq("email", user.email)
           .maybeSingle();
 
-        // tenta vincular user_id
         if (byEmail && !byEmail.user_id) {
           const { data: updated } = await supabase
             .from("cadastros_profissionais")
@@ -300,7 +169,6 @@ export default function PainelProfissionalPremium() {
             .eq("id", byEmail.id)
             .select("id,user_id,nome,whatsapp,email,area")
             .maybeSingle();
-
           p = updated || byEmail;
         } else {
           p = byEmail || null;
@@ -313,6 +181,7 @@ export default function PainelProfissionalPremium() {
 
   /* =========================
      ONLINE (tabela public.profissionais)
+     - SEM updated_at pra evitar erro em tabelas sem coluna
   ========================= */
   async function ensureProfRow(userId: string) {
     await supabase.from("profissionais").upsert(
@@ -340,6 +209,7 @@ export default function PainelProfissionalPremium() {
     setOnline(next);
     await saveOnline(next);
 
+    // se ficou offline, para GPS e limpa canal
     if (!next) {
       stopLiveLocation();
       setGpsOn(false);
@@ -348,6 +218,7 @@ export default function PainelProfissionalPremium() {
 
   /* =========================
      SOUND
+     Coloque um arquivo em: /public/sounds/farma.mp3
   ========================= */
   useEffect(() => {
     audioRef.current = new Audio("/sounds/farma.mp3");
@@ -379,7 +250,7 @@ export default function PainelProfissionalPremium() {
   }
 
   /* =========================
-     LOAD CHAMADOS
+     LOAD CHAMADOS (PROCURANDO + SOLICITADO)
   ========================= */
   async function refreshChamados() {
     setLoadingChamados(true);
@@ -402,6 +273,7 @@ export default function PainelProfissionalPremium() {
     const rows = (data as any as Chamado[]) || [];
     setChamados(rows);
 
+    // ALERTA: tocamos quando muda o topo (novo chamado)
     const topId = rows?.[0]?.id || "";
     if (topId && topId !== lastTopIdRef.current) {
       if (lastTopIdRef.current) await playAlert();
@@ -410,7 +282,7 @@ export default function PainelProfissionalPremium() {
   }
 
   /* =========================
-     MEU CHAMADO
+     MEU CHAMADO (o que eu aceitei)
   ========================= */
   async function loadMeuChamado() {
     if (!user?.id) return;
@@ -420,7 +292,7 @@ export default function PainelProfissionalPremium() {
       .from("chamados")
       .select("*")
       .eq("profissional_uid", user.id)
-      .in("status", [STATUS_ACEITO, STATUS_EM_ANDAMENTO, STATUS_CHEGUEI])
+      .in("status", [STATUS_ACEITO, STATUS_EM_ANDAMENTO, "cheguei"])
       .order("created_at", { ascending: false })
       .limit(1);
 
@@ -444,13 +316,13 @@ export default function PainelProfissionalPremium() {
       channelRef.current = null;
     }
 
-    // gate: precisa estar logado + online + email confirmado
     if (!user?.id || !online) return;
-    if (!emailConfirmed) return;
 
+    // primeira carga
     refreshChamados();
     loadMeuChamado();
 
+    // realtime
     const ch = supabase
       .channel("realtime-chamados-pro")
       .on("postgres_changes", { event: "*", schema: "public", table: "chamados" }, () => {
@@ -461,6 +333,7 @@ export default function PainelProfissionalPremium() {
 
     channelRef.current = ch;
 
+    // fallback polling
     const t = setInterval(() => {
       refreshChamados();
       loadMeuChamado();
@@ -474,17 +347,12 @@ export default function PainelProfissionalPremium() {
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, online, soundArmed, emailConfirmed]);
+  }, [user?.id, online, soundArmed]);
 
   /* =========================
      ACEITAR (RPC accept_chamado)
   ========================= */
   async function aceitarChamado(chamadoId: string) {
-    if (!emailConfirmed) {
-      alert("Seu e-mail ainda não foi confirmado. Confirme para aceitar chamados.");
-      return;
-    }
-
     if (!prof?.id) {
       alert("Seu cadastro profissional não está vinculado ao login.");
       return;
@@ -559,10 +427,12 @@ export default function PainelProfissionalPremium() {
   }
 
   /* =========================
-     GPS LIVE LOCATION
+     ✅ GPS LIVE LOCATION (adicionado)
+     - Atualiza profissional_lat/lng/profissional_pos_at no chamado
   ========================= */
   async function startLiveLocation(chamadoId: string) {
     if (!chamadoId) return;
+
     if (typeof window === "undefined") return;
 
     if (!("geolocation" in navigator)) {
@@ -570,6 +440,7 @@ export default function PainelProfissionalPremium() {
       return;
     }
 
+    // já ligado?
     if (watchIdRef.current != null) {
       setGpsOn(true);
       return;
@@ -616,22 +487,34 @@ export default function PainelProfissionalPremium() {
     setGpsOn(false);
   }
 
+  // ✅ Auto-stop se meuChamado some / finaliza / fica offline
   useEffect(() => {
     if (!online) {
       stopLiveLocation();
       return;
     }
+
+    // se não tem chamado, para
     if (!meuChamado?.id) {
       stopLiveLocation();
       return;
     }
+
+    // se finalizado, para
     if (String(meuChamado.status) === STATUS_FINALIZADO) {
       stopLiveLocation();
       return;
     }
+
+    // não liga sozinho sem gesto (pra não irritar permissão). Mantém manual pelo botão.
+    // Se quiser auto-ligar ao colocar "em_andamento", descomenta abaixo:
+    // if (meuChamado.status === STATUS_EM_ANDAMENTO || meuChamado.status === "cheguei") {
+    //   startLiveLocation(meuChamado.id);
+    // }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [online, meuChamado?.id, meuChamado?.status]);
 
+  // ✅ Cleanup ao desmontar
   useEffect(() => {
     return () => stopLiveLocation();
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -643,10 +526,8 @@ export default function PainelProfissionalPremium() {
   const headerTitle = useMemo(() => {
     if (authLoading) return "Carregando…";
     if (!user) return "Login do profissional";
-    if (checkingGate) return "Validando acesso…";
-    if (!emailConfirmed) return "Confirmação de e-mail pendente";
     return "Painel do profissional";
-  }, [authLoading, user, checkingGate, emailConfirmed]);
+  }, [authLoading, user]);
 
   /* =========================
      UI
@@ -672,21 +553,6 @@ export default function PainelProfissionalPremium() {
           <div className="mx-auto max-w-md rounded-2xl border bg-white p-6 shadow-sm">
             <h1 className="text-lg font-bold text-slate-900">Entrar</h1>
             <p className="mt-1 text-sm text-slate-600">Acesso exclusivo para profissionais.</p>
-
-            {/* se foi bloqueado pelo admin */}
-            {blockedInfo.blocked ? (
-              <div className="mt-4 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-sm text-rose-800">
-                <div className="font-extrabold">Acesso bloqueado</div>
-                <div className="mt-1 text-xs">
-                  {blockedInfo.motivo || "Acesso bloqueado pelo administrador."}
-                  {blockedInfo.em ? (
-                    <span className="ml-2 text-rose-700/80">
-                      ({new Date(blockedInfo.em).toLocaleString("pt-BR")})
-                    </span>
-                  ) : null}
-                </div>
-              </div>
-            ) : null}
 
             <div className="mt-4 space-y-3">
               <div>
@@ -723,362 +589,317 @@ export default function PainelProfissionalPremium() {
           </div>
         ) : (
           <>
-            {/* Se email não confirmado: trava painel */}
-            {!emailConfirmed ? (
-              <div className="mx-auto max-w-2xl rounded-3xl border border-amber-200 bg-amber-50 p-6">
-                <div className="text-lg font-extrabold text-amber-900">Confirmação de e-mail pendente</div>
-                <div className="mt-2 text-sm text-amber-900/90">
-                  Seu e-mail <b>{user?.email}</b> ainda não foi confirmado.
-                  <br />
-                  Confirme para poder receber e aceitar chamados.
-                </div>
-
-                <div className="mt-4 flex flex-wrap gap-2">
-                  <button
-                    onClick={resendConfirmation}
-                    className="rounded-2xl bg-slate-900 px-4 py-2 text-sm font-extrabold text-white hover:opacity-95"
-                  >
-                    Reenviar e-mail de confirmação
-                  </button>
-
-                  <button
-                    onClick={signOut}
-                    className="rounded-2xl border px-4 py-2 text-sm font-extrabold text-slate-900 hover:bg-white"
-                  >
-                    Sair
-                  </button>
-
-                  <a
-                    href="/admin/cadastros"
-                    target="_blank"
-                    rel="noreferrer"
-                    className="rounded-2xl border px-4 py-2 text-sm font-extrabold text-slate-900 hover:bg-white"
-                  >
-                    Abrir admin (confirmar por lá)
-                  </a>
-                </div>
-
-                {checkingGate ? <div className="mt-3 text-xs text-amber-900/70">Validando…</div> : null}
-              </div>
-            ) : (
-              <>
-                {/* Banner urgente */}
-                {online && chamados.length > 0 ? (
-                  <div className="mb-5 rounded-3xl border border-emerald-200 bg-emerald-600 p-4 text-white shadow-lg">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                      <div>
-                        <div className="text-base font-extrabold tracking-wide">🚨 CHAMADO DISPONÍVEL AGORA</div>
-                        <div className="text-sm opacity-95">
-                          Clique em <b>ACEITAR O PRIMEIRO AGORA</b> para pegar imediatamente.
-                        </div>
-                      </div>
-
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                        {!soundArmed ? (
-                          <button
-                            onClick={armSound}
-                            className="rounded-2xl bg-white px-4 py-2 text-sm font-extrabold text-emerald-700 shadow hover:opacity-95"
-                          >
-                            🔊 Ativar alertas
-                          </button>
-                        ) : (
-                          <span className="rounded-2xl bg-white/15 px-3 py-2 text-xs font-semibold">
-                            🔊 Alertas ON
-                          </span>
-                        )}
-
-                        <button
-                          onClick={aceitarPrimeiroAgora}
-                          className="rounded-2xl bg-white px-5 py-3 text-sm font-extrabold text-emerald-700 shadow hover:opacity-95"
-                        >
-                          ✅ ACEITAR O PRIMEIRO AGORA
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ) : null}
-
-                <div className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
-                  {/* Coluna esquerda */}
-                  <div className="space-y-6">
-                    {/* Perfil */}
-                    <div className="rounded-3xl border bg-white p-5 shadow-sm">
-                      <div className="flex items-start justify-between gap-2">
-                        <div>
-                          <div className="text-sm font-semibold text-slate-900">Seu perfil</div>
-                          <div className="mt-1 text-xs text-slate-500">{user.email}</div>
-                        </div>
-                        <button
-                          onClick={signOut}
-                          className="rounded-2xl border px-3 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-50"
-                        >
-                          Sair
-                        </button>
-                      </div>
-
-                      <div className="mt-4 rounded-3xl bg-slate-50 p-4">
-                        <div className="text-sm font-extrabold text-slate-900">
-                          {prof?.nome || "Cadastro não vinculado"}
-                        </div>
-                        <div className="mt-1 text-xs text-slate-700">
-                          {prof?.area ? `Área: ${prof.area}` : "—"} •{" "}
-                          {prof?.whatsapp ? `WhatsApp: ${onlyDigits(prof.whatsapp)}` : "—"}
-                        </div>
-
-                        {!prof ? (
-                          <div className="mt-3 text-xs text-rose-600">
-                            Não encontrei seu cadastro em <b>cadastros_profissionais</b> por <b>user_id</b> nem por
-                            email.
-                          </div>
-                        ) : null}
-                      </div>
-
-                      {/* Online */}
-                      <div className="mt-4 flex items-center justify-between rounded-3xl border p-4">
-                        <div>
-                          <div className="text-sm font-semibold text-slate-900">Disponibilidade</div>
-                          <div className="text-xs text-slate-500">Receber chamados em tempo real</div>
-                        </div>
-
-                        <button
-                          onClick={toggleOnline}
-                          className={[
-                            "rounded-2xl px-4 py-2 text-sm font-extrabold transition",
-                            online ? "bg-emerald-600 text-white" : "bg-slate-200 text-slate-900",
-                          ].join(" ")}
-                        >
-                          {online ? "Online" : "Offline"}
-                        </button>
-                      </div>
-
-                      {/* Sound */}
-                      <div className="mt-3 flex items-center justify-between rounded-3xl border p-4">
-                        <div>
-                          <div className="text-sm font-semibold text-slate-900">Alertas sonoros</div>
-                          <div className="text-xs text-slate-500">Para tocar no celular, precisa ativar 1 vez.</div>
-                        </div>
-
-                        {!soundArmed ? (
-                          <button
-                            onClick={armSound}
-                            className="rounded-2xl bg-slate-900 px-4 py-2 text-sm font-extrabold text-white hover:opacity-95"
-                          >
-                            🔊 Ativar
-                          </button>
-                        ) : (
-                          <span className="rounded-2xl bg-emerald-100 px-4 py-2 text-xs font-extrabold text-emerald-800">
-                            ATIVO ✅
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    {/* Meu chamado */}
-                    <div className="rounded-3xl border bg-white p-5 shadow-sm">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <div className="text-sm font-semibold text-slate-900">Minha corrida</div>
-                          <div className="text-xs text-slate-500">O atendimento que você aceitou</div>
-                        </div>
-                        <button
-                          onClick={loadMeuChamado}
-                          className="rounded-2xl border px-3 py-2 text-sm font-semibold hover:bg-slate-50"
-                        >
-                          Atualizar
-                        </button>
-                      </div>
-
-                      {loadingMeuChamado ? (
-                        <div className="mt-4 text-sm text-slate-500">Carregando…</div>
-                      ) : !meuChamado ? (
-                        <div className="mt-4 rounded-3xl bg-slate-50 p-4 text-sm text-slate-600">
-                          Você ainda não aceitou nenhum chamado.
-                        </div>
-                      ) : (
-                        <div className="mt-4 rounded-3xl border p-4">
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div>
-                              <div className="text-sm font-extrabold text-slate-900">{meuChamado.servico}</div>
-                              <div className="mt-1 text-xs text-slate-600">
-                                {meuChamado.endereco || "Sem endereço"} • {meuChamado.cliente_nome || "Cliente"}
-                              </div>
-                              {meuChamado.observacoes ? (
-                                <div className="mt-2 text-xs text-slate-600">Obs: {meuChamado.observacoes}</div>
-                              ) : null}
-                              <div className="mt-2 text-xs text-slate-700">
-                                Total: <b>{brl(Number(meuChamado.total || 0))}</b>
-                              </div>
-
-                              <div className="mt-2 text-xs text-slate-600">
-                                GPS:{" "}
-                                <b className={gpsOn ? "text-emerald-700" : "text-slate-600"}>
-                                  {gpsOn ? "ATIVO" : "DESLIGADO"}
-                                </b>
-                                {meuChamado.profissional_pos_at ? (
-                                  <span className="ml-2 text-slate-400">
-                                    (última:{" "}
-                                    {new Date(meuChamado.profissional_pos_at).toLocaleTimeString("pt-BR")})
-                                  </span>
-                                ) : null}
-                              </div>
-                            </div>
-
-                            <div className="flex flex-col gap-2">
-                              <a
-                                href={mapsLinkFromEndereco(meuChamado.endereco)}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="rounded-2xl bg-slate-900 px-4 py-2 text-center text-sm font-extrabold text-white hover:opacity-95"
-                              >
-                                🗺️ Abrir rota
-                              </a>
-
-                              <a
-                                href={wppLink(
-                                  meuChamado.cliente_whatsapp,
-                                  "Olá! Sou o profissional da IA Drogarias. Estou a caminho do seu atendimento."
-                                )}
-                                target="_blank"
-                                rel="noreferrer"
-                                className="rounded-2xl border px-4 py-2 text-center text-sm font-extrabold text-slate-900 hover:bg-slate-50"
-                              >
-                                💬 Whats do cliente
-                              </a>
-
-                              {!gpsOn ? (
-                                <button
-                                  onClick={() => startLiveLocation(meuChamado.id)}
-                                  className="rounded-2xl bg-emerald-600 px-4 py-2 text-center text-sm font-extrabold text-white hover:opacity-95"
-                                >
-                                  📍 Ativar GPS (compartilhar)
-                                </button>
-                              ) : (
-                                <button
-                                  onClick={stopLiveLocation}
-                                  className="rounded-2xl border px-4 py-2 text-center text-sm font-extrabold text-slate-900 hover:bg-slate-50"
-                                >
-                                  ⛔ Parar GPS
-                                </button>
-                              )}
-                            </div>
-                          </div>
-
-                          <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
-                            <button
-                              onClick={() => updateMeuChamadoStatus(STATUS_EM_ANDAMENTO)}
-                              className="rounded-2xl bg-emerald-600 px-4 py-2 text-sm font-extrabold text-white hover:opacity-95"
-                            >
-                              🚗 A CAMINHO
-                            </button>
-                            <button
-                              onClick={() => updateMeuChamadoStatus(STATUS_CHEGUEI)}
-                              className="rounded-2xl bg-slate-900 px-4 py-2 text-sm font-extrabold text-white hover:opacity-95"
-                            >
-                              📍 CHEGUEI
-                            </button>
-                            <button
-                              onClick={() => updateMeuChamadoStatus(STATUS_FINALIZADO)}
-                              className="rounded-2xl border px-4 py-2 text-sm font-extrabold text-slate-900 hover:bg-slate-50"
-                            >
-                              ✅ FINALIZAR
-                            </button>
-                          </div>
-
-                          <div className="mt-2 text-xs text-slate-500">
-                            Status atual: <b>{meuChamado.status}</b>
-                          </div>
-                        </div>
-                      )}
+            {/* Banner urgente (quando tem chamados) */}
+            {online && chamados.length > 0 ? (
+              <div className="mb-5 rounded-3xl border border-emerald-200 bg-emerald-600 p-4 text-white shadow-lg">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <div className="text-base font-extrabold tracking-wide">🚨 CHAMADO DISPONÍVEL AGORA</div>
+                    <div className="text-sm opacity-95">
+                      Clique em <b>ACEITAR O PRIMEIRO AGORA</b> para pegar imediatamente.
                     </div>
                   </div>
 
-                  {/* Coluna direita */}
-                  <div className="rounded-3xl border bg-white p-5 shadow-sm">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <div className="text-sm font-semibold text-slate-900">Chamados disponíveis</div>
-                        <div className="text-xs text-slate-500">
-                          {online ? "Atualiza sozinho (Realtime + fallback)" : "Ative Online"}
-                        </div>
-                      </div>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+                    {!soundArmed ? (
                       <button
-                        onClick={refreshChamados}
-                        className="rounded-2xl border px-3 py-2 text-sm font-semibold hover:bg-slate-50"
+                        onClick={armSound}
+                        className="rounded-2xl bg-white px-4 py-2 text-sm font-extrabold text-emerald-700 shadow hover:opacity-95"
                       >
-                        Atualizar
+                        🔊 Ativar alertas
                       </button>
+                    ) : (
+                      <span className="rounded-2xl bg-white/15 px-3 py-2 text-xs font-semibold">🔊 Alertas ON</span>
+                    )}
+
+                    <button
+                      onClick={aceitarPrimeiroAgora}
+                      className="rounded-2xl bg-white px-5 py-3 text-sm font-extrabold text-emerald-700 shadow hover:opacity-95"
+                    >
+                      ✅ ACEITAR O PRIMEIRO AGORA
+                    </button>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+
+            <div className="grid gap-6 lg:grid-cols-[0.95fr_1.05fr]">
+              {/* Coluna esquerda */}
+              <div className="space-y-6">
+                {/* Perfil */}
+                <div className="rounded-3xl border bg-white p-5 shadow-sm">
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <div className="text-sm font-semibold text-slate-900">Seu perfil</div>
+                      <div className="mt-1 text-xs text-slate-500">{user.email}</div>
+                    </div>
+                    <button
+                      onClick={signOut}
+                      className="rounded-2xl border px-3 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-50"
+                    >
+                      Sair
+                    </button>
+                  </div>
+
+                  <div className="mt-4 rounded-3xl bg-slate-50 p-4">
+                    <div className="text-sm font-extrabold text-slate-900">{prof?.nome || "Cadastro não vinculado"}</div>
+                    <div className="mt-1 text-xs text-slate-700">
+                      {prof?.area ? `Área: ${prof.area}` : "—"} •{" "}
+                      {prof?.whatsapp ? `WhatsApp: ${onlyDigits(prof.whatsapp)}` : "—"}
                     </div>
 
-                    {!online ? (
-                      <div className="mt-6 text-sm text-slate-500">Ative “Online” para ver e aceitar chamados.</div>
-                    ) : loadingChamados ? (
-                      <div className="mt-6 text-sm text-slate-500">Carregando chamados…</div>
-                    ) : chamados.length === 0 ? (
-                      <div className="mt-6 text-sm text-slate-500">Nenhum chamado no momento.</div>
-                    ) : (
-                      <div className="mt-4 space-y-3">
-                        {chamados.map((c) => (
-                          <div key={c.id} className="rounded-3xl border p-4 transition hover:shadow-sm">
-                            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                              <div>
-                                <div className="flex items-center gap-2">
-                                  <div className="text-sm font-extrabold text-slate-900">{c.servico}</div>
-                                  <span className="rounded-full bg-emerald-100 px-2 py-1 text-[11px] font-extrabold text-emerald-800">
-                                    {String(c.status)}
-                                  </span>
-                                </div>
-                                <div className="mt-1 text-xs text-slate-600">
-                                  {c.endereco || "Sem endereço"} • {c.cliente_nome || "Cliente"}
-                                </div>
-                                {c.observacoes ? (
-                                  <div className="mt-2 text-xs text-slate-600">Obs: {c.observacoes}</div>
-                                ) : null}
-
-                                <div className="mt-2 text-xs text-slate-700">
-                                  Serviço: <b>{brl(Number(c.preco_servico || 0))}</b> • Locomoção:{" "}
-                                  <b>{brl(Number(c.taxa_locomocao || 0))}</b> • Total:{" "}
-                                  <b>{brl(Number(c.total || 0))}</b>
-                                </div>
-
-                                <div className="mt-2 flex gap-2">
-                                  <a
-                                    href={mapsLinkFromEndereco(c.endereco)}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="rounded-2xl border px-3 py-2 text-xs font-extrabold text-slate-900 hover:bg-slate-50"
-                                  >
-                                    🗺️ Rota
-                                  </a>
-                                  <a
-                                    href={`/servicos/chamado/${c.id}`}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="rounded-2xl border px-3 py-2 text-xs font-extrabold text-slate-900 hover:bg-slate-50"
-                                  >
-                                    🔎 Ver tela do cliente
-                                  </a>
-                                </div>
-                              </div>
-
-                              <button
-                                onClick={() => aceitarChamado(c.id)}
-                                disabled={!prof?.id}
-                                className={[
-                                  "rounded-2xl px-5 py-3 text-sm font-extrabold text-white transition",
-                                  !prof?.id ? "cursor-not-allowed bg-slate-400" : "bg-slate-900 hover:opacity-95",
-                                ].join(" ")}
-                              >
-                                Aceitar
-                              </button>
-                            </div>
-                          </div>
-                        ))}
+                    {!prof ? (
+                      <div className="mt-3 text-xs text-rose-600">
+                        Não encontrei seu cadastro em <b>cadastros_profissionais</b> por <b>user_id</b> nem por email.
                       </div>
+                    ) : null}
+                  </div>
+
+                  {/* Online */}
+                  <div className="mt-4 flex items-center justify-between rounded-3xl border p-4">
+                    <div>
+                      <div className="text-sm font-semibold text-slate-900">Disponibilidade</div>
+                      <div className="text-xs text-slate-500">Receber chamados em tempo real</div>
+                    </div>
+
+                    <button
+                      onClick={toggleOnline}
+                      className={[
+                        "rounded-2xl px-4 py-2 text-sm font-extrabold transition",
+                        online ? "bg-emerald-600 text-white" : "bg-slate-200 text-slate-900",
+                      ].join(" ")}
+                    >
+                      {online ? "Online" : "Offline"}
+                    </button>
+                  </div>
+
+                  {/* Sound */}
+                  <div className="mt-3 flex items-center justify-between rounded-3xl border p-4">
+                    <div>
+                      <div className="text-sm font-semibold text-slate-900">Alertas sonoros</div>
+                      <div className="text-xs text-slate-500">Para tocar no celular, precisa ativar 1 vez.</div>
+                    </div>
+
+                    {!soundArmed ? (
+                      <button
+                        onClick={armSound}
+                        className="rounded-2xl bg-slate-900 px-4 py-2 text-sm font-extrabold text-white hover:opacity-95"
+                      >
+                        🔊 Ativar
+                      </button>
+                    ) : (
+                      <span className="rounded-2xl bg-emerald-100 px-4 py-2 text-xs font-extrabold text-emerald-800">
+                        ATIVO ✅
+                      </span>
                     )}
                   </div>
                 </div>
-              </>
-            )}
+
+                {/* Meu chamado (após aceitar) */}
+                <div className="rounded-3xl border bg-white p-5 shadow-sm">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-sm font-semibold text-slate-900">Minha corrida</div>
+                      <div className="text-xs text-slate-500">O atendimento que você aceitou</div>
+                    </div>
+                    <button
+                      onClick={loadMeuChamado}
+                      className="rounded-2xl border px-3 py-2 text-sm font-semibold hover:bg-slate-50"
+                    >
+                      Atualizar
+                    </button>
+                  </div>
+
+                  {loadingMeuChamado ? (
+                    <div className="mt-4 text-sm text-slate-500">Carregando…</div>
+                  ) : !meuChamado ? (
+                    <div className="mt-4 rounded-3xl bg-slate-50 p-4 text-sm text-slate-600">
+                      Você ainda não aceitou nenhum chamado.
+                    </div>
+                  ) : (
+                    <div className="mt-4 rounded-3xl border p-4">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div>
+                          <div className="text-sm font-extrabold text-slate-900">{meuChamado.servico}</div>
+                          <div className="mt-1 text-xs text-slate-600">
+                            {meuChamado.endereco || "Sem endereço"} • {meuChamado.cliente_nome || "Cliente"}
+                          </div>
+                          {meuChamado.observacoes ? (
+                            <div className="mt-2 text-xs text-slate-600">Obs: {meuChamado.observacoes}</div>
+                          ) : null}
+                          <div className="mt-2 text-xs text-slate-700">
+                            Total: <b>{brl(Number(meuChamado.total || 0))}</b>
+                          </div>
+
+                          {/* ✅ GPS status */}
+                          <div className="mt-2 text-xs text-slate-600">
+                            GPS:{" "}
+                            <b className={gpsOn ? "text-emerald-700" : "text-slate-600"}>
+                              {gpsOn ? "ATIVO" : "DESLIGADO"}
+                            </b>
+                            {meuChamado.profissional_pos_at ? (
+                              <span className="ml-2 text-slate-400">
+                                (última: {new Date(meuChamado.profissional_pos_at).toLocaleTimeString("pt-BR")})
+                              </span>
+                            ) : null}
+                          </div>
+                        </div>
+
+                        <div className="flex flex-col gap-2">
+                          <a
+                            href={mapsLinkFromEndereco(meuChamado.endereco)}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="rounded-2xl bg-slate-900 px-4 py-2 text-center text-sm font-extrabold text-white hover:opacity-95"
+                          >
+                            🗺️ Abrir rota
+                          </a>
+
+                          <a
+                            href={wppLink(
+                              meuChamado.cliente_whatsapp,
+                              "Olá! Sou o profissional da IA Drogarias. Estou a caminho do seu atendimento."
+                            )}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="rounded-2xl border px-4 py-2 text-center text-sm font-extrabold text-slate-900 hover:bg-slate-50"
+                          >
+                            💬 Whats do cliente
+                          </a>
+
+                          {/* ✅ Botão GPS */}
+                          {!gpsOn ? (
+                            <button
+                              onClick={() => startLiveLocation(meuChamado.id)}
+                              className="rounded-2xl bg-emerald-600 px-4 py-2 text-center text-sm font-extrabold text-white hover:opacity-95"
+                            >
+                              📍 Ativar GPS (compartilhar)
+                            </button>
+                          ) : (
+                            <button
+                              onClick={stopLiveLocation}
+                              className="rounded-2xl border px-4 py-2 text-center text-sm font-extrabold text-slate-900 hover:bg-slate-50"
+                            >
+                              ⛔ Parar GPS
+                            </button>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                        <button
+                          onClick={() => updateMeuChamadoStatus(STATUS_EM_ANDAMENTO)}
+                          className="rounded-2xl bg-emerald-600 px-4 py-2 text-sm font-extrabold text-white hover:opacity-95"
+                        >
+                          🚗 A CAMINHO
+                        </button>
+                        <button
+                          onClick={() => updateMeuChamadoStatus("cheguei")}
+                          className="rounded-2xl bg-slate-900 px-4 py-2 text-sm font-extrabold text-white hover:opacity-95"
+                        >
+                          📍 CHEGUEI
+                        </button>
+                        <button
+                          onClick={() => updateMeuChamadoStatus(STATUS_FINALIZADO)}
+                          className="rounded-2xl border px-4 py-2 text-sm font-extrabold text-slate-900 hover:bg-slate-50"
+                        >
+                          ✅ FINALIZAR
+                        </button>
+                      </div>
+
+                      <div className="mt-2 text-xs text-slate-500">
+                        Status atual: <b>{meuChamado.status}</b>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Coluna direita */}
+              <div className="rounded-3xl border bg-white p-5 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <div className="text-sm font-semibold text-slate-900">Chamados disponíveis</div>
+                    <div className="text-xs text-slate-500">
+                      {online ? "Atualiza sozinho (Realtime + fallback)" : "Ative Online"}
+                    </div>
+                  </div>
+                  <button
+                    onClick={refreshChamados}
+                    className="rounded-2xl border px-3 py-2 text-sm font-semibold hover:bg-slate-50"
+                  >
+                    Atualizar
+                  </button>
+                </div>
+
+                {!online ? (
+                  <div className="mt-6 text-sm text-slate-500">Ative “Online” para ver e aceitar chamados.</div>
+                ) : loadingChamados ? (
+                  <div className="mt-6 text-sm text-slate-500">Carregando chamados…</div>
+                ) : chamados.length === 0 ? (
+                  <div className="mt-6 text-sm text-slate-500">Nenhum chamado no momento.</div>
+                ) : (
+                  <div className="mt-4 space-y-3">
+                    {chamados.map((c) => (
+                      <div key={c.id} className="rounded-3xl border p-4 transition hover:shadow-sm">
+                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <div className="text-sm font-extrabold text-slate-900">{c.servico}</div>
+                              <span className="rounded-full bg-emerald-100 px-2 py-1 text-[11px] font-extrabold text-emerald-800">
+                                {String(c.status)}
+                              </span>
+                            </div>
+                            <div className="mt-1 text-xs text-slate-600">
+                              {c.endereco || "Sem endereço"} • {c.cliente_nome || "Cliente"}
+                            </div>
+                            {c.observacoes ? (
+                              <div className="mt-2 text-xs text-slate-600">Obs: {c.observacoes}</div>
+                            ) : null}
+
+                            <div className="mt-2 text-xs text-slate-700">
+                              Serviço: <b>{brl(Number(c.preco_servico || 0))}</b> • Locomoção:{" "}
+                              <b>{brl(Number(c.taxa_locomocao || 0))}</b> • Total:{" "}
+                              <b>{brl(Number(c.total || 0))}</b>
+                            </div>
+
+                            <div className="mt-2 flex gap-2">
+                              <a
+                                href={mapsLinkFromEndereco(c.endereco)}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="rounded-2xl border px-3 py-2 text-xs font-extrabold text-slate-900 hover:bg-slate-50"
+                              >
+                                🗺️ Rota
+                              </a>
+                              <a
+                                href={`/servicos/chamado/${c.id}`}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="rounded-2xl border px-3 py-2 text-xs font-extrabold text-slate-900 hover:bg-slate-50"
+                              >
+                                🔎 Ver tela do cliente
+                              </a>
+                            </div>
+                          </div>
+
+                          <button
+                            onClick={() => aceitarChamado(c.id)}
+                            disabled={!prof?.id}
+                            className={[
+                              "rounded-2xl px-5 py-3 text-sm font-extrabold text-white transition",
+                              !prof?.id ? "cursor-not-allowed bg-slate-400" : "bg-slate-900 hover:opacity-95",
+                            ].join(" ")}
+                          >
+                            Aceitar
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
           </>
         )}
       </div>
