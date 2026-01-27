@@ -33,7 +33,38 @@ type Chamado = {
   total: number;
   profissional_id: string | null;
   profissional_nome: string | null;
+
+  // (se existir na tabela, não atrapalha; se não existir, TS ignora)
+  numero?: string | null;
+  bairro?: string | null;
+  cidade?: string | null;
+  uf?: string | null;
+  rota_url?: string | null;
+  eta_min?: number | null;
 };
+
+const APP_NAME = "IA Drogarias";
+
+// 🔒 Status atuais do seu projeto (mantendo exatamente os que você já usa)
+const STATUS_PROCURANDO = "procurando";
+const STATUS_ACEITO = "aceito";
+
+function buildDestino(c: Chamado) {
+  const parts: string[] = [];
+  if (c.endereco) parts.push(c.endereco);
+  if (c.numero) parts.push(c.numero);
+  let linha2 = "";
+  if (c.bairro) linha2 += c.bairro;
+  if (c.cidade) linha2 += (linha2 ? ", " : "") + c.cidade;
+  if (c.uf) linha2 += (linha2 ? " - " : "") + c.uf;
+  if (linha2) parts.push(linha2);
+  return parts.join(" • ").trim() || "Destino do cliente";
+}
+
+function gerarRotaUrl(origem: string, destino: string) {
+  const base = "https://www.google.com/maps/dir/?api=1";
+  return `${base}&origin=${encodeURIComponent(origem)}&destination=${encodeURIComponent(destino)}&travelmode=driving`;
+}
 
 export default function PainelProfissional() {
   const [user, setUser] = useState<any>(null);
@@ -51,6 +82,8 @@ export default function PainelProfissional() {
 
   const [chamados, setChamados] = useState<Chamado[]>([]);
   const [loadingChamados, setLoadingChamados] = useState(false);
+
+  const [acceptingId, setAcceptingId] = useState<string | null>(null);
 
   // Realtime channel ref (evita duplicar subscribe)
   const channelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
@@ -157,18 +190,11 @@ export default function PainelProfissional() {
       updated_at: new Date().toISOString(),
     };
 
-    await supabase
-      .from("profissionais")
-      .upsert(payload, { onConflict: "user_id" });
+    await supabase.from("profissionais").upsert(payload, { onConflict: "user_id" });
   }
 
   async function loadOnlineFromDB(userId: string) {
-    const { data, error } = await supabase
-      .from("profissionais")
-      .select("online")
-      .eq("user_id", userId)
-      .maybeSingle();
-
+    const { data, error } = await supabase.from("profissionais").select("online").eq("user_id", userId).maybeSingle();
     if (error) return; // não trava o painel
     if (data?.online === true || data?.online === false) setOnline(!!data.online);
   }
@@ -204,7 +230,6 @@ export default function PainelProfissional() {
     try {
       await setOnlineToDB(next);
     } catch (e) {
-      // reverte se falhou
       setOnline(!next);
       alert("Não consegui salvar seu status Online/Offline. Verifique as policies do Supabase.");
     }
@@ -215,12 +240,8 @@ export default function PainelProfissional() {
     if (!user?.id) return;
 
     const handler = () => {
-      // não dá pra await no unload; best-effort
       try {
-        supabase
-          .from("profissionais")
-          .update({ online: false, updated_at: new Date().toISOString() })
-          .eq("user_id", user.id);
+        supabase.from("profissionais").update({ online: false, updated_at: new Date().toISOString() }).eq("user_id", user.id);
       } catch {
         // ignore
       }
@@ -237,7 +258,7 @@ export default function PainelProfissional() {
     const { data, error } = await supabase
       .from("chamados")
       .select("*")
-      .eq("status", "procurando")
+      .eq("status", STATUS_PROCURANDO)
       .order("created_at", { ascending: false })
       .limit(50);
 
@@ -265,13 +286,9 @@ export default function PainelProfissional() {
 
     const channel = supabase
       .channel("chamados-procurando")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "chamados" },
-        () => {
-          refreshChamados();
-        }
-      )
+      .on("postgres_changes", { event: "*", schema: "public", table: "chamados" }, () => {
+        refreshChamados();
+      })
       .subscribe();
 
     channelRef.current = channel;
@@ -285,25 +302,51 @@ export default function PainelProfissional() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [online]);
 
-  async function aceitarChamado(chamadoId: string) {
+  // (Opcional) auto-refresh leve, além do realtime (ajuda se realtime falhar)
+  useEffect(() => {
+    if (!online) return;
+    const t = setInterval(() => refreshChamados(), 7000);
+    return () => clearInterval(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [online]);
+
+  async function aceitarChamado(chamado: Chamado) {
     if (!prof?.id) {
       alert("Seu cadastro profissional não está vinculado ao login ainda.");
       return;
     }
+    if (acceptingId) return;
+
+    setAcceptingId(chamado.id);
+
+    // ✅ ROTA (versão 1): origem por região fixa (depois puxamos da localização do profissional)
+    const origem = "São Mateus, São Paulo - SP";
+    const destino = buildDestino(chamado);
+    const rotaUrl = gerarRotaUrl(origem, destino);
 
     const { data, error } = await supabase
       .from("chamados")
       .update({
-        status: "aceito",
+        status: STATUS_ACEITO,
         profissional_id: prof.id,
         profissional_nome: prof.nome || "Profissional",
-        // importante: vincula auth.uid() (para policies seguras)
+        // se existir na tabela, ótimo; se não existir, o Postgres vai reclamar.
+        // ✅ se sua tabela NÃO tiver profissional_uid, remova essa linha:
         profissional_uid: user?.id || null,
-      })
-      .eq("id", chamadoId)
-      .eq("status", "procurando") // trava concorrência
+
+        // se sua tabela tiver essas colunas, elas ficam prontas pro cliente ver mapa/ETA
+        origem_texto: origem,
+        destino_texto: destino,
+        rota_url: rotaUrl,
+        aceito_em: new Date().toISOString(),
+        eta_min: 35, // opcional (estimativa inicial)
+      } as any)
+      .eq("id", chamado.id)
+      .eq("status", STATUS_PROCURANDO) // trava concorrência
       .select("id,status")
       .maybeSingle();
+
+    setAcceptingId(null);
 
     if (error) {
       console.error(error);
@@ -326,16 +369,68 @@ export default function PainelProfissional() {
     return "Painel do profissional";
   }, [authLoading, user]);
 
+  const hasChamado = online && chamados.length > 0;
+  const firstChamado = hasChamado ? chamados[0] : null;
+
+  // Piscar o título da aba quando tiver chamado
+  useEffect(() => {
+    if (!hasChamado) return;
+
+    const original = document.title || APP_NAME;
+    let on = false;
+    const timer = setInterval(() => {
+      document.title = on ? "🚨 CHAMADO DISPONÍVEL!" : original;
+      on = !on;
+    }, 900);
+
+    return () => {
+      clearInterval(timer);
+      document.title = original;
+    };
+  }, [hasChamado]);
+
   return (
     <main className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
+      {/* Top bar app-like */}
       <div className="sticky top-0 z-30 border-b bg-white/80 backdrop-blur">
         <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
-          <div className="text-sm font-semibold text-slate-900">IA Drogarias</div>
+          <div className="text-sm font-extrabold text-slate-900">{APP_NAME}</div>
           <div className="text-xs text-slate-500">{headerTitle}</div>
         </div>
       </div>
 
-      <div className="mx-auto max-w-6xl px-4 py-8">
+      {/* 🚨 Banner GRITANDO */}
+      {hasChamado && (
+        <div className="fixed top-[52px] left-0 right-0 z-40">
+          <div className="mx-auto max-w-6xl px-4">
+            <div className="rounded-2xl bg-emerald-600 text-white shadow-2xl ring-4 ring-emerald-300 animate-pulse">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between px-4 py-4">
+                <div>
+                  <div className="text-base sm:text-lg font-extrabold tracking-tight">🚨 CHAMADO DISPONÍVEL AGORA</div>
+                  <div className="text-xs sm:text-sm opacity-95 mt-1">
+                    Clique em <b>ACEITAR O PRIMEIRO</b> para pegar o atendimento imediatamente.
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => firstChamado && aceitarChamado(firstChamado)}
+                  disabled={!prof?.id || !firstChamado || !!acceptingId}
+                  className={[
+                    "w-full sm:w-auto rounded-2xl px-5 py-3 text-sm sm:text-base font-extrabold shadow-lg transition",
+                    !prof?.id || !firstChamado || !!acceptingId
+                      ? "bg-white/60 text-emerald-900 cursor-not-allowed"
+                      : "bg-white text-emerald-700 hover:opacity-95",
+                  ].join(" ")}
+                >
+                  {acceptingId ? "Aceitando…" : "✅ ACEITAR O PRIMEIRO AGORA"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className={["mx-auto max-w-6xl px-4 py-8", hasChamado ? "pt-20" : ""].join(" ")}>
         {!user ? (
           <div className="mx-auto max-w-md rounded-2xl border bg-white p-5 shadow-sm">
             <h1 className="text-lg font-bold text-slate-900">Entrar</h1>
@@ -352,6 +447,7 @@ export default function PainelProfissional() {
                   autoComplete="email"
                 />
               </div>
+
               <div>
                 <label className="text-xs font-semibold text-slate-700">Senha</label>
                 <input
@@ -380,16 +476,14 @@ export default function PainelProfissional() {
           </div>
         ) : (
           <div className="grid gap-6 lg:grid-cols-[0.9fr_1.1fr]">
+            {/* LEFT: Perfil + Online */}
             <div className="rounded-2xl border bg-white p-5 shadow-sm">
               <div className="flex items-start justify-between gap-2">
                 <div>
                   <div className="text-sm font-semibold text-slate-900">Seu perfil</div>
                   <div className="mt-1 text-xs text-slate-500">{user.email}</div>
                 </div>
-                <button
-                  onClick={signOut}
-                  className="rounded-xl border px-3 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-50"
-                >
+                <button onClick={signOut} className="rounded-xl border px-3 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-50">
                   Sair
                 </button>
               </div>
@@ -399,8 +493,7 @@ export default function PainelProfissional() {
                   {loadingProf ? "Carregando cadastro…" : prof?.nome || "Cadastro não vinculado"}
                 </div>
                 <div className="mt-1 text-xs text-slate-600">
-                  {prof?.area ? `Área: ${prof.area}` : "—"} •{" "}
-                  {prof?.whatsapp ? `WhatsApp: ${onlyDigits(prof.whatsapp)}` : "—"}
+                  {prof?.area ? `Área: ${prof.area}` : "—"} • {prof?.whatsapp ? `WhatsApp: ${onlyDigits(prof.whatsapp)}` : "—"}
                 </div>
 
                 {!prof ? (
@@ -423,7 +516,7 @@ export default function PainelProfissional() {
                   onClick={toggleOnline}
                   disabled={onlineSaving}
                   className={[
-                    "rounded-2xl px-4 py-2 text-sm font-semibold transition",
+                    "rounded-2xl px-4 py-2 text-sm font-extrabold transition shadow-sm",
                     online ? "bg-emerald-600 text-white" : "bg-slate-200 text-slate-900",
                     onlineSaving ? "opacity-60 cursor-not-allowed" : "",
                   ].join(" ")}
@@ -433,23 +526,30 @@ export default function PainelProfissional() {
               </div>
 
               <div className="mt-3 text-xs text-slate-500">
-                * Agora o status <b>Online</b> é salvo na tabela <b>public.profissionais</b> (usado no Admin Operação).
+                * Status <b>Online</b> salvo em <b>public.profissionais</b>.
               </div>
             </div>
 
-            <div className="rounded-2xl border bg-white p-5 shadow-sm">
+            {/* RIGHT: Chamados */}
+            <div className={["rounded-2xl border bg-white p-5 shadow-sm", hasChamado ? "ring-2 ring-emerald-400 shadow-xl" : ""].join(" ")}>
               <div className="flex items-center justify-between">
                 <div>
-                  <div className="text-sm font-semibold text-slate-900">Chamados procurando</div>
+                  <div className="flex items-center gap-2">
+                    <div className="text-sm font-semibold text-slate-900">Chamados procurando</div>
+                    {hasChamado ? (
+                      <span className="inline-flex items-center rounded-full bg-emerald-100 px-2 py-0.5 text-xs font-extrabold text-emerald-700">
+                        {chamados.length} DISPONÍVEL
+                      </span>
+                    ) : null}
+                  </div>
+
                   <div className="text-xs text-slate-500">
-                    {online ? "Atualiza em tempo real" : "Ative Online para carregar"}
+                    {online ? (hasChamado ? "Atenção: há chamado para aceitar" : "Atualiza em tempo real") : "Ative Online para carregar"}
                   </div>
                 </div>
+
                 {online ? (
-                  <button
-                    onClick={refreshChamados}
-                    className="rounded-xl border px-3 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-50"
-                  >
+                  <button onClick={refreshChamados} className="rounded-xl border px-3 py-2 text-sm font-semibold text-slate-900 hover:bg-slate-50">
                     Atualizar
                   </button>
                 ) : null}
@@ -463,34 +563,70 @@ export default function PainelProfissional() {
                 <div className="mt-6 text-sm text-slate-500">Nenhum chamado no momento.</div>
               ) : (
                 <div className="mt-4 space-y-3">
-                  {chamados.map((c) => (
-                    <div key={c.id} className="rounded-2xl border p-4">
-                      <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                  {/* Ação principal (sempre visível enquanto rola) */}
+                  <div className="sticky top-[120px] z-10">
+                    <div className="rounded-2xl border bg-slate-50 p-4">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                         <div>
-                          <div className="text-sm font-semibold text-slate-900">{c.servico}</div>
-                          <div className="mt-1 text-xs text-slate-600">
-                            {c.endereco || "Sem endereço"} • {c.cliente_nome || "Cliente"} •{" "}
-                            {onlyDigits(c.cliente_whatsapp || "")}
-                          </div>
-                          {c.observacoes ? (
-                            <div className="mt-2 text-xs text-slate-600">Obs: {c.observacoes}</div>
-                          ) : null}
+                          <div className="text-sm font-extrabold text-slate-900">Ação rápida</div>
+                          <div className="text-xs text-slate-600">Aceite o primeiro chamado disponível com 1 clique.</div>
+                        </div>
 
-                          <div className="mt-2 text-xs text-slate-600">
-                            Valor: <b>{brl(Number(c.preco_servico || 0))}</b> + Locomoção:{" "}
-                            <b>{brl(Number(c.taxa_locomocao || 0))}</b> = <b>{brl(Number(c.total || 0))}</b>
+                        <button
+                          onClick={() => firstChamado && aceitarChamado(firstChamado)}
+                          disabled={!prof?.id || !firstChamado || !!acceptingId}
+                          className={[
+                            "w-full sm:w-auto rounded-2xl px-5 py-3 text-sm font-extrabold text-white shadow-lg transition",
+                            !prof?.id || !firstChamado || !!acceptingId ? "bg-slate-400 cursor-not-allowed" : "bg-emerald-600 hover:bg-emerald-700",
+                          ].join(" ")}
+                        >
+                          {acceptingId ? "Aceitando…" : "✅ ACEITAR O PRIMEIRO AGORA"}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Lista */}
+                  {chamados.map((c, idx) => (
+                    <div
+                      key={c.id}
+                      className={[
+                        "rounded-2xl border p-4 transition",
+                        idx === 0 ? "border-emerald-300 bg-emerald-50/40" : "hover:bg-slate-50",
+                      ].join(" ")}
+                    >
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <div className="text-sm font-extrabold text-slate-900 truncate">{c.servico}</div>
+                            {idx === 0 ? (
+                              <span className="inline-flex items-center rounded-full bg-emerald-600 px-2 py-0.5 text-[11px] font-extrabold text-white">
+                                PRIORIDADE
+                              </span>
+                            ) : null}
+                          </div>
+
+                          <div className="mt-1 text-xs text-slate-600">
+                            {c.endereco || "Sem endereço"} • {c.cliente_nome || "Cliente"} • {onlyDigits(c.cliente_whatsapp || "")}
+                          </div>
+
+                          {c.observacoes ? <div className="mt-2 text-xs text-slate-600">Obs: {c.observacoes}</div> : null}
+
+                          <div className="mt-2 text-xs text-slate-700">
+                            Valor: <b>{brl(Number(c.preco_servico || 0))}</b> + Locomoção: <b>{brl(Number(c.taxa_locomocao || 0))}</b> ={" "}
+                            <b>{brl(Number(c.total || 0))}</b>
                           </div>
                         </div>
 
                         <button
-                          onClick={() => aceitarChamado(c.id)}
-                          disabled={!prof?.id}
+                          onClick={() => aceitarChamado(c)}
+                          disabled={!prof?.id || !!acceptingId}
                           className={[
-                            "rounded-2xl px-4 py-2 text-sm font-semibold text-white transition",
-                            !prof?.id ? "bg-slate-400 cursor-not-allowed" : "bg-slate-900 hover:opacity-95",
+                            "rounded-2xl px-5 py-3 text-sm font-extrabold text-white shadow-lg transition w-full sm:w-auto",
+                            !prof?.id || !!acceptingId ? "bg-slate-400 cursor-not-allowed" : "bg-slate-900 hover:opacity-95",
                           ].join(" ")}
                         >
-                          Aceitar
+                          {acceptingId === c.id ? "Aceitando…" : "Aceitar"}
                         </button>
                       </div>
                     </div>
