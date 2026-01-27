@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -8,13 +8,23 @@ function onlyDigits(s: string) {
   return (s || "").replace(/\D/g, "");
 }
 function brl(v: number) {
-  return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  return (Number(v) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+function normalizeServicoParam(s: string) {
+  // suporta ?servico=Teste%20de%20Glicemia e ?servico=Teste+de+Glicemia
+  try {
+    return decodeURIComponent(s || "").replace(/\+/g, " ").trim();
+  } catch {
+    return (s || "").replace(/\+/g, " ").trim();
+  }
 }
 
 export default function SolicitarClient() {
   const router = useRouter();
   const sp = useSearchParams();
-  const servicoURL = sp.get("servico") || "";
+
+  // ✅ NORMALIZA o serviço vindo da URL
+  const servicoURL = useMemo(() => normalizeServicoParam(sp.get("servico") || ""), [sp]);
 
   const [form, setForm] = useState({
     servico: servicoURL,
@@ -28,32 +38,49 @@ export default function SolicitarClient() {
   const [preco, setPreco] = useState({ preco_servico: 0, taxa_locomocao: 0 });
 
   const total = useMemo(
-    () => (preco.preco_servico || 0) + (preco.taxa_locomocao || 0),
+    () => (Number(preco.preco_servico) || 0) + (Number(preco.taxa_locomocao) || 0),
     [preco]
   );
 
+  // mantém o campo servico sincronizado com URL
   useEffect(() => {
-    if (typeof window === "undefined") return;
-    if (servicoURL) setForm((p) => ({ ...p, servico: servicoURL }));
+    if (servicoURL) {
+      setForm((p) => ({ ...p, servico: servicoURL }));
+    }
   }, [servicoURL]);
 
   async function carregarPreco(nomeServico: string) {
-    if (!nomeServico?.trim()) {
+    const nome = (nomeServico || "").trim();
+    if (!nome) {
       setPreco({ preco_servico: 0, taxa_locomocao: 0 });
       return;
     }
+
     setLoadingPreco(true);
 
-    const { data } = await supabase
+    // 1) tenta match exato
+    let res = await supabase
       .from("servicos_catalogo")
       .select("preco_servico,taxa_locomocao")
-      .eq("nome", nomeServico.trim())
+      .eq("nome", nome)
       .eq("ativo", true)
       .maybeSingle();
 
+    // 2) fallback: ilike (tolerante a variações)
+    if (!res.data) {
+      res = await supabase
+        .from("servicos_catalogo")
+        .select("preco_servico,taxa_locomocao,nome")
+        .ilike("nome", `%${nome}%`)
+        .eq("ativo", true)
+        .order("preco_servico", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+    }
+
     setPreco({
-      preco_servico: Number(data?.preco_servico ?? 0),
-      taxa_locomocao: Number(data?.taxa_locomocao ?? 0),
+      preco_servico: Number(res.data?.preco_servico ?? 0),
+      taxa_locomocao: Number(res.data?.taxa_locomocao ?? 0),
     });
 
     setLoadingPreco(false);
@@ -80,15 +107,18 @@ export default function SolicitarClient() {
   const [sending, setSending] = useState(false);
 
   async function criarChamado() {
-    const err = validate();
-    if (err) return alert(err);
+    const msg = validate();
+    if (msg) return alert(msg);
     if (sending) return;
 
     setSending(true);
 
+    // ✅ GARANTE serviço normalizado mesmo se usuário editar
+    const servicoFinal = normalizeServicoParam(form.servico);
+
     const payload = {
       status: "procurando",
-      servico: form.servico.trim(),
+      servico: servicoFinal,
       cliente_nome: form.nome.trim(),
       cliente_whatsapp: onlyDigits(form.whatsapp),
       endereco: form.endereco.trim(),
@@ -96,6 +126,7 @@ export default function SolicitarClient() {
       preco_servico: Number(preco.preco_servico ?? 0),
       taxa_locomocao: Number(preco.taxa_locomocao ?? 0),
       total: Number(total ?? 0),
+      // NÃO envie profissional_* aqui (tem policy pra exigir null)
     };
 
     const { data, error } = await supabase
@@ -107,8 +138,9 @@ export default function SolicitarClient() {
     setSending(false);
 
     if (error || !data?.id) {
-      console.error(error);
-      alert("Não foi possível criar o chamado. Tente novamente.");
+      // ✅ log completo pra enxergar RLS / permissões / validação
+      console.error("Erro ao criar chamado:", { error, payload });
+      alert(`Não foi possível criar o chamado.\n${error?.code || ""} ${error?.message || ""}`);
       return;
     }
 
@@ -204,15 +236,21 @@ export default function SolicitarClient() {
           <div className="mt-3 space-y-2 text-sm">
             <div className="flex items-center justify-between">
               <span className="text-slate-500">Serviço</span>
-              <span className="font-semibold text-slate-900">{loadingPreco ? "..." : brl(preco.preco_servico)}</span>
+              <span className="font-semibold text-slate-900">
+                {loadingPreco ? "..." : brl(preco.preco_servico)}
+              </span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-slate-500">Locomoção (ida e volta)</span>
-              <span className="font-semibold text-slate-900">{loadingPreco ? "..." : brl(preco.taxa_locomocao)}</span>
+              <span className="font-semibold text-slate-900">
+                {loadingPreco ? "..." : brl(preco.taxa_locomocao)}
+              </span>
             </div>
             <div className="mt-2 border-t pt-2 flex items-center justify-between">
               <span className="text-slate-500">Total</span>
-              <span className="text-base font-bold text-slate-900">{loadingPreco ? "..." : brl(total)}</span>
+              <span className="text-base font-bold text-slate-900">
+                {loadingPreco ? "..." : brl(total)}
+              </span>
             </div>
           </div>
 

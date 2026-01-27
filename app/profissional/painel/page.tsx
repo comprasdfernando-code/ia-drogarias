@@ -344,7 +344,7 @@ export default function PainelProfissionalPremium() {
     return;
   }
 
-  // ✅ Aceita com cast correto no Postgres (status enum)
+  // ✅ RPC = aceita com trava no banco (evita dois aceitarem)
   const { data, error } = await supabase.rpc("accept_chamado", {
     p_chamado_id: chamadoId,
     p_profissional_id: prof.id,
@@ -353,22 +353,18 @@ export default function PainelProfissionalPremium() {
   });
 
   if (error) {
-    console.error("Erro aceitarChamado RPC:", error);
-
-    const msg =
-      `Erro ao aceitar.\n` +
-      `code: ${error.code}\n` +
-      `message: ${error.message}\n` +
-      `details: ${error.details || "-"}\n` +
-      `hint: ${error.hint || "-"}`;
-
-    alert(msg);
+    console.error("Erro aceitarChamado:", error);
+    alert(
+      `Erro ao aceitar.\ncode: ${error.code || "-"}\nmessage: ${error.message || "-"}`
+    );
     await refreshChamados();
     return;
   }
 
-  // ✅ Se veio vazio: alguém pegou antes OU status não era mais procurado/solicitado
-  if (!data || (Array.isArray(data) && data.length === 0)) {
+  // Quando não retorna nada = não conseguiu aceitar (alguém aceitou antes, ou status não permitido)
+  const row = Array.isArray(data) ? data[0] : data;
+
+  if (!row) {
     const check = await supabase
       .from("chamados")
       .select("status,profissional_nome,profissional_id")
@@ -376,8 +372,10 @@ export default function PainelProfissionalPremium() {
       .maybeSingle();
 
     const st = String(check.data?.status || "");
-    if (st === "aceito") {
-      alert("Esse chamado já foi aceito ✅");
+    const pid = String(check.data?.profissional_id || "");
+
+    if (pid && pid !== "null") {
+      alert(`Outro profissional aceitou antes: ${check.data?.profissional_nome || "—"}`);
     } else {
       alert(`Não consegui aceitar. Status atual: ${st || "desconhecido"}`);
     }
