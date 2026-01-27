@@ -1,230 +1,349 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
-/* ================= UTIL ================= */
+/* =========================
+   HELPERS
+========================= */
 function brl(v: number) {
-  return (v || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  return (v || 0).toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  });
+}
+function onlyDigits(s: string) {
+  return (s || "").replace(/\D/g, "");
 }
 
-/* ================= TYPES ================= */
+/* =========================
+   ENUMS (BATEM COM O BANCO)
+========================= */
+const STATUS_PROCURANDO = "procurando";
+const STATUS_SOLICITADO = "SOLICITADO";
+const STATUS_ACEITO = "aceito";
+
+/* =========================
+   TYPES
+========================= */
 type Prof = {
   id: string;
+  user_id: string | null;
   nome: string | null;
   whatsapp: string | null;
+  email: string | null;
+  area: string | null;
 };
 
 type Chamado = {
   id: string;
   created_at: string;
-  status: "procurando" | "aceito" | "em_andamento" | "finalizado";
+  status: string;
   servico: string;
   cliente_nome: string | null;
   cliente_whatsapp: string | null;
   endereco: string | null;
-  preco_servico: number;
-  taxa_locomocao: number;
-  total: number;
+  observacoes: string | null;
+  preco_servico: number | null;
+  taxa_locomocao: number | null;
+  total: number | null;
 };
 
-/* ================= PAGE ================= */
+/* =========================
+   COMPONENT
+========================= */
 export default function PainelProfissional() {
   const [user, setUser] = useState<any>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+
+  const [email, setEmail] = useState("");
+  const [senha, setSenha] = useState("");
+  const [authMsg, setAuthMsg] = useState("");
+
   const [prof, setProf] = useState<Prof | null>(null);
-  const [online, setOnline] = useState(true);
+  const [online, setOnline] = useState(false);
 
   const [chamados, setChamados] = useState<Chamado[]>([]);
-  const lastIdsRef = useRef<string[]>([]);
+  const [loadingChamados, setLoadingChamados] = useState(false);
 
-  /* 🔊 áudio */
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const channelRef = useRef<any>(null);
 
-  /* ================= AUTH ================= */
+  /* =========================
+     AUTH
+  ========================= */
   useEffect(() => {
-    supabase.auth.getUser().then(({ data }) => setUser(data.user || null));
+    supabase.auth.getUser().then(({ data }) => {
+      setUser(data?.user || null);
+      setAuthLoading(false);
+    });
+
+    const { data: sub } = supabase.auth.onAuthStateChange(
+      (_e, session) => setUser(session?.user || null)
+    );
+
+    return () => {
+      sub?.subscription?.unsubscribe();
+    };
   }, []);
 
-  /* ================= LOAD PROF ================= */
+  async function signIn() {
+    setAuthMsg("");
+    const { error } = await supabase.auth.signInWithPassword({
+      email: email.trim(),
+      password: senha,
+    });
+    if (error) setAuthMsg("Falha no login.");
+  }
+
+  async function signOut() {
+    setOnline(false);
+    await supabase.auth.signOut();
+    setProf(null);
+    setChamados([]);
+  }
+
+  /* =========================
+     LOAD PROFISSIONAL
+  ========================= */
   useEffect(() => {
     if (!user?.id) return;
 
     supabase
       .from("cadastros_profissionais")
-      .select("id,nome,whatsapp")
-      .eq("user_id", user.id)
+      .select("id,user_id,nome,whatsapp,email,area")
+      .or(`user_id.eq.${user.id},email.eq.${user.email}`)
       .maybeSingle()
       .then(({ data }) => setProf(data || null));
   }, [user?.id]);
 
-  /* ================= AUDIO ================= */
-  useEffect(() => {
-    audioRef.current = new Audio("/sounds/farma.mp3");
-    audioRef.current.volume = 1;
-  }, []);
+  /* =========================
+     CHAMADOS
+  ========================= */
+  async function refreshChamados() {
+    setLoadingChamados(true);
 
-  function tocarSom() {
-    try {
-      audioRef.current?.play();
-    } catch {}
-  }
-
-  /* ================= LOAD CHAMADOS ================= */
-  async function loadChamados() {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("chamados")
       .select("*")
-      .eq("status", "procurando")
-      .order("created_at", { ascending: false });
+      .in("status", [STATUS_PROCURANDO, STATUS_SOLICITADO])
+      .order("created_at", { ascending: false })
+      .limit(20);
 
-    if (!data) return;
-
-    const ids = data.map((c) => c.id);
-    const antigos = lastIdsRef.current;
-
-    // 🔔 novo chamado chegou
-    if (ids.length > antigos.length) {
-      tocarSom();
+    if (error) {
+      console.error(error);
+      setChamados([]);
+    } else {
+      setChamados(data || []);
     }
 
-    lastIdsRef.current = ids;
-    setChamados(data as Chamado[]);
+    setLoadingChamados(false);
   }
 
-  /* ================= POLLING ================= */
   useEffect(() => {
     if (!online) return;
 
-    loadChamados();
-    const t = setInterval(loadChamados, 5000);
+    refreshChamados();
 
-    return () => clearInterval(t);
+    if (channelRef.current) {
+      supabase.removeChannel(channelRef.current);
+    }
+
+    channelRef.current = supabase
+      .channel("chamados-realtime")
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "chamados" },
+        () => refreshChamados()
+      )
+      .subscribe();
+
+    return () => {
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+      }
+    };
   }, [online]);
 
-  /* ================= ACEITAR ================= */
-  async function aceitarChamado(chamadoId: string) {
+  /* =========================
+     ACEITAR CHAMADO
+  ========================= */
+  async function aceitarChamado(id: string) {
     if (!prof?.id) {
       alert("Cadastro profissional não vinculado.");
       return;
     }
 
-    const { error, data } = await supabase
+    const { data, error } = await supabase
       .from("chamados")
       .update({
-        status: "aceito",
+        status: STATUS_ACEITO,
         profissional_id: prof.id,
         profissional_nome: prof.nome,
+        profissional_uid: user.id,
       })
-      .eq("id", chamadoId)
-      .eq("status", "procurando")
-      .select()
+      .eq("id", id)
+      .in("status", [STATUS_PROCURANDO, STATUS_SOLICITADO])
+      .select("id")
       .maybeSingle();
 
     if (error || !data) {
       alert("Outro profissional aceitou antes.");
-      loadChamados();
+      refreshChamados();
       return;
     }
 
-    alert("✅ Chamado aceito!");
-    loadChamados();
+    alert("Chamado aceito com sucesso 🚀");
+    refreshChamados();
   }
 
-  function aceitarPrimeiro() {
-    if (chamados.length > 0) {
-      aceitarChamado(chamados[0].id);
-    }
+  async function aceitarPrimeiro() {
+    if (!chamados.length) return;
+    aceitarChamado(chamados[0].id);
   }
 
-  /* ================= UI ================= */
+  /* =========================
+     UI
+  ========================= */
+  if (authLoading) {
+    return <div className="p-10 text-center">Carregando…</div>;
+  }
+
+  if (!user) {
+    return (
+      <main className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow">
+          <h1 className="text-lg font-bold">Login profissional</h1>
+
+          <input
+            className="mt-4 w-full rounded-xl border px-3 py-2"
+            placeholder="Email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+          />
+          <input
+            type="password"
+            className="mt-2 w-full rounded-xl border px-3 py-2"
+            placeholder="Senha"
+            value={senha}
+            onChange={(e) => setSenha(e.target.value)}
+          />
+
+          {authMsg && (
+            <div className="mt-2 text-sm text-red-600">{authMsg}</div>
+          )}
+
+          <button
+            onClick={signIn}
+            className="mt-4 w-full rounded-xl bg-emerald-600 py-2 text-white font-semibold"
+          >
+            Entrar
+          </button>
+        </div>
+      </main>
+    );
+  }
+
   return (
-    <main className="min-h-screen bg-gradient-to-b from-slate-100 to-white p-4">
-      <div className="mx-auto max-w-5xl space-y-6">
-
-        {/* 🔔 BANNER */}
-        {online && chamados.length > 0 && (
-          <div className="rounded-2xl bg-emerald-600 p-4 text-white shadow-xl animate-pulse">
-            <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-              <div>
-                <div className="text-lg font-bold">🚨 CHAMADO DISPONÍVEL AGORA</div>
-                <div className="text-sm opacity-90">
-                  Clique para aceitar imediatamente
-                </div>
-              </div>
-              <button
-                onClick={aceitarPrimeiro}
-                className="rounded-xl bg-white px-6 py-3 font-bold text-emerald-700 shadow"
-              >
-                ✅ ACEITAR O PRIMEIRO AGORA
-              </button>
+    <main className="min-h-screen bg-slate-50 p-6">
+      {/* BANNER PRIORIDADE */}
+      {online && chamados.length > 0 && (
+        <div className="mb-6 rounded-2xl bg-emerald-600 p-4 text-white flex items-center justify-between shadow-lg">
+          <div>
+            <div className="font-bold text-lg">
+              🚨 CHAMADO DISPONÍVEL AGORA
+            </div>
+            <div className="text-sm">
+              Clique para pegar o atendimento imediatamente
             </div>
           </div>
-        )}
+          <button
+            onClick={aceitarPrimeiro}
+            className="rounded-xl bg-white px-5 py-2 font-bold text-emerald-700"
+          >
+            ✅ ACEITAR O PRIMEIRO AGORA
+          </button>
+        </div>
+      )}
 
-        {/* GRID */}
-        <div className="grid gap-6 md:grid-cols-2">
-
-          {/* PERFIL */}
-          <div className="rounded-2xl bg-white p-5 shadow">
-            <div className="font-bold text-lg">Seu perfil</div>
-            <div className="text-sm text-slate-500">{user?.email}</div>
-
-            <div className="mt-4 rounded-xl bg-slate-50 p-4">
-              <div className="font-semibold">{prof?.nome || "—"}</div>
-              <div className="text-sm text-slate-600">
-                WhatsApp: {prof?.whatsapp || "—"}
-              </div>
-            </div>
-
-            <div className="mt-4 flex items-center justify-between">
-              <span className="text-sm">Disponibilidade</span>
-              <span className="rounded-full bg-emerald-600 px-4 py-1 text-sm font-bold text-white">
-                Online
-              </span>
-            </div>
-          </div>
-
-          {/* CHAMADOS */}
-          <div className="rounded-2xl bg-white p-5 shadow">
-            <div className="flex justify-between items-center mb-3">
-              <div className="font-bold text-lg">
-                Chamados procurando
-              </div>
-              <span className="rounded-full bg-emerald-100 px-3 py-1 text-sm font-semibold text-emerald-700">
-                {chamados.length} disponíveis
-              </span>
-            </div>
-
-            {chamados.length === 0 ? (
+      <div className="grid gap-6 md:grid-cols-2">
+        {/* PERFIL */}
+        <div className="rounded-2xl bg-white p-5 shadow">
+          <div className="flex justify-between">
+            <div>
+              <div className="font-semibold">{prof?.nome}</div>
               <div className="text-sm text-slate-500">
-                Nenhum chamado no momento.
+                WhatsApp: {onlyDigits(prof?.whatsapp || "")}
               </div>
-            ) : (
-              <div className="space-y-3">
-                {chamados.map((c) => (
-                  <div
-                    key={c.id}
-                    className="rounded-xl border border-emerald-300 bg-emerald-50 p-4"
-                  >
-                    <div className="font-semibold">{c.servico}</div>
-                    <div className="text-sm text-slate-600">
-                      {c.endereco} • {c.cliente_nome}
-                    </div>
+            </div>
+            <button onClick={signOut} className="text-sm text-red-600">
+              Sair
+            </button>
+          </div>
 
-                    <div className="mt-2 text-sm">
-                      Total: <b>{brl(c.total)}</b>
-                    </div>
+          <div className="mt-4 flex items-center justify-between rounded-xl border p-4">
+            <div>
+              <div className="font-semibold">Disponibilidade</div>
+              <div className="text-sm text-slate-500">
+                Receber chamados em tempo real
+              </div>
+            </div>
+            <button
+              onClick={() => setOnline(!online)}
+              className={`rounded-xl px-4 py-2 font-semibold ${
+                online
+                  ? "bg-emerald-600 text-white"
+                  : "bg-slate-200 text-slate-800"
+              }`}
+            >
+              {online ? "Online" : "Offline"}
+            </button>
+          </div>
+        </div>
 
-                    <button
-                      onClick={() => aceitarChamado(c.id)}
-                      className="mt-3 w-full rounded-xl bg-slate-900 py-2 font-bold text-white"
-                    >
-                      Aceitar
-                    </button>
+        {/* CHAMADOS */}
+        <div className="rounded-2xl bg-white p-5 shadow">
+          <div className="flex justify-between mb-3">
+            <div className="font-semibold">
+              Chamados procurando ({chamados.length})
+            </div>
+            <button onClick={refreshChamados} className="text-sm">
+              Atualizar
+            </button>
+          </div>
+
+          {loadingChamados && (
+            <div className="text-sm text-slate-500">Carregando…</div>
+          )}
+
+          {!loadingChamados && chamados.length === 0 && (
+            <div className="text-sm text-slate-500">
+              Nenhum chamado no momento.
+            </div>
+          )}
+
+          <div className="space-y-3">
+            {chamados.map((c) => (
+              <div
+                key={c.id}
+                className="rounded-xl border p-4 flex justify-between items-start"
+              >
+                <div>
+                  <div className="font-semibold">{c.servico}</div>
+                  <div className="text-sm text-slate-500">
+                    {c.endereco}
                   </div>
-                ))}
+                  <div className="text-sm mt-1">
+                    Total: <b>{brl(c.total || 0)}</b>
+                  </div>
+                </div>
+                <button
+                  onClick={() => aceitarChamado(c.id)}
+                  className="rounded-xl bg-slate-900 px-4 py-2 text-white font-semibold"
+                >
+                  Aceitar
+                </button>
               </div>
-            )}
+            ))}
           </div>
         </div>
       </div>
