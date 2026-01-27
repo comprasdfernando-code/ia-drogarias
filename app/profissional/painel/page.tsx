@@ -339,58 +339,63 @@ export default function PainelProfissionalPremium() {
      - se não atualizou, checa status atual no banco e mostra real
   ========================= */
   async function aceitarChamado(chamadoId: string) {
-    if (!prof?.id) {
-      alert("Seu cadastro profissional não está vinculado ao login.");
-      return;
-    }
+  if (!prof?.id) {
+    alert("Seu cadastro profissional não está vinculado ao login.");
+    return;
+  }
 
-    const { data, error } = await supabase
+  // ✅ Aceita com cast correto no Postgres (status enum)
+  const { data, error } = await supabase.rpc("accept_chamado", {
+    p_chamado_id: chamadoId,
+    p_profissional_id: prof.id,
+    p_profissional_nome: prof.nome || "Profissional",
+    p_profissional_uid: user?.id || null,
+  });
+
+  if (error) {
+    console.error("Erro aceitarChamado RPC:", error);
+
+    const msg =
+      `Erro ao aceitar.\n` +
+      `code: ${error.code}\n` +
+      `message: ${error.message}\n` +
+      `details: ${error.details || "-"}\n` +
+      `hint: ${error.hint || "-"}`;
+
+    alert(msg);
+    await refreshChamados();
+    return;
+  }
+
+  // ✅ Se veio vazio: alguém pegou antes OU status não era mais procurado/solicitado
+  if (!data || (Array.isArray(data) && data.length === 0)) {
+    const check = await supabase
       .from("chamados")
-      .update({
-        status: STATUS_ACEITO,
-        profissional_id: prof.id,
-        profissional_nome: prof.nome || "Profissional",
-        profissional_uid: user?.id || null,
-      })
+      .select("status,profissional_nome,profissional_id")
       .eq("id", chamadoId)
-      .in("status", [STATUS_PROCURANDO, STATUS_SOLICITADO])
-      .select("id,status,profissional_id,profissional_nome")
       .maybeSingle();
 
-    if (error) {
-      console.error("Erro aceitarChamado:", error);
-      alert("Erro ao aceitar. Veja o console (policy/status).");
-      await refreshChamados();
-      return;
+    const st = String(check.data?.status || "");
+    if (st === "aceito") {
+      alert("Esse chamado já foi aceito ✅");
+    } else {
+      alert(`Não consegui aceitar. Status atual: ${st || "desconhecido"}`);
     }
 
-    if (!data) {
-      const check = await supabase
-        .from("chamados")
-        .select("status,profissional_nome,profissional_id")
-        .eq("id", chamadoId)
-        .maybeSingle();
-
-      const st = String(check.data?.status || "");
-      if (st === STATUS_ACEITO) {
-        alert("Esse chamado já foi aceito ✅");
-      } else {
-        alert(`Não consegui aceitar. Status atual: ${st || "desconhecido"}`);
-      }
-
-      await refreshChamados();
-      return;
-    }
-
-    alert("Chamado aceito ✅");
     await refreshChamados();
-    await loadMeuChamado();
+    return;
   }
 
-  async function aceitarPrimeiroAgora() {
-    if (!chamados.length) return;
-    await aceitarChamado(chamados[0].id);
-  }
+  alert("Chamado aceito ✅");
+  await refreshChamados();
+  await loadMeuChamado();
+}
+
+async function aceitarPrimeiroAgora() {
+  if (!chamados.length) return;
+  await aceitarChamado(chamados[0].id);
+}
+
 
   /* =========================
      AÇÕES DO MEU CHAMADO
