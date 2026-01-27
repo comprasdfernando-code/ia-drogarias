@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
@@ -10,21 +10,13 @@ function onlyDigits(s: string) {
 function brl(v: number) {
   return (Number(v) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
-function normalizeServicoParam(s: string) {
-  // suporta ?servico=Teste%20de%20Glicemia e ?servico=Teste+de+Glicemia
-  try {
-    return decodeURIComponent(s || "").replace(/\+/g, " ").trim();
-  } catch {
-    return (s || "").replace(/\+/g, " ").trim();
-  }
-}
+
+type Preco = { preco_servico: number; taxa_locomocao: number };
 
 export default function SolicitarClient() {
   const router = useRouter();
   const sp = useSearchParams();
-
-  // ✅ NORMALIZA o serviço vindo da URL
-  const servicoURL = useMemo(() => normalizeServicoParam(sp.get("servico") || ""), [sp]);
+  const servicoURL = sp.get("servico") || "";
 
   const [form, setForm] = useState({
     servico: servicoURL,
@@ -35,52 +27,79 @@ export default function SolicitarClient() {
   });
 
   const [loadingPreco, setLoadingPreco] = useState(false);
-  const [preco, setPreco] = useState({ preco_servico: 0, taxa_locomocao: 0 });
+  const [preco, setPreco] = useState<Preco>({ preco_servico: 0, taxa_locomocao: 0 });
 
   const total = useMemo(
-    () => (Number(preco.preco_servico) || 0) + (Number(preco.taxa_locomocao) || 0),
+    () => (Number(preco.preco_servico || 0) + Number(preco.taxa_locomocao || 0)),
     [preco]
   );
 
-  // mantém o campo servico sincronizado com URL
   useEffect(() => {
-    if (servicoURL) {
-      setForm((p) => ({ ...p, servico: servicoURL }));
-    }
+    if (servicoURL) setForm((p) => ({ ...p, servico: servicoURL }));
   }, [servicoURL]);
 
+  // ====== PREÇO (robusto)
   async function carregarPreco(nomeServico: string) {
-    const nome = (nomeServico || "").trim();
-    if (!nome) {
+    const q = (nomeServico || "").trim();
+    if (!q) {
       setPreco({ preco_servico: 0, taxa_locomocao: 0 });
       return;
     }
 
     setLoadingPreco(true);
 
-    // 1) tenta match exato
-    let res = await supabase
+    // 1) tenta EXATO com ativo=true
+    let data: any = null;
+    let error: any = null;
+
+    const r1 = await supabase
       .from("servicos_catalogo")
-      .select("preco_servico,taxa_locomocao")
-      .eq("nome", nome)
+      .select("preco_servico,taxa_locomocao,nome,ativo")
+      .eq("nome", q)
       .eq("ativo", true)
       .maybeSingle();
 
-    // 2) fallback: ilike (tolerante a variações)
-    if (!res.data) {
-      res = await supabase
+    data = r1.data;
+    error = r1.error;
+
+    // se sua tabela não tiver coluna ativo, cai aqui
+    if (error?.code === "42703" && String(error?.message || "").includes("ativo")) {
+      const rNoAtivo = await supabase
         .from("servicos_catalogo")
         .select("preco_servico,taxa_locomocao,nome")
-        .ilike("nome", `%${nome}%`)
-        .eq("ativo", true)
-        .order("preco_servico", { ascending: false })
-        .limit(1)
+        .eq("nome", q)
         .maybeSingle();
+      data = rNoAtivo.data;
+      error = rNoAtivo.error;
     }
 
+    // 2) se não achou, tenta ILIKE (nome parecido)
+    if (!data && !error) {
+      const r2 = await supabase
+        .from("servicos_catalogo")
+        .select("preco_servico,taxa_locomocao,nome,ativo")
+        .ilike("nome", q)
+        .eq("ativo", true)
+        .maybeSingle();
+
+      data = r2.data;
+      error = r2.error;
+
+      if (error?.code === "42703" && String(error?.message || "").includes("ativo")) {
+        const r2b = await supabase
+          .from("servicos_catalogo")
+          .select("preco_servico,taxa_locomocao,nome")
+          .ilike("nome", q)
+          .maybeSingle();
+        data = r2b.data;
+        error = r2b.error;
+      }
+    }
+
+    // 3) fallback final: zerado
     setPreco({
-      preco_servico: Number(res.data?.preco_servico ?? 0),
-      taxa_locomocao: Number(res.data?.taxa_locomocao ?? 0),
+      preco_servico: Number(data?.preco_servico ?? 0),
+      taxa_locomocao: Number(data?.taxa_locomocao ?? 0),
     });
 
     setLoadingPreco(false);
@@ -107,18 +126,19 @@ export default function SolicitarClient() {
   const [sending, setSending] = useState(false);
 
   async function criarChamado() {
-    const msg = validate();
-    if (msg) return alert(msg);
+    const err = validate();
+    if (err) return alert(err);
     if (sending) return;
 
     setSending(true);
 
-    // ✅ GARANTE serviço normalizado mesmo se usuário editar
-    const servicoFinal = normalizeServicoParam(form.servico);
+    // cliente pode estar logado ou não (mas INSERT permite anon também)
+    const { data: u } = await supabase.auth.getUser();
+    const uid = u?.user?.id || null;
 
     const payload = {
       status: "procurando",
-      servico: servicoFinal,
+      servico: form.servico.trim(),
       cliente_nome: form.nome.trim(),
       cliente_whatsapp: onlyDigits(form.whatsapp),
       endereco: form.endereco.trim(),
@@ -126,21 +146,26 @@ export default function SolicitarClient() {
       preco_servico: Number(preco.preco_servico ?? 0),
       taxa_locomocao: Number(preco.taxa_locomocao ?? 0),
       total: Number(total ?? 0),
-      // NÃO envie profissional_* aqui (tem policy pra exigir null)
+
+      // IMPORTANTÍSSIMO: deixar profissional_* nulo (policy exige isso no INSERT)
+      profissional_id: null,
+      profissional_nome: null,
+      profissional_uid: null,
+
+      // policy do SELECT/INSERT usa isso
+      is_public: true,
+
+      // opcional (se você criar coluna depois)
+      // cliente_uid: uid,
     };
 
-    const { data, error } = await supabase
-      .from("chamados")
-      .insert(payload)
-      .select("id")
-      .single();
+    const { data, error } = await supabase.from("chamados").insert(payload).select("id").single();
 
     setSending(false);
 
     if (error || !data?.id) {
-      // ✅ log completo pra enxergar RLS / permissões / validação
       console.error("Erro ao criar chamado:", { error, payload });
-      alert(`Não foi possível criar o chamado.\n${error?.code || ""} ${error?.message || ""}`);
+      alert(`Não foi possível criar o chamado.\n${error?.code || ""} ${error?.message || ""}`.trim());
       return;
     }
 

@@ -1,165 +1,174 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
-function formatBRL(v: number) {
-  return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+function brl(v: number) {
+  return (Number(v) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
 type Chamado = {
   id: string;
+  created_at: string;
   status: string;
   servico: string;
+
   cliente_nome: string | null;
   cliente_whatsapp: string | null;
   endereco: string | null;
   observacoes: string | null;
-  preco_servico: number;
-  taxa_locomocao: number;
-  total: number;
+
+  preco_servico: number | null;
+  taxa_locomocao: number | null;
+  total: number | null;
+
+  profissional_id: string | null;
   profissional_nome: string | null;
+  profissional_uid: string | null;
 };
 
-export default function ChamadoStatusPage() {
-  const params = useParams<{ id: string }>();
-  const id = params?.id;
+export default function ChamadoClientePage() {
+  const params = useParams();
+  const id = String(params?.id || "");
 
   const [loading, setLoading] = useState(true);
   const [chamado, setChamado] = useState<Chamado | null>(null);
+  const [errMsg, setErrMsg] = useState<string>("");
+
+  const channelRef = useRef<any>(null);
 
   const statusLabel = useMemo(() => {
-    const s = chamado?.status;
-    if (s === "procurando") return { t: "Procurando profissional disponível…", c: "text-slate-900" };
-    if (s === "aceito") return { t: "Profissional encontrado ✅", c: "text-emerald-700" };
-    if (s === "cancelado") return { t: "Chamado cancelado", c: "text-rose-700" };
-    if (s === "concluido") return { t: "Concluído", c: "text-slate-700" };
-    return { t: s || "—", c: "text-slate-700" };
+    const st = String(chamado?.status || "");
+    if (!st) return "Carregando…";
+    if (st === "procurando" || st === "SOLICITADO") return "Procurando profissional disponível…";
+    if (st === "aceito") return "Profissional encontrado ✅";
+    if (st === "em_andamento") return "Profissional a caminho 🚗";
+    if (st === "cheguei") return "Profissional chegou 📍";
+    if (st === "finalizado") return "Atendimento finalizado ✅";
+    return `Status: ${st}`;
   }, [chamado?.status]);
 
-  useEffect(() => {
+  async function load() {
     if (!id) return;
+    setLoading(true);
+    setErrMsg("");
 
-    let sub: any;
+    const { data, error } = await supabase
+      .from("chamados")
+      .select(
+        "id,created_at,status,servico,cliente_nome,cliente_whatsapp,endereco,observacoes,preco_servico,taxa_locomocao,total,profissional_id,profissional_nome,profissional_uid"
+      )
+      .eq("id", id)
+      .maybeSingle();
 
-    async function load() {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from("chamados")
-        .select("id,status,servico,cliente_nome,cliente_whatsapp,endereco,observacoes,preco_servico,taxa_locomocao,total,profissional_nome")
-        .eq("id", id)
-        .maybeSingle();
+    setLoading(false);
 
-      if (error || !data) {
-        console.error(error);
-        setChamado(null);
-        setLoading(false);
-        return;
-      }
+    if (error || !data) {
+      console.error("Erro load chamado:", error);
+      setChamado(null);
+      setErrMsg("Não consegui carregar este chamado. (Verifique se ele existe e se está público)");
+      return;
+    }
 
-      setChamado({
-        ...data,
-        preco_servico: Number((data as any).preco_servico ?? 0),
-        taxa_locomocao: Number((data as any).taxa_locomocao ?? 0),
-        total: Number((data as any).total ?? 0),
-      } as any);
-      setLoading(false);
+    setChamado(data as any);
+  }
 
-      sub = supabase
-        .channel(`chamado-${id}`)
-        .on(
-          "postgres_changes",
-          { event: "UPDATE", schema: "public", table: "chamados", filter: `id=eq.${id}` },
-          (payload) => {
-            const n = payload.new as any;
-            setChamado((prev) => ({
-              ...(prev || ({} as any)),
-              ...n,
-              preco_servico: Number(n.preco_servico ?? 0),
-              taxa_locomocao: Number(n.taxa_locomocao ?? 0),
-              total: Number(n.total ?? 0),
-            }));
-          }
-        )
-        .subscribe();
+  useEffect(() => {
+    // limpa
+    if (channelRef.current) {
+      supabase.removeChannel(channelRef.current);
+      channelRef.current = null;
     }
 
     load();
 
+    // realtime (escuta mudanças na tabela e recarrega quando mexer no meu ID)
+    const ch = supabase
+      .channel(`realtime-chamado-${id}`)
+      .on("postgres_changes", { event: "*", schema: "public", table: "chamados" }, (payload) => {
+        const rowId =
+          (payload as any)?.new?.id ||
+          (payload as any)?.old?.id ||
+          "";
+
+        if (String(rowId) === String(id)) load();
+      })
+      .subscribe();
+
+    channelRef.current = ch;
+
+    // fallback polling (se realtime falhar)
+    const t = setInterval(() => {
+      load();
+    }, 3000);
+
     return () => {
-      if (sub) supabase.removeChannel(sub);
+      clearInterval(t);
+      if (channelRef.current) {
+        supabase.removeChannel(channelRef.current);
+        channelRef.current = null;
+      }
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id]);
 
   return (
-    <main className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
-      <div className="sticky top-0 z-30 border-b bg-white/80 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
-          <div className="text-sm font-semibold text-slate-900">IA Drogarias</div>
-          <div className="text-xs text-slate-500">Status do chamado</div>
-        </div>
-      </div>
-
+    <main className="min-h-screen bg-slate-50">
       <div className="mx-auto max-w-4xl px-4 py-10">
-        <div className="rounded-2xl border bg-white p-6 shadow-sm">
+        <div className="rounded-3xl border bg-white p-6 shadow-sm">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <div className="text-xl font-extrabold text-slate-900">{statusLabel}</div>
+              <div className="mt-1 text-sm text-slate-600">
+                Serviço: <b>{chamado?.servico || "—"}</b>
+              </div>
+              <div className="mt-1 text-xs text-slate-400">ID: {id}</div>
+            </div>
+
+            <div className="rounded-2xl bg-slate-50 p-4 text-right">
+              <div className="text-xs text-slate-500">Total</div>
+              <div className="text-lg font-extrabold text-slate-900">{brl(Number(chamado?.total || 0))}</div>
+              <div className="text-xs text-slate-500">
+                Serviço {brl(Number(chamado?.preco_servico || 0))} + Locomoção {brl(Number(chamado?.taxa_locomocao || 0))}
+              </div>
+            </div>
+          </div>
+
           {loading ? (
-            <div className="text-sm text-slate-500">Carregando chamado…</div>
-          ) : !chamado ? (
-            <div className="text-sm text-rose-600">Chamado não encontrado.</div>
+            <div className="mt-6 rounded-2xl bg-slate-50 p-4 text-sm text-slate-600">Carregando…</div>
+          ) : errMsg ? (
+            <div className="mt-6 rounded-2xl bg-rose-50 p-4 text-sm text-rose-700">{errMsg}</div>
           ) : (
-            <>
-              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                <div>
-                  <div className={`text-xl font-bold ${statusLabel.c}`}>{statusLabel.t}</div>
-                  <div className="mt-1 text-sm text-slate-600">
-                    Serviço: <b>{chamado.servico}</b>
-                  </div>
-                  <div className="mt-1 text-xs text-slate-400">ID: {chamado.id}</div>
-                </div>
-
-                <div className="rounded-2xl bg-slate-50 p-3 text-sm">
-                  <div className="flex items-center justify-between gap-6">
-                    <span className="text-slate-500">Total</span>
-                    <span className="text-base font-bold text-slate-900">{formatBRL(Number(chamado.total ?? 0))}</span>
-                  </div>
-                  <div className="mt-1 text-xs text-slate-500">
-                    Serviço {formatBRL(Number(chamado.preco_servico ?? 0))} + Locomoção {formatBRL(Number(chamado.taxa_locomocao ?? 0))}
-                  </div>
+            <div className="mt-6 grid gap-4 md:grid-cols-2">
+              <div className="rounded-2xl border p-4">
+                <div className="text-sm font-bold text-slate-900">Dados do cliente</div>
+                <div className="mt-2 text-sm text-slate-700">
+                  <div>Nome: {chamado?.cliente_nome || "—"}</div>
+                  <div>Endereço: {chamado?.endereco || "—"}</div>
+                  <div>Obs: {chamado?.observacoes || "—"}</div>
                 </div>
               </div>
 
-              <div className="mt-6 grid gap-4 sm:grid-cols-2">
-                <div className="rounded-2xl border p-4">
-                  <div className="text-sm font-semibold text-slate-900">Dados do cliente</div>
-                  <div className="mt-2 text-sm text-slate-700">
-                    <div><span className="text-slate-500">Nome:</span> {chamado.cliente_nome || "—"}</div>
-                    <div><span className="text-slate-500">Endereço:</span> {chamado.endereco || "—"}</div>
-                    <div><span className="text-slate-500">Obs:</span> {chamado.observacoes || "—"}</div>
+              <div className="rounded-2xl border p-4">
+                <div className="text-sm font-bold text-slate-900">Profissional</div>
+                <div className="mt-2 text-sm text-slate-700">
+                  {chamado?.profissional_nome ? (
+                    <div className="font-semibold text-emerald-700">{chamado.profissional_nome}</div>
+                  ) : (
+                    <div className="text-slate-500">Aguardando alguém aceitar…</div>
+                  )}
+                  <div className="mt-2 text-xs text-slate-500">
+                    Não feche esta tela — ela atualiza automaticamente.
                   </div>
-                </div>
-
-                <div className="rounded-2xl border p-4">
-                  <div className="text-sm font-semibold text-slate-900">Profissional</div>
-                  <div className="mt-2 text-sm text-slate-700">
-                    {chamado.status === "aceito" ? (
-                      <div className="text-emerald-700 font-semibold">
-                        {chamado.profissional_nome || "Profissional aceitou"}
-                      </div>
-                    ) : (
-                      <div className="text-slate-500">Aguardando alguém aceitar…</div>
-                    )}
-                  </div>
-
-                  {chamado.status === "procurando" ? (
-                    <div className="mt-3 text-xs text-slate-500">
-                      Não feche esta tela — ela atualiza automaticamente.
-                    </div>
-                  ) : null}
                 </div>
               </div>
-            </>
+            </div>
           )}
+
+          <div className="mt-6 text-center text-xs text-slate-400">
+            IA Drogarias • Status do chamado em tempo real
+          </div>
         </div>
       </div>
     </main>
