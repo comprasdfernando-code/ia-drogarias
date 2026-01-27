@@ -46,8 +46,9 @@ type Chamado = {
 const APP_NAME = "IA Drogarias";
 
 // 🔒 Status atuais do seu projeto (mantendo exatamente os que você já usa)
-const STATUS_PROCURANDO = "procurando";
-const STATUS_ACEITO = "aceito";
+const STATUS_PROCURANDO = "PROCURANDO";
+const STATUS_ACEITO = "ACEITO";
+
 
 function buildDestino(c: Chamado) {
   const parts: string[] = [];
