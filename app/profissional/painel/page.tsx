@@ -6,11 +6,11 @@ import { supabase } from "@/lib/supabaseClient";
 /* =========================
    CONFIG STATUS (IGUAL SEU BANCO)
 ========================= */
-const STATUS_PROCURANDO = "procurando";   // existe
-const STATUS_SOLICITADO = "SOLICITADO";   // existe
-const STATUS_ACEITO = "aceito";           // existe
+const STATUS_PROCURANDO = "procurando"; // existe
+const STATUS_SOLICITADO = "SOLICITADO"; // existe
+const STATUS_ACEITO = "aceito"; // existe
 const STATUS_EM_ANDAMENTO = "em_andamento"; // existe (print)
-const STATUS_FINALIZADO = "finalizado";   // se ainda não tiver, tudo bem (não quebra)
+const STATUS_FINALIZADO = "finalizado"; // se ainda não tiver, ok
 
 /* =========================
    HELPERS
@@ -29,6 +29,8 @@ function wppLink(phone?: string | null, text?: string) {
   const p = onlyDigits(phone || "");
   if (!p) return "#";
   const msg = text ? `?text=${encodeURIComponent(text)}` : "";
+  // ⚠️ aqui você já passa o DDD+numero sem +55 geralmente. Então:
+  // se o profissional salva com 11... (Brasil), mantenho como 55 + digits.
   return `https://wa.me/55${p}${msg}`;
 }
 
@@ -53,12 +55,19 @@ type Chamado = {
   cliente_whatsapp: string | null;
   endereco: string | null;
   observacoes: string | null;
+
   preco_servico: number | null;
   taxa_locomocao: number | null;
   total: number | null;
+
   profissional_id: string | null;
   profissional_nome: string | null;
   profissional_uid?: string | null;
+
+  // ✅ GPS (se existir na tabela, ótimo; se não existir, não quebra no TS)
+  profissional_lat?: number | null;
+  profissional_lng?: number | null;
+  profissional_pos_at?: string | null;
 };
 
 export default function PainelProfissionalPremium() {
@@ -87,6 +96,10 @@ export default function PainelProfissionalPremium() {
   const [soundArmed, setSoundArmed] = useState(false);
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const lastTopIdRef = useRef<string>("");
+
+  // ✅ GPS
+  const watchIdRef = useRef<number | null>(null);
+  const [gpsOn, setGpsOn] = useState(false);
 
   /* =========================
      AUTH BOOT
@@ -118,11 +131,13 @@ export default function PainelProfissionalPremium() {
     try {
       await saveOnline(false);
     } catch {}
+    stopLiveLocation();
     await supabase.auth.signOut();
     setProf(null);
     setMeuChamado(null);
     setChamados([]);
     setOnline(false);
+    setGpsOn(false);
   }
 
   /* =========================
@@ -162,23 +177,21 @@ export default function PainelProfissionalPremium() {
 
       setProf((p as any) || null);
     })();
-  }, [user?.id]);
+  }, [user?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   /* =========================
      ONLINE (tabela public.profissionais)
      - SEM updated_at pra evitar erro em tabelas sem coluna
   ========================= */
   async function ensureProfRow(userId: string) {
-    await supabase
-      .from("profissionais")
-      .upsert(
-        {
-          user_id: userId,
-          nome: prof?.nome || user?.email || "Profissional",
-          whatsapp: prof?.whatsapp || null,
-        },
-        { onConflict: "user_id" }
-      );
+    await supabase.from("profissionais").upsert(
+      {
+        user_id: userId,
+        nome: prof?.nome || user?.email || "Profissional",
+        whatsapp: prof?.whatsapp || null,
+      },
+      { onConflict: "user_id" }
+    );
   }
 
   async function saveOnline(next: boolean) {
@@ -187,7 +200,6 @@ export default function PainelProfissionalPremium() {
       await ensureProfRow(user.id);
       await supabase.from("profissionais").update({ online: next }).eq("user_id", user.id);
     } catch (e) {
-      // não trava o app por causa de policy/coluna
       console.warn("Não consegui salvar online/offline na tabela profissionais:", e);
     }
   }
@@ -196,10 +208,16 @@ export default function PainelProfissionalPremium() {
     const next = !online;
     setOnline(next);
     await saveOnline(next);
+
+    // se ficou offline, para GPS e limpa canal
+    if (!next) {
+      stopLiveLocation();
+      setGpsOn(false);
+    }
   }
 
   /* =========================
-     SOUND (precisa de gesto do usuário no celular)
+     SOUND
      Coloque um arquivo em: /public/sounds/farma.mp3
   ========================= */
   useEffect(() => {
@@ -210,7 +228,6 @@ export default function PainelProfissionalPremium() {
 
   async function armSound() {
     try {
-      // toca baixinho 0.1s pra liberar autoplay
       if (!audioRef.current) return;
       audioRef.current.currentTime = 0;
       await audioRef.current.play();
@@ -259,7 +276,6 @@ export default function PainelProfissionalPremium() {
     // ALERTA: tocamos quando muda o topo (novo chamado)
     const topId = rows?.[0]?.id || "";
     if (topId && topId !== lastTopIdRef.current) {
-      // não tocar no primeiro load "vazio"
       if (lastTopIdRef.current) await playAlert();
       lastTopIdRef.current = topId;
     }
@@ -276,7 +292,7 @@ export default function PainelProfissionalPremium() {
       .from("chamados")
       .select("*")
       .eq("profissional_uid", user.id)
-      .in("status", [STATUS_ACEITO, STATUS_EM_ANDAMENTO])
+      .in("status", [STATUS_ACEITO, STATUS_EM_ANDAMENTO, "cheguei"])
       .order("created_at", { ascending: false })
       .limit(1);
 
@@ -317,7 +333,7 @@ export default function PainelProfissionalPremium() {
 
     channelRef.current = ch;
 
-    // fallback polling (caso realtime caia)
+    // fallback polling
     const t = setInterval(() => {
       refreshChamados();
       loadMeuChamado();
@@ -334,66 +350,59 @@ export default function PainelProfissionalPremium() {
   }, [user?.id, online, soundArmed]);
 
   /* =========================
-     ACEITAR (SEM MENTIR)
-     - tenta update se status em (procurando|SOLICITADO)
-     - se não atualizou, checa status atual no banco e mostra real
+     ACEITAR (RPC accept_chamado)
   ========================= */
   async function aceitarChamado(chamadoId: string) {
-  if (!prof?.id) {
-    alert("Seu cadastro profissional não está vinculado ao login.");
-    return;
-  }
-
-  // ✅ RPC = aceita com trava no banco (evita dois aceitarem)
-  const { data, error } = await supabase.rpc("accept_chamado", {
-    p_chamado_id: chamadoId,
-    p_profissional_id: prof.id,
-    p_profissional_nome: prof.nome || "Profissional",
-    p_profissional_uid: user?.id || null,
-  });
-
-  if (error) {
-    console.error("Erro aceitarChamado:", error);
-    alert(
-      `Erro ao aceitar.\ncode: ${error.code || "-"}\nmessage: ${error.message || "-"}`
-    );
-    await refreshChamados();
-    return;
-  }
-
-  // Quando não retorna nada = não conseguiu aceitar (alguém aceitou antes, ou status não permitido)
-  const row = Array.isArray(data) ? data[0] : data;
-
-  if (!row) {
-    const check = await supabase
-      .from("chamados")
-      .select("status,profissional_nome,profissional_id")
-      .eq("id", chamadoId)
-      .maybeSingle();
-
-    const st = String(check.data?.status || "");
-    const pid = String(check.data?.profissional_id || "");
-
-    if (pid && pid !== "null") {
-      alert(`Outro profissional aceitou antes: ${check.data?.profissional_nome || "—"}`);
-    } else {
-      alert(`Não consegui aceitar. Status atual: ${st || "desconhecido"}`);
+    if (!prof?.id) {
+      alert("Seu cadastro profissional não está vinculado ao login.");
+      return;
     }
 
+    const { data, error } = await supabase.rpc("accept_chamado", {
+      p_chamado_id: chamadoId,
+      p_profissional_id: prof.id,
+      p_profissional_nome: prof.nome || "Profissional",
+      p_profissional_uid: user?.id || null,
+    });
+
+    if (error) {
+      console.error("Erro aceitarChamado:", error);
+      alert(`Erro ao aceitar.\ncode: ${error.code || "-"}\nmessage: ${error.message || "-"}`);
+      await refreshChamados();
+      return;
+    }
+
+    const row = Array.isArray(data) ? data[0] : data;
+
+    if (!row) {
+      const check = await supabase
+        .from("chamados")
+        .select("status,profissional_nome,profissional_id")
+        .eq("id", chamadoId)
+        .maybeSingle();
+
+      const st = String(check.data?.status || "");
+      const pid = String(check.data?.profissional_id || "");
+
+      if (pid && pid !== "null") {
+        alert(`Outro profissional aceitou antes: ${check.data?.profissional_nome || "—"}`);
+      } else {
+        alert(`Não consegui aceitar. Status atual: ${st || "desconhecido"}`);
+      }
+
+      await refreshChamados();
+      return;
+    }
+
+    alert("Chamado aceito ✅");
     await refreshChamados();
-    return;
+    await loadMeuChamado();
   }
 
-  alert("Chamado aceito ✅");
-  await refreshChamados();
-  await loadMeuChamado();
-}
-
-async function aceitarPrimeiroAgora() {
-  if (!chamados.length) return;
-  await aceitarChamado(chamados[0].id);
-}
-
+  async function aceitarPrimeiroAgora() {
+    if (!chamados.length) return;
+    await aceitarChamado(chamados[0].id);
+  }
 
   /* =========================
      AÇÕES DO MEU CHAMADO
@@ -412,9 +421,104 @@ async function aceitarPrimeiroAgora() {
       alert("Não consegui mudar o status. Veja o console.");
       return;
     }
+
     await loadMeuChamado();
     await refreshChamados();
   }
+
+  /* =========================
+     ✅ GPS LIVE LOCATION (adicionado)
+     - Atualiza profissional_lat/lng/profissional_pos_at no chamado
+  ========================= */
+  async function startLiveLocation(chamadoId: string) {
+    if (!chamadoId) return;
+
+    if (typeof window === "undefined") return;
+
+    if (!("geolocation" in navigator)) {
+      alert("Seu dispositivo não suporta GPS.");
+      return;
+    }
+
+    // já ligado?
+    if (watchIdRef.current != null) {
+      setGpsOn(true);
+      return;
+    }
+
+    watchIdRef.current = navigator.geolocation.watchPosition(
+      async (pos) => {
+        const lat = pos.coords.latitude;
+        const lng = pos.coords.longitude;
+
+        const { error } = await supabase
+          .from("chamados")
+          .update({
+            profissional_lat: lat,
+            profissional_lng: lng,
+            profissional_pos_at: new Date().toISOString(),
+          })
+          .eq("id", chamadoId);
+
+        if (error) console.warn("GPS update error:", error);
+      },
+      (err) => {
+        console.warn("GPS error:", err);
+        alert("Não consegui acessar sua localização. Libere a permissão de GPS.");
+        stopLiveLocation();
+      },
+      {
+        enableHighAccuracy: true,
+        maximumAge: 3000,
+        timeout: 15000,
+      }
+    );
+
+    setGpsOn(true);
+  }
+
+  function stopLiveLocation() {
+    if (typeof window === "undefined") return;
+
+    if (watchIdRef.current != null && "geolocation" in navigator) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+      watchIdRef.current = null;
+    }
+    setGpsOn(false);
+  }
+
+  // ✅ Auto-stop se meuChamado some / finaliza / fica offline
+  useEffect(() => {
+    if (!online) {
+      stopLiveLocation();
+      return;
+    }
+
+    // se não tem chamado, para
+    if (!meuChamado?.id) {
+      stopLiveLocation();
+      return;
+    }
+
+    // se finalizado, para
+    if (String(meuChamado.status) === STATUS_FINALIZADO) {
+      stopLiveLocation();
+      return;
+    }
+
+    // não liga sozinho sem gesto (pra não irritar permissão). Mantém manual pelo botão.
+    // Se quiser auto-ligar ao colocar "em_andamento", descomenta abaixo:
+    // if (meuChamado.status === STATUS_EM_ANDAMENTO || meuChamado.status === "cheguei") {
+    //   startLiveLocation(meuChamado.id);
+    // }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [online, meuChamado?.id, meuChamado?.status]);
+
+  // ✅ Cleanup ao desmontar
+  useEffect(() => {
+    return () => stopLiveLocation();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   /* =========================
      HEADER TITLE
@@ -490,9 +594,7 @@ async function aceitarPrimeiroAgora() {
               <div className="mb-5 rounded-3xl border border-emerald-200 bg-emerald-600 p-4 text-white shadow-lg">
                 <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                   <div>
-                    <div className="text-base font-extrabold tracking-wide">
-                      🚨 CHAMADO DISPONÍVEL AGORA
-                    </div>
+                    <div className="text-base font-extrabold tracking-wide">🚨 CHAMADO DISPONÍVEL AGORA</div>
                     <div className="text-sm opacity-95">
                       Clique em <b>ACEITAR O PRIMEIRO AGORA</b> para pegar imediatamente.
                     </div>
@@ -507,9 +609,7 @@ async function aceitarPrimeiroAgora() {
                         🔊 Ativar alertas
                       </button>
                     ) : (
-                      <span className="rounded-2xl bg-white/15 px-3 py-2 text-xs font-semibold">
-                        🔊 Alertas ON
-                      </span>
+                      <span className="rounded-2xl bg-white/15 px-3 py-2 text-xs font-semibold">🔊 Alertas ON</span>
                     )}
 
                     <button
@@ -542,9 +642,7 @@ async function aceitarPrimeiroAgora() {
                   </div>
 
                   <div className="mt-4 rounded-3xl bg-slate-50 p-4">
-                    <div className="text-sm font-extrabold text-slate-900">
-                      {prof?.nome || "Cadastro não vinculado"}
-                    </div>
+                    <div className="text-sm font-extrabold text-slate-900">{prof?.nome || "Cadastro não vinculado"}</div>
                     <div className="mt-1 text-xs text-slate-700">
                       {prof?.area ? `Área: ${prof.area}` : "—"} •{" "}
                       {prof?.whatsapp ? `WhatsApp: ${onlyDigits(prof.whatsapp)}` : "—"}
@@ -579,9 +677,7 @@ async function aceitarPrimeiroAgora() {
                   <div className="mt-3 flex items-center justify-between rounded-3xl border p-4">
                     <div>
                       <div className="text-sm font-semibold text-slate-900">Alertas sonoros</div>
-                      <div className="text-xs text-slate-500">
-                        Para tocar no celular, precisa ativar 1 vez.
-                      </div>
+                      <div className="text-xs text-slate-500">Para tocar no celular, precisa ativar 1 vez.</div>
                     </div>
 
                     {!soundArmed ? (
@@ -634,6 +730,19 @@ async function aceitarPrimeiroAgora() {
                           <div className="mt-2 text-xs text-slate-700">
                             Total: <b>{brl(Number(meuChamado.total || 0))}</b>
                           </div>
+
+                          {/* ✅ GPS status */}
+                          <div className="mt-2 text-xs text-slate-600">
+                            GPS:{" "}
+                            <b className={gpsOn ? "text-emerald-700" : "text-slate-600"}>
+                              {gpsOn ? "ATIVO" : "DESLIGADO"}
+                            </b>
+                            {meuChamado.profissional_pos_at ? (
+                              <span className="ml-2 text-slate-400">
+                                (última: {new Date(meuChamado.profissional_pos_at).toLocaleTimeString("pt-BR")})
+                              </span>
+                            ) : null}
+                          </div>
                         </div>
 
                         <div className="flex flex-col gap-2">
@@ -645,14 +754,35 @@ async function aceitarPrimeiroAgora() {
                           >
                             🗺️ Abrir rota
                           </a>
+
                           <a
-                            href={wppLink(meuChamado.cliente_whatsapp, "Olá! Sou o profissional da IA Drogarias. Estou a caminho do seu atendimento.")}
+                            href={wppLink(
+                              meuChamado.cliente_whatsapp,
+                              "Olá! Sou o profissional da IA Drogarias. Estou a caminho do seu atendimento."
+                            )}
                             target="_blank"
                             rel="noreferrer"
                             className="rounded-2xl border px-4 py-2 text-center text-sm font-extrabold text-slate-900 hover:bg-slate-50"
                           >
                             💬 Whats do cliente
                           </a>
+
+                          {/* ✅ Botão GPS */}
+                          {!gpsOn ? (
+                            <button
+                              onClick={() => startLiveLocation(meuChamado.id)}
+                              className="rounded-2xl bg-emerald-600 px-4 py-2 text-center text-sm font-extrabold text-white hover:opacity-95"
+                            >
+                              📍 Ativar GPS (compartilhar)
+                            </button>
+                          ) : (
+                            <button
+                              onClick={stopLiveLocation}
+                              className="rounded-2xl border px-4 py-2 text-center text-sm font-extrabold text-slate-900 hover:bg-slate-50"
+                            >
+                              ⛔ Parar GPS
+                            </button>
+                          )}
                         </div>
                       </div>
 
@@ -711,7 +841,7 @@ async function aceitarPrimeiroAgora() {
                 ) : (
                   <div className="mt-4 space-y-3">
                     {chamados.map((c) => (
-                      <div key={c.id} className="rounded-3xl border p-4 hover:shadow-sm transition">
+                      <div key={c.id} className="rounded-3xl border p-4 transition hover:shadow-sm">
                         <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
                           <div>
                             <div className="flex items-center gap-2">
@@ -758,7 +888,7 @@ async function aceitarPrimeiroAgora() {
                             disabled={!prof?.id}
                             className={[
                               "rounded-2xl px-5 py-3 text-sm font-extrabold text-white transition",
-                              !prof?.id ? "bg-slate-400 cursor-not-allowed" : "bg-slate-900 hover:opacity-95",
+                              !prof?.id ? "cursor-not-allowed bg-slate-400" : "bg-slate-900 hover:opacity-95",
                             ].join(" ")}
                           >
                             Aceitar
