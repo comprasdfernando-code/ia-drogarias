@@ -142,6 +142,24 @@ async function adminResendConfirmation(email: string) {
   return true;
 }
 
+/** ✅ salvar dados extras do profissional (cadastros_profissionais) */
+async function adminUpdateProfissionalExtra(payload: {
+  email: string;
+  nome?: string | null;
+  whatsapp?: string | null;
+  crf?: string | null;
+}) {
+  const r = await fetch("/api/admin/profissionais/update", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+
+  const j = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(j?.error || "Erro ao atualizar profissional (extra)");
+  return true;
+}
+
 export default function AdminCadastroPage() {
   const [authed, setAuthed] = useState(false);
   const [senha, setSenha] = useState("");
@@ -166,6 +184,10 @@ export default function AdminCadastroPage() {
   const [fTelefone, setFTelefone] = useState("");
   const [fBloqueado, setFBloqueado] = useState(false);
   const [fMotivo, setFMotivo] = useState("");
+
+  // ✅ CRF (cadastros_profissionais)
+  const [fCrf, setFCrf] = useState("");
+  const [loadingCrf, setLoadingCrf] = useState(false);
 
   const [confirming, setConfirming] = useState(false);
   const [resending, setResending] = useState(false);
@@ -243,13 +265,43 @@ export default function AdminCadastroPage() {
 
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
-  function abrirEdicao(r: UsuarioRow) {
+  // ✅ carrega CRF pelo email diretamente do Supabase (somente leitura)
+  async function loadCrfByEmail(email: string) {
+    const { data, error } = await supabase
+      .from("cadastros_profissionais")
+      .select("crf")
+      .eq("email", email)
+      .maybeSingle();
+
+    if (error) throw error;
+    return (data?.crf as string) || "";
+  }
+
+  async function abrirEdicao(r: UsuarioRow) {
     setEditRow(r);
     setFNome(r.nome || "");
     setFEmail(r.email || "");
     setFTelefone(r.telefone || "");
     setFBloqueado(!!r.bloqueado);
     setFMotivo(r.bloqueado_motivo || "");
+    setConfirming(false);
+    setResending(false);
+
+    // CRF
+    setFCrf("");
+    setLoadingCrf(false);
+    if (r.email) {
+      setLoadingCrf(true);
+      try {
+        const crfAtual = await loadCrfByEmail(r.email);
+        setFCrf(crfAtual || "");
+      } catch (e) {
+        console.warn("Não consegui carregar CRF:", e);
+      } finally {
+        setLoadingCrf(false);
+      }
+    }
+
     setEditOpen(true);
   }
 
@@ -261,6 +313,8 @@ export default function AdminCadastroPage() {
     setFTelefone("");
     setFBloqueado(false);
     setFMotivo("");
+    setFCrf("");
+    setLoadingCrf(false);
     setConfirming(false);
     setResending(false);
   }
@@ -269,14 +323,29 @@ export default function AdminCadastroPage() {
     if (!editRow) return;
     setEditSaving(true);
     try {
+      const emailTrim = fEmail.trim() || null;
+      const nomeTrim = fNome.trim() || null;
+      const telTrim = fTelefone.trim() || null;
+
+      // 1) atualiza tabela usuarios (bloqueio, etc)
       await adminUpdateUsuario({
         id: editRow.id,
-        nome: fNome.trim() || null,
-        email: fEmail.trim() || null,
-        telefone: fTelefone.trim() || null,
+        nome: nomeTrim,
+        email: emailTrim,
+        telefone: telTrim,
         bloqueado: fBloqueado,
         bloqueado_motivo: fBloqueado ? (fMotivo.trim() || "Bloqueado pelo administrador") : null,
       });
+
+      // 2) se for profissional, salva CRF (cadastros_profissionais)
+      if ((editRow.tipo || "") === "farmaceutico" && emailTrim) {
+        await adminUpdateProfissionalExtra({
+          email: emailTrim,
+          nome: nomeTrim,
+          whatsapp: telTrim,
+          crf: fCrf.trim() || null,
+        });
+      }
 
       alert("Atualizado ✅");
       fecharEdicao();
@@ -445,9 +514,7 @@ export default function AdminCadastroPage() {
         </div>
 
         {rows.length === 0 && !loading && (
-          <div style={{ padding: 14, border: "1px solid #eee", borderRadius: 12 }}>
-            Nenhum registro encontrado.
-          </div>
+          <div style={{ padding: 14, border: "1px solid #eee", borderRadius: 12 }}>Nenhum registro encontrado.</div>
         )}
 
         {rows.map((r) => {
@@ -744,6 +811,19 @@ export default function AdminCadastroPage() {
                   onChange={(e) => setFTelefone(e.target.value)}
                   style={{ padding: 12, borderRadius: 12, border: "1px solid #ddd" }}
                 />
+              </label>
+
+              {/* ✅ CRF */}
+              <label style={{ display: "grid", gap: 6 }}>
+                <b>CRF</b>
+                <input
+                  value={fCrf}
+                  onChange={(e) => setFCrf(e.target.value)}
+                  placeholder={loadingCrf ? "Carregando CRF..." : "Ex: CRF-SP 123456"}
+                  disabled={loadingCrf}
+                  style={{ padding: 12, borderRadius: 12, border: "1px solid #ddd" }}
+                />
+                {loadingCrf ? <span style={{ fontSize: 12, opacity: 0.7 }}>Buscando CRF em cadastros_profissionais…</span> : null}
               </label>
 
               <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
