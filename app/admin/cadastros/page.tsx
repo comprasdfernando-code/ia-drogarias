@@ -78,15 +78,20 @@ Se puder, me confirme:
 }
 
 function msgDocs(nome: string) {
-  return `Olá ${nome}! 😊
+  return `Olá ${nome}! tudo bem? 😊
 
-Para deixar seu perfil com mais credibilidade na IA Drogarias, você pode me enviar (se tiver):
+Aqui é da IA Drogarias.
 
-• Documento profissional (ex.: CRF, certificado, etc.)
-• Foto/Logo (opcional)
-• Uma frase curta do seu atendimento
+Para ativarmos seu cadastro como profissional na plataforma, precisamos validar seus dados.
 
-Assim seu perfil fica completo e passa mais confiança pros pacientes ✅`;
+Por favor, envie:
+1️⃣ Seu CRF + UF (ex: CRF-SP 123456)  
+2️⃣ Foto ou print do CRF (carteira ou consulta no site do conselho)  
+3️⃣ Documento com foto (RG ou CNH)
+
+Assim que conferirmos, seu perfil será ativado e você já poderá receber chamados normalmente ✅
+
+Qualquer dúvida, fico à disposição. ✅`;
 }
 
 async function copyToClipboard(text: string) {
