@@ -85,14 +85,22 @@ TOTAL: ${brl(totalCalc)}
 }
 
 function printNotinha(pedido: Pedido, itens: Item[]) {
-  const totalCalc = pedido.total && Number(pedido.total) > 0 ? Number(pedido.total) : sumItens(itens);
+  const totalCalc =
+    pedido.total && Number(pedido.total) > 0 ? Number(pedido.total) : sumItens(itens);
 
-  // ✅ QR Code: pode ser WhatsApp da loja, link do pedido, ou pix (futuro)
-  // Aqui vou usar um texto simples com o resumo + codigo
+  // ✅ Conteúdo do QR (resumo do pedido)
   const qrPayload = buildPedidoTexto({ ...pedido, total: totalCalc }, itens);
 
-  // Google Chart API (QR)
-  const qrUrl =
+  // ✅ 3 fontes (fallback) — se uma falhar, tenta outra
+  const qr1 =
+    "https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=" +
+    encodeURIComponent(qrPayload);
+
+  const qr2 =
+    "https://quickchart.io/qr?size=220&text=" +
+    encodeURIComponent(qrPayload);
+
+  const qr3 =
     "https://chart.googleapis.com/chart?cht=qr&chs=220x220&chld=M|1&chl=" +
     encodeURIComponent(qrPayload);
 
@@ -101,14 +109,14 @@ function printNotinha(pedido: Pedido, itens: Item[]) {
       const nome = `${i.nome}${i.sabor ? ` (${i.sabor})` : ""}`;
       return `
         <tr>
-          <td style="padding:10px 0; border-bottom:1px solid rgba(255,255,255,.08);">
-            <div style="font-weight:800; font-size:14px; color:#fff;">
+          <td style="padding:10px 0; border-bottom:1px dashed #111;">
+            <div style="font-weight:900; font-size:14px; color:#000;">
               ${escapeHtml(nome)}
             </div>
-            <div style="font-size:12px; color:rgba(255,255,255,.75); margin-top:2px;">
-              ${escapeHtml(brl(i.preco))} × ${escapeHtml(i.qty)} 
-              <span style="color:rgba(255,255,255,.55);">|</span>
-              Subtotal: <b style="color:#fff;">${escapeHtml(brl(i.subtotal))}</b>
+            <div style="font-size:12px; color:#111; margin-top:3px;">
+              ${escapeHtml(brl(i.preco))} × ${escapeHtml(i.qty)}
+              <span style="color:#666;"> • </span>
+              Subtotal: <b style="color:#000;">${escapeHtml(brl(i.subtotal))}</b>
             </div>
           </td>
         </tr>
@@ -122,141 +130,154 @@ function printNotinha(pedido: Pedido, itens: Item[]) {
       <meta charset="utf-8" />
       <title>Notinha ${escapeHtml(pedido.codigo)}</title>
       <style>
-        :root{
-          --bg:#0b0b10;
-          --card:#12121a;
-          --line:rgba(255,255,255,.10);
-          --muted:rgba(255,255,255,.75);
-          --muted2:rgba(255,255,255,.55);
-          --white:#ffffff;
-          --accent:#d946ef; /* fuchsia vibe */
-        }
         *{ box-sizing:border-box; }
         body{
           margin:0;
-          background:var(--bg);
-          color:var(--white);
-          font-family: Inter, Arial, sans-serif;
+          background:#fff;
+          color:#000;
+          font-family: Arial, sans-serif;
         }
         .wrap{
-          padding:18px;
+          padding:16px;
           display:flex;
           justify-content:center;
         }
         .card{
           width: 380px;
-          background: linear-gradient(180deg, #141420, #0f0f16);
-          border: 1px solid var(--line);
-          border-radius: 18px;
+          border: 2px solid #000;
+          border-radius: 14px;
           overflow:hidden;
-          box-shadow: 0 12px 35px rgba(0,0,0,.45);
         }
         .top{
-          padding:16px 16px 10px 16px;
-          border-bottom:1px solid var(--line);
-          background:
-            radial-gradient(1200px 250px at 30% -10%, rgba(217,70,239,.30), transparent 60%),
-            radial-gradient(900px 240px at 90% 0%, rgba(99,102,241,.20), transparent 55%),
-            linear-gradient(180deg, rgba(255,255,255,.06), transparent);
+          padding:14px 14px 10px 14px;
+          border-bottom:2px solid #000;
         }
-        .brand{
-          display:flex; align-items:center; justify-content:space-between; gap:10px;
+        .brandRow{
+          display:flex;
+          align-items:center;
+          justify-content:space-between;
+          gap:10px;
         }
-        .logo{
-          width:42px; height:42px; border-radius:14px;
-          background: linear-gradient(135deg, rgba(217,70,239,.95), rgba(99,102,241,.85));
-          box-shadow: 0 10px 25px rgba(217,70,239,.25);
+        .logoBox{
+          width:42px;height:42px;border-radius:12px;
+          border:2px solid #000;
+          display:flex;align-items:center;justify-content:center;
+          font-weight:900;
         }
         .title{
-          font-size:18px; font-weight:900; line-height:1.1;
+          font-size:18px;
+          font-weight:900;
+          line-height:1.1;
+          color:#000;
         }
         .subtitle{
           margin-top:2px;
-          font-size:12px; color:var(--muted2);
+          font-size:12px;
+          color:#111;
+          font-weight:700;
         }
-        .codeRow{
-          margin-top:10px;
-          display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap;
-          font-size:12px; color:var(--muted);
-        }
-        .pill{
-          display:inline-flex;
+        .status{
+          border:2px solid #000;
           padding:6px 10px;
           border-radius:999px;
-          border:1px solid var(--line);
-          background: rgba(255,255,255,.04);
+          font-weight:900;
+          font-size:12px;
+          text-transform:uppercase;
+        }
+        .meta{
+          margin-top:10px;
+          display:flex;
+          gap:8px;
+          flex-wrap:wrap;
+          font-size:12px;
+        }
+        .pill{
+          border:1px solid #000;
+          padding:6px 10px;
+          border-radius:999px;
+          font-weight:800;
         }
         .section{
-          padding:14px 16px;
-          border-bottom:1px solid var(--line);
+          padding:12px 14px;
+          border-bottom:2px solid #000;
         }
-        .grid2{
+        .label{ font-size:11px; color:#111; font-weight:800; }
+        .value{ font-size:13px; color:#000; font-weight:900; }
+        .value2{ font-size:12px; color:#111; font-weight:700; margin-top:2px; }
+        .grid{
           display:grid;
           grid-template-columns: 1fr 1fr;
           gap:8px;
         }
-        .label{ font-size:11px; color:var(--muted2); }
-        .value{ font-size:13px; font-weight:700; color:var(--white); }
-        .valueSmall{ font-size:12px; color:var(--muted); }
+        .full{ grid-column:1/-1; }
         .itemsTitle{
-          font-size:12px; letter-spacing:.10em; text-transform:uppercase;
-          color:rgba(255,255,255,.65);
-          font-weight:800;
+          font-size:12px;
+          font-weight:900;
+          letter-spacing:.08em;
+          text-transform:uppercase;
           margin-bottom:8px;
         }
         table{ width:100%; border-collapse:collapse; }
         .totalBox{
-          padding:14px 16px;
-          display:flex; align-items:flex-end; justify-content:space-between; gap:10px;
+          padding:12px 14px;
+          display:flex;
+          justify-content:space-between;
+          align-items:flex-end;
         }
-        .totalLeft{
-          font-size:12px; color:var(--muted2);
+        .totalLabel{
+          font-size:12px;
+          font-weight:900;
+          color:#111;
         }
-        .total{
-          font-size:20px; font-weight:950; color:#fff;
+        .totalValue{
+          font-size:20px;
+          font-weight:900;
+          color:#000;
         }
         .qrWrap{
-          padding:14px 16px 16px 16px;
-          border-top:1px solid var(--line);
-          display:flex; gap:12px; align-items:center; justify-content:space-between;
-          background: rgba(255,255,255,.03);
+          padding:12px 14px;
+          display:flex;
+          gap:12px;
+          align-items:center;
         }
         .qr{
-          width:120px; height:120px;
-          border-radius:16px;
+          width:120px;height:120px;
+          border:2px solid #000;
+          border-radius:14px;
           overflow:hidden;
-          border:1px solid var(--line);
+          display:flex;align-items:center;justify-content:center;
           background:#fff;
-          display:flex; align-items:center; justify-content:center;
         }
         .qr img{
-          width:100%; height:100%;
+          width:100%;
+          height:100%;
           object-fit:cover;
-        }
-        .qrText{
-          flex:1;
+          display:block;
         }
         .qrText .h{
           font-weight:900;
+          color:#000;
           margin-bottom:4px;
         }
         .qrText .p{
           font-size:12px;
-          color:rgba(255,255,255,.75);
+          color:#111;
+          font-weight:700;
           line-height:1.35;
         }
         .footer{
-          padding:10px 16px 14px 16px;
-          font-size:11px;
-          color:rgba(255,255,255,.55);
+          padding:10px 14px 14px 14px;
           text-align:center;
+          font-size:11px;
+          color:#111;
+          font-weight:800;
         }
 
-        /* impressão */
+        /* impressão: força contraste (fundo branco, texto preto) */
         @media print{
-          body{ background:#000; }
+          body{ background:#fff !important; color:#000 !important; }
           .wrap{ padding:0; }
-          .card{ box-shadow:none; border-radius:0; width: 100%; border:none; }
+          .card{ width:100%; border-radius:0; }
         }
       </style>
     </head>
@@ -265,27 +286,25 @@ function printNotinha(pedido: Pedido, itens: Item[]) {
         <div class="card">
 
           <div class="top">
-            <div class="brand">
+            <div class="brandRow">
               <div style="display:flex; align-items:center; gap:10px;">
-                <div class="logo"></div>
+                <div class="logoBox">OGG</div>
                 <div>
                   <div class="title">Sorveteria Oggi</div>
                   <div class="subtitle">IA Drogarias • Recibo do Pedido</div>
                 </div>
               </div>
-              <div class="pill" style="font-weight:900; color:#fff;">
-                ${escapeHtml(pedido.status || "novo")}
-              </div>
+              <div class="status">${escapeHtml(pedido.status || "novo")}</div>
             </div>
 
-            <div class="codeRow">
+            <div class="meta">
               <div class="pill"><b>Pedido:</b>&nbsp;${escapeHtml(pedido.codigo)}</div>
               <div class="pill"><b>Data:</b>&nbsp;${escapeHtml(dtBR(pedido.created_at))}</div>
             </div>
           </div>
 
           <div class="section">
-            <div class="grid2">
+            <div class="grid">
               <div>
                 <div class="label">Cliente</div>
                 <div class="value">${escapeHtml(pedido.cliente_nome || "-")}</div>
@@ -294,17 +313,19 @@ function printNotinha(pedido: Pedido, itens: Item[]) {
                 <div class="label">Pagamento</div>
                 <div class="value">${escapeHtml(pedido.pagamento || "-")}</div>
               </div>
-              <div style="grid-column:1 / -1;">
+
+              <div class="full">
                 <div class="label">Endereço</div>
-                <div class="valueSmall">${escapeHtml(pedido.endereco || "-")}</div>
+                <div class="value2">${escapeHtml(pedido.endereco || "-")}</div>
               </div>
+
               <div>
                 <div class="label">Bairro</div>
-                <div class="valueSmall">${escapeHtml(pedido.bairro || "-")}</div>
+                <div class="value2">${escapeHtml(pedido.bairro || "-")}</div>
               </div>
               <div>
                 <div class="label">Obs</div>
-                <div class="valueSmall">${escapeHtml(pedido.obs || "-")}</div>
+                <div class="value2">${escapeHtml(pedido.obs || "-")}</div>
               </div>
             </div>
           </div>
@@ -312,29 +333,24 @@ function printNotinha(pedido: Pedido, itens: Item[]) {
           <div class="section">
             <div class="itemsTitle">Itens do Pedido</div>
             <table>
-              ${itensHtml || `<tr><td style="padding:10px 0; color:rgba(255,255,255,.7);">Sem itens.</td></tr>`}
+              ${itensHtml || `<tr><td style="padding:10px 0; font-weight:800; color:#111;">Sem itens.</td></tr>`}
             </table>
           </div>
 
           <div class="totalBox">
-            <div class="totalLeft">
-              Total do pedido
-              <div style="margin-top:4px; color:rgba(255,255,255,.55); font-size:11px;">
-                Valores em BRL
-              </div>
-            </div>
-            <div class="total">${escapeHtml(brl(totalCalc))}</div>
+            <div class="totalLabel">TOTAL</div>
+            <div class="totalValue">${escapeHtml(brl(totalCalc))}</div>
           </div>
 
           <div class="qrWrap">
             <div class="qr">
-              <img src="${qrUrl}" alt="QR Code do Pedido" />
+              <img id="qrImg" src="${qr1}" alt="QR Code do Pedido" />
             </div>
             <div class="qrText">
               <div class="h">QR do pedido</div>
               <div class="p">
-                Escaneie para ver o resumo completo do pedido.<br/>
-                <span style="color:rgba(255,255,255,.55);">Dica: dá pra usar isso para conferência e entrega.</span>
+                Escaneie para ver o resumo completo.<br/>
+                (confere itens, total e endereço)
               </div>
             </div>
           </div>
@@ -346,7 +362,25 @@ function printNotinha(pedido: Pedido, itens: Item[]) {
       </div>
 
       <script>
-        window.onload = () => { window.print(); };
+        (function(){
+          var img = document.getElementById("qrImg");
+          if(!img) return;
+
+          var fallbacks = ["${qr2}", "${qr3}"];
+          var idx = 0;
+
+          img.onerror = function(){
+            if(idx < fallbacks.length){
+              img.src = fallbacks[idx++];
+            }
+          };
+
+          // Espera um pouco para o QR carregar antes de imprimir
+          // (evita sair sem imagem em impressoras lentas)
+          window.onload = function(){
+            setTimeout(function(){ window.print(); }, 450);
+          };
+        })();
       </script>
     </body>
   </html>
@@ -361,6 +395,7 @@ function printNotinha(pedido: Pedido, itens: Item[]) {
   w.document.write(html);
   w.document.close();
 }
+
 
 
 export default function PainelPedidosSorveteria() {
