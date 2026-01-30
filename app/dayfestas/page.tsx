@@ -82,8 +82,11 @@ export default function DayFestasPage() {
             </p>
 
             <h1 className="mt-5 text-4xl md:text-5xl font-semibold tracking-tight">
-              Transformando festas em <span className="italic">memórias</span> cheias de encanto.
-            </h1>
+  Transformando festas em{" "}
+  <span className="text-[rgb(var(--brand-1))] italic">memórias</span>{" "}
+  cheias de encanto.
+</h1>
+
 
             <p className="mt-4 text-neutral-700">
               Mini festas, papelaria personalizada e decoração com carinho em cada detalhe —

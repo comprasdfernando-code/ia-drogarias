@@ -1,0 +1,10 @@
+:root{
+  --brand-1: 244 91 138;   /* Rosa Day Festas */
+  --brand-2: 77 183 216;   /* Azul Day Festas */
+  --brand-3: 247 197 49;   /* Amarelo Day Festas */
+
+  --bg: 250 250 252;
+  --card: 255 255 255;
+  --text: 23 23 23;
+  --muted: 107 114 128;
+}

@@ -15,7 +15,10 @@ export default function SectionTitle({
           {kicker}
         </p>
       ) : null}
-      <h2 className="mt-4 text-2xl md:text-3xl font-semibold tracking-tight">{title}</h2>
+      <h2 className="mt-4 text-2xl md:text-3xl font-semibold tracking-tight text-[rgb(var(--brand-2))]">
+  {title}
+</h2>
+
       {subtitle ? <p className="mt-2 text-neutral-700">{subtitle}</p> : null}
     </div>
   );
