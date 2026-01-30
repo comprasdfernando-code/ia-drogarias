@@ -7,8 +7,8 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
-import { CartProvider, useCart } from "../../_components/cart";
-import { ToastProvider, useToast } from "../../_components/toast";
+import { useCart } from "../../_components/cart";
+import { useToast } from "../../_components/toast";
 
 /* =========================
    CONFIG
@@ -73,23 +73,14 @@ function waLink(phone: string, msg: string) {
   return `https://wa.me/${clean}?text=${encodeURIComponent(msg)}`;
 }
 
-/* =========================
-   PAGE WRAPPER
-========================= */
-export default function DFProdutoPageWrapper() {
-  return (
-    <CartProvider>
-      <ToastProvider>
-        <DFProdutoPage />
-      </ToastProvider>
-    </CartProvider>
-  );
+function onlyDigits(v: string) {
+  return (v || "").replace(/\D/g, "");
 }
 
 /* =========================
    PAGE
 ========================= */
-function DFProdutoPage() {
+export default function DFProdutoPage() {
   const params = useParams<{ ean: string }>();
   const eanRaw = params?.ean ? decodeURIComponent(String(params.ean)) : "";
 
@@ -108,7 +99,10 @@ function DFProdutoPage() {
   const estoqueAtual = Number(produto?.estoque ?? 0);
   const indisponivel = !produto || estoqueAtual <= 0 || produto.ativo === false;
 
-  const pr = useMemo(() => (produto ? precoFinal(produto) : { emPromo: false, pmc: 0, promo: 0, final: 0, off: 0 }), [produto]);
+  const pr = useMemo(
+    () => (produto ? precoFinal(produto) : { emPromo: false, pmc: 0, promo: 0, final: 0, off: 0 }),
+    [produto]
+  );
 
   // mapa de estoque só desse item (pra trava do modal)
   const estoqueByEan = useMemo(() => {
@@ -123,7 +117,7 @@ function DFProdutoPage() {
       setProduto(null);
 
       try {
-        const digits = (eanRaw || "").replace(/\D/g, "");
+        const digits = onlyDigits(eanRaw || "");
         if (!digits) {
           setProduto(null);
           return;
@@ -215,12 +209,11 @@ function DFProdutoPage() {
   }
 
   function comprarAbrirCarrinho() {
-    // comportamento típico: se não tiver no carrinho, adiciona 1 e abre
     if (!produto) return;
+
     if (!indisponivel) {
       const already = cart.items.find((x) => x.ean === produto.ean)?.qtd ?? 0;
       if (already === 0) {
-        // adiciona 1
         cart.addItem(
           {
             ean: produto.ean,
@@ -315,9 +308,7 @@ function DFProdutoPage() {
 
               <h1 className="text-2xl md:text-3xl font-extrabold text-blue-950 mt-1">{produto.nome}</h1>
 
-              {produto.apresentacao ? (
-                <div className="text-gray-600 mt-1">{produto.apresentacao}</div>
-              ) : null}
+              {produto.apresentacao ? <div className="text-gray-600 mt-1">{produto.apresentacao}</div> : null}
 
               <div className="mt-5">
                 {pr.emPromo ? (
@@ -380,7 +371,6 @@ function DFProdutoPage() {
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {/* ✅ Comprar abre carrinho */}
                   <button
                     onClick={comprarAbrirCarrinho}
                     className={`h-12 rounded-2xl font-extrabold ${
@@ -392,7 +382,6 @@ function DFProdutoPage() {
                     Comprar (abrir carrinho)
                   </button>
 
-                  {/* WhatsApp secundário */}
                   <a
                     href={waLink(WHATS_DF, whatsappMsg)}
                     target="_blank"
@@ -420,21 +409,14 @@ function DFProdutoPage() {
         </div>
       </section>
 
-      {/* ✅ MODAL DO CARRINHO */}
+      {/* MODAL DO CARRINHO */}
       <CartModal open={cartOpen} onClose={() => setCartOpen(false)} whats={WHATS_DF} estoqueByEan={estoqueByEan} />
     </main>
   );
 }
-function onlyDigits(v: string) {
-  return (v || "").replace(/\D/g, "");
-}
-
 
 /* =========================
-   CART MODAL (ESTILO PDV + dados entrega/pagamento)
-   - com taxaEntregaFixa via prop (evita erro de scope)
-   - limpar carrinho robusto (funciona com vários formatos de useCart)
-   - finalizar via button (pronto pra gerar "notinha" depois)
+   CART MODAL (mantive seu modal inteiro)
 ========================= */
 function CartModal({
   open,
@@ -502,7 +484,10 @@ function CartModal({
     }
   }
 
-  // ✅ limpar carrinho robusto (serve pra home e produto ficarem sincronizados QUANDO o provider é o mesmo)
+  function onlyDigits(v: string) {
+    return (v || "").replace(/\D/g, "");
+  }
+
   function clearCartSafe() {
     const anyCart: any = cart as any;
 
@@ -511,7 +496,6 @@ function CartModal({
     if (typeof anyCart.reset === "function") return anyCart.reset();
     if (typeof anyCart.clear === "function") return anyCart.clear();
 
-    // fallback universal: remove item por item
     (cart.items || []).forEach((it: any) => cart.remove(it.ean));
   }
 
@@ -547,27 +531,11 @@ function CartModal({
     msg += `Pode confirmar disponibilidade e prazo?`;
 
     return msg;
-  }, [
-    cart.items,
-    clienteNome,
-    clienteTelefone,
-    tipoEntrega,
-    endereco,
-    numero,
-    bairro,
-    pagamento,
-    taxaEntrega,
-    total,
-    cart.subtotal,
-  ]);
+  }, [cart.items, clienteNome, clienteTelefone, tipoEntrega, endereco, numero, bairro, pagamento, taxaEntrega, total, cart.subtotal]);
 
   function finalizar() {
     if (!canCheckout) return;
-
-    // abre whatsapp
     window.open(waLink(whats, mensagem), "_blank");
-
-    // hook pronto pra você gerar "notinha" depois
     onAfterFinalize?.({
       mensagem,
       clienteNome,
@@ -633,10 +601,7 @@ function CartModal({
                       <div className="mt-1 text-sm font-extrabold text-blue-900">{brl(it.preco)}</div>
 
                       <div className="mt-2 flex items-center gap-2">
-                        <button
-                          onClick={() => cart.dec(it.ean)}
-                          className="px-3 py-1 bg-gray-200 rounded font-extrabold"
-                        >
+                        <button onClick={() => cart.dec(it.ean)} className="px-3 py-1 bg-gray-200 rounded font-extrabold">
                           -
                         </button>
 
@@ -653,9 +618,7 @@ function CartModal({
                           onClick={() => incSafe(it.ean)}
                           disabled={est > 0 ? it.qtd >= est : false}
                           className={`px-3 py-1 rounded font-extrabold ${
-                            est > 0 && it.qtd >= est
-                              ? "bg-gray-200 text-gray-500 cursor-not-allowed"
-                              : "bg-blue-600 text-white"
+                            est > 0 && it.qtd >= est ? "bg-gray-200 text-gray-500 cursor-not-allowed" : "bg-blue-600 text-white"
                           }`}
                         >
                           +
@@ -710,18 +673,14 @@ function CartModal({
           <div className="flex gap-2">
             <button
               onClick={() => setTipoEntrega("ENTREGA")}
-              className={`px-3 py-2 rounded flex-1 ${
-                tipoEntrega === "ENTREGA" ? "bg-blue-600 text-white" : "bg-gray-200"
-              }`}
+              className={`px-3 py-2 rounded flex-1 ${tipoEntrega === "ENTREGA" ? "bg-blue-600 text-white" : "bg-gray-200"}`}
             >
               Entrega
             </button>
 
             <button
               onClick={() => setTipoEntrega("RETIRADA")}
-              className={`px-3 py-2 rounded flex-1 ${
-                tipoEntrega === "RETIRADA" ? "bg-blue-600 text-white" : "bg-gray-200"
-              }`}
+              className={`px-3 py-2 rounded flex-1 ${tipoEntrega === "RETIRADA" ? "bg-blue-600 text-white" : "bg-gray-200"}`}
             >
               Retirada
             </button>
@@ -729,24 +688,9 @@ function CartModal({
 
           {tipoEntrega === "ENTREGA" && (
             <div className="mt-3 space-y-2">
-              <input
-                placeholder="Endereço"
-                value={endereco}
-                onChange={(e) => setEndereco(e.target.value)}
-                className="w-full border p-2 rounded"
-              />
-              <input
-                placeholder="Número"
-                value={numero}
-                onChange={(e) => setNumero(e.target.value)}
-                className="w-full border p-2 rounded"
-              />
-              <input
-                placeholder="Bairro"
-                value={bairro}
-                onChange={(e) => setBairro(e.target.value)}
-                className="w-full border p-2 rounded"
-              />
+              <input placeholder="Endereço" value={endereco} onChange={(e) => setEndereco(e.target.value)} className="w-full border p-2 rounded" />
+              <input placeholder="Número" value={numero} onChange={(e) => setNumero(e.target.value)} className="w-full border p-2 rounded" />
+              <input placeholder="Bairro" value={bairro} onChange={(e) => setBairro(e.target.value)} className="w-full border p-2 rounded" />
               <div className="text-sm font-bold">Taxa fixa: {brl(taxaEntrega)}</div>
             </div>
           )}

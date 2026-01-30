@@ -14,6 +14,9 @@ export default function RootClientLayout({ children }: { children: React.ReactNo
   if (typeof window !== "undefined" && window.location.pathname.startsWith("/profissional/painel")) {
     return <>{children}</>;
   }
+  if (typeof window !== "undefined" && window.location.pathname.startsWith("/loja/glow10")) {
+    return <>{children}</>;
+  }
   if (typeof window !== "undefined" && window.location.pathname.startsWith("/gigante")) {
     return <>{children}</>;
   }
