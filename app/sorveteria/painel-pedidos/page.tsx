@@ -87,15 +87,28 @@ TOTAL: ${brl(totalCalc)}
 function printNotinha(pedido: Pedido, itens: Item[]) {
   const totalCalc = pedido.total && Number(pedido.total) > 0 ? Number(pedido.total) : sumItens(itens);
 
+  // ✅ QR Code: pode ser WhatsApp da loja, link do pedido, ou pix (futuro)
+  // Aqui vou usar um texto simples com o resumo + codigo
+  const qrPayload = buildPedidoTexto({ ...pedido, total: totalCalc }, itens);
+
+  // Google Chart API (QR)
+  const qrUrl =
+    "https://chart.googleapis.com/chart?cht=qr&chs=220x220&chld=M|1&chl=" +
+    encodeURIComponent(qrPayload);
+
   const itensHtml = (itens || [])
     .map((i) => {
       const nome = `${i.nome}${i.sabor ? ` (${i.sabor})` : ""}`;
       return `
         <tr>
-          <td style="padding:6px 0;">
-            <div style="font-weight:700;">${escapeHtml(nome)}</div>
-            <div style="font-size:12px; color:#555;">
-              ${escapeHtml(brl(i.preco))} x ${escapeHtml(i.qty)} = <b>${escapeHtml(brl(i.subtotal))}</b>
+          <td style="padding:10px 0; border-bottom:1px solid rgba(255,255,255,.08);">
+            <div style="font-weight:800; font-size:14px; color:#fff;">
+              ${escapeHtml(nome)}
+            </div>
+            <div style="font-size:12px; color:rgba(255,255,255,.75); margin-top:2px;">
+              ${escapeHtml(brl(i.preco))} × ${escapeHtml(i.qty)} 
+              <span style="color:rgba(255,255,255,.55);">|</span>
+              Subtotal: <b style="color:#fff;">${escapeHtml(brl(i.subtotal))}</b>
             </div>
           </td>
         </tr>
@@ -109,47 +122,227 @@ function printNotinha(pedido: Pedido, itens: Item[]) {
       <meta charset="utf-8" />
       <title>Notinha ${escapeHtml(pedido.codigo)}</title>
       <style>
-        body { font-family: Arial, sans-serif; margin: 18px; }
-        .top { text-align:center; }
-        .small { font-size: 12px; color:#444; }
-        .box { border-top:1px dashed #999; border-bottom:1px dashed #999; padding:10px 0; margin:10px 0; }
-        table { width:100%; border-collapse: collapse; }
-        .total { font-size: 16px; font-weight: 900; display:flex; justify-content:space-between; margin-top:10px; }
-        @media print {
-          button { display:none; }
-          body { margin: 0; }
+        :root{
+          --bg:#0b0b10;
+          --card:#12121a;
+          --line:rgba(255,255,255,.10);
+          --muted:rgba(255,255,255,.75);
+          --muted2:rgba(255,255,255,.55);
+          --white:#ffffff;
+          --accent:#d946ef; /* fuchsia vibe */
+        }
+        *{ box-sizing:border-box; }
+        body{
+          margin:0;
+          background:var(--bg);
+          color:var(--white);
+          font-family: Inter, Arial, sans-serif;
+        }
+        .wrap{
+          padding:18px;
+          display:flex;
+          justify-content:center;
+        }
+        .card{
+          width: 380px;
+          background: linear-gradient(180deg, #141420, #0f0f16);
+          border: 1px solid var(--line);
+          border-radius: 18px;
+          overflow:hidden;
+          box-shadow: 0 12px 35px rgba(0,0,0,.45);
+        }
+        .top{
+          padding:16px 16px 10px 16px;
+          border-bottom:1px solid var(--line);
+          background:
+            radial-gradient(1200px 250px at 30% -10%, rgba(217,70,239,.30), transparent 60%),
+            radial-gradient(900px 240px at 90% 0%, rgba(99,102,241,.20), transparent 55%),
+            linear-gradient(180deg, rgba(255,255,255,.06), transparent);
+        }
+        .brand{
+          display:flex; align-items:center; justify-content:space-between; gap:10px;
+        }
+        .logo{
+          width:42px; height:42px; border-radius:14px;
+          background: linear-gradient(135deg, rgba(217,70,239,.95), rgba(99,102,241,.85));
+          box-shadow: 0 10px 25px rgba(217,70,239,.25);
+        }
+        .title{
+          font-size:18px; font-weight:900; line-height:1.1;
+        }
+        .subtitle{
+          margin-top:2px;
+          font-size:12px; color:var(--muted2);
+        }
+        .codeRow{
+          margin-top:10px;
+          display:flex; justify-content:space-between; gap:10px; flex-wrap:wrap;
+          font-size:12px; color:var(--muted);
+        }
+        .pill{
+          display:inline-flex;
+          padding:6px 10px;
+          border-radius:999px;
+          border:1px solid var(--line);
+          background: rgba(255,255,255,.04);
+        }
+        .section{
+          padding:14px 16px;
+          border-bottom:1px solid var(--line);
+        }
+        .grid2{
+          display:grid;
+          grid-template-columns: 1fr 1fr;
+          gap:8px;
+        }
+        .label{ font-size:11px; color:var(--muted2); }
+        .value{ font-size:13px; font-weight:700; color:var(--white); }
+        .valueSmall{ font-size:12px; color:var(--muted); }
+        .itemsTitle{
+          font-size:12px; letter-spacing:.10em; text-transform:uppercase;
+          color:rgba(255,255,255,.65);
+          font-weight:800;
+          margin-bottom:8px;
+        }
+        table{ width:100%; border-collapse:collapse; }
+        .totalBox{
+          padding:14px 16px;
+          display:flex; align-items:flex-end; justify-content:space-between; gap:10px;
+        }
+        .totalLeft{
+          font-size:12px; color:var(--muted2);
+        }
+        .total{
+          font-size:20px; font-weight:950; color:#fff;
+        }
+        .qrWrap{
+          padding:14px 16px 16px 16px;
+          border-top:1px solid var(--line);
+          display:flex; gap:12px; align-items:center; justify-content:space-between;
+          background: rgba(255,255,255,.03);
+        }
+        .qr{
+          width:120px; height:120px;
+          border-radius:16px;
+          overflow:hidden;
+          border:1px solid var(--line);
+          background:#fff;
+          display:flex; align-items:center; justify-content:center;
+        }
+        .qr img{
+          width:100%; height:100%;
+          object-fit:cover;
+        }
+        .qrText{
+          flex:1;
+        }
+        .qrText .h{
+          font-weight:900;
+          margin-bottom:4px;
+        }
+        .qrText .p{
+          font-size:12px;
+          color:rgba(255,255,255,.75);
+          line-height:1.35;
+        }
+        .footer{
+          padding:10px 16px 14px 16px;
+          font-size:11px;
+          color:rgba(255,255,255,.55);
+          text-align:center;
+        }
+
+        /* impressão */
+        @media print{
+          body{ background:#000; }
+          .wrap{ padding:0; }
+          .card{ box-shadow:none; border-radius:0; width: 100%; border:none; }
         }
       </style>
     </head>
     <body>
-      <div class="top">
-        <div style="font-size:18px; font-weight:900;">Sorveteria Oggi</div>
-        <div class="small">IA Drogarias</div>
-        <div class="small">Pedido: <b>${escapeHtml(pedido.codigo)}</b></div>
-        <div class="small">${escapeHtml(dtBR(pedido.created_at))}</div>
-      </div>
+      <div class="wrap">
+        <div class="card">
 
-      <div class="box small">
-        <div><b>Cliente:</b> ${escapeHtml(pedido.cliente_nome)}</div>
-        <div><b>Endereço:</b> ${escapeHtml(pedido.endereco)}</div>
-        <div><b>Bairro:</b> ${escapeHtml(pedido.bairro)}</div>
-        <div><b>Pagamento:</b> ${escapeHtml(pedido.pagamento)}</div>
-        ${pedido.obs ? `<div><b>Obs:</b> ${escapeHtml(pedido.obs)}</div>` : ""}
-      </div>
+          <div class="top">
+            <div class="brand">
+              <div style="display:flex; align-items:center; gap:10px;">
+                <div class="logo"></div>
+                <div>
+                  <div class="title">Sorveteria Oggi</div>
+                  <div class="subtitle">IA Drogarias • Recibo do Pedido</div>
+                </div>
+              </div>
+              <div class="pill" style="font-weight:900; color:#fff;">
+                ${escapeHtml(pedido.status || "novo")}
+              </div>
+            </div>
 
-      <table>
-        ${itensHtml || `<tr><td class="small">Sem itens</td></tr>`}
-      </table>
+            <div class="codeRow">
+              <div class="pill"><b>Pedido:</b>&nbsp;${escapeHtml(pedido.codigo)}</div>
+              <div class="pill"><b>Data:</b>&nbsp;${escapeHtml(dtBR(pedido.created_at))}</div>
+            </div>
+          </div>
 
-      <div class="box">
-        <div class="total">
-          <span>Total</span>
-          <span>${escapeHtml(brl(totalCalc))}</span>
+          <div class="section">
+            <div class="grid2">
+              <div>
+                <div class="label">Cliente</div>
+                <div class="value">${escapeHtml(pedido.cliente_nome || "-")}</div>
+              </div>
+              <div>
+                <div class="label">Pagamento</div>
+                <div class="value">${escapeHtml(pedido.pagamento || "-")}</div>
+              </div>
+              <div style="grid-column:1 / -1;">
+                <div class="label">Endereço</div>
+                <div class="valueSmall">${escapeHtml(pedido.endereco || "-")}</div>
+              </div>
+              <div>
+                <div class="label">Bairro</div>
+                <div class="valueSmall">${escapeHtml(pedido.bairro || "-")}</div>
+              </div>
+              <div>
+                <div class="label">Obs</div>
+                <div class="valueSmall">${escapeHtml(pedido.obs || "-")}</div>
+              </div>
+            </div>
+          </div>
+
+          <div class="section">
+            <div class="itemsTitle">Itens do Pedido</div>
+            <table>
+              ${itensHtml || `<tr><td style="padding:10px 0; color:rgba(255,255,255,.7);">Sem itens.</td></tr>`}
+            </table>
+          </div>
+
+          <div class="totalBox">
+            <div class="totalLeft">
+              Total do pedido
+              <div style="margin-top:4px; color:rgba(255,255,255,.55); font-size:11px;">
+                Valores em BRL
+              </div>
+            </div>
+            <div class="total">${escapeHtml(brl(totalCalc))}</div>
+          </div>
+
+          <div class="qrWrap">
+            <div class="qr">
+              <img src="${qrUrl}" alt="QR Code do Pedido" />
+            </div>
+            <div class="qrText">
+              <div class="h">QR do pedido</div>
+              <div class="p">
+                Escaneie para ver o resumo completo do pedido.<br/>
+                <span style="color:rgba(255,255,255,.55);">Dica: dá pra usar isso para conferência e entrega.</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="footer">
+            Obrigado pela preferência 💜 • Sorveteria Oggi • IA Drogarias
+          </div>
         </div>
-      </div>
-
-      <div class="small" style="text-align:center; margin-top:10px;">
-        Obrigado! 💜
       </div>
 
       <script>
@@ -159,7 +352,7 @@ function printNotinha(pedido: Pedido, itens: Item[]) {
   </html>
   `;
 
-  const w = window.open("", "_blank", "width=420,height=720");
+  const w = window.open("", "_blank", "width=420,height=820");
   if (!w) {
     alert("Bloqueador de pop-up ativado. Libere para imprimir.");
     return;
@@ -168,6 +361,7 @@ function printNotinha(pedido: Pedido, itens: Item[]) {
   w.document.write(html);
   w.document.close();
 }
+
 
 export default function PainelPedidosSorveteria() {
   const [loading, setLoading] = useState(true);
