@@ -6,7 +6,7 @@ import { useCart } from "@/app/contexts/CartContext";
 export default function FinalizarModal({ close }) {
   const { carrinho, limparCarrinho } = useCart();
 
-  const telefone = "11999999999"; // coloque o número da OGGI aqui!
+  const telefone = "11992515779"; // coloque o número da OGGI aqui!
 
   const mensagem = carrinho
     .map((p) => `• ${p.nome} - R$ ${p.preco}`)

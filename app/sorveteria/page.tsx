@@ -127,21 +127,23 @@ export default function SorveteriaPage() {
   async function criarPedidoNoSupabase(dados: any) {
     // 1) cria pedido
     const { data: pedido, error: e1 } = await supabase
-      .from("sorveteria_pedidos")
-      .insert([
-        {
-          status: "novo",
-          loja_nome: LOJA_NOME,
-          cliente_nome: dados?.nome ?? null,
-          endereco: dados?.endereco ?? null,
-          bairro: dados?.bairro ?? null,
-          referencia: dados?.referencia ?? null,
-          pagamento: dados?.pagamento ?? null,
-          obs: dados?.obs ?? "",
-        },
-      ])
-      .select("id")
-      .single();
+  .from("sorveteria_pedidos")
+  .insert([
+    {
+      status: "novo",
+      loja_nome: LOJA_NOME,
+      cliente_nome: dados?.nome ?? null,
+      endereco: dados?.endereco ?? null,
+      bairro: dados?.bairro ?? null,
+      referencia: dados?.referencia ?? null,
+      pagamento: dados?.pagamento ?? null,
+      obs: dados?.obs ?? "",
+      total: total, // ✅ ADD AQUI
+    },
+  ])
+  .select("id")
+  .single();
+
 
     if (e1) throw e1;
 
