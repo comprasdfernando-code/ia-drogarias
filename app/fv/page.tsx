@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
 import { useCart } from "./_components/cart";
@@ -12,8 +13,6 @@ import { CartUIProvider, useCartUI } from "./_components/cart-ui";
 
 /* =========================
    SERVIÇOS (BANNERS LATERAIS - DESKTOP)
-   - Desktop: usa as artes verticais e abre a agenda
-   - Mobile: NÃO aparece aqui (pra não ficar no topo)
 ========================= */
 type ServiceAd = {
   key: string;
@@ -69,7 +68,6 @@ function ServiceSideAds() {
 
   return (
     <>
-      {/* LATERAIS (somente desktop grande) */}
       <div className="hidden xl:flex fixed top-28 left-3 z-40">
         <Link href={left.href} className="group" title={left.title}>
           <div className="relative w-[160px] h-[520px] rounded-xl overflow-hidden shadow-lg">
@@ -136,6 +134,13 @@ function onlyDigits(v: string) {
   return (v || "").replace(/\D/g, "");
 }
 
+// ✅ helper pra centavos (corrige 3,99 -> 399 centavos e não 39900)
+function toCents(v: any) {
+  const n = Number(v || 0);
+  if (!Number.isFinite(n)) return 0;
+  return Math.round(n * 100);
+}
+
 function calcOff(pmc?: number | null, promo?: number | null) {
   const a = Number(pmc || 0);
   const b = Number(promo || 0);
@@ -178,7 +183,7 @@ export default function FarmaciaVirtualHomePage() {
   );
 }
 
-/* ✅ CORRIGIDO: sem React.FC (evita erro do GridSkeleton no App Router) */
+/* ✅ sem React.FC */
 function GridSkeleton() {
   return (
     <div className="mt-6 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-5">
@@ -221,7 +226,6 @@ function FarmaciaVirtualHome() {
 
   const isSearching = !!busca.trim();
 
-  // LOAD HOME
   async function loadHome(p = 0, append = false) {
     try {
       setLoadingHome(true);
@@ -262,7 +266,6 @@ function FarmaciaVirtualHome() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // SEARCH
   useEffect(() => {
     async function search() {
       const raw = busca.trim();
@@ -317,7 +320,6 @@ function FarmaciaVirtualHome() {
 
   return (
     <main className="min-h-screen bg-gray-50 pb-24">
-      {/* ✅ Desktop: banners laterais */}
       <ServiceSideAds />
 
       <header className="sticky top-0 z-40 bg-blue-700 shadow">
@@ -443,7 +445,6 @@ function FarmaciaVirtualHome() {
       </div>
 
       <section className="max-w-6xl mx-auto px-4 mt-6">
-        {/* ✅ MOBILE/TABLET: carrossel de serviços (AQUI, e não no topo) */}
         <ServiceQuickAds />
 
         {isSearching ? (
@@ -501,15 +502,16 @@ function FarmaciaVirtualHome() {
         )}
       </section>
 
-      {/* carrinho */}
       <CartModalPDV open={cartOpen} onClose={closeCart} />
     </main>
   );
 }
 
 function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const router = useRouter();
   const cart = useCart();
 
+  // ✅ taxa fixa (você pode trocar depois por regra por bairro/distância)
   const TAXA_ENTREGA_FIXA = 10;
   const PEDIDOS_TABLE = "fv_pedidos";
 
@@ -518,8 +520,8 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
 
   const [clienteNome, setClienteNome] = useState("");
   const [clienteTelefone, setClienteTelefone] = useState("");
-  const [clienteCpf, setClienteCpf] = useState(""); // ✅ ADD
-  const [clienteEmail, setClienteEmail] = useState(""); // ✅ ADD (opcional)
+  const [clienteCpf, setClienteCpf] = useState("");
+  const [clienteEmail, setClienteEmail] = useState("");
 
   const [tipoEntrega, setTipoEntrega] = useState<"ENTREGA" | "RETIRADA">("ENTREGA");
   const [endereco, setEndereco] = useState("");
@@ -536,12 +538,11 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
 
   const total = subtotal + taxaEntrega;
 
-  const needsCpf = pagamento === "PIX" || pagamento === "CARTAO"; // ✅
+  const needsCpf = pagamento === "PIX" || pagamento === "CARTAO";
   const canCheckout = useMemo(() => {
     if (!cart.items.length) return false;
     if (!clienteNome.trim()) return false;
     if (onlyDigits(clienteTelefone).length < 10) return false;
-
     if (needsCpf && onlyDigits(clienteCpf).length !== 11) return false;
 
     if (tipoEntrega === "ENTREGA") {
@@ -560,16 +561,12 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
     else cart.items.forEach((it) => cart.remove(it.ean));
   }
 
-  // 🔎 Busca estoque consolidado da VIEW por EAN
+  // 🔎 estoque consolidado
   async function getEstoqueByEan(eans: string[]) {
     const clean = Array.from(new Set(eans.map((x) => (x || "").trim()).filter(Boolean)));
     if (!clean.length) return new Map<string, number>();
 
-    const { data, error } = await supabase
-      .from("fv_home_com_estoque")
-      .select("ean,estoque_total")
-      .in("ean", clean);
-
+    const { data, error } = await supabase.from("fv_home_com_estoque").select("ean,estoque_total").in("ean", clean);
     if (error) throw error;
 
     const map = new Map<string, number>();
@@ -586,8 +583,49 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
   }
 
   function buildOrderId() {
-    // PagBank aceita string, então fazemos um id legível e único
-    return `ORDER_${Date.now()}`;
+    // ✅ id único (PagBank aceita string)
+    return `FV_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`;
+  }
+
+  function snapshotCheckoutData() {
+    // ✅ snapshot do carrinho ANTES de limpar (evita ir pro checkout com 0,00)
+    const items = cart.items.map((i, idx) => ({
+      reference_id: String(i?.ean || `item-${idx + 1}`),
+      name: String(i?.nome || "Item"),
+      quantity: Number(i?.qtd || 1),
+      unit_amount: toCents(i?.preco || 0), // ✅ centavos certo
+    }));
+
+    const taxaCentavos = tipoEntrega === "ENTREGA" ? toCents(taxaEntrega) : 0;
+
+    // ✅ taxa automática entra como item no checkout (cliente não adiciona nada)
+    if (taxaCentavos > 0) {
+      items.push({
+        reference_id: "taxa-entrega",
+        name: "Taxa de entrega",
+        quantity: 1,
+        unit_amount: taxaCentavos,
+      });
+    }
+
+    return {
+      cliente: {
+        name: clienteNome.trim() || "Cliente",
+        email: (clienteEmail || "").trim() || "cliente@iadrogarias.com",
+        tax_id: onlyDigits(clienteCpf),
+        phone: onlyDigits(clienteTelefone),
+      },
+      items,
+      taxa_entrega_centavos: taxaCentavos,
+      entrega: {
+        tipo_entrega: tipoEntrega,
+        endereco: tipoEntrega === "ENTREGA" ? endereco.trim() : null,
+        numero: tipoEntrega === "ENTREGA" ? numero.trim() : null,
+        bairro: tipoEntrega === "ENTREGA" ? bairro.trim() : null,
+      },
+      pagamento,
+      total_centavos: items.reduce((acc, it) => acc + it.unit_amount * it.quantity, 0),
+    };
   }
 
   function goToPayment(created: { pronto?: string; encomenda?: string; grupo?: string }) {
@@ -598,48 +636,37 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
     }
 
     const orderId = buildOrderId();
+    const snap = snapshotCheckoutData();
 
-    // ✅ monta itens no formato do PagBank (CENTAVOS)
-    const items = cart.items.map((i, idx) => ({
-      reference_id: String(i?.ean || `item-${idx + 1}`),
-      name: String(i?.nome || "Item"),
-      quantity: Number(i?.qtd || 1),
-      unit_amount: Math.round(Number(i?.preco || 0) * 100), // ✅ centavos
-    }));
-
-    const payload = {
-      order_id: orderId,
-      pedido_id: pedidoId,
-      grupo_id: created.grupo || null,
-      total_centavos: Math.round(Number(total || 0) * 100),
-      cliente: {
-        name: clienteNome.trim() || "Cliente",
-        email: (clienteEmail || "").trim() || "cliente@iadrogarias.com",
-        tax_id: onlyDigits(clienteCpf),
-        phone: onlyDigits(clienteTelefone),
-      },
-      items,
-      pagamento,
-      entrega: {
-        tipo_entrega: tipoEntrega,
-        endereco: tipoEntrega === "ENTREGA" ? endereco.trim() : null,
-        numero: tipoEntrega === "ENTREGA" ? numero.trim() : null,
-        bairro: tipoEntrega === "ENTREGA" ? bairro.trim() : null,
-        taxa: taxaEntrega,
-      },
-    };
-
-    // ✅ salva pro checkout não vir 0,00 mesmo sem buscar no banco
+    // ✅ salva fallback pro CheckoutClient não vir 0,00
     try {
-      sessionStorage.setItem(`fv_checkout_${orderId}`, JSON.stringify(payload));
+      sessionStorage.setItem(
+        `fv_checkout_${orderId}`,
+        JSON.stringify({
+          ok: true,
+          pedido_id: pedidoId,
+          grupo_id: created.grupo || null,
+          order_id: orderId,
+          cliente_nome: snap.cliente.name,
+          cliente_email: snap.cliente.email,
+          cliente_tax_id: snap.cliente.tax_id,
+          cliente_phone: snap.cliente.phone,
+          itens: snap.items,
+          total_centavos: snap.total_centavos,
+          taxa_entrega_centavos: snap.taxa_entrega_centavos,
+          entrega: snap.entrega,
+          pagamento: snap.pagamento,
+        })
+      );
     } catch {}
 
-    // ✅ manda order_id + pedido_id (resolve "order_id não informado")
     const url =
       `/fv/checkout?order_id=${encodeURIComponent(orderId)}` +
       `&pedido_id=${encodeURIComponent(pedidoId)}` +
-      (created.grupo ? `&grupo_id=${encodeURIComponent(created.grupo)}` : "");
+      (created.grupo ? `&grupo_id=${encodeURIComponent(created.grupo)}` : "") +
+      `&taxa_centavos=${encodeURIComponent(String(snap.taxa_entrega_centavos || 0))}`;
 
+    // ✅ redireciona direto (sem depender de estado)
     window.location.href = url;
   }
 
@@ -649,6 +676,9 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
     setSaving(true);
     try {
       const grupoId = (globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : undefined) || undefined;
+
+      // ✅ snapshot antes de qualquer coisa (pra pagamento automático)
+      const willPayOnline = pagamento === "PIX" || pagamento === "CARTAO";
 
       // 1) estoque consolidado
       const eans = cart.items.map((i) => i.ean);
@@ -669,26 +699,17 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
           preco: Number(i.preco || 0),
           subtotal: Number(i.preco || 0) * qtd,
           estoque_total: est,
-
-          // ✅ ADD: já deixa pronto pro PagBank (centavos)
-          reference_id: String(i.ean || ""),
-          name: String(i.nome || "Item"),
-          quantity: qtd,
-          unit_amount: Math.round(Number(i.preco || 0) * 100),
         };
 
         if (est >= qtd && qtd > 0) pronta.push(item);
         else encomenda.push(item);
       }
 
-      // 3) base do pedido (dados do cliente)
+      // 3) base
       const base = {
         grupo_id: grupoId ?? null,
         cliente_nome: clienteNome.trim(),
         cliente_whatsapp: onlyDigits(clienteTelefone),
-
-        // ✅ não inventa coluna no banco: guardamos CPF/Email só no checkout via sessionStorage
-        // cpf/email ficam no sessionStorage (goToPayment)
 
         tipo_entrega: tipoEntrega,
         endereco: tipoEntrega === "ENTREGA" ? endereco.trim() : null,
@@ -700,10 +721,9 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
         status: "NOVO",
       };
 
-      // 4) cria 1 ou 2 pedidos
       const created: { pronto?: string; encomenda?: string; grupo?: string } = { grupo: grupoId };
 
-      // PRONTA ENTREGA
+      // PRONTA
       if (pronta.length) {
         const subPronto = pronta.reduce((acc, it) => acc + Number(it.subtotal || 0), 0);
         const totalPronto = subPronto + taxaEntrega;
@@ -735,9 +755,15 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
 
       setPedidoCriado(created);
 
-      // ✅ só limpa carrinho depois de setar pedidoCriado
-      // mas precisa manter os itens pra ir pro checkout -> vamos manter uma cópia no sessionStorage na hora do clique
-      // então aqui pode limpar sim
+      // ✅ PATCH PRINCIPAL:
+      // Se pagamento online (PIX/CARTAO), vai direto pro checkout AUTOMÁTICO (sem clique)
+      if (willPayOnline) {
+        // NÃO pode limpar o carrinho antes do snapshot do goToPayment (ele usa cart.items)
+        goToPayment(created);
+        return;
+      }
+
+      // Dinheiro/Combinar: pode limpar e mostrar sucesso
       clearCartSafe();
     } catch (e: any) {
       console.error(e);
@@ -785,23 +811,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
                 ) : null}
               </div>
 
-              {/* ✅ ADD: Se PIX/CARTAO -> botão pra ir pro pagamento */}
-              {pagamento === "PIX" || pagamento === "CARTAO" ? (
-                <div className="mt-4 space-y-2">
-                  <div className="text-xs text-gray-700">
-                    Para {pagamento === "PIX" ? "gerar o PIX" : "pagar com cartão"}, vamos abrir a tela de pagamento.
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => goToPayment(pedidoCriado)}
-                    className="w-full rounded-xl bg-black hover:bg-gray-900 text-white py-3 font-extrabold"
-                  >
-                    Ir para pagamento →
-                  </button>
-                </div>
-              ) : null}
-
-              <div className="mt-3">
+              <div className="mt-4">
                 <button
                   type="button"
                   onClick={() => {
@@ -824,13 +834,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
               {cart.items.map((it) => (
                 <div key={it.ean} className="border rounded-2xl p-3 flex gap-3">
                   <div className="h-14 w-14 bg-gray-50 rounded-xl overflow-hidden flex items-center justify-center">
-                    <Image
-                      src={it.imagem || "/produtos/caixa-padrao.png"}
-                      alt={it.nome}
-                      width={64}
-                      height={64}
-                      className="object-contain"
-                    />
+                    <Image src={it.imagem || "/produtos/caixa-padrao.png"} alt={it.nome} width={64} height={64} className="object-contain" />
                   </div>
 
                   <div className="flex-1 min-w-0">
@@ -902,7 +906,6 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
                 disabled={saving || !!pedidoCriado}
               />
 
-              {/* ✅ ADD: CPF */}
               <input
                 placeholder={needsCpf ? "CPF (obrigatório para PIX/CARTÃO)" : "CPF (opcional)"}
                 value={clienteCpf}
@@ -913,7 +916,6 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
                 disabled={saving || !!pedidoCriado}
               />
 
-              {/* ✅ ADD: Email (opcional, mas ajuda PagBank) */}
               <input
                 placeholder="Email (opcional)"
                 value={clienteEmail}
@@ -922,13 +924,9 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
                 disabled={saving || !!pedidoCriado}
               />
 
-              <div className="text-[11px] text-gray-500">
-                Dica: WhatsApp com DDD. CPF só números (11 dígitos).
-              </div>
+              <div className="text-[11px] text-gray-500">Dica: WhatsApp com DDD. CPF só números (11 dígitos).</div>
               {needsCpf && onlyDigits(clienteCpf).length !== 11 ? (
-                <div className="text-[11px] text-red-600 font-bold">
-                  Para {pagamento}, o CPF é obrigatório (11 dígitos).
-                </div>
+                <div className="text-[11px] text-red-600 font-bold">Para {pagamento}, o CPF é obrigatório (11 dígitos).</div>
               ) : null}
             </div>
           </div>
@@ -990,9 +988,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
                 <div className="text-sm font-extrabold text-blue-900">Taxa fixa: {brl(taxaEntrega)}</div>
               </div>
             ) : (
-              <div className="mt-3 text-sm text-gray-600">
-                Você pode retirar na loja. Assim que confirmar, enviamos o endereço/horário.
-              </div>
+              <div className="mt-3 text-sm text-gray-600">Você pode retirar na loja. Assim que confirmar, enviamos o endereço/horário.</div>
             )}
           </div>
 
@@ -1118,29 +1114,17 @@ function ProdutoCardUltra({ p, onComprar }: { p: FVProduto; onComprar: () => voi
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition overflow-hidden flex flex-col">
-      {/* IMAGEM + TAGS */}
       <div className="relative p-3">
-        <Link
-          href={hrefProduto}
-          className="bg-gray-50 rounded-xl p-2 flex items-center justify-center hover:opacity-95 transition"
-        >
-          <Image
-            src={firstImg(p.imagens)}
-            alt={p.nome || "Produto"}
-            width={240}
-            height={240}
-            className="rounded object-contain h-24 sm:h-28"
-          />
+        <Link href={hrefProduto} className="bg-gray-50 rounded-xl p-2 flex items-center justify-center hover:opacity-95 transition">
+          <Image src={firstImg(p.imagens)} alt={p.nome || "Produto"} width={240} height={240} className="rounded object-contain h-24 sm:h-28" />
         </Link>
 
-        {/* OFF */}
         {pr.emPromo && pr.off > 0 ? (
           <span className="absolute top-3 right-3 text-[11px] font-extrabold bg-red-600 text-white px-2 py-1 rounded-full shadow-sm">
             {pr.off}% OFF
           </span>
         ) : null}
 
-        {/* ESTOQUE */}
         <span
           className={`absolute top-3 left-3 text-[11px] font-extrabold px-2 py-1 rounded-full shadow-sm ${
             disponivel ? "bg-green-600 text-white" : "bg-gray-200 text-gray-700"
@@ -1151,7 +1135,6 @@ function ProdutoCardUltra({ p, onComprar }: { p: FVProduto; onComprar: () => voi
         </span>
       </div>
 
-      {/* INFO */}
       <div className="px-3 pb-3 flex-1 flex flex-col">
         <div className="text-[11px] text-gray-500 line-clamp-1">{p.laboratorio || "—"}</div>
 
@@ -1161,7 +1144,6 @@ function ProdutoCardUltra({ p, onComprar }: { p: FVProduto; onComprar: () => voi
 
         {p.apresentacao ? <div className="text-[11px] text-gray-600 mt-1 line-clamp-1">{p.apresentacao}</div> : null}
 
-        {/* PREÇO */}
         <div className="mt-2">
           {pr.emPromo ? (
             <>
@@ -1175,7 +1157,6 @@ function ProdutoCardUltra({ p, onComprar }: { p: FVProduto; onComprar: () => voi
           )}
         </div>
 
-        {/* AÇÕES */}
         <div className="mt-3 flex items-center gap-2">
           <div className="flex items-center border rounded-xl overflow-hidden">
             <button
@@ -1212,48 +1193,16 @@ function ProdutoCardUltra({ p, onComprar }: { p: FVProduto; onComprar: () => voi
   );
 }
 
-/**
- * ✅ OPÇÃO 3 (MOBILE/TABLET): faixa "Serviços rápidos"
- * - aparece só em telas menores que xl
- * - chama WhatsApp com mensagem pronta
- */
+/* ✅ faixa serviços */
 function ServiceQuickAds() {
   const base = "/servicos/agenda";
   const link = (servico: string) => `${base}?servico=${encodeURIComponent(servico)}`;
 
   const cards = [
-    {
-      key: "pressao",
-      title: "Aferição de Pressão",
-      subtitle: "Rápido e prático",
-      href: link("Aferição de Pressão Arterial"),
-      emoji: "🩺",
-      gradient: "from-blue-600 to-blue-400",
-    },
-    {
-      key: "glicemia",
-      title: "Teste de Glicemia",
-      subtitle: "Resultado na hora",
-      href: link("Teste de Glicemia"),
-      emoji: "🩸",
-      gradient: "from-orange-500 to-amber-400",
-    },
-    {
-      key: "injecao",
-      title: "Aplicação de Injeção",
-      subtitle: "Com profissional",
-      href: link("Aplicação de Injeção"),
-      emoji: "💉",
-      gradient: "from-emerald-600 to-green-400",
-    },
-    {
-      key: "revisao",
-      title: "Revisão de Medicamentos",
-      subtitle: "Mais segurança",
-      href: link("Revisão de Medicamentos"),
-      emoji: "📋",
-      gradient: "from-indigo-600 to-sky-400",
-    },
+    { key: "pressao", title: "Aferição de Pressão", subtitle: "Rápido e prático", href: link("Aferição de Pressão Arterial"), emoji: "🩺", gradient: "from-blue-600 to-blue-400" },
+    { key: "glicemia", title: "Teste de Glicemia", subtitle: "Resultado na hora", href: link("Teste de Glicemia"), emoji: "🩸", gradient: "from-orange-500 to-amber-400" },
+    { key: "injecao", title: "Aplicação de Injeção", subtitle: "Com profissional", href: link("Aplicação de Injeção"), emoji: "💉", gradient: "from-emerald-600 to-green-400" },
+    { key: "revisao", title: "Revisão de Medicamentos", subtitle: "Mais segurança", href: link("Revisão de Medicamentos"), emoji: "📋", gradient: "from-indigo-600 to-sky-400" },
   ];
 
   return (
