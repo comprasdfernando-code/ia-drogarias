@@ -1,9 +1,8 @@
+// app/fv/checkout/page.tsx
 import { Suspense } from "react";
 import CheckoutClient from "./CheckoutClient";
 
-export const dynamic = "force-dynamic"; // evita pre-render quebrar com searchParams
-
-export default function CheckoutPage() {
+export default function Page() {
   return (
     <Suspense fallback={<div className="p-6">Carregando checkout…</div>}>
       <CheckoutClient />
