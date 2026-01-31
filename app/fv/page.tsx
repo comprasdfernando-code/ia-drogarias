@@ -273,7 +273,6 @@ function FarmaciaVirtualHome() {
 
       setLoadingBusca(true);
       try {
-        // fallback direto na VIEW
         const digits = raw.replace(/\D/g, "");
         let query = supabase
           .from(VIEW_HOME)
@@ -364,9 +363,7 @@ function FarmaciaVirtualHome() {
                     Limpar
                   </button>
                 ) : null}
-                <span className="text-blue-900 bg-green-400/90 px-2 py-1 rounded-full text-xs font-extrabold">
-                  🔎
-                </span>
+                <span className="text-blue-900 bg-green-400/90 px-2 py-1 rounded-full text-xs font-extrabold">🔎</span>
               </div>
             </div>
 
@@ -408,10 +405,7 @@ function FarmaciaVirtualHome() {
                     </button>
                   ) : null}
 
-                  <span
-                    className="text-blue-900 bg-green-400/90 px-2 py-1 rounded-full text-xs font-extrabold"
-                    aria-hidden
-                  >
+                  <span className="text-blue-900 bg-green-400/90 px-2 py-1 rounded-full text-xs font-extrabold" aria-hidden>
                     🔎
                   </span>
                 </div>
@@ -524,9 +518,8 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
 
   const [clienteNome, setClienteNome] = useState("");
   const [clienteTelefone, setClienteTelefone] = useState("");
-  // ✅ NOVOS
-  const [clienteCpf, setClienteCpf] = useState("");
-  const [clienteEmail, setClienteEmail] = useState("");
+  const [clienteCpf, setClienteCpf] = useState(""); // ✅ ADD
+  const [clienteEmail, setClienteEmail] = useState(""); // ✅ ADD (opcional)
 
   const [tipoEntrega, setTipoEntrega] = useState<"ENTREGA" | "RETIRADA">("ENTREGA");
   const [endereco, setEndereco] = useState("");
@@ -543,22 +536,19 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
 
   const total = subtotal + taxaEntrega;
 
+  const needsCpf = pagamento === "PIX" || pagamento === "CARTAO"; // ✅
   const canCheckout = useMemo(() => {
     if (!cart.items.length) return false;
     if (!clienteNome.trim()) return false;
     if (onlyDigits(clienteTelefone).length < 10) return false;
 
-    // ✅ CPF obrigatório se PIX/CARTAO
-    if (pagamento === "PIX" || pagamento === "CARTAO") {
-      const cpf = onlyDigits(clienteCpf);
-      if (cpf.length !== 11) return false;
-    }
+    if (needsCpf && onlyDigits(clienteCpf).length !== 11) return false;
 
     if (tipoEntrega === "ENTREGA") {
       if (!endereco.trim() || !numero.trim() || !bairro.trim()) return false;
     }
     return true;
-  }, [cart.items.length, clienteNome, clienteTelefone, clienteCpf, pagamento, tipoEntrega, endereco, numero, bairro]);
+  }, [cart.items.length, clienteNome, clienteTelefone, needsCpf, clienteCpf, tipoEntrega, endereco, numero, bairro]);
 
   useEffect(() => {
     if (!open) return;
@@ -575,7 +565,10 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
     const clean = Array.from(new Set(eans.map((x) => (x || "").trim()).filter(Boolean)));
     if (!clean.length) return new Map<string, number>();
 
-    const { data, error } = await supabase.from("fv_home_com_estoque").select("ean,estoque_total").in("ean", clean);
+    const { data, error } = await supabase
+      .from("fv_home_com_estoque")
+      .select("ean,estoque_total")
+      .in("ean", clean);
 
     if (error) throw error;
 
@@ -592,6 +585,64 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
     return String((data as any).id || "");
   }
 
+  function buildOrderId() {
+    // PagBank aceita string, então fazemos um id legível e único
+    return `ORDER_${Date.now()}`;
+  }
+
+  function goToPayment(created: { pronto?: string; encomenda?: string; grupo?: string }) {
+    const pedidoId = created.pronto || created.encomenda || "";
+    if (!pedidoId) {
+      alert("Pedido não encontrado para pagamento.");
+      return;
+    }
+
+    const orderId = buildOrderId();
+
+    // ✅ monta itens no formato do PagBank (CENTAVOS)
+    const items = cart.items.map((i, idx) => ({
+      reference_id: String(i?.ean || `item-${idx + 1}`),
+      name: String(i?.nome || "Item"),
+      quantity: Number(i?.qtd || 1),
+      unit_amount: Math.round(Number(i?.preco || 0) * 100), // ✅ centavos
+    }));
+
+    const payload = {
+      order_id: orderId,
+      pedido_id: pedidoId,
+      grupo_id: created.grupo || null,
+      total_centavos: Math.round(Number(total || 0) * 100),
+      cliente: {
+        name: clienteNome.trim() || "Cliente",
+        email: (clienteEmail || "").trim() || "cliente@iadrogarias.com",
+        tax_id: onlyDigits(clienteCpf),
+        phone: onlyDigits(clienteTelefone),
+      },
+      items,
+      pagamento,
+      entrega: {
+        tipo_entrega: tipoEntrega,
+        endereco: tipoEntrega === "ENTREGA" ? endereco.trim() : null,
+        numero: tipoEntrega === "ENTREGA" ? numero.trim() : null,
+        bairro: tipoEntrega === "ENTREGA" ? bairro.trim() : null,
+        taxa: taxaEntrega,
+      },
+    };
+
+    // ✅ salva pro checkout não vir 0,00 mesmo sem buscar no banco
+    try {
+      sessionStorage.setItem(`fv_checkout_${orderId}`, JSON.stringify(payload));
+    } catch {}
+
+    // ✅ manda order_id + pedido_id (resolve "order_id não informado")
+    const url =
+      `/fv/checkout?order_id=${encodeURIComponent(orderId)}` +
+      `&pedido_id=${encodeURIComponent(pedidoId)}` +
+      (created.grupo ? `&grupo_id=${encodeURIComponent(created.grupo)}` : "");
+
+    window.location.href = url;
+  }
+
   async function finalizarPedido() {
     if (!canCheckout || saving) return;
 
@@ -603,7 +654,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
       const eans = cart.items.map((i) => i.ean);
       const estoqueMap = await getEstoqueByEan(eans);
 
-      // 2) separa itens (opção 2)
+      // 2) separa itens
       const pronta: any[] = [];
       const encomenda: any[] = [];
 
@@ -615,9 +666,15 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
           ean: i.ean,
           nome: i.nome,
           qtd,
-          preco: i.preco,
+          preco: Number(i.preco || 0),
           subtotal: Number(i.preco || 0) * qtd,
           estoque_total: est,
+
+          // ✅ ADD: já deixa pronto pro PagBank (centavos)
+          reference_id: String(i.ean || ""),
+          name: String(i.nome || "Item"),
+          quantity: qtd,
+          unit_amount: Math.round(Number(i.preco || 0) * 100),
         };
 
         if (est >= qtd && qtd > 0) pronta.push(item);
@@ -630,9 +687,8 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
         cliente_nome: clienteNome.trim(),
         cliente_whatsapp: onlyDigits(clienteTelefone),
 
-        // ✅ NOVOS (precisa existir coluna no banco)
-        cliente_cpf: onlyDigits(clienteCpf) || null,
-        cliente_email: (clienteEmail || "").trim() || null,
+        // ✅ não inventa coluna no banco: guardamos CPF/Email só no checkout via sessionStorage
+        // cpf/email ficam no sessionStorage (goToPayment)
 
         tipo_entrega: tipoEntrega,
         endereco: tipoEntrega === "ENTREGA" ? endereco.trim() : null,
@@ -678,6 +734,10 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
       }
 
       setPedidoCriado(created);
+
+      // ✅ só limpa carrinho depois de setar pedidoCriado
+      // mas precisa manter os itens pra ir pro checkout -> vamos manter uma cópia no sessionStorage na hora do clique
+      // então aqui pode limpar sim
       clearCartSafe();
     } catch (e: any) {
       console.error(e);
@@ -688,8 +748,6 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
   }
 
   if (!open) return null;
-
-  const showPaymentButton = !!pedidoCriado && (pagamento === "PIX" || pagamento === "CARTAO");
 
   return (
     <div className="fixed inset-0 z-[70]">
@@ -727,18 +785,16 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
                 ) : null}
               </div>
 
-              {showPaymentButton ? (
-                <div className="mt-3 grid grid-cols-1 gap-2">
+              {/* ✅ ADD: Se PIX/CARTAO -> botão pra ir pro pagamento */}
+              {pagamento === "PIX" || pagamento === "CARTAO" ? (
+                <div className="mt-4 space-y-2">
+                  <div className="text-xs text-gray-700">
+                    Para {pagamento === "PIX" ? "gerar o PIX" : "pagar com cartão"}, vamos abrir a tela de pagamento.
+                  </div>
                   <button
                     type="button"
-                    onClick={() => {
-                      const pid = pedidoCriado.pronto || pedidoCriado.encomenda || "";
-                      const gid = pedidoCriado.grupo || "";
-                      window.location.href = `/fv/checkout?pedido_id=${encodeURIComponent(pid)}&grupo_id=${encodeURIComponent(
-                        gid
-                      )}`;
-                    }}
-                    className="w-full rounded-xl bg-green-600 hover:bg-green-700 text-white py-3 font-extrabold"
+                    onClick={() => goToPayment(pedidoCriado)}
+                    className="w-full rounded-xl bg-black hover:bg-gray-900 text-white py-3 font-extrabold"
                   >
                     Ir para pagamento →
                   </button>
@@ -762,9 +818,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
 
           {/* ITENS */}
           {cart.items.length === 0 ? (
-            <div className="text-gray-600 bg-gray-50 border rounded-2xl p-4">
-              Seu carrinho está vazio. Adicione itens 😊
-            </div>
+            <div className="text-gray-600 bg-gray-50 border rounded-2xl p-4">Seu carrinho está vazio. Adicione itens 😊</div>
           ) : (
             <div className="space-y-3">
               {cart.items.map((it) => (
@@ -848,16 +902,20 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
                 disabled={saving || !!pedidoCriado}
               />
 
-              {/* ✅ CPF + EMAIL */}
+              {/* ✅ ADD: CPF */}
               <input
-                placeholder="CPF (somente números) — obrigatório para PIX/CARTÃO"
+                placeholder={needsCpf ? "CPF (obrigatório para PIX/CARTÃO)" : "CPF (opcional)"}
                 value={clienteCpf}
                 onChange={(e) => setClienteCpf(e.target.value)}
-                className="w-full border bg-white px-3 py-2.5 rounded-xl outline-none focus:ring-4 focus:ring-blue-100"
+                className={`w-full border bg-white px-3 py-2.5 rounded-xl outline-none focus:ring-4 ${
+                  needsCpf ? "focus:ring-amber-100" : "focus:ring-blue-100"
+                }`}
                 disabled={saving || !!pedidoCriado}
               />
+
+              {/* ✅ ADD: Email (opcional, mas ajuda PagBank) */}
               <input
-                placeholder="E-mail (opcional)"
+                placeholder="Email (opcional)"
                 value={clienteEmail}
                 onChange={(e) => setClienteEmail(e.target.value)}
                 className="w-full border bg-white px-3 py-2.5 rounded-xl outline-none focus:ring-4 focus:ring-blue-100"
@@ -865,8 +923,13 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
               />
 
               <div className="text-[11px] text-gray-500">
-                Dica: informe com DDD. Ex: 11999999999 • Para PIX/CARTÃO, precisamos do CPF (11 dígitos).
+                Dica: WhatsApp com DDD. CPF só números (11 dígitos).
               </div>
+              {needsCpf && onlyDigits(clienteCpf).length !== 11 ? (
+                <div className="text-[11px] text-red-600 font-bold">
+                  Para {pagamento}, o CPF é obrigatório (11 dígitos).
+                </div>
+              ) : null}
             </div>
           </div>
 
@@ -953,11 +1016,11 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
               ))}
             </div>
 
-            {(pagamento === "PIX" || pagamento === "CARTAO") ? (
-              <div className="mt-2 text-xs text-gray-500">
-                * Para PIX/CARTÃO, precisamos do CPF para gerar o pagamento.
+            {(pagamento === "PIX" || pagamento === "CARTAO") && (
+              <div className="mt-2 text-[11px] text-gray-600">
+                * Para {pagamento}, precisamos do <b>CPF</b> para gerar o pagamento.
               </div>
-            ) : null}
+            )}
           </div>
         </div>
 
@@ -1002,8 +1065,13 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
 
           {!canCheckout ? (
             <div className="mt-2 text-xs text-gray-500">
-              Para liberar: informe <b>Nome</b>, <b>WhatsApp</b> e adicione itens. Se escolher <b>Entrega</b>, preencha{" "}
-              <b>Endereço/Número/Bairro</b>. Para <b>PIX/CARTÃO</b>, informe <b>CPF</b>.
+              Para liberar: informe <b>Nome</b>, <b>WhatsApp</b> e adicione itens.{" "}
+              {(pagamento === "PIX" || pagamento === "CARTAO") && (
+                <>
+                  Para <b>{pagamento}</b>, informe também <b>CPF</b>.
+                </>
+              )}{" "}
+              Se escolher <b>Entrega</b>, preencha <b>Endereço/Número/Bairro</b>.
             </div>
           ) : null}
         </div>
