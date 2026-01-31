@@ -1,9 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useSearchParams, useRouter } from "next/navigation";
 import PagbankPayment from "../_components/PagbankPayment";
 
+/* =========================
+   TIPOS
+========================= */
 type VendaSite = {
   id?: string;
   status?: string | null;
@@ -15,272 +18,292 @@ type VendaSite = {
 
   itens?: any[] | null;
 
-  // alguns lugares podem vir com total em centavos ou reais
   total_centavos?: number | null;
   total?: number | null;
   total_reais?: number | null;
 };
 
+type CheckoutItem = {
+  reference_id?: string;
+  name: string;
+  quantity: number;
+  unit_amount: number; // centavos
+};
+
+type Cliente = {
+  name: string;
+  email: string;
+  tax_id?: string;
+  phone?: string;
+};
+
+/* =========================
+   HELPERS
+========================= */
 function onlyDigits(s: string) {
   return (s || "").replace(/\D/g, "");
 }
 
-/** Converte valores que podem vir em reais OU centavos para centavos */
-function toCents(v: any): number {
-  if (v === null || v === undefined) return 0;
-
-  // se vier string "19,99" ou "19.99"
-  if (typeof v === "string") {
-    const s = v.trim().replace(/\./g, "").replace(",", ".");
-    const n = Number(s);
-    if (!Number.isFinite(n)) return 0;
-    // se for 0..9999 assume reais, converte
-    if (n > 0 && n < 100000) return Math.round(n * 100);
-    return Math.round(n);
-  }
-
-  if (typeof v === "number") {
-    if (!Number.isFinite(v)) return 0;
-
-    // heurística:
-    // - se tiver casas decimais, provavelmente reais (19.99)
-    const hasDecimals = Math.abs(v - Math.round(v)) > 0.000001;
-    if (hasDecimals) return Math.round(v * 100);
-
-    // - se for pequeno demais (ex.: 20), pode ser reais (20) -> 2000
-    //   MAS cuidado: pode ser centavos 20 também. Vamos assumir:
-    //   se for <= 9999, costuma ser reais no front; se for centavos geralmente fica >= 100.
-    //   Aqui, vamos usar: se for <= 9999 e NÃO parece centavos, tratar como reais.
-    if (v > 0 && v <= 9999) return Math.round(v * 100);
-
-    // - senão já deve ser centavos
-    return Math.round(v);
-  }
-
-  return 0;
+function toNumber(v: any, def = 0) {
+  const n = Number(v);
+  return Number.isFinite(n) ? n : def;
 }
 
-/** Tenta achar um payload salvo no sessionStorage no padrão fv_checkout_* */
-function findCheckoutInSession(pedidoId?: string) {
+function normalizeItem(i: any, idx: number): CheckoutItem {
+  // tenta cobrir o máximo de formatos possíveis
+  const quantity = toNumber(i?.quantity ?? i?.qtd ?? i?.qty ?? 1, 1);
+
+  // unit_amount em centavos
+  // tenta: unit_amount | preco_centavos | unitAmount | price_cents
+  // tenta reais: preco | price | valor -> converte para centavos se parecer decimal
+  let unit = i?.unit_amount ?? i?.preco_centavos ?? i?.unitAmount ?? i?.price_cents ?? null;
+
+  if (unit == null) {
+    const maybeReais = i?.preco ?? i?.price ?? i?.valor ?? i?.unit_price ?? null;
+    if (maybeReais != null) {
+      const vr = toNumber(maybeReais, 0);
+      // se for algo tipo 19.99, converte p/ centavos
+      unit = Math.round(vr * 100);
+    } else {
+      unit = 0;
+    }
+  } else {
+    unit = toNumber(unit, 0);
+  }
+
+  const reference_id = String(i?.reference_id ?? i?.ean ?? i?.id ?? `item-${idx + 1}`);
+  const name = String(i?.name ?? i?.nome ?? i?.titulo ?? "Item");
+
+  return { reference_id, name, quantity, unit_amount: unit };
+}
+
+function calcTotalCentavos(items: CheckoutItem[]) {
+  return items.reduce((acc, it) => acc + toNumber(it.unit_amount) * toNumber(it.quantity, 1), 0);
+}
+
+function safeJsonParse(text: string) {
   try {
-    if (typeof window === "undefined") return null;
-
-    // se tiver pedidoId, tentamos bater direto
-    if (pedidoId) {
-      const direct = sessionStorage.getItem(`fv_checkout_${pedidoId}`);
-      if (direct) return JSON.parse(direct);
-    }
-
-    // senão, procura o último que existir
-    const keys: string[] = [];
-    for (let i = 0; i < sessionStorage.length; i++) {
-      const k = sessionStorage.key(i);
-      if (k && k.startsWith("fv_checkout_")) keys.push(k);
-    }
-    keys.sort(); // geralmente tem timestamp/uuid no final, mas ok
-    const lastKey = keys[keys.length - 1];
-    if (!lastKey) return null;
-
-    const raw = sessionStorage.getItem(lastKey);
-    if (!raw) return null;
-
-    return JSON.parse(raw);
+    return JSON.parse(text);
   } catch {
     return null;
   }
 }
 
-/** fetch JSON seguro (evita "Unexpected end of JSON input") */
 async function safeFetchJson(input: RequestInfo, init?: RequestInit) {
   const r = await fetch(input, init);
   const text = await r.text();
-  let j: any = null;
 
-  if (text && text.trim()) {
-    try {
-      j = JSON.parse(text);
-    } catch {
-      // se o backend devolver HTML/empty, mantém null
-      j = null;
-    }
-  }
+  // Quando a rota não existe no Next, geralmente vem HTML 404 (doctype)
+  const trimmed = (text || "").trim();
+  const isHtml = trimmed.startsWith("<!DOCTYPE html>") || trimmed.startsWith("<html");
 
-  return { r, j, text };
+  const j = isHtml ? null : safeJsonParse(text);
+  return { r, text, j, isHtml };
 }
 
+function pickLatestCheckoutFromSession(): any | null {
+  try {
+    const keys: string[] = [];
+    for (let i = 0; i < sessionStorage.length; i++) {
+      const k = sessionStorage.key(i);
+      if (k && k.startsWith("fv_checkout_")) keys.push(k);
+    }
+    if (!keys.length) return null;
+
+    // tenta pegar o mais recente: se a chave tiver timestamp no final, usa isso.
+    const scored = keys
+      .map((k) => {
+        const m = k.match(/fv_checkout_(\d+)/);
+        const ts = m ? Number(m[1]) : 0;
+        return { k, ts };
+      })
+      .sort((a, b) => b.ts - a.ts);
+
+    for (const { k } of scored) {
+      const raw = sessionStorage.getItem(k);
+      if (!raw) continue;
+      const obj = safeJsonParse(raw);
+      if (obj) return { _key: k, ...obj };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+function normalizeVendaFromSession(s: any): VendaSite {
+  // padrões comuns que você pode ter salvo
+  return {
+    id: s?.venda_id ?? s?.pedido_id ?? s?.id ?? null,
+    status: s?.status ?? null,
+
+    cliente_nome: s?.cliente?.name ?? s?.cliente_nome ?? s?.nome ?? null,
+    cliente_email: s?.cliente?.email ?? s?.cliente_email ?? s?.email ?? null,
+    cliente_tax_id: s?.cliente?.tax_id ?? s?.cliente_tax_id ?? s?.cpf ?? null,
+    cliente_phone: s?.cliente?.phone ?? s?.cliente_phone ?? s?.telefone ?? null,
+
+    itens: s?.items ?? s?.itens ?? s?.cart?.items ?? null,
+
+    total_centavos:
+      s?.total_centavos ??
+      s?.total_cents ??
+      (s?.total != null ? Math.round(Number(s.total) * 100) : null) ??
+      (s?.total_reais != null ? Math.round(Number(s.total_reais) * 100) : null) ??
+      null,
+  };
+}
+
+/* =========================
+   COMPONENT
+========================= */
 export default function CheckoutClient() {
   const sp = useSearchParams();
   const router = useRouter();
 
-  // Pode vir do carrinho / do seu fluxo:
-  const orderIdParam = sp.get("order_id") || "";
+  const orderId = sp.get("order_id") || "";
   const pedidoId = sp.get("pedido_id") || "";
   const vendaId = sp.get("venda_id") || "";
 
-  const [resolvedOrderId, setResolvedOrderId] = useState<string>(orderIdParam);
-
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
-
   const [venda, setVenda] = useState<VendaSite | null>(null);
+  const [debugSource, setDebugSource] = useState<string | null>(null);
 
-  // CPF manual (pra PIX)
-  const [cpf, setCpf] = useState("");
-
-  // 1) Resolve order_id se não vier na URL
   useEffect(() => {
-    if (orderIdParam) {
-      setResolvedOrderId(orderIdParam);
-      return;
-    }
+    let alive = true;
 
-    // tenta recuperar do sessionStorage
-    const ss = findCheckoutInSession(pedidoId || undefined);
-
-    // algumas possibilidades de como você pode ter salvo:
-    // ss.order_id, ss.orderId, ss.pagbank_order_id, etc.
-    const possible =
-      ss?.order_id ||
-      ss?.orderId ||
-      ss?.pagbank_order_id ||
-      ss?.pagbank?.order_id ||
-      "";
-
-    if (possible) {
-      setResolvedOrderId(String(possible));
-      return;
-    }
-
-    // sem order_id, não trava aqui ainda: vamos tentar buscar pelo pedido_id/venda_id
-    setResolvedOrderId("");
-  }, [orderIdParam, pedidoId]);
-
-  // 2) Busca a venda no backend (status)
-  useEffect(() => {
     (async () => {
-      setLoading(true);
-      setErr(null);
-      setVenda(null);
-
       try {
-        // Se não tenho nada pra identificar, erro.
-        if (!resolvedOrderId && !pedidoId && !vendaId) {
-          setErr("order_id não informado (e não encontrei no sessionStorage).");
+        setLoading(true);
+        setErr(null);
+        setDebugSource(null);
+
+        // precisa ter pelo menos algum identificador
+        if (!orderId && !pedidoId && !vendaId) {
+          // tenta achar do sessionStorage mesmo assim
+          const s = pickLatestCheckoutFromSession();
+          if (s) {
+            const v = normalizeVendaFromSession(s);
+            if (!alive) return;
+            setVenda(v);
+            setDebugSource(`sessionStorage:${s?._key || "fv_checkout_*"}`);
+            return;
+          }
+
+          setErr("order_id não informado (e não achei fv_checkout_* no sessionStorage).");
+          setVenda(null);
           return;
         }
 
-        // Tentativa A: POST /api/pagbank/status (seu código original)
-        // Enviamos o máximo de chaves possíveis (order_id, pedido_id, venda_id)
-        const body = JSON.stringify({
-          order_id: resolvedOrderId || undefined,
-          pedido_id: pedidoId || undefined,
-          venda_id: vendaId || undefined,
-        });
-
-        let resp = await safeFetchJson("/api/pagbank/status", {
+        // 1) tenta API status
+        const { r, j, text, isHtml } = await safeFetchJson("/api/pagbank/status", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body,
           cache: "no-store",
+          body: JSON.stringify({
+            order_id: orderId || undefined,
+            pedido_id: pedidoId || undefined,
+            venda_id: vendaId || undefined,
+          }),
         });
 
-        // Se o endpoint não aceita POST (405) ou não existe (404), tenta GET
-        if (resp.r.status === 405 || resp.r.status === 404) {
-          const qs = new URLSearchParams();
-          if (resolvedOrderId) qs.set("order_id", resolvedOrderId);
-          if (pedidoId) qs.set("pedido_id", pedidoId);
-          if (vendaId) qs.set("venda_id", vendaId);
+        if (!r.ok || !j?.ok || isHtml) {
+          // 2) fallback sessionStorage
+          const s = pickLatestCheckoutFromSession();
+          if (s) {
+            const v = normalizeVendaFromSession(s);
+            if (!alive) return;
+            setVenda(v);
+            setDebugSource(`sessionStorage:${s?._key || "fv_checkout_*"}`);
 
-          resp = await safeFetchJson(`/api/pagbank/status?${qs.toString()}`, {
-            method: "GET",
-            cache: "no-store",
-          });
+            // se a API falhou, mas temos session, não é erro fatal
+            // (só mostra debug se quiser)
+            return;
+          }
+
+          // sem session, aí sim erro
+          const hint =
+            isHtml || String(text || "").includes("<!DOCTYPE html>")
+              ? "A rota /api/pagbank/status parece não existir no deploy (voltou HTML/404)."
+              : "A API /api/pagbank/status respondeu erro.";
+
+          const apiMsg =
+            (j && (j.error || j.message)) ||
+            (text && text.slice(0, 120)) ||
+            `HTTP ${r.status}`;
+
+          setErr(`${hint} Detalhe: ${apiMsg}`);
+          setVenda(null);
+          return;
         }
 
-        const { r, j, text } = resp;
-
-        if (!r.ok) {
-          throw new Error(
-            `Falha ao buscar venda (HTTP ${r.status}). Verifique /api/pagbank/status.` +
-              (text ? ` Resposta: ${text.slice(0, 120)}` : "")
-          );
-        }
-
-        // Espera { ok: true, venda: {...} }
-        if (!j?.ok) {
-          throw new Error(j?.error || "Falha ao buscar venda (payload inválido).");
-        }
-
-        const v: VendaSite | null = j?.venda || null;
-        setVenda(v);
-
-        // Pré-preencher CPF se vier do banco
-        const cpfDb = onlyDigits(v?.cliente_tax_id || "");
-        if (cpfDb.length === 11) setCpf(cpfDb);
-
-        // Se a API devolveu order_id, fixa aqui
-        const ord = String(j?.order_id || v?.id || "").trim();
-        if (!resolvedOrderId && j?.order_id) setResolvedOrderId(String(j.order_id));
+        if (!alive) return;
+        setVenda(j?.venda || null);
+        setDebugSource("api:/api/pagbank/status");
       } catch (e: any) {
+        // 3) fallback final sessionStorage
+        const s = pickLatestCheckoutFromSession();
+        if (s) {
+          const v = normalizeVendaFromSession(s);
+          if (!alive) return;
+          setVenda(v);
+          setDebugSource(`sessionStorage:${s?._key || "fv_checkout_*"}`);
+          return;
+        }
+
+        if (!alive) return;
         setErr(String(e?.message || e));
+        setVenda(null);
       } finally {
-        setLoading(false);
+        if (alive) setLoading(false);
       }
     })();
-  }, [resolvedOrderId, pedidoId, vendaId]);
 
-  const cliente = useMemo(() => {
+    return () => {
+      alive = false;
+    };
+  }, [orderId, pedidoId, vendaId]);
+
+  const cliente: Cliente = useMemo(() => {
     const v = venda;
-    const cpfDigits = onlyDigits(cpf);
-
     return {
       name: v?.cliente_nome || "Cliente",
       email: v?.cliente_email || "cliente@iadrogarias.com",
-      tax_id: cpfDigits || undefined,
+      tax_id: onlyDigits(v?.cliente_tax_id || "") || undefined,
       phone: onlyDigits(v?.cliente_phone || "") || undefined,
     };
-  }, [venda, cpf]);
-
-  const items = useMemo(() => {
-    const arr = Array.isArray(venda?.itens) ? (venda!.itens as any[]) : [];
-
-    return arr
-      .map((i: any, idx: number) => {
-        const qty = Number(i?.quantity ?? i?.qtd ?? 1);
-        const unitRaw =
-          i?.unit_amount ??
-          i?.preco_centavos ??
-          i?.unitAmount ??
-          i?.preco ??
-          i?.valor ??
-          0;
-
-        const unit_amount = toCents(unitRaw);
-
-        return {
-          reference_id: String(
-            i?.reference_id || i?.ean || i?.produto_id || i?.id || `item-${idx + 1}`
-          ),
-          name: String(i?.name || i?.nome || "Item"),
-          quantity: Number.isFinite(qty) && qty > 0 ? qty : 1,
-          unit_amount,
-        };
-      })
-      .filter((it) => it.unit_amount > 0 && it.quantity > 0);
   }, [venda]);
 
-  const total = useMemo(() => {
-    // prioridade: total vindo do backend, senão soma dos itens
-    const backendTotal =
-      toCents(venda?.total_centavos) ||
-      toCents(venda?.total_reais) ||
-      toCents(venda?.total) ||
-      0;
+  const items: CheckoutItem[] = useMemo(() => {
+    const arr = Array.isArray(venda?.itens) ? (venda!.itens as any[]) : [];
+    return arr.map((i, idx) => normalizeItem(i, idx));
+  }, [venda]);
 
-    if (backendTotal > 0) return backendTotal;
+  const totalCentavos = useMemo(() => {
+    // prioridade: total_centavos vindo do backend/session
+    const v = venda;
+    const explicit =
+      v?.total_centavos != null
+        ? toNumber(v.total_centavos, 0)
+        : v?.total_reais != null
+        ? Math.round(toNumber(v.total_reais, 0) * 100)
+        : v?.total != null
+        ? Math.round(toNumber(v.total, 0) * 100)
+        : null;
 
-    return items.reduce((acc, it) => acc + it.unit_amount * it.quantity, 0);
+    const calc = calcTotalCentavos(items);
+    // se explicit vier zerado e itens tiverem valor, usa cálculo
+    if ((explicit == null || explicit <= 0) && calc > 0) return calc;
+
+    return explicit ?? calc;
   }, [venda, items]);
+
+  const itemsFixed = useMemo(() => {
+    // se o total ficou certo, mas algum item veio zerado, não inventa preço:
+    // mantém como está (assim você detecta a origem).
+    // (se quiser, depois fazemos fallback de preço pelo catalogo)
+    return items;
+  }, [items]);
 
   function onPaid() {
     alert("Pagamento aprovado 🎉");
@@ -288,11 +311,28 @@ export default function CheckoutClient() {
   }
 
   if (loading) return <div className="p-6">Carregando…</div>;
-  if (err) return <div className="p-6 text-red-600">{err}</div>;
+
+  if (err) {
+    return (
+      <div className="p-6">
+        <div className="mb-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          {err}
+        </div>
+
+        <button
+          className="rounded-xl border px-4 py-2 text-sm"
+          onClick={() => router.push("/fv")}
+        >
+          Voltar para a loja
+        </button>
+      </div>
+    );
+  }
+
   if (!venda) return <div className="p-6">Venda não encontrada.</div>;
 
-  // Se ficou zerado, mostra diagnóstico (isso é o que estava acontecendo contigo)
-  if (!items.length || total <= 0) {
+  // Segurança: se total ou itens inválidos, já avisa (evita PIX 0,00)
+  if (!itemsFixed.length || totalCentavos <= 0) {
     return (
       <div className="mx-auto max-w-2xl p-4">
         <h1 className="mb-4 text-xl font-semibold">Finalizar pagamento</h1>
@@ -301,56 +341,53 @@ export default function CheckoutClient() {
           <div className="font-semibold">
             Seu pedido ficou com total zerado (R$ 0,00) ou sem itens válidos.
           </div>
-          <div className="mt-2">
-            Volte ao carrinho e finalize novamente. Se persistir, me mande print
-            do <code className="rounded bg-white/60 px-1">sessionStorage</code>{" "}
-            do <code className="rounded bg-white/60 px-1">fv_checkout_*</code>.
+          <div className="mt-2 text-red-700/90">
+            Volte ao carrinho e finalize novamente. Se persistir, me mande print do
+            <code className="mx-1 rounded bg-white/60 px-1">sessionStorage</code>
+            com a chave <code className="rounded bg-white/60 px-1">fv_checkout_*</code>.
           </div>
-
-          <div className="mt-3 text-xs opacity-80">
-            Diagnóstico:
-            <div>- itens recebidos: {Array.isArray(venda?.itens) ? venda!.itens!.length : 0}</div>
-            <div>- itens válidos: {items.length}</div>
-            <div>- total backend: {String(venda?.total_centavos ?? venda?.total_reais ?? venda?.total ?? "n/a")}</div>
-          </div>
+          {debugSource && (
+            <div className="mt-2 text-xs opacity-80">
+              Fonte: <span className="font-mono">{debugSource}</span>
+            </div>
+          )}
         </div>
 
-        <button
-          className="mt-4 rounded-xl border px-4 py-3"
-          onClick={() => router.push("/fv")}
-        >
-          Voltar
-        </button>
+        <div className="mt-4 flex gap-2">
+          <button
+            className="rounded-xl border px-4 py-2 text-sm"
+            onClick={() => router.push("/fv")}
+          >
+            Voltar para a loja
+          </button>
+          <button
+            className="rounded-xl border px-4 py-2 text-sm"
+            onClick={() => location.reload()}
+          >
+            Recarregar
+          </button>
+        </div>
       </div>
     );
   }
 
+  // Ajuste: se o PagbankPayment calcula total pelos items, garanta que os itens tenham os valores certos
+  // (aqui já está em centavos)
   return (
     <div className="mx-auto max-w-2xl p-4">
       <h1 className="mb-4 text-xl font-semibold">Finalizar pagamento</h1>
 
-      {/* CPF obrigatório pro PIX */}
-      <div className="mb-4 rounded-2xl border p-4">
-        <div className="text-sm font-semibold">CPF para pagamento (PIX)</div>
-        <div className="mt-2 flex flex-col gap-2">
-          <input
-            value={cpf}
-            onChange={(e) => setCpf(onlyDigits(e.target.value))}
-            placeholder="Digite o CPF (11 números)"
-            inputMode="numeric"
-            className="w-full rounded-xl border px-3 py-2"
-            maxLength={14}
-          />
-          <div className="text-xs opacity-70">
-            * O PagBank exige CPF do pagador no PIX.
-          </div>
+      {/* debug discreto (pode remover depois) */}
+      {debugSource && (
+        <div className="mb-3 text-xs opacity-60">
+          Fonte: <span className="font-mono">{debugSource}</span>
         </div>
-      </div>
+      )}
 
       <PagbankPayment
-        orderId={resolvedOrderId || (orderIdParam || "")}
+        orderId={orderId || String(venda?.id || "")}
         cliente={cliente}
-        items={items}
+        items={itemsFixed}
         onPaid={onPaid}
       />
     </div>
