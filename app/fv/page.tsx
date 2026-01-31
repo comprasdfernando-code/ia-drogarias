@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
 import { useCart } from "./_components/cart";
@@ -165,10 +166,6 @@ function firstImg(imagens?: string[] | null) {
   return "/produtos/caixa-padrao.png";
 }
 
-function toCentavos(v: number) {
-  return Math.round(Number(v || 0) * 100);
-}
-
 /* =========================
    PAGE WRAPPER
 ========================= */
@@ -277,7 +274,6 @@ function FarmaciaVirtualHome() {
 
       setLoadingBusca(true);
       try {
-        // fallback direto na VIEW
         const digits = raw.replace(/\D/g, "");
         let query = supabase
           .from(VIEW_HOME)
@@ -515,24 +511,29 @@ function FarmaciaVirtualHome() {
   );
 }
 
+/* =========================
+   PATCH: Checkout + vendas_site tolerante
+========================= */
+
 function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const router = useRouter();
   const cart = useCart();
 
   const TAXA_ENTREGA_FIXA = 10;
-
-  // ✅ seus pedidos internos (pronta entrega / encomenda)
   const PEDIDOS_TABLE = "fv_pedidos";
-
-  // ✅ sua venda para pagamento (PagBank)
   const VENDAS_TABLE = "vendas_site";
 
   const [saving, setSaving] = useState(false);
   const [pedidoCriado, setPedidoCriado] = useState<{ pronto?: string; encomenda?: string; grupo?: string } | null>(null);
 
+  // ✅ novo: venda criada em vendas_site (para checkout PagBank)
+  const [vendaId, setVendaId] = useState<string | null>(null);
+  const [checkoutUrl, setCheckoutUrl] = useState<string | null>(null);
+
   const [clienteNome, setClienteNome] = useState("");
   const [clienteTelefone, setClienteTelefone] = useState("");
-  const [clienteEmail, setClienteEmail] = useState(""); // opcional
-  const [clienteCpf, setClienteCpf] = useState(""); // importante p/ PIX
+  const [clienteEmail, setClienteEmail] = useState(""); // ✅ novo (opcional)
+  const [clienteCpf, setClienteCpf] = useState("");     // ✅ novo (para PIX) opcional aqui (você pode exigir depois)
 
   const [tipoEntrega, setTipoEntrega] = useState<"ENTREGA" | "RETIRADA">("ENTREGA");
   const [endereco, setEndereco] = useState("");
@@ -558,17 +559,16 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
       if (!endereco.trim() || !numero.trim() || !bairro.trim()) return false;
     }
 
-    // ✅ se for PIX/CARTAO, CPF ajuda muito
-    if (pagamento === "PIX" || pagamento === "CARTAO") {
-      if (onlyDigits(clienteCpf).length !== 11) return false;
-    }
-
+    // ✅ se for PIX, sugerido ter CPF (PagBank exige)
+    // (não travo aqui pra não bloquear pedidos "DINHEIRO/COMBINAR")
     return true;
-  }, [cart.items.length, clienteNome, clienteTelefone, tipoEntrega, endereco, numero, bairro, pagamento, clienteCpf]);
+  }, [cart.items.length, clienteNome, clienteTelefone, tipoEntrega, endereco, numero, bairro]);
 
   useEffect(() => {
     if (!open) return;
     setPedidoCriado(null);
+    setVendaId(null);
+    setCheckoutUrl(null);
   }, [open]);
 
   function clearCartSafe() {
@@ -582,7 +582,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
     if (!clean.length) return new Map<string, number>();
 
     const { data, error } = await supabase
-      .from("fv_home_com_estoque") // ✅ sua view consolidada
+      .from("fv_home_com_estoque")
       .select("ean,estoque_total")
       .in("ean", clean);
 
@@ -601,89 +601,82 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
     return String((data as any).id || "");
   }
 
-  // ✅ cria venda para pagamento (com fallback de colunas)
-  async function criarVendaSiteSafe(opts: {
-    grupoId?: string | null;
-    pedidoProntoId?: string | null;
-    pedidoEncomendaId?: string | null;
-    formaPag: "PIX" | "CREDIT_CARD";
-    itensPag: any[];
-    totalCentavos: number;
-  }) {
-    const clienteJson = {
-      name: clienteNome.trim(),
-      email: (clienteEmail || "").trim() || null,
-      tax_id: onlyDigits(clienteCpf),
-      phone: onlyDigits(clienteTelefone),
-    };
+  // ✅ PATCH: remove colunas inexistentes e tenta de novo (PGRST204)
+  function stripMissingColumn(payload: Record<string, any>, msg: string) {
+    const m = String(msg || "").match(/Could not find the '([^']+)' column/i);
+    const col = m?.[1];
+    if (!col) return payload;
+    const next = { ...payload };
+    delete next[col];
+    return next;
+  }
 
-    const entregaJson = {
-      tipo: tipoEntrega,
-      endereco: tipoEntrega === "ENTREGA" ? endereco.trim() : null,
-      numero: tipoEntrega === "ENTREGA" ? numero.trim() : null,
-      bairro: tipoEntrega === "ENTREGA" ? bairro.trim() : null,
-      taxa_entrega: taxaEntrega,
-    };
+  async function insertVendaSiteTolerante(payload: Record<string, any>) {
+    let p = { ...payload };
+    for (let attempt = 0; attempt < 10; attempt++) {
+      const { data, error } = await supabase.from(VENDAS_TABLE).insert(p).select("id").single();
 
-    // Tentativa A (jsonb / moderno)
-    const payloadA: any = {
-      status: "CRIADA",
-      forma_pagamento: opts.formaPag,
-      grupo_id: opts.grupoId ?? null,
-      pedido_pronto_id: opts.pedidoProntoId ?? null,
-      pedido_encomenda_id: opts.pedidoEncomendaId ?? null,
-      cliente: clienteJson,
-      entrega: entregaJson,
-      itens: opts.itensPag,
-      total_centavos: opts.totalCentavos,
-    };
+      if (!error) return String((data as any)?.id || "");
+      const code = (error as any)?.code;
+      const message = (error as any)?.message || "";
 
-    const resA = await supabase.from(VENDAS_TABLE).insert(payloadA).select("id").single();
-    if (!resA.error && resA.data) return String((resA.data as any).id || "");
+      // só tenta corrigir se for "coluna não existe"
+      if (code === "PGRST204" && /Could not find the '.*' column/i.test(String(message))) {
+        const next = stripMissingColumn(p, String(message));
+        // se não mudou nada, para
+        if (JSON.stringify(next) === JSON.stringify(p)) break;
+        p = next;
+        continue;
+      }
 
-    // Se falhar por coluna inexistente, tenta payloadB (colunas simples)
-    const msgA = String(resA.error?.message || "");
-    const codeA = String((resA.error as any)?.code || "");
-
-    const isMissingColumn =
-      codeA === "PGRST204" ||
-      msgA.toLowerCase().includes("could not find the") ||
-      msgA.toLowerCase().includes("column") ||
-      msgA.toLowerCase().includes("schema cache");
-
-    if (!isMissingColumn) {
-      // falha real
-      throw resA.error;
+      // outros erros: joga pra cima
+      throw error;
     }
 
-    const payloadB: any = {
-      status: "CRIADA",
-      forma_pagamento: opts.formaPag,
-      grupo_id: opts.grupoId ?? null,
-      pedido_pronto_id: opts.pedidoProntoId ?? null,
-      pedido_encomenda_id: opts.pedidoEncomendaId ?? null,
+    // se estourar as tentativas
+    throw new Error("Não consegui inserir em vendas_site (colunas incompatíveis).");
+  }
 
-      // cliente em colunas
+  async function criarVendaParaCheckout(params: {
+    grupoId?: string | null;
+    pedidoProntoId?: string;
+    pedidoEncomendaId?: string;
+    itensPronta: any[];
+    itensEncomenda: any[];
+  }) {
+    // itens pro checkout: junta tudo num array
+    const itensAll = [...(params.itensPronta || []), ...(params.itensEncomenda || [])];
+
+    const payload: Record<string, any> = {
+      // ✅ campos “prováveis” (se não existirem, o tolerante remove)
+      status: "pendente",
+      canal: "SITE",
+
+      grupo_id: params.grupoId ?? null,
+      pedido_pronto_id: params.pedidoProntoId ?? null,
+      pedido_encomenda_id: params.pedidoEncomendaId ?? null,
+
       cliente_nome: clienteNome.trim(),
+      cliente_whatsapp: onlyDigits(clienteTelefone),
       cliente_email: (clienteEmail || "").trim() || null,
-      cliente_tax_id: onlyDigits(clienteCpf),
-      cliente_phone: onlyDigits(clienteTelefone),
+      cliente_cpf: onlyDigits(clienteCpf) || null,
 
-      // entrega em colunas
       tipo_entrega: tipoEntrega,
       endereco: tipoEntrega === "ENTREGA" ? endereco.trim() : null,
       numero: tipoEntrega === "ENTREGA" ? numero.trim() : null,
       bairro: tipoEntrega === "ENTREGA" ? bairro.trim() : null,
-      taxa_entrega: taxaEntrega,
 
-      // itens/total
-      itens: opts.itensPag,
-      total_centavos: opts.totalCentavos,
+      pagamento: pagamento,
+      taxa_entrega: taxaEntrega,
+      subtotal: Number(subtotal || 0),
+      total: Number(total || 0),
+
+      itens: itensAll,
+      created_at: new Date().toISOString(),
     };
 
-    const resB = await supabase.from(VENDAS_TABLE).insert(payloadB).select("id").single();
-    if (resB.error) throw resB.error;
-    return String((resB.data as any).id || "");
+    const id = await insertVendaSiteTolerante(payload);
+    return id;
   }
 
   async function finalizarPedido() {
@@ -691,14 +684,13 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
 
     setSaving(true);
     try {
-      const grupoId =
-        (globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : undefined) || undefined;
+      const grupoId = (globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : undefined) || undefined;
 
       // 1) estoque consolidado
       const eans = cart.items.map((i) => i.ean);
       const estoqueMap = await getEstoqueByEan(eans);
 
-      // 2) separa itens (opção 2)
+      // 2) separa itens
       const pronta: any[] = [];
       const encomenda: any[] = [];
 
@@ -707,9 +699,13 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
         const qtd = Number(i.qtd || 0);
 
         const item = {
+          reference_id: i.ean, // ✅ útil pro PagBank depois
           ean: i.ean,
+          name: i.nome,
           nome: i.nome,
+          quantity: qtd,
           qtd,
+          unit_amount: Math.round(Number(i.preco || 0) * 100), // ✅ centavos (pro PagBank)
           preco: i.preco,
           subtotal: Number(i.preco || 0) * qtd,
           estoque_total: est,
@@ -768,32 +764,22 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
         });
       }
 
-      // ✅ PATCH: se pagamento for PIX/CARTAO, cria venda em vendas_site e manda pro checkout
-      if (pagamento === "PIX" || pagamento === "CARTAO") {
-        const itensPag = [...pronta, ...encomenda].map((it: any) => ({
-          reference_id: String(it.ean || "item"),
-          name: String(it.nome || "Item"),
-          quantity: Number(it.qtd || 1),
-          unit_amount: toCentavos(Number(it.preco || 0)), // centavos
-        }));
+      setPedidoCriado(created);
 
-        const vendaId = await criarVendaSiteSafe({
+      // ✅ PATCH: se for PIX/CARTAO, cria uma venda em vendas_site e libera link do checkout
+      if (pagamento === "PIX" || pagamento === "CARTAO") {
+        const venda = await criarVendaParaCheckout({
           grupoId: grupoId ?? null,
-          pedidoProntoId: created.pronto ?? null,
-          pedidoEncomendaId: created.encomenda ?? null,
-          formaPag: pagamento === "CARTAO" ? "CREDIT_CARD" : "PIX",
-          itensPag,
-          totalCentavos: toCentavos(total),
+          pedidoProntoId: created.pronto,
+          pedidoEncomendaId: created.encomenda,
+          itensPronta: pronta,
+          itensEncomenda: encomenda,
         });
 
-        // limpa carrinho e vai pro checkout
-        clearCartSafe();
-        window.location.href = `/fv/checkout?order_id=${encodeURIComponent(vendaId)}`;
-        return;
+        setVendaId(venda);
+        setCheckoutUrl(`/fv/checkout?venda_id=${encodeURIComponent(venda)}`);
       }
 
-      // Se não for PIX/CARTAO, mantém sucesso local
-      setPedidoCriado(created);
       clearCartSafe();
     } catch (e: any) {
       console.error(e);
@@ -839,28 +825,63 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
                     <b>Encomenda:</b> {pedidoCriado.encomenda}
                   </div>
                 ) : null}
+                {vendaId ? (
+                  <div className="pt-1">
+                    <b>Venda:</b> {vendaId}
+                  </div>
+                ) : null}
               </div>
 
-              <div className="mt-4">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPedidoCriado(null);
-                    onClose();
-                  }}
-                  className="w-full rounded-xl bg-blue-700 hover:bg-blue-800 text-white py-3 font-extrabold"
-                >
-                  Voltar para a loja
-                </button>
-              </div>
+              {checkoutUrl ? (
+                <div className="mt-4 grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      // abre checkout
+                      router.push(checkoutUrl);
+                    }}
+                    className="w-full rounded-xl bg-blue-700 hover:bg-blue-800 text-white py-3 font-extrabold"
+                  >
+                    Ir para pagamento
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPedidoCriado(null);
+                      onClose();
+                    }}
+                    className="w-full rounded-xl border bg-white hover:bg-gray-50 py-3 font-extrabold"
+                  >
+                    Voltar para loja
+                  </button>
+                </div>
+              ) : (
+                <div className="mt-4">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPedidoCriado(null);
+                      onClose();
+                    }}
+                    className="w-full rounded-xl bg-blue-700 hover:bg-blue-800 text-white py-3 font-extrabold"
+                  >
+                    Voltar para a loja
+                  </button>
+                </div>
+              )}
+
+              {checkoutUrl ? (
+                <div className="mt-2 text-xs text-gray-600">
+                  Pagamento via <b>{pagamento}</b> será finalizado no checkout.
+                </div>
+              ) : null}
             </div>
           ) : null}
 
           {/* ITENS */}
           {cart.items.length === 0 ? (
-            <div className="text-gray-600 bg-gray-50 border rounded-2xl p-4">
-              Seu carrinho está vazio. Adicione itens 😊
-            </div>
+            <div className="text-gray-600 bg-gray-50 border rounded-2xl p-4">Seu carrinho está vazio. Adicione itens 😊</div>
           ) : (
             <div className="space-y-3">
               {cart.items.map((it) => (
@@ -943,8 +964,6 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
                 className="w-full border bg-white px-3 py-2.5 rounded-xl outline-none focus:ring-4 focus:ring-blue-100"
                 disabled={saving || !!pedidoCriado}
               />
-
-              {/* ✅ novo: email e cpf (pra PIX/CARTAO) */}
               <input
                 placeholder="E-mail (opcional)"
                 value={clienteEmail}
@@ -953,13 +972,12 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
                 disabled={saving || !!pedidoCriado}
               />
               <input
-                placeholder="CPF (obrigatório para PIX/CARTAO)"
+                placeholder="CPF (obrigatório para PIX)"
                 value={clienteCpf}
                 onChange={(e) => setClienteCpf(e.target.value)}
                 className="w-full border bg-white px-3 py-2.5 rounded-xl outline-none focus:ring-4 focus:ring-blue-100"
                 disabled={saving || !!pedidoCriado}
               />
-
               <div className="text-[11px] text-gray-500">
                 Dica: WhatsApp com DDD. Ex: 11999999999 • CPF só números (11 dígitos).
               </div>
@@ -1049,11 +1067,11 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
               ))}
             </div>
 
-            {(pagamento === "PIX" || pagamento === "CARTAO") && (
-              <div className="mt-2 text-[11px] text-gray-600">
-                * Para {pagamento}, precisamos do <b>CPF</b> para gerar o pagamento.
+            {(pagamento === "PIX" || pagamento === "CARTAO") ? (
+              <div className="mt-2 text-xs text-gray-600">
+                * Para PIX, precisamos do CPF para gerar o pagamento.
               </div>
-            )}
+            ) : null}
           </div>
         </div>
 
@@ -1092,14 +1110,14 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
                 canCheckout ? "bg-green-600 hover:bg-green-700 text-white" : "bg-gray-200 text-gray-500"
               } ${saving ? "opacity-70 cursor-wait" : ""}`}
             >
-              {saving ? "Finalizando..." : pagamento === "PIX" || pagamento === "CARTAO" ? "Ir para pagamento" : "Finalizar pedido"}
+              {saving ? "Finalizando..." : "Finalizar pedido"}
             </button>
           </div>
 
           {!canCheckout ? (
             <div className="mt-2 text-xs text-gray-500">
               Para liberar: informe <b>Nome</b>, <b>WhatsApp</b> e adicione itens. Se escolher <b>Entrega</b>,
-              preencha <b>Endereço/Número/Bairro</b>. Para <b>PIX/CARTAO</b> preencha o <b>CPF</b>.
+              preencha <b>Endereço/Número/Bairro</b>.
             </div>
           ) : null}
         </div>
@@ -1240,11 +1258,7 @@ function ProdutoCardUltra({ p, onComprar }: { p: FVProduto; onComprar: () => voi
 /**
  * ✅ OPÇÃO 3 (MOBILE/TABLET): faixa "Serviços rápidos"
  * - aparece só em telas menores que xl
- * - chama WhatsApp com mensagem pronta
- *
- * COMO USAR:
- * Dentro do seu <section ...> antes da grid, coloque:
- * <ServiceQuickAds />
+ * - chama agenda de serviços
  */
 function ServiceQuickAds() {
   const base = "/servicos/agenda";
@@ -1302,9 +1316,7 @@ function ServiceQuickAds() {
             >
               <div className="flex items-start justify-between">
                 <div className="text-3xl">{c.emoji}</div>
-                <span className="text-[11px] font-extrabold bg-white/15 px-2 py-1 rounded-full">
-                  Agendar
-                </span>
+                <span className="text-[11px] font-extrabold bg-white/15 px-2 py-1 rounded-full">Agendar</span>
               </div>
 
               <div className="mt-3">
