@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import PagbankPayment from "../_components/PagbankPayment";
@@ -33,7 +33,8 @@ function onlyDigits(s: string) {
   return (s || "").replace(/\D/g, "");
 }
 
-export default function CheckoutPage() {
+/** ✅ A parte que usa useSearchParams fica DENTRO do Suspense */
+function CheckoutInner() {
   const sp = useSearchParams();
   const router = useRouter();
   const vendaId = sp.get("venda") || "";
@@ -56,11 +57,20 @@ export default function CheckoutPage() {
 
       setLoading(true);
       try {
-        const { data: v, error: e1 } = await supabase.from("vendas_site").select("*").eq("id", vendaId).maybeSingle();
+        const { data: v, error: e1 } = await supabase
+          .from("vendas_site")
+          .select("*")
+          .eq("id", vendaId)
+          .maybeSingle();
+
         if (e1) throw e1;
         if (!v) throw new Error("Venda não encontrada.");
 
-        const { data: its, error: e2 } = await supabase.from("vendas_site_itens").select("*").eq("venda_id", vendaId);
+        const { data: its, error: e2 } = await supabase
+          .from("vendas_site_itens")
+          .select("*")
+          .eq("venda_id", vendaId);
+
         if (e2) throw e2;
 
         setVenda(v as any);
@@ -94,9 +104,7 @@ export default function CheckoutPage() {
 
   function handlePaid() {
     alert("Pagamento aprovado 🎉");
-    // opcional: router.push(`/fv/pedido/${vendaId}`);
-    // ou página de obrigado:
-    // router.push(`/fv/obrigado?venda=${vendaId}`);
+    // router.push(`/fv/obrigado?venda=${encodeURIComponent(vendaId)}`);
   }
 
   if (loading) {
@@ -130,5 +138,20 @@ export default function CheckoutPage() {
 
       <PagbankPayment orderId={venda.id} cliente={cliente} items={items} onPaid={handlePaid} />
     </div>
+  );
+}
+
+/** ✅ Page com Suspense (resolve o erro do build) */
+export default function CheckoutPage() {
+  return (
+    <Suspense
+      fallback={
+        <div className="mx-auto max-w-2xl p-4">
+          <div className="rounded-2xl border bg-white p-4">Abrindo checkout…</div>
+        </div>
+      }
+    >
+      <CheckoutInner />
+    </Suspense>
   );
 }
