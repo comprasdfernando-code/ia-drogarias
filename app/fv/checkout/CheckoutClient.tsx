@@ -24,53 +24,47 @@ type VendaLike = {
   total?: number | null; // pode vir em reais
   subtotal?: number | null;
 
-  // possíveis campos de taxa (varia no seu schema)
-  taxa_entrega_centavos?: number | null;
-  taxa_entrega?: number | null; // pode vir em reais OU centavos
-  taxa?: number | null;         // pode vir em reais OU centavos
+  // entrega (fallback/session)
+  entrega?: {
+    taxa?: number | null; // reais
+    tipo_entrega?: string | null;
+  } | null;
+
+  // ids extras (se vier)
+  pedido_id?: string | null;
+  grupo_id?: string | null;
+
+  // pagbank
+  pagbank_id?: string | null;
 };
 
 function onlyDigits(s: string) {
   return (s || "").replace(/\D/g, "");
 }
 
-/**
- * Converte "qualquer coisa" em CENTAVOS com heurística segura:
- * - Se vier decimal (3.99 / "3,99") => reais => *100
- * - Se vier inteiro pequeno (<= 9999) assume CENTAVOS (ex: 399 = R$ 3,99; 1000 = R$ 10,00)
- * - Se vier inteiro grande e múltiplo de 100 (ex: 39900) pode ser "centavos com *100 extra" => divide por 100
- */
-function toCentsSmart(v: any): number {
+function centsFromMaybe(v: any): number {
+  // converte para CENTAVOS
   if (v == null) return 0;
 
-  // string: "3,99" / "3.99" / "399" / "39900"
-  if (typeof v === "string") {
-    const s = v.trim();
-    if (!s) return 0;
-    // mantém números e separadores
-    const norm = s.replace(/\./g, "").replace(",", ".");
-    const n = Number(norm);
-    if (!Number.isFinite(n)) return 0;
-    return toCentsSmart(n);
+  if (typeof v === "number") {
+    // Se for inteiro grande, pode já ser centavos
+    // Se for decimal (ex: 13.99), é reais
+    if (Number.isInteger(v) && v >= 1000) return Math.round(v);
+    return Math.round(v * 100);
   }
 
-  const n = Number(v);
+  const str = String(v).trim();
+  if (!str) return 0;
+
+  // "13,99" -> 13.99
+  const norm = str.replace(/\./g, "").replace(",", ".");
+  const n = Number(norm);
   if (!Number.isFinite(n)) return 0;
 
-  // decimal => reais
-  if (!Number.isInteger(n)) return Math.round(n * 100);
+  // se veio "1399" como string e sem vírgula, pode ser centavos
+  if (/^\d+$/.test(str) && n >= 1000) return Math.round(n);
 
-  // inteiro:
-  // regra segura: por padrão, inteiro é CENTAVOS
-  // (porque você está passando unit_amount pro PagBank que espera centavos)
-  // EXCEÇÃO: quando vem inflado por 100 (ex 39900) -> corrige
-  if (n >= 10000 && n % 100 === 0) {
-    const maybe = n / 100;
-    // só aceita se ficar em faixa plausível
-    if (maybe > 0 && maybe <= 5_000_000) return maybe; // até R$ 50.000,00
-  }
-
-  return n;
+  return Math.round(n * 100);
 }
 
 async function safeJson(resp: Response) {
@@ -118,10 +112,12 @@ function extractVenda(payload: any): VendaLike | null {
     total: (v?.total ?? v?.valor_total ?? v?.amount ?? null) as any,
     subtotal: (v?.subtotal ?? null) as any,
 
-    // taxa (vários nomes possíveis)
-    taxa_entrega_centavos: (v?.taxa_entrega_centavos ?? v?.taxaEntregaCentavos ?? null) as any,
-    taxa_entrega: (v?.taxa_entrega ?? v?.taxaEntrega ?? null) as any,
-    taxa: (v?.taxa ?? v?.taxa_locomocao ?? null) as any,
+    entrega: (v?.entrega ?? v?.delivery ?? null) as any,
+
+    pedido_id: (v?.pedido_id ?? null) as any,
+    grupo_id: (v?.grupo_id ?? null) as any,
+
+    pagbank_id: (v?.pagbank_id ?? v?.charge_id ?? null) as any,
   };
 
   return venda;
@@ -136,35 +132,30 @@ function extractItems(v: VendaLike | null) {
   return arr.map((i: any, idx: number) => {
     const qty = Number(pickFirst(i?.quantity, i?.qty, i?.qtd, 1)) || 1;
 
-    // tenta achar preço: já centavos (unit_amount/preco_centavos) ou reais (preco/price/valor)
-    const unitCents = toCentsSmart(
+    // unit_amount deve ser CENTAVOS
+    const unitCents = centsFromMaybe(
       pickFirst(
         i?.unit_amount,       // centavos (PagBank)
         i?.preco_centavos,    // centavos
         i?.unitAmount,        // centavos
         i?.price_cents,       // centavos
-        i?.preco,             // reais (às vezes)
-        i?.price,             // reais (às vezes)
+        i?.preco,             // reais
+        i?.price,             // reais
         i?.valor_unitario,    // reais
         i?.valor              // reais
       )
     );
 
-    const ref = String(
-      pickFirst(i?.reference_id, i?.ean, i?.id, i?.sku, `item-${idx + 1}`)
-    );
-
+    const ref = String(pickFirst(i?.reference_id, i?.ean, i?.id, i?.sku, `item-${idx + 1}`));
     const name = String(pickFirst(i?.name, i?.nome, i?.titulo, "Item"));
 
     return {
       reference_id: ref,
       name,
       quantity: qty,
-      unit_amount: unitCents, // ✅ sempre CENTAVOS
+      unit_amount: unitCents,
     };
-  })
-  // remove itens quebrados
-  .filter((it: any) => (Number(it.unit_amount) || 0) > 0 && (Number(it.quantity) || 0) > 0);
+  });
 }
 
 function sumTotal(items: { unit_amount: number; quantity: number }[]) {
@@ -174,11 +165,19 @@ function sumTotal(items: { unit_amount: number; quantity: number }[]) {
   );
 }
 
-function readSessionCheckout(): AnyObj | null {
+function readSessionCheckout(orderId?: string) {
   try {
+    // prioridade: chave do order_id
+    if (orderId) {
+      const byOrder = sessionStorage.getItem(`fv_checkout_${orderId}`);
+      if (byOrder) return JSON.parse(byOrder);
+    }
+
+    // chave genérica antiga
     const direct = sessionStorage.getItem("fv_checkout");
     if (direct) return JSON.parse(direct);
 
+    // varre qualquer fv_checkout*
     for (let i = 0; i < sessionStorage.length; i++) {
       const k = sessionStorage.key(i) || "";
       if (k.startsWith("fv_checkout")) {
@@ -190,37 +189,18 @@ function readSessionCheckout(): AnyObj | null {
   return null;
 }
 
-/** extrai taxa de entrega em CENTAVOS de vários campos possíveis */
-function extractTaxaEntregaCents(v: VendaLike | null): number {
-  const raw = pickFirst(
-    v?.taxa_entrega_centavos,
-    v?.taxa_entrega,
-    v?.taxa
-  );
+// ✅ ajuste para o storageKey real do teu CartProvider FV
+const CART_STORAGE_KEYS = [
+  "cart_fv",
+  "cart_farmacia_virtual",
+  "cart_fv_virtual",
+  "cart_iadrogarias_fv",
+];
 
-  return toCentsSmart(raw);
-}
-
-/** adiciona taxa de entrega como item (pra somar no total do PagBank) */
-function appendEntregaItem(items: any[], taxaEntregaCents: number) {
-  if (!taxaEntregaCents || taxaEntregaCents <= 0) return items;
-
-  // evita duplicar se já veio como item
-  const already = items.some((it) =>
-    String(it?.reference_id || "").toLowerCase() === "entrega" ||
-    String(it?.name || "").toLowerCase().includes("entrega")
-  );
-  if (already) return items;
-
-  return [
-    ...items,
-    {
-      reference_id: "entrega",
-      name: "Taxa de entrega",
-      quantity: 1,
-      unit_amount: taxaEntregaCents,
-    },
-  ];
+function clearPossibleCarts() {
+  try {
+    for (const k of CART_STORAGE_KEYS) localStorage.removeItem(k);
+  } catch {}
 }
 
 export default function CheckoutClient() {
@@ -228,9 +208,9 @@ export default function CheckoutClient() {
   const router = useRouter();
 
   const orderId = sp.get("order_id") || "";
-  const pedidoId = sp.get("pedido_id") || "";
+  const pedidoIdQS = sp.get("pedido_id") || "";
   const vendaId = sp.get("venda_id") || "";
-  const grupoId = sp.get("grupo_id") || "";
+  const grupoIdQS = sp.get("grupo_id") || "";
 
   const cpfQS = onlyDigits(sp.get("cpf") || "");
 
@@ -241,6 +221,11 @@ export default function CheckoutClient() {
   const [venda, setVenda] = useState<VendaLike | null>(null);
   const [cpf, setCpf] = useState<string>(cpfQS);
 
+  // ✅ controle de status (pra sair sozinho da tela quando pagar)
+  const [status, setStatus] = useState<string | null>(null);
+  const [checking, setChecking] = useState(false);
+
+  // carregar venda/status (API -> fallback)
   useEffect(() => {
     let cancelled = false;
 
@@ -249,51 +234,52 @@ export default function CheckoutClient() {
         setLoading(true);
         setErr(null);
 
-        if (!orderId && !pedidoId && !vendaId && !grupoId) {
+        if (!orderId && !pedidoIdQS && !vendaId && !grupoIdQS) {
           setDebugFonte("sem_params");
           setVenda(null);
           setErr("order_id não informado.");
           return;
         }
 
+        // 1) POST /api/pagbank/status
         if (orderId) {
-          // 1) POST
           try {
             const r1 = await fetch("/api/pagbank/status", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
                 order_id: orderId,
-                pedido_id: pedidoId || null,
+                pedido_id: pedidoIdQS || null,
                 venda_id: vendaId || null,
-                grupo_id: grupoId || null,
+                grupo_id: grupoIdQS || null,
               }),
               cache: "no-store",
             });
 
             const parsed = await safeJson(r1);
-
             if (r1.ok && parsed.ok && parsed.json?.ok) {
               const v = extractVenda(parsed.json);
               if (!cancelled) {
                 setVenda(v);
                 setDebugFonte("api:/api/pagbank/status (POST)");
+                setStatus(String(parsed.json?.status || v?.status || "").toUpperCase() || null);
               }
+
               const apiCpf = onlyDigits(v?.cliente_tax_id || "");
-              if (!cancelled && apiCpf && apiCpf.length === 11 && !cpfQS) setCpf(apiCpf);
+              if (!cancelled && apiCpf.length === 11 && !cpfQS) setCpf(apiCpf);
               return;
             }
           } catch {
-            // segue pro GET
+            // segue
           }
 
-          // 2) GET
+          // 2) GET /api/pagbank/status?...
           try {
-            const url = `/api/pagbank/status?order_id=${encodeURIComponent(orderId)}${
-              pedidoId ? `&pedido_id=${encodeURIComponent(pedidoId)}` : ""
-            }${vendaId ? `&venda_id=${encodeURIComponent(vendaId)}` : ""}${
-              grupoId ? `&grupo_id=${encodeURIComponent(grupoId)}` : ""
-            }`;
+            const url =
+              `/api/pagbank/status?order_id=${encodeURIComponent(orderId)}` +
+              (pedidoIdQS ? `&pedido_id=${encodeURIComponent(pedidoIdQS)}` : "") +
+              (vendaId ? `&venda_id=${encodeURIComponent(vendaId)}` : "") +
+              (grupoIdQS ? `&grupo_id=${encodeURIComponent(grupoIdQS)}` : "");
 
             const r2 = await fetch(url, { cache: "no-store" });
             const parsed2 = await safeJson(r2);
@@ -303,12 +289,14 @@ export default function CheckoutClient() {
               if (!cancelled) {
                 setVenda(v);
                 setDebugFonte(`api:${url} (GET)`);
+                setStatus(String(parsed2.json?.status || v?.status || "").toUpperCase() || null);
               }
               const apiCpf = onlyDigits(v?.cliente_tax_id || "");
-              if (!cancelled && apiCpf && apiCpf.length === 11 && !cpfQS) setCpf(apiCpf);
+              if (!cancelled && apiCpf.length === 11 && !cpfQS) setCpf(apiCpf);
               return;
             }
 
+            // HTML/erro -> mostra erro
             if (!r2.ok && !parsed2.ok) {
               const snippet = String(parsed2.raw || "").slice(0, 140);
               throw new Error(
@@ -325,12 +313,13 @@ export default function CheckoutClient() {
         }
 
         // 3) sessionStorage fallback
-        const ss = readSessionCheckout();
+        const ss = readSessionCheckout(orderId);
         if (ss) {
           const v = extractVenda(ss) || (ss as VendaLike);
           if (!cancelled) {
             setVenda(v);
             setDebugFonte("sessionStorage:fallback");
+            setStatus(String(ss?.status || v?.status || "").toUpperCase() || "PENDING");
           }
 
           const ssCpf = onlyDigits(
@@ -344,10 +333,11 @@ export default function CheckoutClient() {
               ss?.customer?.cpf
             ) || ""
           );
-          if (!cancelled && ssCpf && ssCpf.length === 11 && !cpfQS) setCpf(ssCpf);
+          if (!cancelled && ssCpf.length === 11 && !cpfQS) setCpf(ssCpf);
           return;
         }
 
+        // nada funcionou
         if (!cancelled) {
           setVenda(null);
           setDebugFonte("sem_dados");
@@ -362,27 +352,44 @@ export default function CheckoutClient() {
       cancelled = true;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orderId, pedidoId, vendaId, grupoId]);
+  }, [orderId, pedidoIdQS, vendaId, grupoIdQS]);
 
-  // ✅ itens + taxa entrega (para PagBank somar corretamente)
-  const baseItems = useMemo(() => extractItems(venda), [venda]);
-  const taxaEntregaCents = useMemo(() => extractTaxaEntregaCents(venda), [venda]);
-  const items = useMemo(() => appendEntregaItem(baseItems, taxaEntregaCents), [baseItems, taxaEntregaCents]);
+  const itemsBase = useMemo(() => extractItems(venda), [venda]);
+
+  // ✅ taxa (reais -> centavos) vinda do session fallback (payload.entrega.taxa)
+  const taxaEntregaCents = useMemo(() => {
+    const t = pickFirst((venda as any)?.entrega?.taxa, (venda as any)?.taxa_entrega, null);
+    const cents = centsFromMaybe(t);
+    return cents > 0 ? cents : 0;
+  }, [venda]);
+
+  // ✅ inclui frete automaticamente como item (pra bater o total do PagBank)
+  const items = useMemo(() => {
+    const arr = [...itemsBase];
+    if (taxaEntregaCents > 0) {
+      arr.push({
+        reference_id: "FRETE",
+        name: "Taxa de entrega",
+        quantity: 1,
+        unit_amount: taxaEntregaCents,
+      });
+    }
+    return arr;
+  }, [itemsBase, taxaEntregaCents]);
 
   const totalFromItems = useMemo(() => sumTotal(items), [items]);
 
   const totalCentavos = useMemo(() => {
     // prioridade: items -> total_centavos -> total/subtotal
-    const a = totalFromItems;
-    if (a > 0) return a;
+    if (totalFromItems > 0) return totalFromItems;
 
-    const b = toCentsSmart(venda?.total_centavos);
+    const b = centsFromMaybe(venda?.total_centavos);
     if (b > 0) return b;
 
-    const c = toCentsSmart(venda?.total);
+    const c = centsFromMaybe(venda?.total);
     if (c > 0) return c;
 
-    const d = toCentsSmart(venda?.subtotal);
+    const d = centsFromMaybe(venda?.subtotal);
     if (d > 0) return d;
 
     return 0;
@@ -398,10 +405,88 @@ export default function CheckoutClient() {
     };
   }, [venda, cpf, cpfQS]);
 
-  function onPaid() {
-    alert("Pagamento aprovado 🎉");
-    router.push("/fv");
+  const pedidoId = useMemo(
+    () => String(pickFirst(venda?.pedido_id, pedidoIdQS, venda?.id, "") || ""),
+    [venda, pedidoIdQS]
+  );
+
+  const grupoId = useMemo(
+    () => String(pickFirst(venda?.grupo_id, grupoIdQS, "") || ""),
+    [venda, grupoIdQS]
+  );
+
+  async function confirmPaidBackend() {
+    // ✅ tenta avisar seu backend pra marcar pedido como pago
+    // Se a rota não existir ainda, não quebra o checkout.
+    try {
+      await fetch("/api/fv/confirm-payment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          order_id: orderId,
+          pedido_id: pedidoId || null,
+          grupo_id: grupoId || null,
+          status: "PAID",
+        }),
+      });
+    } catch {}
   }
+
+  async function onPaid() {
+    // 1) marca no backend
+    await confirmPaidBackend();
+
+    // 2) limpa carrinho
+    clearPossibleCarts();
+
+    // 3) limpa session payload (pra não reabrir o mesmo)
+    try {
+      sessionStorage.removeItem(`fv_checkout_${orderId}`);
+    } catch {}
+
+    // 4) vai pra loja com flag de sucesso (se quiser mostrar toast)
+    router.replace("/fv?paid=1");
+  }
+
+  // ✅ polling extra no CheckoutClient (caso o PagbankPayment não esteja fazendo polling)
+  useEffect(() => {
+    if (!orderId) return;
+
+    let alive = true;
+    let timer: any = null;
+
+    async function tick() {
+      if (!alive) return;
+      try {
+        setChecking(true);
+        const r = await fetch(`/api/pagbank/status?order_id=${encodeURIComponent(orderId)}`, { cache: "no-store" });
+        const j = await r.json().catch(() => null);
+
+        const st = String(j?.status || j?.data?.status || j?.venda?.status || "").toUpperCase();
+        if (st) setStatus(st);
+
+        if (st === "PAID" || st === "CONFIRMED" || st === "AUTHORIZED") {
+          alive = false;
+          await onPaid();
+          return;
+        }
+      } catch {
+        // ignora
+      } finally {
+        if (alive) setChecking(false);
+      }
+      timer = setTimeout(tick, 3000);
+    }
+
+    // só começa a pollar se já gerou/tem status pendente
+    timer = setTimeout(tick, 2500);
+
+    return () => {
+      alive = false;
+      if (timer) clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [orderId]);
 
   if (loading) return <div className="p-6">Carregando…</div>;
 
@@ -419,6 +504,7 @@ export default function CheckoutClient() {
     );
   }
 
+  // não deixa pagar sem itens/total
   if (totalCentavos <= 0 || items.length === 0) {
     return (
       <div className="mx-auto max-w-2xl p-4">
@@ -447,8 +533,17 @@ export default function CheckoutClient() {
   return (
     <div className="mx-auto max-w-2xl p-4">
       <h1 className="mb-2 text-xl font-semibold">Finalizar pagamento</h1>
-      {debugFonte && <div className="mb-4 text-xs opacity-60">Fonte: {debugFonte}</div>}
+      {debugFonte && <div className="mb-2 text-xs opacity-60">Fonte: {debugFonte}</div>}
 
+      <div className="mb-4 flex items-center justify-between text-xs text-gray-600">
+        <div>
+          Status:{" "}
+          <b className="text-gray-900">{status || "—"}</b>
+        </div>
+        <div>{checking ? "Verificando pagamento..." : " "}</div>
+      </div>
+
+      {/* CPF editável */}
       <div className="mb-4 rounded-2xl border p-4">
         <div className="mb-2 text-sm font-semibold">CPF (obrigatório para PIX)</div>
         <input
