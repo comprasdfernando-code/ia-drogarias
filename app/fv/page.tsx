@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
 import { useCart } from "./_components/cart";
@@ -274,6 +273,7 @@ function FarmaciaVirtualHome() {
 
       setLoadingBusca(true);
       try {
+        // fallback direto na VIEW
         const digits = raw.replace(/\D/g, "");
         let query = supabase
           .from(VIEW_HOME)
@@ -511,24 +511,17 @@ function FarmaciaVirtualHome() {
   );
 }
 
-/* =========================
-   MODAL CARRINHO + PATCH (SUPABASE + CHECKOUT)
-========================= */
 function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void }) {
-  const router = useRouter();
   const cart = useCart();
 
   const TAXA_ENTREGA_FIXA = 10;
-
   const PEDIDOS_TABLE = "fv_pedidos";
-  const VENDAS_TABLE = "vendas_site"; // ✅ tabela do checkout/pagbank
 
   const [saving, setSaving] = useState(false);
   const [pedidoCriado, setPedidoCriado] = useState<{ pronto?: string; encomenda?: string; grupo?: string } | null>(null);
 
   const [clienteNome, setClienteNome] = useState("");
   const [clienteTelefone, setClienteTelefone] = useState("");
-  const [clienteCpf, setClienteCpf] = useState(""); // ✅ novo (PIX/CARTÃO)
 
   const [tipoEntrega, setTipoEntrega] = useState<"ENTREGA" | "RETIRADA">("ENTREGA");
   const [endereco, setEndereco] = useState("");
@@ -553,14 +546,8 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
     if (tipoEntrega === "ENTREGA") {
       if (!endereco.trim() || !numero.trim() || !bairro.trim()) return false;
     }
-
-    // ✅ CPF obrigatório para PIX/CARTAO (PagBank)
-    if (pagamento === "PIX" || pagamento === "CARTAO") {
-      if (onlyDigits(clienteCpf).length !== 11) return false;
-    }
-
     return true;
-  }, [cart.items.length, clienteNome, clienteTelefone, tipoEntrega, endereco, numero, bairro, pagamento, clienteCpf]);
+  }, [cart.items.length, clienteNome, clienteTelefone, tipoEntrega, endereco, numero, bairro]);
 
   useEffect(() => {
     if (!open) return;
@@ -578,7 +565,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
     if (!clean.length) return new Map<string, number>();
 
     const { data, error } = await supabase
-      .from("fv_home_com_estoque")
+      .from("fv_home_com_estoque") // ✅ sua view consolidada
       .select("ean,estoque_total")
       .in("ean", clean);
 
@@ -595,34 +582,6 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
     const { data, error } = await supabase.from(PEDIDOS_TABLE).insert(payload).select("id").single();
     if (error) throw error;
     return String((data as any).id || "");
-  }
-
-  // ✅ PATCH: insert que “se adapta” ao schema (remove colunas inexistentes)
-  async function safeInsert(table: string, payload: Record<string, any>) {
-    const dataTry: Record<string, any> = { ...payload };
-
-    for (let i = 0; i < 12; i++) {
-      const { data, error } = await supabase.from(table).insert(dataTry).select("id").single();
-
-      if (!error) return { id: String((data as any)?.id || "") };
-
-      const msg = String((error as any)?.message || "");
-      const code = String((error as any)?.code || "");
-
-      // PGRST204: coluna não existe no schema cache
-      if (code === "PGRST204") {
-        const m = msg.match(/Could not find the '([^']+)' column/i);
-        const col = m?.[1];
-        if (col && col in dataTry) {
-          delete dataTry[col];
-          continue;
-        }
-      }
-
-      throw error;
-    }
-
-    throw new Error("Falha ao salvar (schema mismatch).");
   }
 
   async function finalizarPedido() {
@@ -707,52 +666,6 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
       }
 
       setPedidoCriado(created);
-
-      // ✅ Se for PIX/CARTAO: cria venda_site e manda pro checkout
-      if (pagamento === "PIX" || pagamento === "CARTAO") {
-        const cpf = onlyDigits(clienteCpf);
-
-        const itemsPagbank = cart.items.map((it) => ({
-          reference_id: String(it.ean || "item"),
-          name: String(it.nome || "Item"),
-          quantity: Number(it.qtd || 1),
-          unit_amount: Math.round(Number(it.preco || 0) * 100), // ✅ centavos
-        }));
-
-        const payloadVenda = {
-          status: "novo",
-          forma_pagamento: pagamento === "CARTAO" ? "CREDIT_CARD" : "PIX",
-
-          cliente_nome: clienteNome.trim(),
-          cliente_whatsapp: onlyDigits(clienteTelefone),
-          tax_id: cpf, // ✅ CPF só dígitos
-
-          // endereço em 1 campo pra não depender de colunas (bairro/numero etc)
-          endereco: tipoEntrega === "ENTREGA" ? `${endereco.trim()}, ${numero.trim()} - ${bairro.trim()}` : "RETIRADA",
-
-          subtotal_centavos: Math.round(subtotal * 100),
-          taxa_entrega_centavos: Math.round(taxaEntrega * 100),
-          total_centavos: Math.round(total * 100),
-
-          itens: itemsPagbank,
-          fv_grupo_id: grupoId ?? null,
-          fv_pronto_id: created.pronto ?? null,
-          fv_encomenda_id: created.encomenda ?? null,
-          canal: "FV",
-        };
-
-        const ins = await safeInsert(VENDAS_TABLE, payloadVenda);
-        const vendaId = ins.id;
-
-        // limpa carrinho e vai pro checkout
-        clearCartSafe();
-        onClose();
-
-        router.push(`/fv/checkout?order_id=${encodeURIComponent(vendaId)}&venda_id=${encodeURIComponent(vendaId)}`);
-        return;
-      }
-
-      // ✅ dinheiro/combinado: finaliza aqui
       clearCartSafe();
     } catch (e: any) {
       console.error(e);
@@ -903,19 +816,6 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
                 disabled={saving || !!pedidoCriado}
               />
               <div className="text-[11px] text-gray-500">Dica: informe com DDD. Ex: 11999999999</div>
-
-              {(pagamento === "PIX" || pagamento === "CARTAO") && (
-                <>
-                  <input
-                    placeholder="CPF (11 dígitos) — obrigatório para PIX/CARTÃO"
-                    value={clienteCpf}
-                    onChange={(e) => setClienteCpf(e.target.value)}
-                    className="w-full border bg-white px-3 py-2.5 rounded-xl outline-none focus:ring-4 focus:ring-blue-100"
-                    disabled={saving || !!pedidoCriado}
-                  />
-                  <div className="text-[11px] text-gray-500">Para gerar PIX/CARTÃO no PagBank precisamos do CPF.</div>
-                </>
-              )}
             </div>
           </div>
 
@@ -1001,12 +901,6 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
                 </button>
               ))}
             </div>
-
-            {(pagamento === "PIX" || pagamento === "CARTAO") && (
-              <div className="mt-2 text-xs text-gray-500">
-                * Para PIX/CARTÃO, você será direcionado para a tela de pagamento.
-              </div>
-            )}
           </div>
         </div>
 
@@ -1052,7 +946,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
           {!canCheckout ? (
             <div className="mt-2 text-xs text-gray-500">
               Para liberar: informe <b>Nome</b>, <b>WhatsApp</b> e adicione itens. Se escolher <b>Entrega</b>, preencha{" "}
-              <b>Endereço/Número/Bairro</b>. Para <b>PIX/CARTÃO</b>, informe <b>CPF</b>.
+              <b>Endereço/Número/Bairro</b>.
             </div>
           ) : null}
         </div>
@@ -1196,6 +1090,11 @@ function ProdutoCardUltra({ p, onComprar }: { p: FVProduto; onComprar: () => voi
 /**
  * ✅ OPÇÃO 3 (MOBILE/TABLET): faixa "Serviços rápidos"
  * - aparece só em telas menores que xl
+ * - chama WhatsApp com mensagem pronta
+ *
+ * COMO USAR:
+ * Dentro do seu <section ...> antes da grid, coloque:
+ * <ServiceQuickAds />
  */
 function ServiceQuickAds() {
   const base = "/servicos/agenda";
