@@ -1,239 +1,286 @@
 "use client";
 
-import React, { Suspense, useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import PagbankPayment from "../_components/PagbankPayment";
 
-type CheckoutPayload = {
-  order_id: string;
-  pedido_id?: string | null;
-  grupo_id?: string | null;
+type VendaSite = {
+  id?: string;
+  status?: string | null;
+
+  cliente_nome?: string | null;
+  cliente_email?: string | null;
+  cliente_tax_id?: string | null;
+  cliente_phone?: string | null;
+
+  itens?: any[] | null;
+
+  // alguns lugares podem vir com total em centavos ou reais
   total_centavos?: number | null;
-  pagamento?: "PIX" | "CARTAO" | "DINHEIRO" | "COMBINAR" | string;
-
-  cliente?: {
-    name?: string | null;
-    email?: string | null;
-    tax_id?: string | null; // CPF
-    phone?: string | null;
-  };
-
-  items?: Array<{
-    reference_id?: string;
-    name?: string;
-    quantity?: number;
-    unit_amount?: number; // centavos
-  }>;
-
-  entrega?: any;
+  total?: number | null;
+  total_reais?: number | null;
 };
 
 function onlyDigits(s: string) {
   return (s || "").replace(/\D/g, "");
 }
 
-function brlFromCentavos(cents: number) {
-  const v = (Number(cents || 0) / 100) || 0;
-  return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+/** Converte valores que podem vir em reais OU centavos para centavos */
+function toCents(v: any): number {
+  if (v === null || v === undefined) return 0;
+
+  // se vier string "19,99" ou "19.99"
+  if (typeof v === "string") {
+    const s = v.trim().replace(/\./g, "").replace(",", ".");
+    const n = Number(s);
+    if (!Number.isFinite(n)) return 0;
+    // se for 0..9999 assume reais, converte
+    if (n > 0 && n < 100000) return Math.round(n * 100);
+    return Math.round(n);
+  }
+
+  if (typeof v === "number") {
+    if (!Number.isFinite(v)) return 0;
+
+    // heurística:
+    // - se tiver casas decimais, provavelmente reais (19.99)
+    const hasDecimals = Math.abs(v - Math.round(v)) > 0.000001;
+    if (hasDecimals) return Math.round(v * 100);
+
+    // - se for pequeno demais (ex.: 20), pode ser reais (20) -> 2000
+    //   MAS cuidado: pode ser centavos 20 também. Vamos assumir:
+    //   se for <= 9999, costuma ser reais no front; se for centavos geralmente fica >= 100.
+    //   Aqui, vamos usar: se for <= 9999 e NÃO parece centavos, tratar como reais.
+    if (v > 0 && v <= 9999) return Math.round(v * 100);
+
+    // - senão já deve ser centavos
+    return Math.round(v);
+  }
+
+  return 0;
 }
 
-function safeJsonParse<T>(txt: string | null): T | null {
-  if (!txt) return null;
+/** Tenta achar um payload salvo no sessionStorage no padrão fv_checkout_* */
+function findCheckoutInSession(pedidoId?: string) {
   try {
-    return JSON.parse(txt) as T;
+    if (typeof window === "undefined") return null;
+
+    // se tiver pedidoId, tentamos bater direto
+    if (pedidoId) {
+      const direct = sessionStorage.getItem(`fv_checkout_${pedidoId}`);
+      if (direct) return JSON.parse(direct);
+    }
+
+    // senão, procura o último que existir
+    const keys: string[] = [];
+    for (let i = 0; i < sessionStorage.length; i++) {
+      const k = sessionStorage.key(i);
+      if (k && k.startsWith("fv_checkout_")) keys.push(k);
+    }
+    keys.sort(); // geralmente tem timestamp/uuid no final, mas ok
+    const lastKey = keys[keys.length - 1];
+    if (!lastKey) return null;
+
+    const raw = sessionStorage.getItem(lastKey);
+    if (!raw) return null;
+
+    return JSON.parse(raw);
   } catch {
     return null;
   }
 }
 
-function computeTotalCentavos(items: any[] | undefined | null) {
-  const arr = Array.isArray(items) ? items : [];
-  return arr.reduce((acc, it) => {
-    const q = Number(it?.quantity || 0);
-    const ua = Number(it?.unit_amount || 0);
-    return acc + Math.max(0, q) * Math.max(0, ua);
-  }, 0);
-}
+/** fetch JSON seguro (evita "Unexpected end of JSON input") */
+async function safeFetchJson(input: RequestInfo, init?: RequestInit) {
+  const r = await fetch(input, init);
+  const text = await r.text();
+  let j: any = null;
 
-function normalizeItems(payload: CheckoutPayload | null) {
-  const arr = Array.isArray(payload?.items) ? payload!.items! : [];
-  return arr
-    .map((i: any, idx: number) => ({
-      reference_id: String(i?.reference_id || `item-${idx + 1}`),
-      name: String(i?.name || "Item"),
-      quantity: Math.max(1, Number(i?.quantity || 1)),
-      unit_amount: Math.max(0, Number(i?.unit_amount || 0)),
-    }))
-    .filter((x) => x.unit_amount > 0 && x.quantity > 0);
-}
-
-function findPayloadByPedidoId(pedidoId: string) {
-  try {
-    // procura em todas as chaves fv_checkout_*
-    for (let i = 0; i < sessionStorage.length; i++) {
-      const k = sessionStorage.key(i) || "";
-      if (!k.startsWith("fv_checkout_")) continue;
-      const raw = sessionStorage.getItem(k);
-      const p = safeJsonParse<CheckoutPayload>(raw);
-      if (p?.pedido_id && String(p.pedido_id) === String(pedidoId)) {
-        return { key: k, payload: p };
-      }
+  if (text && text.trim()) {
+    try {
+      j = JSON.parse(text);
+    } catch {
+      // se o backend devolver HTML/empty, mantém null
+      j = null;
     }
-  } catch {}
-  return null;
+  }
+
+  return { r, j, text };
 }
 
 export default function CheckoutClient() {
-  // ✅ Suspense aqui dentro resolve o erro do Next:
-  // "useSearchParams should be wrapped in a suspense boundary"
-  return (
-    <Suspense fallback={<div className="p-6">Carregando checkout…</div>}>
-      <CheckoutInner />
-    </Suspense>
-  );
-}
-
-function CheckoutInner() {
   const sp = useSearchParams();
   const router = useRouter();
 
-  const orderIdFromUrl = sp.get("order_id") || "";
-  const pedidoIdFromUrl = sp.get("pedido_id") || "";
-  const grupoIdFromUrl = sp.get("grupo_id") || "";
+  // Pode vir do carrinho / do seu fluxo:
+  const orderIdParam = sp.get("order_id") || "";
+  const pedidoId = sp.get("pedido_id") || "";
+  const vendaId = sp.get("venda_id") || "";
+
+  const [resolvedOrderId, setResolvedOrderId] = useState<string>(orderIdParam);
 
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
-  const [orderId, setOrderId] = useState<string>("");
-  const [payload, setPayload] = useState<CheckoutPayload | null>(null);
+  const [venda, setVenda] = useState<VendaSite | null>(null);
 
-  // campos editáveis (CPF/Email/Telefone)
+  // CPF manual (pra PIX)
   const [cpf, setCpf] = useState("");
-  const [email, setEmail] = useState("");
-  const [phone, setPhone] = useState("");
 
+  // 1) Resolve order_id se não vier na URL
+  useEffect(() => {
+    if (orderIdParam) {
+      setResolvedOrderId(orderIdParam);
+      return;
+    }
+
+    // tenta recuperar do sessionStorage
+    const ss = findCheckoutInSession(pedidoId || undefined);
+
+    // algumas possibilidades de como você pode ter salvo:
+    // ss.order_id, ss.orderId, ss.pagbank_order_id, etc.
+    const possible =
+      ss?.order_id ||
+      ss?.orderId ||
+      ss?.pagbank_order_id ||
+      ss?.pagbank?.order_id ||
+      "";
+
+    if (possible) {
+      setResolvedOrderId(String(possible));
+      return;
+    }
+
+    // sem order_id, não trava aqui ainda: vamos tentar buscar pelo pedido_id/venda_id
+    setResolvedOrderId("");
+  }, [orderIdParam, pedidoId]);
+
+  // 2) Busca a venda no backend (status)
   useEffect(() => {
     (async () => {
       setLoading(true);
       setErr(null);
+      setVenda(null);
 
       try {
-        let oid = orderIdFromUrl.trim();
-        let p: CheckoutPayload | null = null;
-
-        // 1) tenta pelo order_id
-        if (oid) {
-          const key = `fv_checkout_${oid}`;
-          p = safeJsonParse<CheckoutPayload>(sessionStorage.getItem(key));
-          if (!p) {
-            // se não achou, pode ter sido limpo → tenta pelo pedido_id
-            if (pedidoIdFromUrl) {
-              const found = findPayloadByPedidoId(pedidoIdFromUrl);
-              if (found?.payload) {
-                p = found.payload;
-                oid = p.order_id || oid;
-              }
-            }
-          }
-        } else {
-          // 2) sem order_id → tenta achar pelo pedido_id
-          if (pedidoIdFromUrl) {
-            const found = findPayloadByPedidoId(pedidoIdFromUrl);
-            if (found?.payload) {
-              p = found.payload;
-              oid = p.order_id || "";
-            }
-          }
-        }
-
-        if (!oid) {
-          setErr("order_id não informado (e não encontrei pelo pedido_id).");
-          setPayload(null);
-          setOrderId("");
+        // Se não tenho nada pra identificar, erro.
+        if (!resolvedOrderId && !pedidoId && !vendaId) {
+          setErr("order_id não informado (e não encontrei no sessionStorage).");
           return;
         }
 
-        if (!p) {
-          setErr(
-            "Não encontrei dados do checkout no navegador. Volte ao carrinho e finalize novamente para gerar o pagamento."
+        // Tentativa A: POST /api/pagbank/status (seu código original)
+        // Enviamos o máximo de chaves possíveis (order_id, pedido_id, venda_id)
+        const body = JSON.stringify({
+          order_id: resolvedOrderId || undefined,
+          pedido_id: pedidoId || undefined,
+          venda_id: vendaId || undefined,
+        });
+
+        let resp = await safeFetchJson("/api/pagbank/status", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body,
+          cache: "no-store",
+        });
+
+        // Se o endpoint não aceita POST (405) ou não existe (404), tenta GET
+        if (resp.r.status === 405 || resp.r.status === 404) {
+          const qs = new URLSearchParams();
+          if (resolvedOrderId) qs.set("order_id", resolvedOrderId);
+          if (pedidoId) qs.set("pedido_id", pedidoId);
+          if (vendaId) qs.set("venda_id", vendaId);
+
+          resp = await safeFetchJson(`/api/pagbank/status?${qs.toString()}`, {
+            method: "GET",
+            cache: "no-store",
+          });
+        }
+
+        const { r, j, text } = resp;
+
+        if (!r.ok) {
+          throw new Error(
+            `Falha ao buscar venda (HTTP ${r.status}). Verifique /api/pagbank/status.` +
+              (text ? ` Resposta: ${text.slice(0, 120)}` : "")
           );
-          setPayload(null);
-          setOrderId(oid);
-          return;
         }
 
-        // garantir ids
-        p.order_id = p.order_id || oid;
-        p.pedido_id = p.pedido_id || pedidoIdFromUrl || null;
-        p.grupo_id = p.grupo_id || grupoIdFromUrl || null;
+        // Espera { ok: true, venda: {...} }
+        if (!j?.ok) {
+          throw new Error(j?.error || "Falha ao buscar venda (payload inválido).");
+        }
 
-        // hidrata campos editáveis
-        setCpf(onlyDigits(p?.cliente?.tax_id || ""));
-        setEmail((p?.cliente?.email || "") as string);
-        setPhone(onlyDigits(p?.cliente?.phone || ""));
+        const v: VendaSite | null = j?.venda || null;
+        setVenda(v);
 
-        setOrderId(oid);
-        setPayload(p);
+        // Pré-preencher CPF se vier do banco
+        const cpfDb = onlyDigits(v?.cliente_tax_id || "");
+        if (cpfDb.length === 11) setCpf(cpfDb);
+
+        // Se a API devolveu order_id, fixa aqui
+        const ord = String(j?.order_id || v?.id || "").trim();
+        if (!resolvedOrderId && j?.order_id) setResolvedOrderId(String(j.order_id));
       } catch (e: any) {
         setErr(String(e?.message || e));
-        setPayload(null);
-        setOrderId("");
       } finally {
         setLoading(false);
       }
     })();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orderIdFromUrl, pedidoIdFromUrl, grupoIdFromUrl]);
-
-  const items = useMemo(() => normalizeItems(payload), [payload]);
-
-  const totalCentavos = useMemo(() => {
-    const fromPayload = Number(payload?.total_centavos || 0);
-    const fromItems = computeTotalCentavos(items);
-    // prefere o maior (evita 0,00)
-    return Math.max(fromPayload, fromItems);
-  }, [payload, items]);
-
-  const needsCpf = useMemo(() => {
-    const pg = String(payload?.pagamento || "PIX").toUpperCase();
-    return pg === "PIX" || pg === "CARTAO";
-  }, [payload]);
+  }, [resolvedOrderId, pedidoId, vendaId]);
 
   const cliente = useMemo(() => {
-    const nome = payload?.cliente?.name || "Cliente";
-    const em = (email || payload?.cliente?.email || "cliente@iadrogarias.com").toString().trim();
-    const ph = onlyDigits(phone || (payload?.cliente?.phone || "").toString());
-    const tx = onlyDigits(cpf || (payload?.cliente?.tax_id || "").toString());
+    const v = venda;
+    const cpfDigits = onlyDigits(cpf);
+
     return {
-      name: nome,
-      email: em,
-      tax_id: tx,
-      phone: ph,
+      name: v?.cliente_nome || "Cliente",
+      email: v?.cliente_email || "cliente@iadrogarias.com",
+      tax_id: cpfDigits || undefined,
+      phone: onlyDigits(v?.cliente_phone || "") || undefined,
     };
-  }, [payload, cpf, email, phone]);
+  }, [venda, cpf]);
 
-  const cpfOk = !needsCpf || onlyDigits(cliente.tax_id).length === 11;
+  const items = useMemo(() => {
+    const arr = Array.isArray(venda?.itens) ? (venda!.itens as any[]) : [];
 
-  function persistPayloadUpdated() {
-    if (!payload || !orderId) return;
-    const updated: CheckoutPayload = {
-      ...payload,
-      order_id: orderId,
-      cliente: {
-        ...(payload.cliente || {}),
-        name: cliente.name,
-        email: cliente.email,
-        tax_id: cliente.tax_id,
-        phone: cliente.phone,
-      },
-      items,
-      total_centavos: totalCentavos,
-    };
-    try {
-      sessionStorage.setItem(`fv_checkout_${orderId}`, JSON.stringify(updated));
-    } catch {}
-    setPayload(updated);
-  }
+    return arr
+      .map((i: any, idx: number) => {
+        const qty = Number(i?.quantity ?? i?.qtd ?? 1);
+        const unitRaw =
+          i?.unit_amount ??
+          i?.preco_centavos ??
+          i?.unitAmount ??
+          i?.preco ??
+          i?.valor ??
+          0;
+
+        const unit_amount = toCents(unitRaw);
+
+        return {
+          reference_id: String(
+            i?.reference_id || i?.ean || i?.produto_id || i?.id || `item-${idx + 1}`
+          ),
+          name: String(i?.name || i?.nome || "Item"),
+          quantity: Number.isFinite(qty) && qty > 0 ? qty : 1,
+          unit_amount,
+        };
+      })
+      .filter((it) => it.unit_amount > 0 && it.quantity > 0);
+  }, [venda]);
+
+  const total = useMemo(() => {
+    // prioridade: total vindo do backend, senão soma dos itens
+    const backendTotal =
+      toCents(venda?.total_centavos) ||
+      toCents(venda?.total_reais) ||
+      toCents(venda?.total) ||
+      0;
+
+    if (backendTotal > 0) return backendTotal;
+
+    return items.reduce((acc, it) => acc + it.unit_amount * it.quantity, 0);
+  }, [venda, items]);
 
   function onPaid() {
     alert("Pagamento aprovado 🎉");
@@ -241,117 +288,71 @@ function CheckoutInner() {
   }
 
   if (loading) return <div className="p-6">Carregando…</div>;
-  if (err) return <div className="p-6 text-red-600 font-bold">{err}</div>;
+  if (err) return <div className="p-6 text-red-600">{err}</div>;
+  if (!venda) return <div className="p-6">Venda não encontrada.</div>;
 
-  // segurança extra
-  if (!payload) return <div className="p-6">Checkout não encontrado.</div>;
-
-  if (!items.length || totalCentavos <= 0) {
+  // Se ficou zerado, mostra diagnóstico (isso é o que estava acontecendo contigo)
+  if (!items.length || total <= 0) {
     return (
-      <div className="mx-auto max-w-2xl p-6">
-        <h1 className="text-xl font-extrabold">Finalizar pagamento</h1>
-        <div className="mt-3 rounded-2xl border bg-red-50 p-4 text-red-700 font-bold">
-          Seu pedido ficou com total zerado (R$ 0,00) ou sem itens válidos.
-          <div className="mt-2 text-sm font-normal text-red-700">
-            Volte ao carrinho e finalize novamente. Se persistir, me mande print do `sessionStorage fv_checkout_*`.
+      <div className="mx-auto max-w-2xl p-4">
+        <h1 className="mb-4 text-xl font-semibold">Finalizar pagamento</h1>
+
+        <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          <div className="font-semibold">
+            Seu pedido ficou com total zerado (R$ 0,00) ou sem itens válidos.
+          </div>
+          <div className="mt-2">
+            Volte ao carrinho e finalize novamente. Se persistir, me mande print
+            do <code className="rounded bg-white/60 px-1">sessionStorage</code>{" "}
+            do <code className="rounded bg-white/60 px-1">fv_checkout_*</code>.
+          </div>
+
+          <div className="mt-3 text-xs opacity-80">
+            Diagnóstico:
+            <div>- itens recebidos: {Array.isArray(venda?.itens) ? venda!.itens!.length : 0}</div>
+            <div>- itens válidos: {items.length}</div>
+            <div>- total backend: {String(venda?.total_centavos ?? venda?.total_reais ?? venda?.total ?? "n/a")}</div>
           </div>
         </div>
+
+        <button
+          className="mt-4 rounded-xl border px-4 py-3"
+          onClick={() => router.push("/fv")}
+        >
+          Voltar
+        </button>
       </div>
     );
   }
 
   return (
     <div className="mx-auto max-w-2xl p-4">
-      <h1 className="mb-2 text-xl font-extrabold">Finalizar pagamento</h1>
+      <h1 className="mb-4 text-xl font-semibold">Finalizar pagamento</h1>
 
-      <div className="mb-4 rounded-2xl border bg-white p-4">
-        <div className="text-sm text-gray-600">
-          <b>Pedido:</b> {payload.pedido_id || "—"} {payload.grupo_id ? <span>• <b>Grupo:</b> {payload.grupo_id}</span> : null}
-        </div>
-        <div className="mt-1 text-sm text-gray-600">
-          <b>Order:</b> {orderId}
-        </div>
-        <div className="mt-3 text-2xl font-extrabold text-green-700">{brlFromCentavos(totalCentavos)}</div>
-
-        {/* ✅ CPF/Contato */}
-        <div className="mt-4 grid grid-cols-1 gap-2">
+      {/* CPF obrigatório pro PIX */}
+      <div className="mb-4 rounded-2xl border p-4">
+        <div className="text-sm font-semibold">CPF para pagamento (PIX)</div>
+        <div className="mt-2 flex flex-col gap-2">
           <input
             value={cpf}
-            onChange={(e) => setCpf(e.target.value)}
-            placeholder={needsCpf ? "CPF (obrigatório para PIX/CARTÃO)" : "CPF (opcional)"}
-            className={`w-full rounded-xl border px-3 py-2.5 outline-none focus:ring-4 ${
-              needsCpf ? "focus:ring-amber-100" : "focus:ring-blue-100"
-            }`}
+            onChange={(e) => setCpf(onlyDigits(e.target.value))}
+            placeholder="Digite o CPF (11 números)"
+            inputMode="numeric"
+            className="w-full rounded-xl border px-3 py-2"
+            maxLength={14}
           />
-          <input
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="Email (recomendado)"
-            className="w-full rounded-xl border px-3 py-2.5 outline-none focus:ring-4 focus:ring-blue-100"
-          />
-          <input
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            placeholder="WhatsApp com DDD (ex: 11999999999)"
-            className="w-full rounded-xl border px-3 py-2.5 outline-none focus:ring-4 focus:ring-blue-100"
-          />
-
-          {needsCpf && !cpfOk ? (
-            <div className="text-xs font-bold text-red-600">CPF inválido. Informe 11 dígitos.</div>
-          ) : (
-            <div className="text-[11px] text-gray-500">
-              Dica: CPF e WhatsApp só números. Email ajuda na confirmação.
-            </div>
-          )}
-
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={persistPayloadUpdated}
-              className="flex-1 rounded-xl border bg-white hover:bg-gray-50 px-3 py-2.5 font-extrabold"
-            >
-              Salvar dados
-            </button>
-            <button
-              type="button"
-              onClick={() => router.push("/fv")}
-              className="rounded-xl border bg-white hover:bg-gray-50 px-3 py-2.5 font-extrabold"
-            >
-              Voltar
-            </button>
+          <div className="text-xs opacity-70">
+            * O PagBank exige CPF do pagador no PIX.
           </div>
         </div>
       </div>
 
-      {/* ✅ Pagamento */}
-      {!cpfOk ? (
-        <div className="rounded-2xl border bg-red-50 p-4 text-red-700 font-bold">
-          Para gerar o pagamento, informe o CPF corretamente.
-        </div>
-      ) : (
-        <PagbankPayment orderId={orderId} cliente={cliente} items={items} onPaid={onPaid} />
-      )}
-
-      {/* Lista de itens (debug amigável) */}
-      <div className="mt-4 rounded-2xl border bg-white p-4">
-        <div className="font-extrabold mb-2">Itens</div>
-        <div className="space-y-2">
-          {items.map((it, idx) => (
-            <div key={`${it.reference_id}-${idx}`} className="flex items-start justify-between gap-3 border rounded-xl p-3">
-              <div className="min-w-0">
-                <div className="font-bold text-sm line-clamp-2">{it.name}</div>
-                <div className="text-xs text-gray-500">ref: {it.reference_id}</div>
-              </div>
-              <div className="text-right">
-                <div className="text-xs text-gray-600">
-                  {it.quantity} x {brlFromCentavos(it.unit_amount)}
-                </div>
-                <div className="font-extrabold">{brlFromCentavos(it.quantity * it.unit_amount)}</div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
+      <PagbankPayment
+        orderId={resolvedOrderId || (orderIdParam || "")}
+        cliente={cliente}
+        items={items}
+        onPaid={onPaid}
+      />
     </div>
   );
 }
