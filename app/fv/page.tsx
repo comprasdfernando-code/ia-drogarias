@@ -274,7 +274,6 @@ function FarmaciaVirtualHome() {
 
       setLoadingBusca(true);
       try {
-        // fallback direto na VIEW
         const digits = raw.replace(/\D/g, "");
         let query = supabase
           .from(VIEW_HOME)
@@ -512,28 +511,24 @@ function FarmaciaVirtualHome() {
   );
 }
 
+/* =========================
+   MODAL CARRINHO + PATCH (SUPABASE + CHECKOUT)
+========================= */
 function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void }) {
   const router = useRouter();
   const cart = useCart();
 
   const TAXA_ENTREGA_FIXA = 10;
+
   const PEDIDOS_TABLE = "fv_pedidos";
-  const VENDAS_TABLE = "vendas_site"; // ✅ novo: para PagBank
+  const VENDAS_TABLE = "vendas_site"; // ✅ tabela do checkout/pagbank
 
   const [saving, setSaving] = useState(false);
-
-  const [pedidoCriado, setPedidoCriado] = useState<{
-    pronto?: string;
-    encomenda?: string;
-    grupo?: string;
-    venda_id?: string; // ✅ novo
-  } | null>(null);
+  const [pedidoCriado, setPedidoCriado] = useState<{ pronto?: string; encomenda?: string; grupo?: string } | null>(null);
 
   const [clienteNome, setClienteNome] = useState("");
   const [clienteTelefone, setClienteTelefone] = useState("");
-
-  // ✅ novo: CPF para PIX/CARTÃO
-  const [clienteCpf, setClienteCpf] = useState("");
+  const [clienteCpf, setClienteCpf] = useState(""); // ✅ novo (PIX/CARTÃO)
 
   const [tipoEntrega, setTipoEntrega] = useState<"ENTREGA" | "RETIRADA">("ENTREGA");
   const [endereco, setEndereco] = useState("");
@@ -555,12 +550,15 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
     if (!clienteNome.trim()) return false;
     if (onlyDigits(clienteTelefone).length < 10) return false;
 
-    // ✅ PagBank: PIX e CARTÃO exigem CPF
-    if ((pagamento === "PIX" || pagamento === "CARTAO") && onlyDigits(clienteCpf).length !== 11) return false;
-
     if (tipoEntrega === "ENTREGA") {
       if (!endereco.trim() || !numero.trim() || !bairro.trim()) return false;
     }
+
+    // ✅ CPF obrigatório para PIX/CARTAO (PagBank)
+    if (pagamento === "PIX" || pagamento === "CARTAO") {
+      if (onlyDigits(clienteCpf).length !== 11) return false;
+    }
+
     return true;
   }, [cart.items.length, clienteNome, clienteTelefone, tipoEntrega, endereco, numero, bairro, pagamento, clienteCpf]);
 
@@ -580,7 +578,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
     if (!clean.length) return new Map<string, number>();
 
     const { data, error } = await supabase
-      .from("fv_home_com_estoque") // ✅ sua view consolidada
+      .from("fv_home_com_estoque")
       .select("ean,estoque_total")
       .in("ean", clean);
 
@@ -599,50 +597,32 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
     return String((data as any).id || "");
   }
 
-  // ✅ PATCH: helper de endereço “num campo só” (pra não depender de coluna bairro em vendas_site)
-  function enderecoCompleto() {
-    if (tipoEntrega !== "ENTREGA") return null;
-    const e = endereco.trim();
-    const n = numero.trim();
-    const b = bairro.trim();
-    const parts = [e, n ? `, ${n}` : "", b ? ` - ${b}` : ""].join("");
-    return parts || null;
-  }
+  // ✅ PATCH: insert que “se adapta” ao schema (remove colunas inexistentes)
+  async function safeInsert(table: string, payload: Record<string, any>) {
+    const dataTry: Record<string, any> = { ...payload };
 
-  // ✅ PATCH: insert seguro em vendas_site (evita PGRST204 se colunas não existirem)
-  async function insertVendaSiteSafe(payload: any) {
-    const tries: any[] = [
-      payload,
-      // remove campos opcionais que podem não existir
-      (() => {
-        const p = { ...payload };
-        delete p.cpf;
-        return p;
-      })(),
-      (() => {
-        const p = { ...payload };
-        delete p.tipo_entrega;
-        delete p.endereco;
-        return p;
-      })(),
-      (() => {
-        const p = { ...payload };
-        delete p.itens;
-        return p;
-      })(),
-      // mínimo do mínimo (garante criar “order” pra PagBank)
-      { status: payload?.status ?? "novo" },
-    ];
+    for (let i = 0; i < 12; i++) {
+      const { data, error } = await supabase.from(table).insert(dataTry).select("id").single();
 
-    let lastErr: any = null;
+      if (!error) return { id: String((data as any)?.id || "") };
 
-    for (const t of tries) {
-      const { data, error } = await supabase.from(VENDAS_TABLE).insert(t).select("id").single();
-      if (!error) return String((data as any)?.id || "");
-      lastErr = error;
+      const msg = String((error as any)?.message || "");
+      const code = String((error as any)?.code || "");
+
+      // PGRST204: coluna não existe no schema cache
+      if (code === "PGRST204") {
+        const m = msg.match(/Could not find the '([^']+)' column/i);
+        const col = m?.[1];
+        if (col && col in dataTry) {
+          delete dataTry[col];
+          continue;
+        }
+      }
+
+      throw error;
     }
 
-    throw lastErr || new Error("Falha ao criar venda_site");
+    throw new Error("Falha ao salvar (schema mismatch).");
   }
 
   async function finalizarPedido() {
@@ -694,7 +674,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
       };
 
       // 4) cria 1 ou 2 pedidos
-      const created: { pronto?: string; encomenda?: string; grupo?: string; venda_id?: string } = { grupo: grupoId };
+      const created: { pronto?: string; encomenda?: string; grupo?: string } = { grupo: grupoId };
 
       // PRONTA ENTREGA
       if (pronta.length) {
@@ -726,39 +706,53 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
         });
       }
 
-      // ✅ PATCH: cria a VENDA em vendas_site para ser o order_id do PagBank
-      // (sem bairro e sem cliente_email)
-      const vendaPayload = {
-        status: "novo",
-        pagamento: pagamento,
-        subtotal: subtotal,
-        taxa_entrega: taxaEntrega,
-        total: total,
-
-        cliente_nome: clienteNome.trim(),
-        cliente_whatsapp: onlyDigits(clienteTelefone),
-
-        cpf: onlyDigits(clienteCpf) || null,
-
-        tipo_entrega: tipoEntrega,
-        endereco: enderecoCompleto(),
-
-        grupo_id: grupoId ?? null,
-        pedido_pronto_id: created.pronto ?? null,
-        pedido_encomenda_id: created.encomenda ?? null,
-
-        itens: cart.items.map((i) => ({
-          reference_id: i.ean,
-          name: i.nome,
-          quantity: Number(i.qtd || 0),
-          unit_amount: Math.round(Number(i.preco || 0) * 100), // centavos
-        })),
-        canal: "FV",
-      };
-
-      created.venda_id = await insertVendaSiteSafe(vendaPayload);
-
       setPedidoCriado(created);
+
+      // ✅ Se for PIX/CARTAO: cria venda_site e manda pro checkout
+      if (pagamento === "PIX" || pagamento === "CARTAO") {
+        const cpf = onlyDigits(clienteCpf);
+
+        const itemsPagbank = cart.items.map((it) => ({
+          reference_id: String(it.ean || "item"),
+          name: String(it.nome || "Item"),
+          quantity: Number(it.qtd || 1),
+          unit_amount: Math.round(Number(it.preco || 0) * 100), // ✅ centavos
+        }));
+
+        const payloadVenda = {
+          status: "novo",
+          forma_pagamento: pagamento === "CARTAO" ? "CREDIT_CARD" : "PIX",
+
+          cliente_nome: clienteNome.trim(),
+          cliente_whatsapp: onlyDigits(clienteTelefone),
+          tax_id: cpf, // ✅ CPF só dígitos
+
+          // endereço em 1 campo pra não depender de colunas (bairro/numero etc)
+          endereco: tipoEntrega === "ENTREGA" ? `${endereco.trim()}, ${numero.trim()} - ${bairro.trim()}` : "RETIRADA",
+
+          subtotal_centavos: Math.round(subtotal * 100),
+          taxa_entrega_centavos: Math.round(taxaEntrega * 100),
+          total_centavos: Math.round(total * 100),
+
+          itens: itemsPagbank,
+          fv_grupo_id: grupoId ?? null,
+          fv_pronto_id: created.pronto ?? null,
+          fv_encomenda_id: created.encomenda ?? null,
+          canal: "FV",
+        };
+
+        const ins = await safeInsert(VENDAS_TABLE, payloadVenda);
+        const vendaId = ins.id;
+
+        // limpa carrinho e vai pro checkout
+        clearCartSafe();
+        onClose();
+
+        router.push(`/fv/checkout?order_id=${encodeURIComponent(vendaId)}&venda_id=${encodeURIComponent(vendaId)}`);
+        return;
+      }
+
+      // ✅ dinheiro/combinado: finaliza aqui
       clearCartSafe();
     } catch (e: any) {
       console.error(e);
@@ -804,32 +798,9 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
                     <b>Encomenda:</b> {pedidoCriado.encomenda}
                   </div>
                 ) : null}
-
-                {/* ✅ novo: ID da venda (order_id PagBank) */}
-                {pedidoCriado.venda_id ? (
-                  <div>
-                    <b>Pagamento (order_id):</b> {pedidoCriado.venda_id}
-                  </div>
-                ) : null}
               </div>
 
-              <div className="mt-4 space-y-2">
-                {/* ✅ novo: ir direto pro checkout */}
-                {pedidoCriado.venda_id ? (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const id = pedidoCriado.venda_id!;
-                      // manda os 2 por compatibilidade
-                      router.push(`/fv/checkout?order_id=${encodeURIComponent(id)}&venda_id=${encodeURIComponent(id)}`);
-                      onClose();
-                    }}
-                    className="w-full rounded-xl bg-black hover:bg-gray-900 text-white py-3 font-extrabold"
-                  >
-                    Ir para pagamento
-                  </button>
-                ) : null}
-
+              <div className="mt-4">
                 <button
                   type="button"
                   onClick={() => {
@@ -846,7 +817,9 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
 
           {/* ITENS */}
           {cart.items.length === 0 ? (
-            <div className="text-gray-600 bg-gray-50 border rounded-2xl p-4">Seu carrinho está vazio. Adicione itens 😊</div>
+            <div className="text-gray-600 bg-gray-50 border rounded-2xl p-4">
+              Seu carrinho está vazio. Adicione itens 😊
+            </div>
           ) : (
             <div className="space-y-3">
               {cart.items.map((it) => (
@@ -929,17 +902,20 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
                 className="w-full border bg-white px-3 py-2.5 rounded-xl outline-none focus:ring-4 focus:ring-blue-100"
                 disabled={saving || !!pedidoCriado}
               />
+              <div className="text-[11px] text-gray-500">Dica: informe com DDD. Ex: 11999999999</div>
 
-              {/* ✅ novo: CPF */}
-              <input
-                placeholder="CPF (só números) — necessário p/ PIX/CARTÃO"
-                value={clienteCpf}
-                onChange={(e) => setClienteCpf(e.target.value)}
-                className="w-full border bg-white px-3 py-2.5 rounded-xl outline-none focus:ring-4 focus:ring-blue-100"
-                disabled={saving || !!pedidoCriado}
-              />
-
-              <div className="text-[11px] text-gray-500">Dica: informe com DDD. Ex: 11999999999 • CPF 11 dígitos.</div>
+              {(pagamento === "PIX" || pagamento === "CARTAO") && (
+                <>
+                  <input
+                    placeholder="CPF (11 dígitos) — obrigatório para PIX/CARTÃO"
+                    value={clienteCpf}
+                    onChange={(e) => setClienteCpf(e.target.value)}
+                    className="w-full border bg-white px-3 py-2.5 rounded-xl outline-none focus:ring-4 focus:ring-blue-100"
+                    disabled={saving || !!pedidoCriado}
+                  />
+                  <div className="text-[11px] text-gray-500">Para gerar PIX/CARTÃO no PagBank precisamos do CPF.</div>
+                </>
+              )}
             </div>
           </div>
 
@@ -1026,11 +1002,11 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
               ))}
             </div>
 
-            {(pagamento === "PIX" || pagamento === "CARTAO") ? (
-              <div className="mt-2 text-xs text-gray-600">
-                * Para PIX/CARTÃO, precisamos do CPF para gerar o pagamento.
+            {(pagamento === "PIX" || pagamento === "CARTAO") && (
+              <div className="mt-2 text-xs text-gray-500">
+                * Para PIX/CARTÃO, você será direcionado para a tela de pagamento.
               </div>
-            ) : null}
+            )}
           </div>
         </div>
 
@@ -1075,8 +1051,8 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
 
           {!canCheckout ? (
             <div className="mt-2 text-xs text-gray-500">
-              Para liberar: informe <b>Nome</b>, <b>WhatsApp</b> e <b>CPF</b> (se PIX/CARTÃO) e adicione itens. Se escolher{" "}
-              <b>Entrega</b>, preencha <b>Endereço/Número/Bairro</b>.
+              Para liberar: informe <b>Nome</b>, <b>WhatsApp</b> e adicione itens. Se escolher <b>Entrega</b>, preencha{" "}
+              <b>Endereço/Número/Bairro</b>. Para <b>PIX/CARTÃO</b>, informe <b>CPF</b>.
             </div>
           ) : null}
         </div>
@@ -1125,7 +1101,10 @@ function ProdutoCardUltra({ p, onComprar }: { p: FVProduto; onComprar: () => voi
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition overflow-hidden flex flex-col">
       {/* IMAGEM + TAGS */}
       <div className="relative p-3">
-        <Link href={hrefProduto} className="bg-gray-50 rounded-xl p-2 flex items-center justify-center hover:opacity-95 transition">
+        <Link
+          href={hrefProduto}
+          className="bg-gray-50 rounded-xl p-2 flex items-center justify-center hover:opacity-95 transition"
+        >
           <Image
             src={firstImg(p.imagens)}
             alt={p.nome || "Produto"}
@@ -1217,11 +1196,6 @@ function ProdutoCardUltra({ p, onComprar }: { p: FVProduto; onComprar: () => voi
 /**
  * ✅ OPÇÃO 3 (MOBILE/TABLET): faixa "Serviços rápidos"
  * - aparece só em telas menores que xl
- * - chama WhatsApp com mensagem pronta
- *
- * COMO USAR:
- * Dentro do seu <section ...> antes da grid, coloque:
- * <ServiceQuickAds />
  */
 function ServiceQuickAds() {
   const base = "/servicos/agenda";
@@ -1279,9 +1253,7 @@ function ServiceQuickAds() {
             >
               <div className="flex items-start justify-between">
                 <div className="text-3xl">{c.emoji}</div>
-                <span className="text-[11px] font-extrabold bg-white/15 px-2 py-1 rounded-full">
-                  Agendar
-                </span>
+                <span className="text-[11px] font-extrabold bg-white/15 px-2 py-1 rounded-full">Agendar</span>
               </div>
 
               <div className="mt-3">
