@@ -241,17 +241,14 @@ export default function PagbankPayment({
             {loading ? "Gerando PIX..." : "Gerar PIX"}
           </button>
 
-          {(pixQrBase64 || pixQrPngUrl) && (
-            <img
-              className="w-64 rounded-xl border"
-              src={
-                pixQrBase64
-                  ? `data:image/png;base64,${pixQrBase64}`
-                  : pixQrPngUrl!
-              }
-              alt="QR Code PIX"
-            />
-          )}
+          {pixQrPngUrl && (
+  <img
+    className="w-64 rounded-xl border bg-white"
+    src={pixQrPngUrl}
+    alt="QR Code PIX"
+  />
+)}
+
 
           {pixCopiaCola && (
             <>
