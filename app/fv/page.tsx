@@ -1,9 +1,9 @@
-
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
 import { useCart } from "./_components/cart";
@@ -13,8 +13,6 @@ import { CartUIProvider, useCartUI } from "./_components/cart-ui";
 
 /* =========================
    SERVIÇOS (BANNERS LATERAIS - DESKTOP)
-   - Desktop: usa as artes verticais e abre a agenda
-   - Mobile: NÃO aparece aqui (pra não ficar no topo)
 ========================= */
 type ServiceAd = {
   key: string;
@@ -30,30 +28,10 @@ function serviceLink(servico: string) {
 function ServiceSideAds() {
   const ads: ServiceAd[] = useMemo(
     () => [
-      {
-        key: "pressao",
-        title: "Aferição de Pressão",
-        href: serviceLink("Aferição de Pressão Arterial"),
-        img: "/banners/pressao-vertical.jpg",
-      },
-      {
-        key: "glicemia",
-        title: "Teste de Glicemia",
-        href: serviceLink("Teste de Glicemia"),
-        img: "/banners/glicemia-vertical.jpg",
-      },
-      {
-        key: "injecao",
-        title: "Aplicação de Injeção",
-        href: serviceLink("Aplicação de Injeção"),
-        img: "/banners/injecao-vertical.jpg",
-      },
-      {
-        key: "revisao",
-        title: "Revisão de Medicamentos",
-        href: serviceLink("Revisão de Medicamentos"),
-        img: "/banners/revisao-vertical.jpg",
-      },
+      { key: "pressao", title: "Aferição de Pressão", href: serviceLink("Aferição de Pressão Arterial"), img: "/banners/pressao-vertical.jpg" },
+      { key: "glicemia", title: "Teste de Glicemia", href: serviceLink("Teste de Glicemia"), img: "/banners/glicemia-vertical.jpg" },
+      { key: "injecao", title: "Aplicação de Injeção", href: serviceLink("Aplicação de Injeção"), img: "/banners/injecao-vertical.jpg" },
+      { key: "revisao", title: "Revisão de Medicamentos", href: serviceLink("Revisão de Medicamentos"), img: "/banners/revisao-vertical.jpg" },
     ],
     []
   );
@@ -70,17 +48,10 @@ function ServiceSideAds() {
 
   return (
     <>
-      {/* LATERAIS (somente desktop grande) */}
       <div className="hidden xl:flex fixed top-28 left-3 z-40">
         <Link href={left.href} className="group" title={left.title}>
           <div className="relative w-[160px] h-[520px] rounded-xl overflow-hidden shadow-lg">
-            <Image
-              src={left.img}
-              alt={left.title}
-              fill
-              className="object-cover group-hover:scale-[1.03] transition"
-              sizes="160px"
-            />
+            <Image src={left.img} alt={left.title} fill className="object-cover group-hover:scale-[1.03] transition" sizes="160px" />
           </div>
         </Link>
       </div>
@@ -88,13 +59,7 @@ function ServiceSideAds() {
       <div className="hidden xl:flex fixed top-28 right-3 z-40">
         <Link href={right.href} className="group" title={right.title}>
           <div className="relative w-[160px] h-[520px] rounded-xl overflow-hidden shadow-lg">
-            <Image
-              src={right.img}
-              alt={right.title}
-              fill
-              className="object-cover group-hover:scale-[1.03] transition"
-              sizes="160px"
-            />
+            <Image src={right.img} alt={right.title} fill className="object-cover group-hover:scale-[1.03] transition" sizes="160px" />
           </div>
         </Link>
       </div>
@@ -119,8 +84,6 @@ type FVProduto = {
   destaque_home: boolean | null;
   ativo: boolean | null;
   imagens: string[] | null;
-
-  // vindo da VIEW
   estoque_total: number;
   disponivel: boolean;
 };
@@ -144,12 +107,7 @@ function calcOff(pmc?: number | null, promo?: number | null) {
   return Math.round(((a - b) / a) * 100);
 }
 
-function precoFinal(p: {
-  pmc?: number | null;
-  em_promocao?: boolean | null;
-  preco_promocional?: number | null;
-  percentual_off?: number | null;
-}) {
+function precoFinal(p: { pmc?: number | null; em_promocao?: boolean | null; preco_promocional?: number | null; percentual_off?: number | null }) {
   const pmc = Number(p.pmc || 0);
   const promo = Number(p.preco_promocional || 0);
   const emPromo = !!p.em_promocao && promo > 0 && (!pmc || promo < pmc);
@@ -179,7 +137,6 @@ export default function FarmaciaVirtualHomePage() {
   );
 }
 
-/* ✅ CORRIGIDO: sem React.FC (evita erro do GridSkeleton no App Router) */
 function GridSkeleton() {
   return (
     <div className="mt-6 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-5">
@@ -222,7 +179,6 @@ function FarmaciaVirtualHome() {
 
   const isSearching = !!busca.trim();
 
-  // LOAD HOME
   async function loadHome(p = 0, append = false) {
     try {
       setLoadingHome(true);
@@ -232,9 +188,7 @@ function FarmaciaVirtualHome() {
 
       const { data, error } = await supabase
         .from(VIEW_HOME)
-        .select(
-          "id,ean,nome,laboratorio,categoria,apresentacao,pmc,em_promocao,preco_promocional,percentual_off,destaque_home,ativo,imagens,estoque_total,disponivel"
-        )
+        .select("id,ean,nome,laboratorio,categoria,apresentacao,pmc,em_promocao,preco_promocional,percentual_off,destaque_home,ativo,imagens,estoque_total,disponivel")
         .order("destaque_home", { ascending: false })
         .order("em_promocao", { ascending: false })
         .order("nome", { ascending: true })
@@ -263,7 +217,6 @@ function FarmaciaVirtualHome() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // SEARCH
   useEffect(() => {
     async function search() {
       const raw = busca.trim();
@@ -274,20 +227,14 @@ function FarmaciaVirtualHome() {
 
       setLoadingBusca(true);
       try {
-        // fallback direto na VIEW
         const digits = raw.replace(/\D/g, "");
         let query = supabase
           .from(VIEW_HOME)
-          .select(
-            "id,ean,nome,laboratorio,categoria,apresentacao,pmc,em_promocao,preco_promocional,percentual_off,destaque_home,ativo,imagens,estoque_total,disponivel"
-          )
+          .select("id,ean,nome,laboratorio,categoria,apresentacao,pmc,em_promocao,preco_promocional,percentual_off,destaque_home,ativo,imagens,estoque_total,disponivel")
           .limit(100);
 
-        if (digits.length >= 8 && digits.length <= 14) {
-          query = query.or(`ean.eq.${digits},nome.ilike.%${raw}%`);
-        } else {
-          query = query.ilike("nome", `%${raw}%`);
-        }
+        if (digits.length >= 8 && digits.length <= 14) query = query.or(`ean.eq.${digits},nome.ilike.%${raw}%`);
+        else query = query.ilike("nome", `%${raw}%`);
 
         const { data, error } = await query;
         if (error) throw error;
@@ -319,12 +266,10 @@ function FarmaciaVirtualHome() {
 
   return (
     <main className="min-h-screen bg-gray-50 pb-24">
-      {/* ✅ Desktop: banners laterais */}
       <ServiceSideAds />
 
       <header className="sticky top-0 z-40 bg-blue-700 shadow">
         <div className="mx-auto max-w-6xl px-4 py-3">
-          {/* MOBILE */}
           <div className="flex items-center justify-between gap-3 md:hidden">
             <div className="text-white font-extrabold whitespace-nowrap">
               IA Drogarias <span className="opacity-80">• FV</span>
@@ -368,15 +313,8 @@ function FarmaciaVirtualHome() {
                 <span className="text-blue-900 bg-green-400/90 px-2 py-1 rounded-full text-xs font-extrabold">🔎</span>
               </div>
             </div>
-
-            {isSearching && (
-              <div className="mt-1 text-[11px] text-white/80">
-                {loadingBusca ? "Buscando…" : resultado.length ? `${resultado.length} resultado(s)` : " "}
-              </div>
-            )}
           </div>
 
-          {/* DESKTOP */}
           <div className="hidden md:flex items-center gap-3">
             <div className="text-white font-extrabold whitespace-nowrap">
               IA Drogarias <span className="opacity-80">• FV</span>
@@ -406,23 +344,11 @@ function FarmaciaVirtualHome() {
                       Limpar
                     </button>
                   ) : null}
-
-                  <span
-                    className="text-blue-900 bg-green-400/90 px-2 py-1 rounded-full text-xs font-extrabold"
-                    aria-hidden
-                  >
+                  <span className="text-blue-900 bg-green-400/90 px-2 py-1 rounded-full text-xs font-extrabold" aria-hidden>
                     🔎
                   </span>
                 </div>
               </div>
-
-              {isSearching ? (
-                <div className="mt-1 text-[11px] text-white/80 min-h-[16px]">
-                  {loadingBusca ? "Buscando…" : resultado.length ? `${resultado.length} resultado(s)` : "Nenhum resultado"}
-                </div>
-              ) : (
-                <div className="mt-1 text-[11px] text-white/80 min-h-[16px]"> </div>
-              )}
             </div>
 
             <button
@@ -448,17 +374,10 @@ function FarmaciaVirtualHome() {
       </div>
 
       <section className="max-w-6xl mx-auto px-4 mt-6">
-        {/* ✅ MOBILE/TABLET: carrossel de serviços (AQUI, e não no topo) */}
         <ServiceQuickAds />
 
         {isSearching ? (
           <>
-            <div className="flex items-end justify-between gap-3 mb-3">
-              <h2 className="text-lg font-extrabold text-gray-900">
-                Resultados <span className="text-gray-500">({resultado.length})</span>
-              </h2>
-            </div>
-
             {loadingBusca ? (
               <GridSkeleton />
             ) : resultado.length === 0 ? (
@@ -471,57 +390,55 @@ function FarmaciaVirtualHome() {
               </div>
             )}
           </>
+        ) : loadingHome ? (
+          <GridSkeleton />
         ) : (
           <>
-            <div className="flex items-end justify-between gap-3 mb-3">
-              <h2 className="text-lg font-extrabold text-gray-900">Produtos em destaque</h2>
-              <div className="text-xs text-gray-500">{homeProdutos.length}+ itens</div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-5">
+              {homeProdutos.map((p) => (
+                <ProdutoCardUltra key={p.id} p={p} onComprar={openCart} />
+              ))}
             </div>
 
-            {loadingHome ? (
-              <GridSkeleton />
-            ) : (
-              <>
-                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-5">
-                  {homeProdutos.map((p) => (
-                    <ProdutoCardUltra key={p.id} p={p} onComprar={openCart} />
-                  ))}
-                </div>
-
-                {hasMore ? (
-                  <div className="mt-6 flex justify-center">
-                    <button
-                      type="button"
-                      onClick={() => loadHome(page + 1, true)}
-                      className="px-6 py-3 rounded-2xl bg-white border hover:bg-gray-50 font-extrabold"
-                      disabled={loadingHome}
-                    >
-                      {loadingHome ? "Carregando..." : "Carregar mais"}
-                    </button>
-                  </div>
-                ) : null}
-              </>
-            )}
+            {hasMore ? (
+              <div className="mt-6 flex justify-center">
+                <button
+                  type="button"
+                  onClick={() => loadHome(page + 1, true)}
+                  className="px-6 py-3 rounded-2xl bg-white border hover:bg-gray-50 font-extrabold"
+                  disabled={loadingHome}
+                >
+                  {loadingHome ? "Carregando..." : "Carregar mais"}
+                </button>
+              </div>
+            ) : null}
           </>
         )}
       </section>
 
-      {/* carrinho */}
       <CartModalPDV open={cartOpen} onClose={closeCart} />
     </main>
   );
 }
+
 function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const router = useRouter();
   const cart = useCart();
 
   const TAXA_ENTREGA_FIXA = 10;
   const PEDIDOS_TABLE = "fv_pedidos";
+
+  // ✅ NOVO: tabelas do checkout PagBank
+  const VENDAS_TABLE = "vendas_site";
+  const VENDAS_ITENS_TABLE = "vendas_site_itens";
 
   const [saving, setSaving] = useState(false);
   const [pedidoCriado, setPedidoCriado] = useState<{ pronto?: string; encomenda?: string; grupo?: string } | null>(null);
 
   const [clienteNome, setClienteNome] = useState("");
   const [clienteTelefone, setClienteTelefone] = useState("");
+  const [clienteEmail, setClienteEmail] = useState("");
+  const [clienteCpf, setClienteCpf] = useState("");
 
   const [tipoEntrega, setTipoEntrega] = useState<"ENTREGA" | "RETIRADA">("ENTREGA");
   const [endereco, setEndereco] = useState("");
@@ -543,11 +460,16 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
     if (!clienteNome.trim()) return false;
     if (onlyDigits(clienteTelefone).length < 10) return false;
 
+    if (pagamento === "PIX" || pagamento === "CARTAO") {
+      if (onlyDigits(clienteCpf).length !== 11) return false;
+      if (!clienteEmail.trim()) return false;
+    }
+
     if (tipoEntrega === "ENTREGA") {
       if (!endereco.trim() || !numero.trim() || !bairro.trim()) return false;
     }
     return true;
-  }, [cart.items.length, clienteNome, clienteTelefone, tipoEntrega, endereco, numero, bairro]);
+  }, [cart.items.length, clienteNome, clienteTelefone, tipoEntrega, endereco, numero, bairro, pagamento, clienteCpf, clienteEmail]);
 
   useEffect(() => {
     if (!open) return;
@@ -559,22 +481,15 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
     else cart.items.forEach((it) => cart.remove(it.ean));
   }
 
-  // 🔎 Busca estoque consolidado da VIEW por EAN
   async function getEstoqueByEan(eans: string[]) {
     const clean = Array.from(new Set(eans.map((x) => (x || "").trim()).filter(Boolean)));
     if (!clean.length) return new Map<string, number>();
 
-    const { data, error } = await supabase
-      .from("fv_home_com_estoque") // ✅ sua view consolidada
-      .select("ean,estoque_total")
-      .in("ean", clean);
-
+    const { data, error } = await supabase.from("fv_home_com_estoque").select("ean,estoque_total").in("ean", clean);
     if (error) throw error;
 
     const map = new Map<string, number>();
-    for (const row of (data || []) as any[]) {
-      map.set(String(row.ean), Number(row.estoque_total || 0));
-    }
+    for (const row of (data || []) as any[]) map.set(String(row.ean), Number(row.estoque_total || 0));
     return map;
   }
 
@@ -582,6 +497,71 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
     const { data, error } = await supabase.from(PEDIDOS_TABLE).insert(payload).select("id").single();
     if (error) throw error;
     return String((data as any).id || "");
+  }
+
+  // ✅ NOVO: cria venda em vendas_site + itens em vendas_site_itens
+  async function criarVendaSite(params: {
+    grupoId?: string | null;
+    itensPronta: any[];
+    itensEncomenda: any[];
+  }) {
+    const vendaId = (globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : `${Date.now()}`) as string;
+
+    const cliente_whatsapp = onlyDigits(clienteTelefone);
+    const tax_id = onlyDigits(clienteCpf);
+
+    const payloadVenda = {
+      id: vendaId,
+      created_at: new Date().toISOString(),
+      status: "pendente",
+      etapa: 1,
+      pagamento: pagamento === "CARTAO" ? "CREDIT_CARD" : "PIX",
+      total,
+      subtotal,
+      taxa_entrega: taxaEntrega,
+      canal: "SITE",
+      grupo_id: params.grupoId ?? null,
+
+      cliente_nome: clienteNome.trim(),
+      cliente_email: clienteEmail.trim(),
+      cliente_tax_id: tax_id,
+      cliente_whatsapp,
+
+      tipo_entrega: tipoEntrega,
+      endereco: tipoEntrega === "ENTREGA" ? endereco.trim() : null,
+      numero: tipoEntrega === "ENTREGA" ? numero.trim() : null,
+      bairro: tipoEntrega === "ENTREGA" ? bairro.trim() : null,
+
+      // opcional: guardar divisão pronta/encomenda
+      tem_pronta_entrega: params.itensPronta.length > 0,
+      tem_encomenda: params.itensEncomenda.length > 0,
+    };
+
+    // 1) cria venda
+    const { error: eVenda } = await supabase.from(VENDAS_TABLE).insert(payloadVenda);
+    if (eVenda) throw eVenda;
+
+    // 2) itens (tudo junto, mantendo info de pronto/encomenda)
+    const itensAll = [
+      ...params.itensPronta.map((it) => ({ ...it, tipo: "PRONTA_ENTREGA" })),
+      ...params.itensEncomenda.map((it) => ({ ...it, tipo: "ENCOMENDA" })),
+    ];
+
+    const payloadItens = itensAll.map((it) => ({
+      venda_id: vendaId,
+      reference_id: String(it.ean || it.reference_id || "item"),
+      ean: String(it.ean),
+      nome: String(it.nome),
+      qty: Number(it.qtd || 0),
+      unit_amount: Math.round(Number(it.preco || 0) * 100), // centavos
+      subtotal: Math.round(Number(it.subtotal || 0) * 100),
+      tipo: it.tipo,
+    }));
+
+    const { error: eItens } = await supabase.from(VENDAS_ITENS_TABLE).insert(payloadItens);
+    if (eItens) throw eItens;
+
+    return vendaId;
   }
 
   async function finalizarPedido() {
@@ -595,7 +575,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
       const eans = cart.items.map((i) => i.ean);
       const estoqueMap = await getEstoqueByEan(eans);
 
-      // 2) separa itens (opção 2)
+      // 2) separa itens
       const pronta: any[] = [];
       const encomenda: any[] = [];
 
@@ -616,7 +596,22 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
         else encomenda.push(item);
       }
 
-      // 3) base do pedido (dados do cliente)
+      // ✅ SE for PIX/CARTAO -> cria venda e redireciona pro checkout
+      if (pagamento === "PIX" || pagamento === "CARTAO") {
+        const vendaId = await criarVendaSite({
+          grupoId,
+          itensPronta: pronta,
+          itensEncomenda: encomenda,
+        });
+
+        // limpa carrinho e manda pro checkout
+        clearCartSafe();
+        onClose();
+        router.push(`/fv/checkout?venda=${encodeURIComponent(vendaId)}`);
+        return;
+      }
+
+      // ✅ fluxo antigo (dinheiro/combinar)
       const base = {
         grupo_id: grupoId ?? null,
         cliente_nome: clienteNome.trim(),
@@ -632,10 +627,8 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
         status: "NOVO",
       };
 
-      // 4) cria 1 ou 2 pedidos
       const created: { pronto?: string; encomenda?: string; grupo?: string } = { grupo: grupoId };
 
-      // PRONTA ENTREGA
       if (pronta.length) {
         const subPronto = pronta.reduce((acc, it) => acc + Number(it.subtotal || 0), 0);
         const totalPronto = subPronto + taxaEntrega;
@@ -650,7 +643,6 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
         });
       }
 
-      // ENCOMENDA
       if (encomenda.length) {
         const subEnc = encomenda.reduce((acc, it) => acc + Number(it.subtotal || 0), 0);
         const totalEnc = subEnc + taxaEntrega;
@@ -682,24 +674,17 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
 
       <div className="absolute right-0 top-0 h-full w-full sm:w-[480px] bg-white shadow-2xl flex flex-col">
-        {/* HEADER */}
         <div className="p-4 border-b flex items-center justify-between">
           <div className="font-extrabold text-lg">🛒 Carrinho</div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-3 py-2 rounded-xl border font-extrabold bg-white hover:bg-gray-50"
-          >
+          <button type="button" onClick={onClose} className="px-3 py-2 rounded-xl border font-extrabold bg-white hover:bg-gray-50">
             Continuar comprando
           </button>
         </div>
 
-        {/* BODY */}
         <div className="p-4 flex-1 overflow-auto">
           {pedidoCriado ? (
             <div className="rounded-2xl border bg-green-50 p-4 mb-4">
               <div className="text-lg font-extrabold text-green-700">Pedido finalizado com sucesso ✅</div>
-
               <div className="text-sm text-gray-800 mt-2 space-y-1">
                 {pedidoCriado.pronto ? (
                   <div>
@@ -712,19 +697,6 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
                   </div>
                 ) : null}
               </div>
-
-              <div className="mt-4">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPedidoCriado(null);
-                    onClose();
-                  }}
-                  className="w-full rounded-xl bg-blue-700 hover:bg-blue-800 text-white py-3 font-extrabold"
-                >
-                  Voltar para a loja
-                </button>
-              </div>
             </div>
           ) : null}
 
@@ -736,13 +708,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
               {cart.items.map((it) => (
                 <div key={it.ean} className="border rounded-2xl p-3 flex gap-3">
                   <div className="h-14 w-14 bg-gray-50 rounded-xl overflow-hidden flex items-center justify-center">
-                    <Image
-                      src={it.imagem || "/produtos/caixa-padrao.png"}
-                      alt={it.nome}
-                      width={64}
-                      height={64}
-                      className="object-contain"
-                    />
+                    <Image src={it.imagem || "/produtos/caixa-padrao.png"} alt={it.nome} width={64} height={64} className="object-contain" />
                   </div>
 
                   <div className="flex-1 min-w-0">
@@ -751,31 +717,17 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
 
                     <div className="mt-1 flex items-center justify-between gap-2">
                       <div className="font-extrabold text-blue-900">{brl(it.preco)}</div>
-                      <div className="text-xs font-bold text-gray-600">
-                        Item: {brl(Number(it.preco || 0) * Number(it.qtd || 0))}
-                      </div>
+                      <div className="text-xs font-bold text-gray-600">Item: {brl(Number(it.preco || 0) * Number(it.qtd || 0))}</div>
                     </div>
 
                     <div className="mt-2 flex items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => cart.dec(it.ean)}
-                        className="w-10 h-10 rounded-xl border bg-white hover:bg-gray-50 font-extrabold"
-                        disabled={saving || !!pedidoCriado}
-                      >
+                      <button type="button" onClick={() => cart.dec(it.ean)} className="w-10 h-10 rounded-xl border bg-white hover:bg-gray-50 font-extrabold" disabled={saving || !!pedidoCriado}>
                         –
                       </button>
 
-                      <div className="w-10 h-10 rounded-xl border bg-gray-50 flex items-center justify-center font-extrabold">
-                        {it.qtd}
-                      </div>
+                      <div className="w-10 h-10 rounded-xl border bg-gray-50 flex items-center justify-center font-extrabold">{it.qtd}</div>
 
-                      <button
-                        type="button"
-                        onClick={() => cart.inc(it.ean)}
-                        className="w-10 h-10 rounded-xl border bg-white hover:bg-gray-50 font-extrabold"
-                        disabled={saving || !!pedidoCriado}
-                      >
+                      <button type="button" onClick={() => cart.inc(it.ean)} className="w-10 h-10 rounded-xl border bg-white hover:bg-gray-50 font-extrabold" disabled={saving || !!pedidoCriado}>
                         +
                       </button>
 
@@ -813,7 +765,27 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
                 className="w-full border bg-white px-3 py-2.5 rounded-xl outline-none focus:ring-4 focus:ring-blue-100"
                 disabled={saving || !!pedidoCriado}
               />
-              <div className="text-[11px] text-gray-500">Dica: informe com DDD. Ex: 11999999999</div>
+
+              {/* ✅ NOVO: e-mail e CPF só quando PIX/CARTAO */}
+              {(pagamento === "PIX" || pagamento === "CARTAO") && (
+                <>
+                  <input
+                    placeholder="E-mail"
+                    value={clienteEmail}
+                    onChange={(e) => setClienteEmail(e.target.value)}
+                    className="w-full border bg-white px-3 py-2.5 rounded-xl outline-none focus:ring-4 focus:ring-blue-100"
+                    disabled={saving || !!pedidoCriado}
+                  />
+                  <input
+                    placeholder="CPF (somente números)"
+                    value={clienteCpf}
+                    onChange={(e) => setClienteCpf(e.target.value)}
+                    className="w-full border bg-white px-3 py-2.5 rounded-xl outline-none focus:ring-4 focus:ring-blue-100"
+                    disabled={saving || !!pedidoCriado}
+                  />
+                  <div className="text-[11px] text-gray-500">* Para gerar PIX/CARTÃO o PagBank exige CPF.</div>
+                </>
+              )}
             </div>
           </div>
 
@@ -825,9 +797,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
               <button
                 type="button"
                 onClick={() => setTipoEntrega("ENTREGA")}
-                className={`flex-1 px-3 py-2.5 rounded-xl font-extrabold ${
-                  tipoEntrega === "ENTREGA" ? "bg-blue-700 text-white" : "bg-gray-100 hover:bg-gray-200"
-                }`}
+                className={`flex-1 px-3 py-2.5 rounded-xl font-extrabold ${tipoEntrega === "ENTREGA" ? "bg-blue-700 text-white" : "bg-gray-100 hover:bg-gray-200"}`}
                 disabled={saving || !!pedidoCriado}
               >
                 Entrega
@@ -836,9 +806,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
               <button
                 type="button"
                 onClick={() => setTipoEntrega("RETIRADA")}
-                className={`flex-1 px-3 py-2.5 rounded-xl font-extrabold ${
-                  tipoEntrega === "RETIRADA" ? "bg-blue-700 text-white" : "bg-gray-100 hover:bg-gray-200"
-                }`}
+                className={`flex-1 px-3 py-2.5 rounded-xl font-extrabold ${tipoEntrega === "RETIRADA" ? "bg-blue-700 text-white" : "bg-gray-100 hover:bg-gray-200"}`}
                 disabled={saving || !!pedidoCriado}
               >
                 Retirada
@@ -874,9 +842,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
                 <div className="text-sm font-extrabold text-blue-900">Taxa fixa: {brl(taxaEntrega)}</div>
               </div>
             ) : (
-              <div className="mt-3 text-sm text-gray-600">
-                Você pode retirar na loja. Assim que confirmar, enviamos o endereço/horário.
-              </div>
+              <div className="mt-3 text-sm text-gray-600">Você pode retirar na loja. Assim que confirmar, enviamos o endereço/horário.</div>
             )}
           </div>
 
@@ -890,9 +856,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
                   type="button"
                   key={p}
                   onClick={() => setPagamento(p)}
-                  className={`px-3 py-2 rounded-xl font-extrabold ${
-                    pagamento === p ? "bg-blue-700 text-white" : "bg-gray-100 hover:bg-gray-200"
-                  }`}
+                  className={`px-3 py-2 rounded-xl font-extrabold ${pagamento === p ? "bg-blue-700 text-white" : "bg-gray-100 hover:bg-gray-200"}`}
                   disabled={saving || !!pedidoCriado}
                 >
                   {p}
@@ -933,18 +897,25 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
               type="button"
               disabled={!canCheckout || saving || !!pedidoCriado}
               onClick={finalizarPedido}
-              className={`px-4 py-3 rounded-2xl font-extrabold text-center ${
-                canCheckout ? "bg-green-600 hover:bg-green-700 text-white" : "bg-gray-200 text-gray-500"
-              } ${saving ? "opacity-70 cursor-wait" : ""}`}
+              className={`px-4 py-3 rounded-2xl font-extrabold text-center ${canCheckout ? "bg-green-600 hover:bg-green-700 text-white" : "bg-gray-200 text-gray-500"} ${
+                saving ? "opacity-70 cursor-wait" : ""
+              }`}
             >
-              {saving ? "Finalizando..." : "Finalizar pedido"}
+              {saving ? "Finalizando..." : pagamento === "PIX" || pagamento === "CARTAO" ? "Ir para pagamento" : "Finalizar pedido"}
             </button>
           </div>
 
           {!canCheckout ? (
             <div className="mt-2 text-xs text-gray-500">
-              Para liberar: informe <b>Nome</b>, <b>WhatsApp</b> e adicione itens. Se escolher <b>Entrega</b>,
-              preencha <b>Endereço/Número/Bairro</b>.
+              Para liberar: informe <b>Nome</b>, <b>WhatsApp</b> e adicione itens.
+              {(pagamento === "PIX" || pagamento === "CARTAO") && (
+                <>
+                  {" "}
+                  Para {pagamento}, informe <b>E-mail</b> e <b>CPF</b>.
+                </>
+              )}
+              {" "}
+              Se escolher <b>Entrega</b>, preencha <b>Endereço/Número/Bairro</b>.
             </div>
           ) : null}
         </div>
@@ -952,6 +923,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
     </div>
   );
 }
+
 function ProdutoCardUltra({ p, onComprar }: { p: FVProduto; onComprar: () => void }) {
   const pr = precoFinal(p);
   const cart = useCart();
@@ -990,37 +962,24 @@ function ProdutoCardUltra({ p, onComprar }: { p: FVProduto; onComprar: () => voi
 
   return (
     <div className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition overflow-hidden flex flex-col">
-      {/* IMAGEM + TAGS */}
       <div className="relative p-3">
         <Link href={hrefProduto} className="bg-gray-50 rounded-xl p-2 flex items-center justify-center hover:opacity-95 transition">
-          <Image
-            src={firstImg(p.imagens)}
-            alt={p.nome || "Produto"}
-            width={240}
-            height={240}
-            className="rounded object-contain h-24 sm:h-28"
-          />
+          <Image src={firstImg(p.imagens)} alt={p.nome || "Produto"} width={240} height={240} className="rounded object-contain h-24 sm:h-28" />
         </Link>
 
-        {/* OFF */}
         {pr.emPromo && pr.off > 0 ? (
-          <span className="absolute top-3 right-3 text-[11px] font-extrabold bg-red-600 text-white px-2 py-1 rounded-full shadow-sm">
-            {pr.off}% OFF
-          </span>
+          <span className="absolute top-3 right-3 text-[11px] font-extrabold bg-red-600 text-white px-2 py-1 rounded-full shadow-sm">{pr.off}% OFF</span>
         ) : null}
 
-        {/* ESTOQUE */}
         <span
           className={`absolute top-3 left-3 text-[11px] font-extrabold px-2 py-1 rounded-full shadow-sm ${
             disponivel ? "bg-green-600 text-white" : "bg-gray-200 text-gray-700"
           }`}
-          title={disponivel ? "Disponível" : "Sem estoque nas parceiras"}
         >
           {disponivel ? `Estoque: ${estoque}` : "Sem estoque"}
         </span>
       </div>
 
-      {/* INFO */}
       <div className="px-3 pb-3 flex-1 flex flex-col">
         <div className="text-[11px] text-gray-500 line-clamp-1">{p.laboratorio || "—"}</div>
 
@@ -1030,7 +989,6 @@ function ProdutoCardUltra({ p, onComprar }: { p: FVProduto; onComprar: () => voi
 
         {p.apresentacao ? <div className="text-[11px] text-gray-600 mt-1 line-clamp-1">{p.apresentacao}</div> : null}
 
-        {/* PREÇO */}
         <div className="mt-2">
           {pr.emPromo ? (
             <>
@@ -1044,24 +1002,13 @@ function ProdutoCardUltra({ p, onComprar }: { p: FVProduto; onComprar: () => voi
           )}
         </div>
 
-        {/* AÇÕES */}
         <div className="mt-3 flex items-center gap-2">
           <div className="flex items-center border rounded-xl overflow-hidden">
-            <button
-              type="button"
-              onClick={() => setQtd((x) => Math.max(1, x - 1))}
-              className="w-9 h-9 bg-white hover:bg-gray-50 font-extrabold"
-              aria-label="Diminuir quantidade"
-            >
+            <button type="button" onClick={() => setQtd((x) => Math.max(1, x - 1))} className="w-9 h-9 bg-white hover:bg-gray-50 font-extrabold">
               –
             </button>
             <div className="w-10 text-center font-extrabold text-sm">{qtd}</div>
-            <button
-              type="button"
-              onClick={() => setQtd((x) => x + 1)}
-              className="w-9 h-9 bg-white hover:bg-gray-50 font-extrabold"
-              aria-label="Aumentar quantidade"
-            >
+            <button type="button" onClick={() => setQtd((x) => x + 1)} className="w-9 h-9 bg-white hover:bg-gray-50 font-extrabold">
               +
             </button>
           </div>
@@ -1081,52 +1028,15 @@ function ProdutoCardUltra({ p, onComprar }: { p: FVProduto; onComprar: () => voi
   );
 }
 
-/**
- * ✅ OPÇÃO 3 (MOBILE/TABLET): faixa "Serviços rápidos"
- * - aparece só em telas menores que xl
- * - chama WhatsApp com mensagem pronta
- *
- * COMO USAR:
- * Dentro do seu <section ...> antes da grid, coloque:
- * <ServiceQuickAds />
- */
 function ServiceQuickAds() {
   const base = "/servicos/agenda";
   const link = (servico: string) => `${base}?servico=${encodeURIComponent(servico)}`;
 
   const cards = [
-    {
-      key: "pressao",
-      title: "Aferição de Pressão",
-      subtitle: "Rápido e prático",
-      href: link("Aferição de Pressão Arterial"),
-      emoji: "🩺",
-      gradient: "from-blue-600 to-blue-400",
-    },
-    {
-      key: "glicemia",
-      title: "Teste de Glicemia",
-      subtitle: "Resultado na hora",
-      href: link("Teste de Glicemia"),
-      emoji: "🩸",
-      gradient: "from-orange-500 to-amber-400",
-    },
-    {
-      key: "injecao",
-      title: "Aplicação de Injeção",
-      subtitle: "Com profissional",
-      href: link("Aplicação de Injeção"),
-      emoji: "💉",
-      gradient: "from-emerald-600 to-green-400",
-    },
-    {
-      key: "revisao",
-      title: "Revisão de Medicamentos",
-      subtitle: "Mais segurança",
-      href: link("Revisão de Medicamentos"),
-      emoji: "📋",
-      gradient: "from-indigo-600 to-sky-400",
-    },
+    { key: "pressao", title: "Aferição de Pressão", subtitle: "Rápido e prático", href: link("Aferição de Pressão Arterial"), emoji: "🩺", gradient: "from-blue-600 to-blue-400" },
+    { key: "glicemia", title: "Teste de Glicemia", subtitle: "Resultado na hora", href: link("Teste de Glicemia"), emoji: "🩸", gradient: "from-orange-500 to-amber-400" },
+    { key: "injecao", title: "Aplicação de Injeção", subtitle: "Com profissional", href: link("Aplicação de Injeção"), emoji: "💉", gradient: "from-emerald-600 to-green-400" },
+    { key: "revisao", title: "Revisão de Medicamentos", subtitle: "Mais segurança", href: link("Revisão de Medicamentos"), emoji: "📋", gradient: "from-indigo-600 to-sky-400" },
   ];
 
   return (
@@ -1139,16 +1049,10 @@ function ServiceQuickAds() {
       <div className="overflow-x-auto pb-2 -mx-1 px-1">
         <div className="flex gap-3 min-w-max snap-x snap-mandatory">
           {cards.map((c) => (
-            <Link
-              key={c.key}
-              href={c.href}
-              className={`snap-start w-[240px] rounded-2xl p-4 text-white shadow-sm border border-white/10 bg-gradient-to-br ${c.gradient} active:scale-[0.99] transition`}
-            >
+            <Link key={c.key} href={c.href} className={`snap-start w-[240px] rounded-2xl p-4 text-white shadow-sm border border-white/10 bg-gradient-to-br ${c.gradient} active:scale-[0.99] transition`}>
               <div className="flex items-start justify-between">
                 <div className="text-3xl">{c.emoji}</div>
-                <span className="text-[11px] font-extrabold bg-white/15 px-2 py-1 rounded-full">
-                  Agendar
-                </span>
+                <span className="text-[11px] font-extrabold bg-white/15 px-2 py-1 rounded-full">Agendar</span>
               </div>
 
               <div className="mt-3">
@@ -1157,9 +1061,7 @@ function ServiceQuickAds() {
               </div>
 
               <div className="mt-4">
-                <div className="inline-flex items-center gap-2 bg-white text-blue-900 font-extrabold text-xs px-3 py-2 rounded-xl">
-                  Abrir agenda →
-                </div>
+                <div className="inline-flex items-center gap-2 bg-white text-blue-900 font-extrabold text-xs px-3 py-2 rounded-xl">Abrir agenda →</div>
               </div>
             </Link>
           ))}

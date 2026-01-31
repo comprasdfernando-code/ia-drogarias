@@ -11,7 +11,8 @@ function supabaseAdmin() {
     process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!url) throw new Error("SUPABASE_URL não configurado");
-  if (!serviceKey) throw new Error("SUPABASE_SERVICE_KEY/SERVICE_ROLE_KEY não configurado");
+  if (!serviceKey)
+    throw new Error("SUPABASE_SERVICE_KEY/SERVICE_ROLE_KEY não configurado");
 
   return createClient(url, serviceKey, { auth: { persistSession: false } });
 }
@@ -34,6 +35,7 @@ function pickQrLinks(orderData: any) {
   const qr = orderData?.qr_codes?.[0];
   const links: any[] = Array.isArray(qr?.links) ? qr.links : [];
 
+  // alguns retornos vêm como "QRCODE.PNG" e "QRCODE.BASE64"
   const png = links.find((l) => String(l?.rel || "").toUpperCase() === "QRCODE.PNG");
   const b64 = links.find((l) => String(l?.rel || "").toUpperCase() === "QRCODE.BASE64");
 
@@ -56,11 +58,18 @@ async function safeJson(resp: Response) {
 export async function POST(req: Request) {
   try {
     const token = process.env.PAGBANK_TOKEN;
+
+    // sandbox por padrão (você troca por produção quando virar)
     const baseUrl = (process.env.PAGBANK_BASE_URL || "https://sandbox.api.pagseguro.com").trim();
-    const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || "https://iadrogarias.com.br").trim();
+
+    // ✅ padroniza com www (importante pra webhook/ambiente)
+    const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || "https://www.iadrogarias.com.br").trim();
 
     if (!token) {
-      return NextResponse.json({ ok: false, error: "PAGBANK_TOKEN não configurado" }, { status: 500 });
+      return NextResponse.json(
+        { ok: false, error: "PAGBANK_TOKEN não configurado" },
+        { status: 500 }
+      );
     }
 
     const body = await req.json();
@@ -71,7 +80,10 @@ export async function POST(req: Request) {
     const itens = body?.itens || body?.items || [];
 
     if (!order_id || !Array.isArray(itens) || itens.length === 0) {
-      return NextResponse.json({ ok: false, error: "Dados insuficientes (order_id/itens)" }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, error: "Dados insuficientes (order_id/itens)" },
+        { status: 400 }
+      );
     }
 
     const items = itens.map((i: any) => ({
@@ -86,13 +98,17 @@ export async function POST(req: Request) {
     const customerTaxId = onlyDigits(cliente?.tax_id || cliente?.cpf || "");
     const customerPhones = buildPhones(cliente?.phone || cliente?.whatsapp || "");
 
-    if (forma_pagamento === "PIX" && !customerTaxId) {
-      return NextResponse.json({ ok: false, error: "CPF (tax_id) é obrigatório para gerar PIX." }, { status: 400 });
+    // PIX exige CPF
+    if (forma_pagamento === "PIX" && (!customerTaxId || customerTaxId.length !== 11)) {
+      return NextResponse.json(
+        { ok: false, error: "CPF (tax_id) é obrigatório (11 dígitos) para gerar PIX." },
+        { status: 400 }
+      );
     }
 
-    // ================== PIX (NOVO: qr_codes) ==================
+    // ================== PIX (qr_codes) ==================
     if (forma_pagamento === "PIX") {
-      const payloadPIX = {
+      const payloadPIX: any = {
         reference_id: String(order_id),
         customer: {
           name: cliente?.name || "Cliente",
@@ -132,10 +148,31 @@ export async function POST(req: Request) {
 
       const qr = pickQrLinks(data);
 
+      // ✅ pega o BASE64 no BACKEND para evitar CORB no navegador
+      let qr_base64: string | null = null;
+      try {
+        if (qr.qr_base64_url) {
+          const r2 = await fetch(qr.qr_base64_url, {
+            headers: {
+              Authorization: `Bearer ${token}`,
+              Accept: "text/plain",
+            },
+            cache: "no-store",
+          });
+          const txt = (await r2.text()).trim();
+          if (txt) qr_base64 = txt;
+        }
+      } catch {
+        // se falhar, segue só com png_url
+      }
+
       // update supabase (não derruba)
       try {
         const sb = supabaseAdmin();
-        await sb.from("vendas_site").update({ pagbank_id: data.id, status: "pendente" }).eq("id", order_id);
+        await sb
+          .from("vendas_site")
+          .update({ pagbank_id: data.id, status: "pendente_pix" })
+          .eq("id", String(order_id));
       } catch {}
 
       return NextResponse.json({
@@ -145,14 +182,21 @@ export async function POST(req: Request) {
         qr_text: qr.qr_text,
         qr_png_url: qr.qr_png_url,
         qr_base64_url: qr.qr_base64_url,
+        qr_base64, // ✅ use isso no front (preferencial)
       });
     }
 
-    // ================== CARTÃO (mantido) ==================
+    // ================== CARTÃO ==================
     if (forma_pagamento === "CREDIT_CARD") {
       const encrypted = body?.card?.encrypted;
       const holder = body?.card?.holder_name || cliente?.name;
-      const cpf = onlyDigits(body?.card?.holder_cpf || body?.card?.holder_tax_id || cliente?.tax_id || cliente?.cpf || "");
+      const cpf = onlyDigits(
+        body?.card?.holder_cpf ||
+          body?.card?.holder_tax_id ||
+          cliente?.tax_id ||
+          cliente?.cpf ||
+          ""
+      );
 
       if (!encrypted || !holder || !cpf) {
         return NextResponse.json(
@@ -161,7 +205,14 @@ export async function POST(req: Request) {
         );
       }
 
-      const payloadCARD = {
+      if (cpf.length !== 11) {
+        return NextResponse.json(
+          { ok: false, error: "CPF do titular inválido (precisa ter 11 dígitos)" },
+          { status: 400 }
+        );
+      }
+
+      const payloadCARD: any = {
         reference_id: String(order_id),
         customer: {
           name: cliente?.name || "Cliente",
@@ -209,10 +260,17 @@ export async function POST(req: Request) {
 
       try {
         const sb = supabaseAdmin();
-        await sb.from("vendas_site").update({ pagbank_id: data.id, status: "pendente" }).eq("id", order_id);
+        await sb
+          .from("vendas_site")
+          .update({ pagbank_id: data.id, status: "pendente_cartao" })
+          .eq("id", String(order_id));
       } catch {}
 
-      return NextResponse.json({ ok: true, pagbank_id: data.id, status: data?.status || "PROCESSING" });
+      return NextResponse.json({
+        ok: true,
+        pagbank_id: data.id,
+        status: data?.status || "PROCESSING",
+      });
     }
 
     return NextResponse.json({ ok: false, error: "forma_pagamento inválida" }, { status: 400 });

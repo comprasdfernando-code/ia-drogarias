@@ -7,14 +7,14 @@ type CheckoutItem = {
   reference_id?: string;
   name: string;
   quantity: number;
-  unit_amount: number; // centavos
+  unit_amount: number;
 };
 
 type Cliente = {
   name: string;
   email: string;
-  tax_id?: string; // CPF
-  phone?: string; // celular com DDD (ex: 11999998888)
+  tax_id?: string;
+  phone?: string;
 };
 
 declare global {
@@ -28,7 +28,10 @@ function onlyDigits(s: string) {
 }
 
 function moneyFromCents(v: number) {
-  return (v / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  return (v / 100).toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  });
 }
 
 export default function PagbankPayment({
@@ -44,12 +47,12 @@ export default function PagbankPayment({
 }) {
   const [method, setMethod] = useState<"PIX" | "CREDIT_CARD">("PIX");
 
-  // PIX UI (novo formato)
-  const [pixQrPngUrl, setPixQrPngUrl] = useState<string | null>(null);
+  // PIX
   const [pixQrBase64, setPixQrBase64] = useState<string | null>(null);
+  const [pixQrPngUrl, setPixQrPngUrl] = useState<string | null>(null);
   const [pixCopiaCola, setPixCopiaCola] = useState<string | null>(null);
 
-  // Cartão UI
+  // Cartão
   const [cardNumber, setCardNumber] = useState("");
   const [cardName, setCardName] = useState("");
   const [cardExpMonth, setCardExpMonth] = useState("");
@@ -60,62 +63,46 @@ export default function PagbankPayment({
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [publicKey, setPublicKey] = useState<string | null>(null);
-
-  // ✅ novo: estado do SDK
   const [sdkReady, setSdkReady] = useState(false);
-
   const [copied, setCopied] = useState(false);
 
-  const total = useMemo(() => {
-    return items.reduce((acc, it) => acc + (it.unit_amount || 0) * (it.quantity || 0), 0);
-  }, [items]);
+  const total = useMemo(
+    () =>
+      items.reduce(
+        (acc, it) => acc + it.unit_amount * it.quantity,
+        0
+      ),
+    [items]
+  );
 
-  // garante dados mínimos pro PagBank (tax_id e phone)
   const clienteSafe = useMemo(() => {
-    const tax = onlyDigits(cliente?.tax_id || "");
-    const phone = onlyDigits(cliente?.phone || "");
-
     return {
       ...cliente,
-      tax_id: tax || undefined,
-      phone: phone || undefined,
+      tax_id: onlyDigits(cliente?.tax_id || "") || undefined,
+      phone: onlyDigits(cliente?.phone || "") || undefined,
     };
   }, [cliente]);
 
-  // 1) pega public_key do seu endpoint
+  // Public Key
   useEffect(() => {
-    (async () => {
-      try {
-        const r = await fetch("/api/pagbank/public-key", { cache: "no-store" });
-        const j = await r.json();
-        setPublicKey(j?.public_key || null);
-      } catch {
-        setPublicKey(null);
-      }
-    })();
+    fetch("/api/pagbank/public-key", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((j) => setPublicKey(j?.public_key || null))
+      .catch(() => setPublicKey(null));
   }, []);
-
-  async function fetchBase64FromUrl(url: string) {
-    const r = await fetch(url, { method: "GET" });
-    const t = await r.text();
-    const base64 = (t || "").trim();
-    if (!base64) throw new Error("Não foi possível obter QR BASE64");
-    return base64;
-  }
 
   async function createOrderPIX() {
     setErr(null);
-    setCopied(false);
     setLoading(true);
+    setCopied(false);
 
-    setPixQrPngUrl(null);
     setPixQrBase64(null);
+    setPixQrPngUrl(null);
     setPixCopiaCola(null);
 
-    // ✅ valida CPF antes de chamar backend (evita 500 e bagunça)
-    if (!clienteSafe?.tax_id || onlyDigits(clienteSafe.tax_id).length !== 11) {
+    if (!clienteSafe.tax_id || clienteSafe.tax_id.length !== 11) {
       setLoading(false);
-      setErr("CPF (tax_id) é obrigatório para gerar PIX.");
+      setErr("CPF é obrigatório para pagamento via PIX.");
       return;
     }
 
@@ -134,77 +121,54 @@ export default function PagbankPayment({
       const data = await resp.json();
 
       if (!resp.ok || !data?.ok) {
-        throw new Error(data?.error || "Falha ao criar PIX");
+        throw new Error(data?.error || "Erro ao gerar PIX");
       }
 
-      setPixCopiaCola(data.qr_text || null);
+      // ✅ prioridade correta
+      setPixQrBase64(data.qr_base64 || null);
       setPixQrPngUrl(data.qr_png_url || null);
-
-      if (!data.qr_png_url && data.qr_base64_url) {
-        const b64 = await fetchBase64FromUrl(data.qr_base64_url);
-        setPixQrBase64(b64);
-      }
-
-      if (data.qr_base64) {
-        setPixQrBase64(data.qr_base64);
-      }
+      setPixCopiaCola(data.qr_text || null);
     } catch (e: any) {
-      setErr(String(e?.message || e));
+      setErr(e.message || "Erro inesperado");
     } finally {
       setLoading(false);
     }
   }
 
   function encryptCard() {
-    if (!publicKey) throw new Error("Public Key do PagBank não carregou");
-    if (!window.PagSeguro) throw new Error("SDK PagSeguro não carregou (script bloqueado ou não carregou)");
-    if (!sdkReady) throw new Error("SDK PagSeguro ainda não está pronto");
+    if (!publicKey) throw new Error("Public Key não carregada");
+    if (!window.PagSeguro || !sdkReady)
+      throw new Error("SDK PagBank não pronto");
 
-    // ✅ API real do SDK retorna um OBJETO: { encryptedCard, hasErrors, errors }
     const result = window.PagSeguro.encryptCard({
       publicKey,
-      holder: (cardName || "").trim(),
+      holder: cardName.trim(),
       number: onlyDigits(cardNumber),
       expMonth: onlyDigits(cardExpMonth),
       expYear: onlyDigits(cardExpYear),
       securityCode: onlyDigits(cardCvv),
     });
 
-    if (!result) throw new Error("Falha ao criptografar cartão");
-
-    // ✅ trata erros do SDK
-    if (result.hasErrors) {
-      const msg =
-        Array.isArray(result.errors) && result.errors.length
-          ? result.errors.map((e: any) => `${e?.code || "ERRO"}: ${e?.message || ""}`).join(" | ")
-          : "Dados do cartão inválidos";
-      throw new Error(msg);
+    if (result?.hasErrors) {
+      throw new Error("Dados do cartão inválidos");
     }
 
-    if (!result.encryptedCard) throw new Error("SDK não retornou encryptedCard");
-
-    return result.encryptedCard as string;
+    return result.encryptedCard;
   }
 
   async function createOrderCard() {
     setErr(null);
     setLoading(true);
 
-    // ✅ validações mínimas antes de criptografar
-    const cpf = onlyDigits(holderCpf || clienteSafe?.tax_id || "");
-    if (!cpf || cpf.length !== 11) {
+    const cpf = onlyDigits(holderCpf || clienteSafe.tax_id || "");
+    if (cpf.length !== 11) {
+      setErr("CPF do titular inválido");
       setLoading(false);
-      setErr("CPF do titular é obrigatório (11 dígitos).");
-      return;
-    }
-    if (!cardName.trim()) {
-      setLoading(false);
-      setErr("Nome do titular no cartão é obrigatório.");
       return;
     }
 
     try {
-      const encryptedCard = encryptCard();
+      const encrypted = encryptCard();
 
       const resp = await fetch("/api/pagbank/create-order", {
         method: "POST",
@@ -215,8 +179,8 @@ export default function PagbankPayment({
           cliente: clienteSafe,
           items,
           card: {
-            encrypted: encryptedCard, // ✅ string
-            holder_name: cardName || clienteSafe?.name,
+            encrypted,
+            holder_name: cardName,
             holder_cpf: cpf,
             installments: 1,
           },
@@ -226,16 +190,16 @@ export default function PagbankPayment({
       const data = await resp.json();
 
       if (!resp.ok || !data?.ok) {
-        throw new Error(data?.error || "Falha ao criar pagamento no cartão");
+        throw new Error(data?.error || "Erro no cartão");
       }
 
-      if (String(data?.status || "").toUpperCase() === "PAID") {
+      if (String(data?.status).toUpperCase() === "PAID") {
         onPaid?.();
       }
 
-      alert("Pagamento enviado! Se aprovado, o pedido será atualizado automaticamente.");
+      alert("Pagamento enviado. Aguarde confirmação.");
     } catch (e: any) {
-      setErr(String(e?.message || e));
+      setErr(e.message || "Erro no pagamento");
     } finally {
       setLoading(false);
     }
@@ -250,38 +214,15 @@ export default function PagbankPayment({
 
   return (
     <div className="w-full max-w-xl space-y-4 rounded-2xl border p-4">
-      {/* ✅ Script oficial do PagBank/PagSeguro (carrega sempre; só usa no cartão) */}
       <Script
         src="https://assets.pagseguro.com.br/checkout-sdk-js/src/dist/browser/pagseguro.min.js"
         strategy="beforeInteractive"
         onLoad={() => setSdkReady(true)}
-        onError={() => setSdkReady(false)}
       />
 
-      <div className="flex items-center justify-between gap-2">
-        <div>
-          <div className="text-sm opacity-70">Total</div>
-          <div className="text-xl font-semibold">{moneyFromCents(total)}</div>
-        </div>
-
-        <div className="flex gap-2">
-          <button
-            className={`rounded-xl px-3 py-2 text-sm border ${method === "PIX" ? "font-semibold" : "opacity-70"}`}
-            onClick={() => setMethod("PIX")}
-            disabled={loading}
-          >
-            PIX
-          </button>
-          <button
-            className={`rounded-xl px-3 py-2 text-sm border ${
-              method === "CREDIT_CARD" ? "font-semibold" : "opacity-70"
-            }`}
-            onClick={() => setMethod("CREDIT_CARD")}
-            disabled={loading}
-          >
-            Cartão
-          </button>
-        </div>
+      <div>
+        <div className="text-sm opacity-70">Total</div>
+        <div className="text-xl font-semibold">{moneyFromCents(total)}</div>
       </div>
 
       {err && (
@@ -290,119 +231,45 @@ export default function PagbankPayment({
         </div>
       )}
 
-      {method === "PIX" ? (
-        <div className="space-y-3">
+      {method === "PIX" && (
+        <>
           <button
-            className="w-full rounded-xl bg-black px-4 py-3 text-white disabled:opacity-60"
+            className="w-full rounded-xl bg-black px-4 py-3 text-white"
             onClick={createOrderPIX}
             disabled={loading}
           >
             {loading ? "Gerando PIX..." : "Gerar PIX"}
           </button>
 
-          {(pixQrPngUrl || pixQrBase64) && (
-            <div className="space-y-2">
-              <div className="text-sm opacity-70">Aponte a câmera ou use o app do banco</div>
-
-              {pixQrPngUrl ? (
-                <img className="w-64 rounded-xl border" src={pixQrPngUrl} alt="QR Code PIX" />
-              ) : (
-                <img
-                  className="w-64 rounded-xl border"
-                  src={`data:image/png;base64,${pixQrBase64}`}
-                  alt="QR Code PIX"
-                />
-              )}
-            </div>
+          {(pixQrBase64 || pixQrPngUrl) && (
+            <img
+              className="w-64 rounded-xl border"
+              src={
+                pixQrBase64
+                  ? `data:image/png;base64,${pixQrBase64}`
+                  : pixQrPngUrl!
+              }
+              alt="QR Code PIX"
+            />
           )}
 
           {pixCopiaCola && (
-            <div className="space-y-2">
-              <div className="text-sm opacity-70">PIX Copia e Cola</div>
-              <textarea className="w-full rounded-xl border p-2 text-xs" rows={4} value={pixCopiaCola} readOnly />
+            <>
+              <textarea
+                className="w-full rounded-xl border p-2 text-xs"
+                rows={4}
+                value={pixCopiaCola}
+                readOnly
+              />
               <button
-                className="w-full rounded-xl border px-4 py-3 disabled:opacity-60"
+                className="w-full rounded-xl border px-4 py-3"
                 onClick={copyPix}
-                disabled={loading}
               >
-                {copied ? "Copiado ✅" : "Copiar código PIX"}
+                {copied ? "Copiado ✅" : "Copiar PIX"}
               </button>
-            </div>
+            </>
           )}
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {/* ✅ alerta claro do SDK */}
-          {!sdkReady && (
-            <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm">
-              Carregando SDK do PagBank para criptografar o cartão...
-              <div className="text-xs opacity-70 mt-1">
-                Se travar aqui: verifique bloqueio por AdBlock, CSP, ou firewall.
-              </div>
-            </div>
-          )}
-
-          <div className="grid grid-cols-1 gap-2">
-            <input
-              className="rounded-xl border p-2"
-              placeholder="Nome no cartão"
-              value={cardName}
-              onChange={(e) => setCardName(e.target.value)}
-              disabled={loading}
-            />
-            <input
-              className="rounded-xl border p-2"
-              placeholder="Número do cartão"
-              value={cardNumber}
-              onChange={(e) => setCardNumber(e.target.value)}
-              disabled={loading}
-            />
-
-            <div className="grid grid-cols-3 gap-2">
-              <input
-                className="rounded-xl border p-2"
-                placeholder="MM"
-                value={cardExpMonth}
-                onChange={(e) => setCardExpMonth(e.target.value)}
-                disabled={loading}
-              />
-              <input
-                className="rounded-xl border p-2"
-                placeholder="AAAA"
-                value={cardExpYear}
-                onChange={(e) => setCardExpYear(e.target.value)}
-                disabled={loading}
-              />
-              <input
-                className="rounded-xl border p-2"
-                placeholder="CVV"
-                value={cardCvv}
-                onChange={(e) => setCardCvv(e.target.value)}
-                disabled={loading}
-              />
-            </div>
-
-            <input
-              className="rounded-xl border p-2"
-              placeholder="CPF do titular"
-              value={holderCpf}
-              onChange={(e) => setHolderCpf(e.target.value)}
-              disabled={loading}
-            />
-          </div>
-
-          <button
-            className="w-full rounded-xl bg-black px-4 py-3 text-white disabled:opacity-60"
-            onClick={createOrderCard}
-            disabled={loading || !sdkReady}
-          >
-            {loading ? "Processando..." : "Pagar com cartão"}
-          </button>
-
-          <div className="text-xs opacity-70">
-            * O cartão é criptografado no navegador e enviado como <b>encryptedCard</b>.
-          </div>
-        </div>
+        </>
       )}
     </div>
   );
