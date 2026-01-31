@@ -23,29 +23,54 @@ type VendaLike = {
   total_centavos?: number | null;
   total?: number | null; // pode vir em reais
   subtotal?: number | null;
+
+  // possíveis campos de taxa (varia no seu schema)
+  taxa_entrega_centavos?: number | null;
+  taxa_entrega?: number | null; // pode vir em reais OU centavos
+  taxa?: number | null;         // pode vir em reais OU centavos
 };
 
 function onlyDigits(s: string) {
   return (s || "").replace(/\D/g, "");
 }
 
-function centsFromMaybe(v: any): number {
-  // tenta converter vários formatos para CENTAVOS
+/**
+ * Converte "qualquer coisa" em CENTAVOS com heurística segura:
+ * - Se vier decimal (3.99 / "3,99") => reais => *100
+ * - Se vier inteiro pequeno (<= 9999) assume CENTAVOS (ex: 399 = R$ 3,99; 1000 = R$ 10,00)
+ * - Se vier inteiro grande e múltiplo de 100 (ex: 39900) pode ser "centavos com *100 extra" => divide por 100
+ */
+function toCentsSmart(v: any): number {
   if (v == null) return 0;
-  if (typeof v === "number") {
-    // heurística: se já parece centavos (>= 1000 normalmente) mantém, senão assume reais
-    if (v >= 1000) return Math.round(v);
-    return Math.round(v * 100);
-  }
-  const str = String(v).trim();
-  if (!str) return 0;
 
-  // "13,99" -> 13.99 reais
-  const norm = str.replace(/\./g, "").replace(",", ".");
-  const n = Number(norm);
+  // string: "3,99" / "3.99" / "399" / "39900"
+  if (typeof v === "string") {
+    const s = v.trim();
+    if (!s) return 0;
+    // mantém números e separadores
+    const norm = s.replace(/\./g, "").replace(",", ".");
+    const n = Number(norm);
+    if (!Number.isFinite(n)) return 0;
+    return toCentsSmart(n);
+  }
+
+  const n = Number(v);
   if (!Number.isFinite(n)) return 0;
-  if (n >= 1000) return Math.round(n);
-  return Math.round(n * 100);
+
+  // decimal => reais
+  if (!Number.isInteger(n)) return Math.round(n * 100);
+
+  // inteiro:
+  // regra segura: por padrão, inteiro é CENTAVOS
+  // (porque você está passando unit_amount pro PagBank que espera centavos)
+  // EXCEÇÃO: quando vem inflado por 100 (ex 39900) -> corrige
+  if (n >= 10000 && n % 100 === 0) {
+    const maybe = n / 100;
+    // só aceita se ficar em faixa plausível
+    if (maybe > 0 && maybe <= 5_000_000) return maybe; // até R$ 50.000,00
+  }
+
+  return n;
 }
 
 async function safeJson(resp: Response) {
@@ -68,11 +93,6 @@ function pickFirst(...vals: any[]) {
 function extractVenda(payload: any): VendaLike | null {
   if (!payload) return null;
 
-  // formatos possíveis:
-  // { ok:true, venda:{...} }
-  // { ok:true, pedido:{...} }
-  // { venda:{...} }
-  // { pedido:{...} }
   const v =
     payload?.venda ??
     payload?.pedido ??
@@ -82,7 +102,6 @@ function extractVenda(payload: any): VendaLike | null {
 
   if (!v || typeof v !== "object") return null;
 
-  // normaliza alguns nomes comuns
   const venda: VendaLike = {
     id: pickFirst(v?.id, v?.pedido_id, v?.venda_id, v?.order_id) as any,
     status: pickFirst(v?.status, v?.situacao, v?.state) as any,
@@ -98,25 +117,34 @@ function extractVenda(payload: any): VendaLike | null {
     total_centavos: (v?.total_centavos ?? v?.totalCentavos ?? null) as any,
     total: (v?.total ?? v?.valor_total ?? v?.amount ?? null) as any,
     subtotal: (v?.subtotal ?? null) as any,
+
+    // taxa (vários nomes possíveis)
+    taxa_entrega_centavos: (v?.taxa_entrega_centavos ?? v?.taxaEntregaCentavos ?? null) as any,
+    taxa_entrega: (v?.taxa_entrega ?? v?.taxaEntrega ?? null) as any,
+    taxa: (v?.taxa ?? v?.taxa_locomocao ?? null) as any,
   };
 
   return venda;
 }
 
 function extractItems(v: VendaLike | null) {
-  const arr = (Array.isArray(v?.itens) && v?.itens) || (Array.isArray(v?.items) && v?.items) || [];
+  const arr =
+    (Array.isArray(v?.itens) && v?.itens) ||
+    (Array.isArray(v?.items) && v?.items) ||
+    [];
+
   return arr.map((i: any, idx: number) => {
     const qty = Number(pickFirst(i?.quantity, i?.qty, i?.qtd, 1)) || 1;
 
-    // tenta achar preço em CENTAVOS
-    const unitCents = centsFromMaybe(
+    // tenta achar preço: já centavos (unit_amount/preco_centavos) ou reais (preco/price/valor)
+    const unitCents = toCentsSmart(
       pickFirst(
-        i?.unit_amount,       // já em centavos (PagBank)
+        i?.unit_amount,       // centavos (PagBank)
         i?.preco_centavos,    // centavos
         i?.unitAmount,        // centavos
         i?.price_cents,       // centavos
-        i?.preco,             // reais
-        i?.price,             // reais
+        i?.preco,             // reais (às vezes)
+        i?.price,             // reais (às vezes)
         i?.valor_unitario,    // reais
         i?.valor              // reais
       )
@@ -132,23 +160,25 @@ function extractItems(v: VendaLike | null) {
       reference_id: ref,
       name,
       quantity: qty,
-      unit_amount: unitCents,
+      unit_amount: unitCents, // ✅ sempre CENTAVOS
     };
-  });
+  })
+  // remove itens quebrados
+  .filter((it: any) => (Number(it.unit_amount) || 0) > 0 && (Number(it.quantity) || 0) > 0);
 }
 
 function sumTotal(items: { unit_amount: number; quantity: number }[]) {
-  return items.reduce((acc, it) => acc + (Number(it.unit_amount) || 0) * (Number(it.quantity) || 0), 0);
+  return items.reduce(
+    (acc, it) => acc + (Number(it.unit_amount) || 0) * (Number(it.quantity) || 0),
+    0
+  );
 }
 
 function readSessionCheckout(): AnyObj | null {
-  // tenta achar qualquer chave que você possa ter usado
   try {
-    // prioridade: chave explícita
     const direct = sessionStorage.getItem("fv_checkout");
     if (direct) return JSON.parse(direct);
 
-    // fallback: varrer chaves que começam com fv_checkout
     for (let i = 0; i < sessionStorage.length; i++) {
       const k = sessionStorage.key(i) || "";
       if (k.startsWith("fv_checkout")) {
@@ -160,6 +190,39 @@ function readSessionCheckout(): AnyObj | null {
   return null;
 }
 
+/** extrai taxa de entrega em CENTAVOS de vários campos possíveis */
+function extractTaxaEntregaCents(v: VendaLike | null): number {
+  const raw = pickFirst(
+    v?.taxa_entrega_centavos,
+    v?.taxa_entrega,
+    v?.taxa
+  );
+
+  return toCentsSmart(raw);
+}
+
+/** adiciona taxa de entrega como item (pra somar no total do PagBank) */
+function appendEntregaItem(items: any[], taxaEntregaCents: number) {
+  if (!taxaEntregaCents || taxaEntregaCents <= 0) return items;
+
+  // evita duplicar se já veio como item
+  const already = items.some((it) =>
+    String(it?.reference_id || "").toLowerCase() === "entrega" ||
+    String(it?.name || "").toLowerCase().includes("entrega")
+  );
+  if (already) return items;
+
+  return [
+    ...items,
+    {
+      reference_id: "entrega",
+      name: "Taxa de entrega",
+      quantity: 1,
+      unit_amount: taxaEntregaCents,
+    },
+  ];
+}
+
 export default function CheckoutClient() {
   const sp = useSearchParams();
   const router = useRouter();
@@ -169,7 +232,6 @@ export default function CheckoutClient() {
   const vendaId = sp.get("venda_id") || "";
   const grupoId = sp.get("grupo_id") || "";
 
-  // se vier cpf por query string (opcional)
   const cpfQS = onlyDigits(sp.get("cpf") || "");
 
   const [loading, setLoading] = useState(true);
@@ -177,8 +239,6 @@ export default function CheckoutClient() {
   const [debugFonte, setDebugFonte] = useState<string | null>(null);
 
   const [venda, setVenda] = useState<VendaLike | null>(null);
-
-  // CPF editável (resolve teu problema: PagbankPayment só enxerga cliente.tax_id)
   const [cpf, setCpf] = useState<string>(cpfQS);
 
   useEffect(() => {
@@ -189,7 +249,6 @@ export default function CheckoutClient() {
         setLoading(true);
         setErr(null);
 
-        // precisa ter ao menos order_id (PagBank) OU pedido/venda pra fallback
         if (!orderId && !pedidoId && !vendaId && !grupoId) {
           setDebugFonte("sem_params");
           setVenda(null);
@@ -197,13 +256,18 @@ export default function CheckoutClient() {
           return;
         }
 
-        // 1) tenta API principal (POST)
         if (orderId) {
+          // 1) POST
           try {
             const r1 = await fetch("/api/pagbank/status", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ order_id: orderId, pedido_id: pedidoId || null, venda_id: vendaId || null, grupo_id: grupoId || null }),
+              body: JSON.stringify({
+                order_id: orderId,
+                pedido_id: pedidoId || null,
+                venda_id: vendaId || null,
+                grupo_id: grupoId || null,
+              }),
               cache: "no-store",
             });
 
@@ -215,18 +279,15 @@ export default function CheckoutClient() {
                 setVenda(v);
                 setDebugFonte("api:/api/pagbank/status (POST)");
               }
-              // se API já trouxe CPF, seta
               const apiCpf = onlyDigits(v?.cliente_tax_id || "");
               if (!cancelled && apiCpf && apiCpf.length === 11 && !cpfQS) setCpf(apiCpf);
               return;
             }
-
-            // se veio HTML/erro/404, cai pro GET
           } catch {
-            // segue para GET/fallback
+            // segue pro GET
           }
 
-          // 2) tenta GET (algumas rotas ficam mais fáceis assim)
+          // 2) GET
           try {
             const url = `/api/pagbank/status?order_id=${encodeURIComponent(orderId)}${
               pedidoId ? `&pedido_id=${encodeURIComponent(pedidoId)}` : ""
@@ -248,7 +309,6 @@ export default function CheckoutClient() {
               return;
             }
 
-            // Se retornou HTML, mostra um erro “bonito”
             if (!r2.ok && !parsed2.ok) {
               const snippet = String(parsed2.raw || "").slice(0, 140);
               throw new Error(
@@ -260,12 +320,11 @@ export default function CheckoutClient() {
               throw new Error(parsed2.json?.error || "Falha ao buscar venda");
             }
           } catch (e: any) {
-            // continua para session fallback
             if (!cancelled) setErr(String(e?.message || e));
           }
         }
 
-        // 3) fallback sessionStorage (se a API falhar)
+        // 3) sessionStorage fallback
         const ss = readSessionCheckout();
         if (ss) {
           const v = extractVenda(ss) || (ss as VendaLike);
@@ -275,13 +334,20 @@ export default function CheckoutClient() {
           }
 
           const ssCpf = onlyDigits(
-            pickFirst(ss?.cliente_tax_id, ss?.cpf, ss?.cliente?.tax_id, ss?.cliente?.cpf, ss?.tax_id, ss?.customer?.tax_id, ss?.customer?.cpf) || ""
+            pickFirst(
+              ss?.cliente_tax_id,
+              ss?.cpf,
+              ss?.cliente?.tax_id,
+              ss?.cliente?.cpf,
+              ss?.tax_id,
+              ss?.customer?.tax_id,
+              ss?.customer?.cpf
+            ) || ""
           );
           if (!cancelled && ssCpf && ssCpf.length === 11 && !cpfQS) setCpf(ssCpf);
           return;
         }
 
-        // nada funcionou
         if (!cancelled) {
           setVenda(null);
           setDebugFonte("sem_dados");
@@ -298,7 +364,11 @@ export default function CheckoutClient() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orderId, pedidoId, vendaId, grupoId]);
 
-  const items = useMemo(() => extractItems(venda), [venda]);
+  // ✅ itens + taxa entrega (para PagBank somar corretamente)
+  const baseItems = useMemo(() => extractItems(venda), [venda]);
+  const taxaEntregaCents = useMemo(() => extractTaxaEntregaCents(venda), [venda]);
+  const items = useMemo(() => appendEntregaItem(baseItems, taxaEntregaCents), [baseItems, taxaEntregaCents]);
+
   const totalFromItems = useMemo(() => sumTotal(items), [items]);
 
   const totalCentavos = useMemo(() => {
@@ -306,13 +376,13 @@ export default function CheckoutClient() {
     const a = totalFromItems;
     if (a > 0) return a;
 
-    const b = centsFromMaybe(venda?.total_centavos);
+    const b = toCentsSmart(venda?.total_centavos);
     if (b > 0) return b;
 
-    const c = centsFromMaybe(venda?.total);
+    const c = toCentsSmart(venda?.total);
     if (c > 0) return c;
 
-    const d = centsFromMaybe(venda?.subtotal);
+    const d = toCentsSmart(venda?.subtotal);
     if (d > 0) return d;
 
     return 0;
@@ -323,7 +393,7 @@ export default function CheckoutClient() {
     return {
       name: String(pickFirst(venda?.cliente_nome, "Cliente") || "Cliente"),
       email: String(pickFirst(venda?.cliente_email, "cliente@iadrogarias.com") || "cliente@iadrogarias.com"),
-      tax_id: baseCpf, // ✅ aqui está o pulo do gato (CPF editável)
+      tax_id: baseCpf,
       phone: onlyDigits(String(pickFirst(venda?.cliente_phone, "") || "")),
     };
   }, [venda, cpf, cpfQS]);
@@ -349,7 +419,6 @@ export default function CheckoutClient() {
     );
   }
 
-  // Se total ficou 0, não deixa pagar (evita erro do PagBank)
   if (totalCentavos <= 0 || items.length === 0) {
     return (
       <div className="mx-auto max-w-2xl p-4">
@@ -380,7 +449,6 @@ export default function CheckoutClient() {
       <h1 className="mb-2 text-xl font-semibold">Finalizar pagamento</h1>
       {debugFonte && <div className="mb-4 text-xs opacity-60">Fonte: {debugFonte}</div>}
 
-      {/* ✅ CPF aqui resolve o “coloquei no carrinho mas ele diz que não tem CPF” */}
       <div className="mb-4 rounded-2xl border p-4">
         <div className="mb-2 text-sm font-semibold">CPF (obrigatório para PIX)</div>
         <input
@@ -390,17 +458,10 @@ export default function CheckoutClient() {
           inputMode="numeric"
           className="w-full rounded-xl border px-3 py-3 text-sm outline-none focus:ring-4 focus:ring-blue-200"
         />
-        <div className="mt-2 text-xs opacity-60">
-          Dica: só números. Ex: 12345678901
-        </div>
+        <div className="mt-2 text-xs opacity-60">Dica: só números. Ex: 12345678901</div>
       </div>
 
-      <PagbankPayment
-        orderId={orderId}
-        cliente={cliente}
-        items={items}
-        onPaid={onPaid}
-      />
+      <PagbankPayment orderId={orderId} cliente={cliente} items={items} onPaid={onPaid} />
     </div>
   );
 }
