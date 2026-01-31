@@ -17,17 +17,12 @@ function toCentavos(v: any) {
 }
 
 /**
- * ✅ AQUI você liga no seu PagBank de verdade.
- * Deve retornar o order_id do PagBank.
+ * ✅ AQUI você liga no seu PagBank de verdade e retorna o order_id real.
+ * Por enquanto está placeholder pra não quebrar o build.
  */
 async function createPagbankOrder(payload: any): Promise<string> {
-  // TODO: cole aqui o seu fetch/SDK do PagBank
-  // return pagbankOrderId;
-
-  // placeholder pra não quebrar build (troque!)
   if (!payload?.items?.length) throw new Error("Sem itens para pagamento.");
-  // simula um order_id
-  return `ORDER_${Date.now()}`;
+  return `ORDER_${Date.now()}`; // placeholder
 }
 
 export async function POST(req: Request) {
@@ -37,14 +32,18 @@ export async function POST(req: Request) {
     const grupo_id = body?.grupo_id ? String(body.grupo_id) : null;
 
     if (!pedido_id && !grupo_id) {
-      return NextResponse.json({ ok: false, error: "pedido_id ou grupo_id é obrigatório." }, { status: 400 });
+      return NextResponse.json(
+        { ok: false, error: "pedido_id ou grupo_id é obrigatório." },
+        { status: 400 }
+      );
     }
 
     // 1) busca pedidos
     let query = supabaseAdmin
       .from("fv_pedidos")
       .select(
-        "id,grupo_id,status,cliente_nome,cliente_email,cliente_cpf,cliente_whatsapp,pagamento,tipo_entrega,endereco,numero,bairro,itens,total,total_centavos"
+        // ✅ REMOVIDO: total_centavos (não existe no seu banco)
+        "id,grupo_id,status,cliente_nome,cliente_email,cliente_cpf,cliente_whatsapp,pagamento,tipo_entrega,endereco,numero,bairro,itens,total"
       );
 
     if (pedido_id) query = query.eq("id", pedido_id);
@@ -58,7 +57,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ ok: false, error: "Pedido não encontrado." }, { status: 404 });
     }
 
-    // 2) se grupo_id, somamos tudo num “pagamento só” (ou escolha o primeiro)
+    // 2) se grupo_id, somamos tudo num pagamento só
     const p0 = pedidos[0] as any;
 
     const itensAll: any[] = [];
@@ -66,19 +65,32 @@ export async function POST(req: Request) {
 
     for (const p of pedidos as any[]) {
       const itens = Array.isArray(p?.itens) ? p.itens : [];
-      for (const it of itens) {
-        const qty = Number(it?.qtd || it?.quantity || 1);
-        const unit = Number(it?.preco_centavos || it?.unit_amount || 0); // já em centavos
-        itensAll.push({
-          reference_id: String(it?.ean || it?.reference_id || it?.id || `item-${itensAll.length + 1}`),
-          name: String(it?.nome || it?.name || "Item"),
-          quantity: qty,
-          unit_amount: unit,
-        });
-        totalCentavos += qty * unit;
+
+      if (itens.length) {
+        for (const it of itens) {
+          const qty = Number(it?.qtd || it?.quantity || 1);
+
+          // tenta pegar centavos do item; se não tiver, converte do preço em reais
+          const unit =
+            it?.preco_centavos != null
+              ? Number(it.preco_centavos)
+              : it?.unit_amount != null
+              ? Number(it.unit_amount)
+              : toCentavos(it?.preco || 0);
+
+          itensAll.push({
+            reference_id: String(it?.ean || it?.reference_id || it?.id || `item-${itensAll.length + 1}`),
+            name: String(it?.nome || it?.name || "Item"),
+            quantity: qty,
+            unit_amount: unit,
+          });
+
+          totalCentavos += qty * unit;
+        }
+      } else {
+        // fallback: usa o total do pedido (em reais)
+        totalCentavos += toCentavos(p?.total || 0);
       }
-      // se seu pedido tem total em reais, pode usar:
-      if (!itens.length && p?.total) totalCentavos += toCentavos(p.total);
     }
 
     // 3) cliente
@@ -102,7 +114,6 @@ export async function POST(req: Request) {
       grupo_id: p0?.grupo_id || grupo_id || null,
     });
 
-    // 5) responde
     return NextResponse.json({
       ok: true,
       order_id,
@@ -110,10 +121,6 @@ export async function POST(req: Request) {
       grupo_id: p0?.grupo_id || grupo_id || null,
       pedido: {
         ...p0,
-        // garante campos no formato que o CheckoutClient espera
-        cliente_cpf: p0?.cliente_cpf || null,
-        cliente_email: p0?.cliente_email || null,
-        cliente_whatsapp: p0?.cliente_whatsapp || null,
         itens: p0?.itens || [],
       },
     });
