@@ -4,12 +4,10 @@ import { createClient } from "@supabase/supabase-js";
 
 function supabaseAdmin() {
   const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const serviceKey =
-    process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
+  const serviceKey = process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!url) throw new Error("SUPABASE_URL não configurado");
-  if (!serviceKey)
-    throw new Error("SUPABASE_SERVICE_KEY/SERVICE_ROLE_KEY não configurado");
+  if (!serviceKey) throw new Error("SUPABASE_SERVICE_KEY/SERVICE_ROLE_KEY não configurado");
 
   return createClient(url, serviceKey, { auth: { persistSession: false } });
 }
@@ -39,23 +37,18 @@ async function safeJson(resp: Response) {
 
 async function fetchPagBankOrder(pagbankId: string) {
   const token = process.env.PAGBANK_TOKEN;
-  const baseUrl = (
-    process.env.PAGBANK_BASE_URL || "https://sandbox.api.pagseguro.com"
-  ).trim();
+  const baseUrl = (process.env.PAGBANK_BASE_URL || "https://sandbox.api.pagseguro.com").trim();
 
   if (!token) throw new Error("PAGBANK_TOKEN não configurado");
 
-  const resp = await fetch(
-    `${baseUrl}/orders/${encodeURIComponent(pagbankId)}`,
-    {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${token}`,
-        Accept: "application/json",
-      },
-      cache: "no-store",
-    }
-  );
+  const resp = await fetch(`${baseUrl}/orders/${encodeURIComponent(pagbankId)}`, {
+    method: "GET",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/json",
+    },
+    cache: "no-store",
+  });
 
   const data = await safeJson(resp);
 
@@ -68,7 +61,7 @@ async function fetchPagBankOrder(pagbankId: string) {
     throw new Error(`${msg} (HTTP ${resp.status})`);
   }
 
-  // Em geral o status de pagamento vem na charge
+  // geralmente o status mais útil vem na charge
   const chargeStatus = data?.charges?.[0]?.status;
   const orderStatus = data?.status;
 
@@ -79,25 +72,26 @@ async function fetchPagBankOrder(pagbankId: string) {
   };
 }
 
+function isUUID(s: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(s);
+}
+
 /**
- * Aceita GET (recomendado): /api/pagbank/order-status?order_id=123
- * E também POST (compatível): { "order_id": "123" }
+ * GET: /api/pagbank/order-status?order_id=FV_...
+ * POST: { "order_id": "FV_..." }
  */
 
-// ✅ GET (melhor pro polling)
+// ✅ GET (recomendado para polling)
 export async function GET(req: Request) {
   try {
     const { searchParams } = new URL(req.url);
-    const order_id = searchParams.get("order_id");
+    const order_id = String(searchParams.get("order_id") || "").trim();
 
     if (!order_id) {
-      return NextResponse.json(
-        { ok: false, error: "order_id obrigatório" },
-        { status: 400 }
-      );
+      return NextResponse.json({ ok: false, error: "order_id obrigatório" }, { status: 400 });
     }
 
-    return await handle(String(order_id));
+    return await handle(order_id);
   } catch (e: any) {
     return NextResponse.json(
       { ok: false, error: "Falha geral", detalhe: String(e?.message || e) },
@@ -106,19 +100,17 @@ export async function GET(req: Request) {
   }
 }
 
-// ✅ POST (mantém compatibilidade)
+// ✅ POST (compatível)
 export async function POST(req: Request) {
   try {
-    const { order_id } = await req.json();
+    const b = await req.json().catch(() => ({} as any));
+    const order_id = String(b?.order_id || "").trim();
 
     if (!order_id) {
-      return NextResponse.json(
-        { ok: false, error: "order_id obrigatório" },
-        { status: 400 }
-      );
+      return NextResponse.json({ ok: false, error: "order_id obrigatório" }, { status: 400 });
     }
 
-    return await handle(String(order_id));
+    return await handle(order_id);
   } catch (e: any) {
     return NextResponse.json(
       { ok: false, error: "Falha geral", detalhe: String(e?.message || e) },
@@ -129,22 +121,14 @@ export async function POST(req: Request) {
 
 async function handle(order_id: string) {
   const sb = supabaseAdmin();
-
-  const isUUID = (s: string) =>
-    /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-      s
-    );
+  const table = sb.from("vendas_site") as any;
 
   // 1) Busca a venda local (sem quebrar por UUID inválido)
   let venda: any = null;
 
   // A) se for UUID, tenta por id
   if (isUUID(order_id)) {
-    const r = await sb
-      .from("vendas_site")
-      .select("*")
-      .eq("id", order_id)
-      .maybeSingle();
+    const r = await table.select("*").eq("id", order_id).maybeSingle();
 
     if (r.error) {
       return NextResponse.json(
@@ -155,22 +139,21 @@ async function handle(order_id: string) {
     venda = r.data;
   }
 
-  // B) se não achou, tenta por colunas texto
+  // B) se não achou, tenta por colunas texto (inclui "codigo")
   if (!venda) {
-    const candidates = ["order_id", "codigo", "reference_id", "pagbank_order_id", "id"];
-
+    const candidates = ["codigo", "reference_id", "pagbank_order_id", "id"];
     for (const col of candidates) {
-      const r = await sb
-        .from("vendas_site")
-        .select("*")
-        .eq(col, order_id)
-        .limit(1)
-        .maybeSingle();
+      const r = await table.select("*").eq(col, order_id).limit(1).maybeSingle();
 
       if (r.error) {
-        // se col == id e vier UUID inválido, ignora
-        const msg = String(r.error.message || "");
-        if (col === "id" && msg.toLowerCase().includes("uuid")) continue;
+        const msg = String(r.error.message || "").toLowerCase();
+        const code = String(r.error.code || "");
+
+        // se col == id e vier erro de UUID inválido, ignora e tenta próxima
+        if (col === "id" && (code === "22P02" || msg.includes("uuid"))) continue;
+
+        // se coluna não existe, ignora e tenta próxima
+        if (code === "42703" || msg.includes("column")) continue;
 
         return NextResponse.json(
           { ok: false, error: "Erro ao consultar vendas_site", detalhe: r.error.message, col },
@@ -185,7 +168,7 @@ async function handle(order_id: string) {
     }
   }
 
-  // se não achou, não quebra polling
+  // ✅ se não achou, NÃO quebra o checkout/polling
   if (!venda) {
     return NextResponse.json({
       ok: true,
@@ -195,19 +178,15 @@ async function handle(order_id: string) {
       qr_text: "",
       qr_png_url: "",
       qr_base64: "",
-      note: "Venda não encontrada ainda",
+      note: "Venda não encontrada ainda (aguardando create-order gravar em vendas_site.codigo)",
     });
   }
 
   const statusLocal = String(venda.status || "").toLowerCase();
 
-  // pega qr se existir na tabela (ajuste os nomes se os seus forem outros)
-  const qr_text = String(
-    venda.qr_text || venda.pix_copia_cola || venda.pix_qr_text || venda.pix_text || ""
-  );
-  const qr_png_url = String(
-    venda.qr_png_url || venda.qr_png || venda.pix_qr_png_url || venda.pix_qr_png || ""
-  );
+  // qr se existir na tabela (nomes que você gravou no create-order)
+  const qr_text = String(venda.qr_text || venda.pix_copia_cola || venda.pix_qr_text || venda.pix_text || "");
+  const qr_png_url = String(venda.qr_png_url || venda.qr_png || venda.pix_qr_png_url || venda.pix_qr_png || "");
   const qr_base64 = String(venda.qr_base64 || venda.pix_qr_base64 || "");
 
   // 2) Se já está pago localmente, pronto
@@ -237,13 +216,28 @@ async function handle(order_id: string) {
   }
 
   // 4) Consulta PagBank e atualiza Supabase
-  const consult = await fetchPagBankOrder(String(venda.pagbank_id));
+  let consult: any;
+  try {
+    consult = await fetchPagBankOrder(String(venda.pagbank_id));
+  } catch (e: any) {
+    // se PagBank falhar, não derruba o front
+    return NextResponse.json({
+      ok: true,
+      venda,
+      status: statusLocal || "pendente",
+      fonte: "supabase",
+      qr_text,
+      qr_png_url,
+      qr_base64,
+      pagbank_error: String(e?.message || e),
+    });
+  }
+
   const statusNovo = normStatus(consult.statusRaw);
 
-  // atualiza pelo ID REAL da linha (venda.id), não pelo order_id da URL
+  // atualiza pelo ID REAL da linha (venda.id)
   try {
-    await sb
-      .from("vendas_site")
+    await table
       .update({
         status: statusNovo,
         paid_at: statusNovo === "pago" ? new Date().toISOString() : null,
@@ -254,12 +248,7 @@ async function handle(order_id: string) {
   }
 
   // recarrega
-  const { data: venda2 } = await sb
-    .from("vendas_site")
-    .select("*")
-    .eq("id", String(venda.id))
-    .maybeSingle();
-
+  const { data: venda2 } = await table.select("*").eq("id", String(venda.id)).maybeSingle();
   const vfinal = venda2 || venda;
 
   return NextResponse.json({
@@ -268,12 +257,8 @@ async function handle(order_id: string) {
     status: statusNovo,
     fonte: "pagbank",
     pagbank_status_raw: consult.statusRaw,
-    qr_text: String(
-      vfinal.qr_text || vfinal.pix_copia_cola || vfinal.pix_qr_text || vfinal.pix_text || ""
-    ),
-    qr_png_url: String(
-      vfinal.qr_png_url || vfinal.qr_png || vfinal.pix_qr_png_url || vfinal.pix_qr_png || ""
-    ),
+    qr_text: String(vfinal.qr_text || vfinal.pix_copia_cola || vfinal.pix_qr_text || vfinal.pix_text || ""),
+    qr_png_url: String(vfinal.qr_png_url || vfinal.qr_png || vfinal.pix_qr_png_url || vfinal.pix_qr_png || ""),
     qr_base64: String(vfinal.qr_base64 || vfinal.pix_qr_base64 || ""),
   });
 }

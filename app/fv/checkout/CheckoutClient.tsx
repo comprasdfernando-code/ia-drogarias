@@ -4,8 +4,6 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import PagbankPayment from "../_components/PagbankPayment";
 
-type AnyObj = Record<string, any>;
-
 type VendaLike = {
   id?: string;
   status?: string | null;
@@ -221,9 +219,8 @@ export default function CheckoutClient() {
   const [venda, setVenda] = useState<VendaLike | null>(null);
   const [cpf, setCpf] = useState<string>(cpfQS);
 
-  // ✅ controle de status (pra sair sozinho da tela quando pagar)
+  // ✅ status só pra exibir no topo (sem polling aqui)
   const [status, setStatus] = useState<string | null>(null);
-  const [checking, setChecking] = useState(false);
 
   // carregar venda/status (API -> fallback)
   useEffect(() => {
@@ -341,7 +338,8 @@ export default function CheckoutClient() {
         if (!cancelled) {
           setVenda(null);
           setDebugFonte("sem_dados");
-          setErr((prev) => prev || "Não consegui recuperar a venda (API falhou e não há fallback em sessionStorage).");
+          // não travar checkout: deixa seguir mesmo sem venda (PagbankPayment gera o PIX)
+          setErr(null);
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -356,14 +354,14 @@ export default function CheckoutClient() {
 
   const itemsBase = useMemo(() => extractItems(venda), [venda]);
 
-  // ✅ taxa (reais -> centavos) vinda do session fallback (payload.entrega.taxa)
+  // ✅ taxa (reais -> centavos)
   const taxaEntregaCents = useMemo(() => {
     const t = pickFirst((venda as any)?.entrega?.taxa, (venda as any)?.taxa_entrega, null);
     const cents = centsFromMaybe(t);
     return cents > 0 ? cents : 0;
   }, [venda]);
 
-  // ✅ inclui frete automaticamente como item (pra bater o total do PagBank)
+  // ✅ inclui frete automaticamente como item
   const items = useMemo(() => {
     const arr = [...itemsBase];
     if (taxaEntregaCents > 0) {
@@ -417,7 +415,6 @@ export default function CheckoutClient() {
 
   async function confirmPaidBackend() {
     // ✅ tenta avisar seu backend pra marcar pedido como pago
-    // Se a rota não existir ainda, não quebra o checkout.
     try {
       await fetch("/api/fv/confirm-payment", {
         method: "POST",
@@ -433,78 +430,17 @@ export default function CheckoutClient() {
   }
 
   async function onPaid() {
-    // 1) marca no backend
     await confirmPaidBackend();
-
-    // 2) limpa carrinho
     clearPossibleCarts();
-
-    // 3) limpa session payload (pra não reabrir o mesmo)
     try {
       sessionStorage.removeItem(`fv_checkout_${orderId}`);
     } catch {}
-
-    // 4) vai pra loja com flag de sucesso (se quiser mostrar toast)
     router.replace("/fv?paid=1");
   }
 
-  // ✅ polling extra no CheckoutClient (caso o PagbankPayment não esteja fazendo polling)
-  useEffect(() => {
-    if (!orderId) return;
-
-    let alive = true;
-    let timer: any = null;
-
-    async function tick() {
-      if (!alive) return;
-      try {
-        setChecking(true);
-        const r = await fetch(`/api/pagbank/status?order_id=${encodeURIComponent(orderId)}`, { cache: "no-store" });
-        const j = await r.json().catch(() => null);
-
-        const st = String(j?.status || j?.data?.status || j?.venda?.status || "").toUpperCase();
-        if (st) setStatus(st);
-
-        if (st === "PAID" || st === "CONFIRMED" || st === "AUTHORIZED") {
-          alive = false;
-          await onPaid();
-          return;
-        }
-      } catch {
-        // ignora
-      } finally {
-        if (alive) setChecking(false);
-      }
-      timer = setTimeout(tick, 3000);
-    }
-
-    // só começa a pollar se já gerou/tem status pendente
-    timer = setTimeout(tick, 2500);
-
-    return () => {
-      alive = false;
-      if (timer) clearTimeout(timer);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orderId]);
-
   if (loading) return <div className="p-6">Carregando…</div>;
 
-  if (err && !venda) {
-    return (
-      <div className="p-6">
-        <div className="text-red-600">{err}</div>
-        {debugFonte && <div className="mt-2 text-xs opacity-60">Fonte: {debugFonte}</div>}
-        <div className="mt-4">
-          <button className="rounded-lg border px-3 py-2" onClick={() => router.push("/fv")}>
-            Voltar para /fv
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  // não deixa pagar sem itens/total
+  // se o total zerar, trava (isso sim é erro de compra)
   if (totalCentavos <= 0 || items.length === 0) {
     return (
       <div className="mx-auto max-w-2xl p-4">
@@ -535,12 +471,12 @@ export default function CheckoutClient() {
       <h1 className="mb-2 text-xl font-semibold">Finalizar pagamento</h1>
       {debugFonte && <div className="mb-2 text-xs opacity-60">Fonte: {debugFonte}</div>}
 
+      {/* topo com status (somente exibição) */}
       <div className="mb-4 flex items-center justify-between text-xs text-gray-600">
         <div>
-          Status:{" "}
-          <b className="text-gray-900">{status || "—"}</b>
+          Status: <b className="text-gray-900">{status || "—"}</b>
         </div>
-        <div>{checking ? "Verificando pagamento..." : " "}</div>
+        <div>{err ? <span className="text-red-600">{err}</span> : <span />}</div>
       </div>
 
       {/* CPF editável */}
@@ -556,7 +492,13 @@ export default function CheckoutClient() {
         <div className="mt-2 text-xs opacity-60">Dica: só números. Ex: 12345678901</div>
       </div>
 
-      <PagbankPayment orderId={orderId} cliente={cliente} items={items} onPaid={onPaid} />
+      {/* Pagamento: agora o polling só começa depois de clicar em Gerar PIX */}
+      <PagbankPayment
+        orderId={orderId}
+        cliente={{ ...cliente, tax_id: cpf }} // ✅ usa o CPF digitado
+        items={items}
+        onPaid={onPaid}
+      />
     </div>
   );
 }

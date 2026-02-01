@@ -33,7 +33,10 @@ function brlFromCents(cents: number) {
 }
 
 function sumTotal(items: Item[]) {
-  return items.reduce((acc, it) => acc + (Number(it.unit_amount) || 0) * (Number(it.quantity) || 0), 0);
+  return items.reduce(
+    (acc, it) => acc + (Number(it.unit_amount) || 0) * (Number(it.quantity) || 0),
+    0
+  );
 }
 
 async function safeJson(r: Response) {
@@ -45,6 +48,21 @@ async function safeJson(r: Response) {
   }
 }
 
+function pickFirst(...vals: any[]) {
+  for (const v of vals) {
+    if (v === 0) return v;
+    if (v !== undefined && v !== null && String(v).trim?.() !== "") return v;
+  }
+  return null;
+}
+
+/**
+ * ✅ PagbankPayment (default export)
+ * Corrige:
+ * - "Module has no default export" (você importa como default no CheckoutClient)
+ * - polling + leitura de QR retornando de /api/pagbank/order-status (ou /api/pagbank/status fallback)
+ * - não trava em erro: mostra detalhe (snippet) quando vier HTML/500
+ */
 export default function PagbankPayment({ orderId, cliente, items, onPaid }: Props) {
   const [busy, setBusy] = useState(false);
   const [checking, setChecking] = useState(true);
@@ -59,9 +77,6 @@ export default function PagbankPayment({ orderId, cliente, items, onPaid }: Prop
   const paidOnce = useRef(false);
 
   const totalCentavos = useMemo(() => sumTotal(items), [items]);
-
-  const BASE = typeof window !== "undefined" ? window.location.origin : "";
-
   const cpf = useMemo(() => onlyDigits(cliente.tax_id).slice(0, 11), [cliente.tax_id]);
 
   const loadOrderStatus = useCallback(async () => {
@@ -70,38 +85,96 @@ export default function PagbankPayment({ orderId, cliente, items, onPaid }: Prop
     setChecking(true);
     setErr(null);
 
-    const url = `${BASE}/api/pagbank/order-status?order_id=${encodeURIComponent(orderId)}`;
-    const r = await fetch(url, { cache: "no-store" });
-    const parsed = await safeJson(r);
+    // ✅ prioridade: order-status (é o que você está usando na tela)
+    const urls = [
+      `/api/pagbank/order-status?order_id=${encodeURIComponent(orderId)}`,
+      `/api/pagbank/status?order_id=${encodeURIComponent(orderId)}`,
+    ];
 
-    if (!r.ok || !parsed.ok) {
-      setErr(`order-status: HTTP ${r.status}`);
-      setChecking(false);
-      return;
-    }
+    for (const url of urls) {
+      try {
+        const r = await fetch(url, { cache: "no-store" });
+        const parsed = await safeJson(r);
 
-    const j = parsed.json;
+        if (!r.ok || !parsed.ok) {
+          // se veio HTML ou erro, tenta próximo endpoint
+          const snippet = String(parsed.raw || "").slice(0, 160);
+          if (url === urls[urls.length - 1]) {
+            setErr(`order-status: HTTP ${r.status} ${snippet ? `| ${snippet}` : ""}`);
+          }
+          continue;
+        }
 
-    // aceite vários formatos
-    const st = String(j?.status || j?.data?.status || j?.order?.status || "NOVO");
-    setStatus(st);
+        const j = parsed.json;
 
-    const qrText = String(j?.qr_text || j?.qrText || j?.data?.qr_text || "");
-    const qrPng = String(j?.qr_png_url || j?.qr_png || j?.data?.qr_png_url || "");
-    const qr64 = String(j?.qr_base64 || j?.qrBase64 || j?.data?.qr_base64 || "");
+        // ✅ status pode vir em vários formatos
+        const st = String(
+          pickFirst(
+            j?.status,
+            j?.data?.status,
+            j?.order?.status,
+            j?.venda?.status,
+            "NOVO"
+          )
+        );
+        setStatus(st);
 
-    if (qrText) setPixText(qrText);
-    if (qrPng) setQrPngUrl(qrPng);
-    if (qr64) setQrBase64(qr64);
+        // ✅ QR pode vir direto no payload do order-status (pelo teu handle)
+        const qrText = String(
+          pickFirst(
+            j?.qr_text,
+            j?.qrText,
+            j?.data?.qr_text,
+            j?.pix_text,
+            j?.pix_copia_cola,
+            ""
+          ) || ""
+        );
 
-    const paid = ["PAID", "PAGO", "CONFIRMED", "APPROVED", "AUTHORIZED"].includes(st.toUpperCase());
-    if (paid && !paidOnce.current) {
-      paidOnce.current = true;
-      onPaid();
+        const qrPng = String(
+          pickFirst(
+            j?.qr_png_url,
+            j?.qr_png,
+            j?.data?.qr_png_url,
+            j?.pix_qr_png_url,
+            ""
+          ) || ""
+        );
+
+        const qr64 = String(
+          pickFirst(
+            j?.qr_base64,
+            j?.qrBase64,
+            j?.data?.qr_base64,
+            j?.pix_qr_base64,
+            ""
+          ) || ""
+        );
+
+        if (qrText) setPixText(qrText);
+        if (qrPng) setQrPngUrl(qrPng);
+        if (qr64) setQrBase64(qr64);
+
+        const paid = ["PAID", "PAGO", "CONFIRMED", "APPROVED", "AUTHORIZED", "PAGO_PIX", "PAGO_CARTAO"].includes(
+          st.toUpperCase()
+        );
+
+        if (paid && !paidOnce.current) {
+          paidOnce.current = true;
+          onPaid();
+        }
+
+        setChecking(false);
+        return; // ✅ sucesso em algum endpoint
+      } catch (e: any) {
+        if (url === urls[urls.length - 1]) {
+          setErr(`order-status: falha de rede`);
+        }
+      }
     }
 
     setChecking(false);
-  }, [BASE, onPaid, orderId]);
+  }, [onPaid, orderId]);
 
   const createOrderAndPix = useCallback(async () => {
     if (!orderId) return;
@@ -110,16 +183,18 @@ export default function PagbankPayment({ orderId, cliente, items, onPaid }: Prop
     setErr(null);
 
     const payload = {
-      order_id: orderId,
-      total_centavos: totalCentavos,
+      order_id: orderId, // FV_...
+      forma_pagamento: "PIX",
       cliente: {
         ...cliente,
         tax_id: cpf,
       },
       items,
+      itens: items, // compat
+      total_centavos: totalCentavos,
     };
 
-    const r = await fetch(`${BASE}/api/pagbank/create-order`, {
+    const r = await fetch(`/api/pagbank/create-order`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -129,16 +204,29 @@ export default function PagbankPayment({ orderId, cliente, items, onPaid }: Prop
     const parsed = await safeJson(r);
 
     if (!r.ok || !parsed.ok || !parsed.json?.ok) {
-      const msg = parsed.ok ? (parsed.json?.error || `HTTP ${r.status}`) : `HTTP ${r.status}`;
+      const msg =
+        parsed.ok
+          ? (parsed.json?.error || parsed.json?.detalhe || `HTTP ${r.status}`)
+          : `HTTP ${r.status}`;
       setErr(`create-order: ${msg}`);
       setBusy(false);
       return;
     }
 
-    // depois de criar, já busca status pra pegar QR
+    // ✅ já traz QR no retorno do create-order (mas mantém fallback do polling)
+    const j = parsed.json;
+    const qrText = String(pickFirst(j?.qr_text, "") || "");
+    const qrPng = String(pickFirst(j?.qr_png_url, "") || "");
+    const qr64 = String(pickFirst(j?.qr_base64, "") || "");
+
+    if (qrText) setPixText(qrText);
+    if (qrPng) setQrPngUrl(qrPng);
+    if (qr64) setQrBase64(qr64);
+
+    // depois de criar, busca status (garante sincronismo)
     await loadOrderStatus();
     setBusy(false);
-  }, [BASE, cliente, cpf, items, loadOrderStatus, orderId, totalCentavos]);
+  }, [cliente, cpf, items, loadOrderStatus, orderId, totalCentavos]);
 
   useEffect(() => {
     loadOrderStatus();
@@ -184,19 +272,18 @@ export default function PagbankPayment({ orderId, cliente, items, onPaid }: Prop
           <div className="opacity-70">
             Status: <b>{checking ? "…" : status || "—"}</b>
           </div>
-          <button type="button" onClick={loadOrderStatus} className="rounded-lg border px-3 py-1.5 text-xs font-bold">
+          <button
+            type="button"
+            onClick={loadOrderStatus}
+            className="rounded-lg border px-3 py-1.5 text-xs font-bold"
+          >
             Atualizar
           </button>
         </div>
 
         {hasAnyQr ? (
           <div className="mt-4">
-            {qrPngUrl ? (
-              <div className="flex justify-center">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={qrPngUrl} alt="QR Code PIX" className="w-[280px] max-w-full rounded-xl border bg-white p-2" />
-              </div>
-            ) : qrBase64 ? (
+            {qrBase64 ? (
               <div className="flex justify-center">
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
@@ -205,12 +292,26 @@ export default function PagbankPayment({ orderId, cliente, items, onPaid }: Prop
                   className="w-[280px] max-w-full rounded-xl border bg-white p-2"
                 />
               </div>
+            ) : qrPngUrl ? (
+              <div className="flex justify-center">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={qrPngUrl}
+                  alt="QR Code PIX"
+                  className="w-[280px] max-w-full rounded-xl border bg-white p-2"
+                />
+              </div>
             ) : null}
 
             {pixText ? (
               <div className="mt-3">
-                <div className="text-xs font-bold opacity-70 mb-1">Copia e cola</div>
-                <textarea value={pixText} readOnly className="w-full rounded-xl border bg-white p-2 text-xs font-mono" rows={4} />
+                <div className="mb-1 text-xs font-bold opacity-70">Copia e cola</div>
+                <textarea
+                  value={pixText}
+                  readOnly
+                  className="w-full rounded-xl border bg-white p-2 font-mono text-xs"
+                  rows={4}
+                />
                 <button
                   type="button"
                   onClick={async () => {

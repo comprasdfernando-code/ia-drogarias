@@ -61,58 +61,69 @@ async function safeJson(resp: Response) {
  * - Se existir linha com codigo=FV_..., atualiza
  * - Se não existir, insere
  * - Se alguma coluna do patch não existir, tenta novamente com patch mínimo
+ *
+ * ✅ Corrigido:
+ * - Não faz mais "update" em tabela vazia e só depois "insert" (corrida e duplicidade).
+ * - Primeiro faz um SELECT, depois UPDATE ou INSERT.
+ * - Tolerante a colunas inexistentes (42703).
  */
 async function upsertVendaByCodigo(codigo: string, patch: Record<string, any>) {
   const sb = supabaseAdmin();
   const table = sb.from("vendas_site") as any;
 
-  // garante que sempre salva o FV_... em codigo
   const full = { ...patch, codigo };
 
-  // tenta update primeiro
-  const up = await table.update(full).eq("codigo", codigo);
+  // 1) verifica se existe
+  const chk = await table.select("id").eq("codigo", codigo).limit(1).maybeSingle();
 
-  // se coluna não existir, tenta com patch mínimo
-  if (up?.error) {
-    const msg = String(up.error.message || "");
-    const code = String(up.error.code || "");
+  // Se der erro de coluna "codigo" inexistente (muito raro), não derruba checkout
+  if (chk?.error) {
+    const msg = String(chk.error.message || "");
+    const code = String(chk.error.code || "");
+    if (code === "42703" || msg.toLowerCase().includes("column")) return;
+    return;
+  }
 
-    // 42703 = undefined_column
+  // helpers para tentar write com fallback minimal
+  async function tryUpdate(payload: any) {
+    const r = await table.update(payload).eq("codigo", codigo);
+    if (!r?.error) return;
+
+    const msg = String(r.error.message || "");
+    const code = String(r.error.code || "");
+
     if (code === "42703" || msg.toLowerCase().includes("column")) {
-      // patch mínimo que deve existir (ajuste se sua tabela for ainda mais enxuta)
       const minimal: any = {
         codigo,
         status: patch?.status ?? "pendente",
         pagbank_id: patch?.pagbank_id ?? null,
       };
       await table.update(minimal).eq("codigo", codigo);
-      return;
     }
-
-    // outros erros: não derruba checkout
-    return;
   }
 
-  // se não existir linha com esse codigo, faz insert
-  // OBS: Supabase JS não retorna "rowCount" fácil, então fazemos um check leve
-  const chk = await table.select("id").eq("codigo", codigo).limit(1).maybeSingle();
-  if (!chk?.data) {
-    // tenta inserir completo
-    const ins = await table.insert([full]);
+  async function tryInsert(payload: any) {
+    const r = await table.insert([payload]);
+    if (!r?.error) return;
 
-    if (ins?.error) {
-      const msg = String(ins.error.message || "");
-      const code = String(ins.error.code || "");
+    const msg = String(r.error.message || "");
+    const code = String(r.error.code || "");
 
-      if (code === "42703" || msg.toLowerCase().includes("column")) {
-        const minimal: any = {
-          codigo,
-          status: patch?.status ?? "pendente",
-          pagbank_id: patch?.pagbank_id ?? null,
-        };
-        await table.insert([minimal]);
-      }
+    if (code === "42703" || msg.toLowerCase().includes("column")) {
+      const minimal: any = {
+        codigo,
+        status: patch?.status ?? "pendente",
+        pagbank_id: patch?.pagbank_id ?? null,
+      };
+      await table.insert([minimal]);
     }
+  }
+
+  // 2) update ou insert
+  if (chk?.data?.id) {
+    await tryUpdate(full);
+  } else {
+    await tryInsert(full);
   }
 }
 
@@ -152,10 +163,21 @@ export async function POST(req: Request) {
       reference_id: String(i?.reference_id || i?.ean || i?.id || i?.sku || `item-${idx + 1}`),
       name: String(i?.name || i?.nome || "Item"),
       quantity: Math.max(1, Number(i?.quantity || i?.qtd || 1)),
-      unit_amount: Math.max(0, Number(i?.unit_amount || i?.preco_centavos || i?.unitAmount || 0)),
+      unit_amount: Math.max(
+        0,
+        Number(i?.unit_amount || i?.preco_centavos || i?.unitAmount || 0)
+      ),
     }));
 
     const total = items.reduce((acc: number, it: any) => acc + it.unit_amount * it.quantity, 0);
+
+    // Se total zerado, não chama PagBank (evita erro)
+    if (!Number.isFinite(total) || total <= 0) {
+      return NextResponse.json(
+        { ok: false, error: "Total inválido/zerado. Verifique unit_amount dos itens (centavos)." },
+        { status: 400 }
+      );
+    }
 
     const customerTaxId = onlyDigits(cliente?.tax_id || cliente?.cpf || "");
     const customerPhones = buildPhones(cliente?.phone || cliente?.whatsapp || "");
@@ -267,7 +289,10 @@ export async function POST(req: Request) {
 
       if (!encrypted || !holder || !cpf) {
         return NextResponse.json(
-          { ok: false, error: "Para cartão: envie card.encrypted, card.holder_name e card.holder_cpf" },
+          {
+            ok: false,
+            error: "Para cartão: envie card.encrypted, card.holder_name e card.holder_cpf",
+          },
           { status: 400 }
         );
       }
@@ -320,7 +345,12 @@ export async function POST(req: Request) {
 
       if (!resp.ok || !data?.id) {
         return NextResponse.json(
-          { ok: false, error: "Erro ao criar pedido Cartão no PagBank", status: resp.status, dados: data },
+          {
+            ok: false,
+            error: "Erro ao criar pedido Cartão no PagBank",
+            status: resp.status,
+            dados: data,
+          },
           { status: 500 }
         );
       }
@@ -337,10 +367,17 @@ export async function POST(req: Request) {
       });
     }
 
-    return NextResponse.json({ ok: false, error: "forma_pagamento inválida" }, { status: 400 });
+    return NextResponse.json(
+      { ok: false, error: "forma_pagamento inválida" },
+      { status: 400 }
+    );
   } catch (e: any) {
     return NextResponse.json(
-      { ok: false, error: "Falha geral ao criar ordem PagBank", detalhe: String(e?.message || e) },
+      {
+        ok: false,
+        error: "Falha geral ao criar ordem PagBank",
+        detalhe: String(e?.message || e),
+      },
       { status: 500 }
     );
   }
