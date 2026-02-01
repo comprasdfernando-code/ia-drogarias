@@ -1,3 +1,4 @@
+// app/api/pagbank/create-order/route.ts
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 
@@ -15,6 +16,12 @@ function supabaseAdmin() {
     throw new Error("SUPABASE_SERVICE_KEY/SERVICE_ROLE_KEY não configurado");
 
   return createClient(url, serviceKey, { auth: { persistSession: false } });
+}
+
+function isUUID(s: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    String(s || "")
+  );
 }
 
 function buildPhones(phoneRaw?: string) {
@@ -55,14 +62,66 @@ async function safeJson(resp: Response) {
   }
 }
 
+/**
+ * Atualiza vendas_site SEM quebrar por UUID inválido.
+ * Tenta:
+ * 1) order_id (texto)
+ * 2) codigo
+ * 3) reference_id
+ * 4) id (se for UUID)
+ */
+async function updateVendaSafe(order_id: string, patch: Record<string, any>) {
+  try {
+    const sb = supabaseAdmin();
+
+    const tries: Array<{ col: string; val: string; allowUuidOnly?: boolean }> = [
+      { col: "order_id", val: order_id },
+      { col: "codigo", val: order_id },
+      { col: "reference_id", val: order_id },
+      { col: "pagbank_order_id", val: order_id },
+      { col: "id", val: order_id, allowUuidOnly: true },
+    ];
+
+    for (const t of tries) {
+      if (t.allowUuidOnly && !isUUID(t.val)) continue;
+
+      // tenta update; se a coluna não existir, pode cair em erro 42703
+      const r = await (sb
+  .from("vendas_site") as any)
+  .update(patch)
+  .eq(t.col, t.val);
+
+
+      // se erro de coluna inexistente, tenta próximo
+      if (r.error) {
+        const msg = String(r.error.message || "");
+        const code = String((r.error as any)?.code || "");
+        // 42703 = undefined_column
+        if (code === "42703" || msg.toLowerCase().includes("column")) continue;
+
+        // erro de UUID inválido em id => tenta próximo
+        if (t.col === "id" && msg.toLowerCase().includes("uuid")) continue;
+
+        // outros erros -> não derruba o checkout, só para tentativas
+        break;
+      }
+
+      // tentou e não deu erro -> encerra
+      break;
+    }
+  } catch {
+    // não derruba
+  }
+}
+
 export async function POST(req: Request) {
   try {
     const token = process.env.PAGBANK_TOKEN;
 
-    // sandbox por padrão (você troca por produção quando virar)
+    // sandbox por padrão (troca por produção quando virar)
     const baseUrl = (process.env.PAGBANK_BASE_URL || "https://sandbox.api.pagseguro.com").trim();
 
-    // ✅ padroniza com www (importante pra webhook/ambiente)
+    // padroniza com www (importante pra webhook/ambiente)
     const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || "https://www.iadrogarias.com.br").trim();
 
     if (!token) {
@@ -74,7 +133,7 @@ export async function POST(req: Request) {
 
     const body = await req.json();
 
-    const order_id = body?.order_id;
+    const order_id = String(body?.order_id || "").trim();
     const forma_pagamento = String(body?.forma_pagamento || "PIX").toUpperCase();
     const cliente = body?.cliente || {};
     const itens = body?.itens || body?.items || [];
@@ -89,8 +148,9 @@ export async function POST(req: Request) {
     const items = itens.map((i: any) => ({
       reference_id: String(i?.reference_id || i?.ean || i?.id || i?.sku || "item"),
       name: String(i?.name || i?.nome || "Item"),
-      quantity: Number(i?.quantity || i?.qtd || 1),
-      unit_amount: Number(i?.unit_amount || i?.preco_centavos || i?.unitAmount || 0),
+      quantity: Math.max(1, Number(i?.quantity || i?.qtd || 1)),
+      // unit_amount precisa ser CENTAVOS
+      unit_amount: Math.max(0, Number(i?.unit_amount || i?.preco_centavos || i?.unitAmount || 0)),
     }));
 
     const total = items.reduce((acc: number, it: any) => acc + it.unit_amount * it.quantity, 0);
@@ -148,7 +208,7 @@ export async function POST(req: Request) {
 
       const qr = pickQrLinks(data);
 
-      // ✅ pega o BASE64 no BACKEND para evitar CORB no navegador
+      // pega o BASE64 no BACKEND para evitar CORB no navegador
       let qr_base64: string | null = null;
       try {
         if (qr.qr_base64_url) {
@@ -166,14 +226,23 @@ export async function POST(req: Request) {
         // se falhar, segue só com png_url
       }
 
-      // update supabase (não derruba)
-      try {
-        const sb = supabaseAdmin();
-        await sb
-          .from("vendas_site")
-          .update({ pagbank_id: data.id, status: "pendente_pix" })
-          .eq("id", String(order_id));
-      } catch {}
+      // ✅ salva no banco sem quebrar (inclusive qr_* se existir as colunas)
+      await updateVendaSafe(order_id, {
+        // identificadores
+        order_id, // se a coluna existir
+        pagbank_id: data.id,
+
+        // status
+        status: "pendente_pix",
+
+        // qr
+        qr_text: qr.qr_text,
+        qr_png_url: qr.qr_png_url,
+        qr_base64: qr_base64,
+
+        // opcional (se existir na tabela)
+        pagbank_order_id: data.id,
+      });
 
       return NextResponse.json({
         ok: true,
@@ -258,13 +327,12 @@ export async function POST(req: Request) {
         );
       }
 
-      try {
-        const sb = supabaseAdmin();
-        await sb
-          .from("vendas_site")
-          .update({ pagbank_id: data.id, status: "pendente_cartao" })
-          .eq("id", String(order_id));
-      } catch {}
+      await updateVendaSafe(order_id, {
+        order_id,
+        pagbank_id: data.id,
+        status: "pendente_cartao",
+        pagbank_order_id: data.id,
+      });
 
       return NextResponse.json({
         ok: true,
