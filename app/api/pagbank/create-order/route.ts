@@ -18,12 +18,6 @@ function supabaseAdmin() {
   return createClient(url, serviceKey, { auth: { persistSession: false } });
 }
 
-function isUUID(s: string) {
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
-    String(s || "")
-  );
-}
-
 function buildPhones(phoneRaw?: string) {
   const d = onlyDigits(phoneRaw || "");
   if (d.length < 10) return undefined;
@@ -63,54 +57,62 @@ async function safeJson(resp: Response) {
 }
 
 /**
- * Atualiza vendas_site SEM quebrar por UUID inválido.
- * Tenta:
- * 1) order_id (texto)
- * 2) codigo
- * 3) reference_id
- * 4) id (se for UUID)
+ * ✅ UPSERT por "codigo" (porque sua vendas_site NÃO tem order_id)
+ * - Se existir linha com codigo=FV_..., atualiza
+ * - Se não existir, insere
+ * - Se alguma coluna do patch não existir, tenta novamente com patch mínimo
  */
-async function updateVendaSafe(order_id: string, patch: Record<string, any>) {
-  try {
-    const sb = supabaseAdmin();
+async function upsertVendaByCodigo(codigo: string, patch: Record<string, any>) {
+  const sb = supabaseAdmin();
+  const table = sb.from("vendas_site") as any;
 
-    const tries: Array<{ col: string; val: string; allowUuidOnly?: boolean }> = [
-      { col: "order_id", val: order_id },
-      { col: "codigo", val: order_id },
-      { col: "reference_id", val: order_id },
-      { col: "pagbank_order_id", val: order_id },
-      { col: "id", val: order_id, allowUuidOnly: true },
-    ];
+  // garante que sempre salva o FV_... em codigo
+  const full = { ...patch, codigo };
 
-    for (const t of tries) {
-      if (t.allowUuidOnly && !isUUID(t.val)) continue;
+  // tenta update primeiro
+  const up = await table.update(full).eq("codigo", codigo);
 
-      // tenta update; se a coluna não existir, pode cair em erro 42703
-      const r = await (sb
-  .from("vendas_site") as any)
-  .update(patch)
-  .eq(t.col, t.val);
+  // se coluna não existir, tenta com patch mínimo
+  if (up?.error) {
+    const msg = String(up.error.message || "");
+    const code = String(up.error.code || "");
 
-
-      // se erro de coluna inexistente, tenta próximo
-      if (r.error) {
-        const msg = String(r.error.message || "");
-        const code = String((r.error as any)?.code || "");
-        // 42703 = undefined_column
-        if (code === "42703" || msg.toLowerCase().includes("column")) continue;
-
-        // erro de UUID inválido em id => tenta próximo
-        if (t.col === "id" && msg.toLowerCase().includes("uuid")) continue;
-
-        // outros erros -> não derruba o checkout, só para tentativas
-        break;
-      }
-
-      // tentou e não deu erro -> encerra
-      break;
+    // 42703 = undefined_column
+    if (code === "42703" || msg.toLowerCase().includes("column")) {
+      // patch mínimo que deve existir (ajuste se sua tabela for ainda mais enxuta)
+      const minimal: any = {
+        codigo,
+        status: patch?.status ?? "pendente",
+        pagbank_id: patch?.pagbank_id ?? null,
+      };
+      await table.update(minimal).eq("codigo", codigo);
+      return;
     }
-  } catch {
-    // não derruba
+
+    // outros erros: não derruba checkout
+    return;
+  }
+
+  // se não existir linha com esse codigo, faz insert
+  // OBS: Supabase JS não retorna "rowCount" fácil, então fazemos um check leve
+  const chk = await table.select("id").eq("codigo", codigo).limit(1).maybeSingle();
+  if (!chk?.data) {
+    // tenta inserir completo
+    const ins = await table.insert([full]);
+
+    if (ins?.error) {
+      const msg = String(ins.error.message || "");
+      const code = String(ins.error.code || "");
+
+      if (code === "42703" || msg.toLowerCase().includes("column")) {
+        const minimal: any = {
+          codigo,
+          status: patch?.status ?? "pendente",
+          pagbank_id: patch?.pagbank_id ?? null,
+        };
+        await table.insert([minimal]);
+      }
+    }
   }
 }
 
@@ -118,10 +120,10 @@ export async function POST(req: Request) {
   try {
     const token = process.env.PAGBANK_TOKEN;
 
-    // sandbox por padrão (troca por produção quando virar)
+    // sandbox por padrão
     const baseUrl = (process.env.PAGBANK_BASE_URL || "https://sandbox.api.pagseguro.com").trim();
 
-    // padroniza com www (importante pra webhook/ambiente)
+    // ✅ padroniza URL pública
     const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || "https://www.iadrogarias.com.br").trim();
 
     if (!token) {
@@ -133,7 +135,7 @@ export async function POST(req: Request) {
 
     const body = await req.json();
 
-    const order_id = String(body?.order_id || "").trim();
+    const order_id = String(body?.order_id || "").trim(); // FV_...
     const forma_pagamento = String(body?.forma_pagamento || "PIX").toUpperCase();
     const cliente = body?.cliente || {};
     const itens = body?.itens || body?.items || [];
@@ -145,11 +147,11 @@ export async function POST(req: Request) {
       );
     }
 
-    const items = itens.map((i: any) => ({
-      reference_id: String(i?.reference_id || i?.ean || i?.id || i?.sku || "item"),
+    // 🔒 normaliza itens: unit_amount SEMPRE em centavos
+    const items = itens.map((i: any, idx: number) => ({
+      reference_id: String(i?.reference_id || i?.ean || i?.id || i?.sku || `item-${idx + 1}`),
       name: String(i?.name || i?.nome || "Item"),
       quantity: Math.max(1, Number(i?.quantity || i?.qtd || 1)),
-      // unit_amount precisa ser CENTAVOS
       unit_amount: Math.max(0, Number(i?.unit_amount || i?.preco_centavos || i?.unitAmount || 0)),
     }));
 
@@ -169,7 +171,7 @@ export async function POST(req: Request) {
     // ================== PIX (qr_codes) ==================
     if (forma_pagamento === "PIX") {
       const payloadPIX: any = {
-        reference_id: String(order_id),
+        reference_id: String(order_id), // FV_...
         customer: {
           name: cliente?.name || "Cliente",
           email: cliente?.email || "cliente@iadrogarias.com",
@@ -201,14 +203,19 @@ export async function POST(req: Request) {
 
       if (!resp.ok || !data?.id) {
         return NextResponse.json(
-          { ok: false, error: "Erro ao criar pedido PIX no PagBank", status: resp.status, dados: data },
+          {
+            ok: false,
+            error: "Erro ao criar pedido PIX no PagBank",
+            status: resp.status,
+            dados: data,
+          },
           { status: 500 }
         );
       }
 
       const qr = pickQrLinks(data);
 
-      // pega o BASE64 no BACKEND para evitar CORB no navegador
+      // ✅ pega o BASE64 no BACKEND para evitar CORB no navegador
       let qr_base64: string | null = null;
       try {
         if (qr.qr_base64_url) {
@@ -223,25 +230,16 @@ export async function POST(req: Request) {
           if (txt) qr_base64 = txt;
         }
       } catch {
-        // se falhar, segue só com png_url
+        // se falhar, segue
       }
 
-      // ✅ salva no banco sem quebrar (inclusive qr_* se existir as colunas)
-      await updateVendaSafe(order_id, {
-        // identificadores
-        order_id, // se a coluna existir
+      // ✅ UPSERT em vendas_site usando "codigo" = FV_...
+      await upsertVendaByCodigo(order_id, {
         pagbank_id: data.id,
-
-        // status
         status: "pendente_pix",
-
-        // qr
         qr_text: qr.qr_text,
         qr_png_url: qr.qr_png_url,
         qr_base64: qr_base64,
-
-        // opcional (se existir na tabela)
-        pagbank_order_id: data.id,
       });
 
       return NextResponse.json({
@@ -251,7 +249,7 @@ export async function POST(req: Request) {
         qr_text: qr.qr_text,
         qr_png_url: qr.qr_png_url,
         qr_base64_url: qr.qr_base64_url,
-        qr_base64, // ✅ use isso no front (preferencial)
+        qr_base64, // ✅ use isso no front
       });
     }
 
@@ -327,11 +325,9 @@ export async function POST(req: Request) {
         );
       }
 
-      await updateVendaSafe(order_id, {
-        order_id,
+      await upsertVendaByCodigo(order_id, {
         pagbank_id: data.id,
         status: "pendente_cartao",
-        pagbank_order_id: data.id,
       });
 
       return NextResponse.json({
