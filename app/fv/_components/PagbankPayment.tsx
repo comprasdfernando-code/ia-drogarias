@@ -5,345 +5,349 @@ import { useEffect, useMemo, useRef, useState } from "react";
 type Cliente = {
   name: string;
   email: string;
-  tax_id: string; // CPF
-  phone?: string;
+  tax_id: string; // CPF só números
+  phone?: string; // só números
 };
 
-type PayItem = {
+type Item = {
   reference_id: string;
   name: string;
   quantity: number;
   unit_amount: number; // CENTAVOS
 };
 
-type PixResp = {
-  ok?: boolean;
-  status?: string;
-  pagbank_id?: string;
+type Props = {
+  orderId: string;
+  cliente: Cliente;
+  items: Item[];
+  onPaid: () => void;
+};
 
+type ApiResp = {
+  ok?: boolean;
+  error?: string;
+
+  status?: string; // PENDING/PAID etc
+
+  // vários formatos possíveis
   qr_text?: string;
   qr_png_url?: string;
-  qr_base64?: string;
-  qr_base64_url?: string;
+  qr_base64?: string; // base64 puro
+  qr_base64_url?: string; // url que retorna base64
 };
 
 function onlyDigits(s: string) {
   return (s || "").replace(/\D/g, "");
 }
 
-function brlFromCents(cents: number) {
-  const v = (Number(cents) || 0) / 100;
-  return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
-}
-
 async function safeJson(resp: Response) {
   const txt = await resp.text();
   try {
-    return { ok: true, json: JSON.parse(txt), raw: txt };
+    return { parsed: true, json: JSON.parse(txt), raw: txt };
   } catch {
-    return { ok: false, json: null, raw: txt };
+    return { parsed: false, json: null, raw: txt };
   }
 }
 
-function pickFirst<T = any>(...vals: any[]): T | null {
-  for (const v of vals) {
-    if (v === 0) return v as T;
-    if (v !== undefined && v !== null && String(v).trim?.() !== "") return v as T;
-  }
-  return null;
-}
-
-function normalizePix(resp: any): PixResp {
-  const r = resp?.data ?? resp?.pix ?? resp ?? {};
+function normalizeApi(x: any): ApiResp {
+  if (!x) return {};
+  // aceita {ok:true, ...} ou {data:{...}} etc
+  const p = x?.data ?? x?.payload ?? x;
   return {
-    ok: !!pickFirst(r?.ok, resp?.ok, true),
-    status: String(pickFirst(r?.status, resp?.status, "") || ""),
-    pagbank_id: String(pickFirst(r?.pagbank_id, r?.charge_id, r?.id, resp?.pagbank_id, "") || ""),
-
-    qr_text: String(pickFirst(r?.qr_text, r?.qrText, r?.text, r?.emv, r?.copy_paste, r?.copia_e_cola, "") || ""),
-    qr_png_url: String(pickFirst(r?.qr_png_url, r?.qrPngUrl, r?.png_url, r?.qr_code_url, r?.qrCodeUrl, "") || ""),
-    qr_base64: String(pickFirst(r?.qr_base64, r?.qrBase64, r?.base64, "") || ""),
-    qr_base64_url: String(pickFirst(r?.qr_base64_url, r?.qrBase64Url, r?.base64_url, r?.qr_code_base64, "") || ""),
+    ok: Boolean(p?.ok ?? x?.ok),
+    error: p?.error ?? x?.error,
+    status: p?.status ?? p?.state ?? p?.situacao,
+    qr_text: p?.qr_text ?? p?.qrText ?? p?.pix_copia_cola,
+    qr_png_url: p?.qr_png_url ?? p?.qrPngUrl ?? p?.qr_png ?? p?.qrPng,
+    qr_base64: p?.qr_base64 ?? p?.qrBase64,
+    qr_base64_url: p?.qr_base64_url ?? p?.qrBase64Url,
   };
 }
 
-function normalizeStatus(resp: any): string {
-  const r = resp?.data ?? resp?.venda ?? resp?.pedido ?? resp ?? {};
-  return String(pickFirst(r?.status, resp?.status, "") || "").toUpperCase();
+function isPaid(status?: string) {
+  const s = String(status || "").toUpperCase();
+  return (
+    s === "PAID" ||
+    s === "PAID_OUT" ||
+    s === "AUTHORIZED" ||
+    s === "APPROVED" ||
+    s === "COMPLETED" ||
+    s === "CONFIRMED"
+  );
 }
 
-function isPaidStatus(st: string) {
-  const s = (st || "").toUpperCase();
-  return s === "PAID" || s === "CONFIRMED" || s === "AUTHORIZED";
-}
-
-/** Faz POST; se der 405 tenta GET com query */
-async function fetchWith405Fallback(
-  baseUrl: string,
-  payload: any,
-  query: Record<string, string>
-): Promise<{ resp: Response; parsed: { ok: boolean; json: any; raw: string } }> {
-  // 1) POST
-  const r1 = await fetch(baseUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(payload),
-    cache: "no-store",
-  });
-
-  if (r1.status !== 405) {
-    const parsed = await safeJson(r1);
-    return { resp: r1, parsed };
-  }
-
-  // 2) GET fallback
-  const qs = new URLSearchParams(query).toString();
-  const urlGet = `${baseUrl}?${qs}`;
-
-  const r2 = await fetch(urlGet, { method: "GET", cache: "no-store" });
-  const parsed2 = await safeJson(r2);
-  return { resp: r2, parsed: parsed2 };
-}
-
-export default function PagbankPayment({
-  orderId,
-  cliente,
-  items,
-  onPaid,
-}: {
-  orderId: string;
-  cliente: Cliente;
-  items: PayItem[];
-  onPaid: () => void;
-}) {
-  const totalCents = useMemo(() => {
-    return (items || []).reduce(
-      (acc, it) => acc + (Number(it.unit_amount) || 0) * (Number(it.quantity) || 0),
-      0
-    );
-  }, [items]);
-
-  const cpfOk = useMemo(() => onlyDigits(cliente?.tax_id || "").length === 11, [cliente?.tax_id]);
-
-  const [busy, setBusy] = useState(false);
+export default function PagbankPayment({ orderId, cliente, items, onPaid }: Props) {
+  const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  const [pix, setPix] = useState<PixResp | null>(null);
-  const [status, setStatus] = useState<string>("");
+  const [status, setStatus] = useState<string>("NOVO");
+  const [qrText, setQrText] = useState<string>("");
+  const [qrPngUrl, setQrPngUrl] = useState<string>("");
+  const [qrBase64, setQrBase64] = useState<string>("");
 
-  const paidOnceRef = useRef(false);
-  const pollingRef = useRef<any>(null);
+  const paidOnce = useRef(false);
+  const pollRef = useRef<number | null>(null);
 
-  async function checkStatus() {
-    try {
-      const url = `/api/pagbank/status?order_id=${encodeURIComponent(orderId)}`;
-      const r = await fetch(url, { cache: "no-store" });
-      const parsed = await safeJson(r);
+  const cpf = useMemo(() => onlyDigits(cliente?.tax_id || ""), [cliente?.tax_id]);
 
-      if (!r.ok) return;
+  const canGenerate = useMemo(() => {
+    if (!orderId) return false;
+    if (!cpf || cpf.length !== 11) return false;
+    if (!Array.isArray(items) || items.length === 0) return false;
+    const invalid = items.some((i) => !i?.name || !i?.reference_id || !i?.quantity || !i?.unit_amount);
+    return !invalid;
+  }, [orderId, cpf, items]);
 
-      const st = normalizeStatus(parsed.json);
-      if (st) setStatus(st);
-
-      if (st && isPaidStatus(st) && !paidOnceRef.current) {
-        paidOnceRef.current = true;
-        onPaid();
-      }
-    } catch {
-      // ignora
+  function stopPolling() {
+    if (pollRef.current) {
+      window.clearInterval(pollRef.current);
+      pollRef.current = null;
     }
   }
 
-  function startPolling() {
-    if (pollingRef.current) return;
-    pollingRef.current = setInterval(checkStatus, 3000);
+  async function callStatusPOST(body: any) {
+    const r = await fetch("/api/pagbank/status", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+      cache: "no-store",
+    });
+    const parsed = await safeJson(r);
+    return { r, parsed };
   }
-  function stopPolling() {
-    if (pollingRef.current) {
-      clearInterval(pollingRef.current);
-      pollingRef.current = null;
+
+  async function callStatusGET(params: Record<string, string>) {
+    const qs = new URLSearchParams(params).toString();
+    const url = `/api/pagbank/status?${qs}`;
+    const r = await fetch(url, { cache: "no-store" });
+    const parsed = await safeJson(r);
+    return { r, parsed };
+  }
+
+  async function refreshStatus() {
+    setErr(null);
+
+    // 1) tenta POST
+    try {
+      const { r, parsed } = await callStatusPOST({ order_id: orderId, action: "status" });
+      if (r.ok && parsed.parsed) {
+        const n = normalizeApi(parsed.json);
+        if (n.status) setStatus(n.status);
+
+        if (isPaid(n.status) && !paidOnce.current) {
+          paidOnce.current = true;
+          stopPolling();
+          onPaid();
+        }
+        return;
+      }
+
+      // 405/404 ou HTML -> tenta GET
+      if (!r.ok) {
+        const { r: rg, parsed: pg } = await callStatusGET({ order_id: orderId });
+        if (rg.ok && pg.parsed) {
+          const n = normalizeApi(pg.json);
+          if (n.status) setStatus(n.status);
+
+          if (isPaid(n.status) && !paidOnce.current) {
+            paidOnce.current = true;
+            stopPolling();
+            onPaid();
+          }
+          return;
+        }
+      }
+    } catch (e: any) {
+      setErr(String(e?.message || e));
+    }
+  }
+
+  async function generatePix() {
+    if (!canGenerate || loading) return;
+
+    setLoading(true);
+    setErr(null);
+
+    try {
+      // payload padrão: seu backend pode ignorar o que não usa
+      const payload = {
+        order_id: orderId,
+        action: "create_pix",
+        cliente: {
+          name: String(cliente?.name || "Cliente"),
+          email: String(cliente?.email || "cliente@iadrogarias.com"),
+          tax_id: cpf,
+          phone: onlyDigits(String(cliente?.phone || "")),
+        },
+        items: items.map((i) => ({
+          reference_id: String(i.reference_id),
+          name: String(i.name),
+          quantity: Number(i.quantity),
+          unit_amount: Number(i.unit_amount), // centavos
+        })),
+      };
+
+      // 1) tenta POST
+      let r = await fetch("/api/pagbank/status", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        cache: "no-store",
+      });
+
+      let parsed = await safeJson(r);
+
+      // 2) fallback pra GET se POST não rolar
+      if (!r.ok || !parsed.parsed) {
+        // tenta GET com order_id (se seu backend criar ao "consultar")
+        const gg = await callStatusGET({ order_id: orderId, create_pix: "1" });
+        r = gg.r;
+        parsed = gg.parsed;
+      }
+
+      if (!r.ok) {
+        throw new Error(`HTTP ${r.status}`);
+      }
+
+      if (!parsed.parsed) {
+        const snip = String(parsed.raw || "").slice(0, 120);
+        throw new Error(`Resposta não-JSON: ${snip}`);
+      }
+
+      const n = normalizeApi(parsed.json);
+
+      if (n.error) throw new Error(n.error);
+
+      if (n.status) setStatus(n.status);
+
+      // QR: prioriza base64, depois url png
+      const b64 = String(n.qr_base64 || "");
+      const png = String(n.qr_png_url || "");
+      const txt = String(n.qr_text || "");
+
+      setQrBase64(b64);
+      setQrPngUrl(png);
+      setQrText(txt);
+
+      // inicia polling assim que tiver QR
+      stopPolling();
+      pollRef.current = window.setInterval(refreshStatus, 3500);
+
+      // checa na hora também
+      refreshStatus();
+    } catch (e: any) {
+      setErr(String(e?.message || e));
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function copyPix() {
+    try {
+      if (!qrText) return;
+      await navigator.clipboard.writeText(qrText);
+      alert("PIX copiado ✅");
+    } catch {
+      alert("Não consegui copiar automaticamente. Selecione e copie manualmente.");
     }
   }
 
   useEffect(() => {
-    startPolling();
-    checkStatus();
-    return () => stopPolling();
+    // ao montar: tenta buscar status (caso já exista QR)
+    refreshStatus();
+
+    return () => {
+      stopPolling();
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orderId]);
 
-  async function gerarPix() {
-    if (!orderId) return setErr("order_id não informado.");
-    if (!cpfOk) return setErr("CPF é obrigatório para PIX (11 dígitos).");
-    if (!items?.length) return setErr("Sem itens válidos para pagamento.");
-    if (totalCents <= 0) return setErr("Total inválido (R$ 0,00).");
-
-    setBusy(true);
-    setErr(null);
-
-    const payload = {
-      order_id: orderId,
-      customer: {
-        name: cliente?.name || "Cliente",
-        email: cliente?.email || "cliente@iadrogarias.com",
-        tax_id: onlyDigits(cliente?.tax_id || ""),
-        phone: onlyDigits(cliente?.phone || ""),
-      },
-      items,
-      amount: totalCents, // centavos
-      currency: "BRL",
-    };
-
-    const query = {
-      order_id: orderId,
-      tax_id: onlyDigits(cliente?.tax_id || ""),
-      amount: String(totalCents),
-    };
-
-    const routes = ["/api/pagbank/create-pix", "/api/pagbank/pix", "/api/pagbank/create"];
-
-    try {
-      let lastMsg = "";
-
-      for (const route of routes) {
-        const { resp, parsed } = await fetchWith405Fallback(route, payload, query);
-
-        if (!resp.ok) {
-          const msg =
-            (parsed.ok && (parsed.json?.error || parsed.json?.message)) ||
-            `HTTP ${resp.status} (${resp.statusText || "erro"})`;
-          lastMsg = `${route}: ${msg}`;
-          continue;
-        }
-
-        // ok
-        const norm = normalizePix(parsed.json);
-        setPix(norm);
-        if (norm?.status) setStatus(String(norm.status).toUpperCase());
-
-        startPolling();
-        checkStatus();
-        return;
-      }
-
-      setErr(lastMsg || "Falha ao gerar PIX.");
-    } catch (e: any) {
-      setErr(String(e?.message || e));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function copiarPix() {
-    const text = String(pix?.qr_text || "");
-    if (!text) return;
-
-    try {
-      await navigator.clipboard.writeText(text);
-      alert("PIX copiado ✅");
-    } catch {
-      const ta = document.createElement("textarea");
-      ta.value = text;
-      document.body.appendChild(ta);
-      ta.select();
-      document.execCommand("copy");
-      document.body.removeChild(ta);
-      alert("PIX copiado ✅");
-    }
-  }
-
   const qrImgSrc = useMemo(() => {
-    if (!pix) return "";
-    if (pix.qr_png_url && pix.qr_png_url.startsWith("http")) return pix.qr_png_url;
-
-    if (pix.qr_base64 && pix.qr_base64.length > 30) {
-      const b64 = pix.qr_base64.replace(/^data:image\/png;base64,/, "");
-      return `data:image/png;base64,${b64}`;
-    }
-
+    if (qrBase64) return `data:image/png;base64,${qrBase64}`;
+    if (qrPngUrl) return qrPngUrl;
     return "";
-  }, [pix]);
-
-  const canGerar = cpfOk && !!items?.length && totalCents > 0 && !busy;
+  }, [qrBase64, qrPngUrl]);
 
   return (
     <div className="rounded-2xl border bg-white p-4">
-      <div className="text-sm text-gray-600">Total</div>
-      <div className="text-2xl font-extrabold">{brlFromCents(totalCents)}</div>
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-sm font-semibold text-gray-700">Total</div>
+        <button
+          type="button"
+          onClick={refreshStatus}
+          className="rounded-lg border px-3 py-1.5 text-xs font-extrabold hover:bg-gray-50"
+        >
+          Atualizar
+        </button>
+      </div>
+
+      <div className="mt-1 text-2xl font-extrabold text-blue-950">
+        {/* o total você já mostra no CheckoutClient; aqui é só o bloco do pix */}
+      </div>
 
       {err ? (
-        <div className="mt-3 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+        <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
           {err}
         </div>
       ) : null}
 
       <button
         type="button"
-        onClick={gerarPix}
-        disabled={!canGerar}
-        className={`mt-4 w-full rounded-xl py-3 font-extrabold ${
-          canGerar ? "bg-black text-white hover:bg-gray-900" : "bg-gray-200 text-gray-500"
+        onClick={generatePix}
+        disabled={!canGenerate || loading}
+        className={`mt-4 w-full rounded-xl py-3 font-extrabold text-white ${
+          !canGenerate || loading ? "bg-gray-300" : "bg-black hover:bg-gray-900"
         }`}
       >
-        {busy ? "Gerando..." : "Gerar PIX"}
+        {loading ? "Gerando..." : "Gerar PIX"}
       </button>
 
-      <div className="mt-3 text-xs text-gray-500 flex items-center justify-between">
+      <div className="mt-3 flex items-center justify-between text-xs text-gray-600">
         <div>
-          Status: <b className="text-gray-800">{status || "—"}</b>
+          Status: <b>{status || "—"}</b>
         </div>
-        <button
-          type="button"
-          onClick={checkStatus}
-          className="rounded-lg border px-2 py-1 hover:bg-gray-50"
-        >
-          Atualizar
-        </button>
+        <div className="opacity-70">{qrImgSrc ? "PIX gerado" : "—"}</div>
       </div>
 
-      {pix ? (
+      {qrImgSrc ? (
         <div className="mt-4">
           <div className="text-sm font-extrabold mb-2">QR Code PIX</div>
 
-          {qrImgSrc ? (
-            <div className="flex justify-center">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={qrImgSrc}
-                alt="QR Code PIX"
-                className="h-[260px] w-[260px] rounded-xl border bg-white object-contain"
-              />
-            </div>
-          ) : (
-            <div className="rounded-xl border bg-gray-50 p-3 text-xs text-gray-700">
-              Não consegui renderizar a imagem do QR aqui, mas o “copia e cola” abaixo funciona.
-              {pix.qr_base64_url ? (
-                <div className="mt-2">
-                  <a className="underline" href={pix.qr_base64_url} target="_blank" rel="noreferrer">
-                    Abrir QR (base64_url)
-                  </a>
-                </div>
-              ) : null}
-            </div>
-          )}
+          {/* usa <img> pra não depender do next/image/domains */}
+          <div className="rounded-2xl border bg-white p-3 flex items-center justify-center">
+            <img
+              src={qrImgSrc}
+              alt="QR Code PIX"
+              className="max-w-full h-auto"
+              style={{ imageRendering: "auto" }}
+              onError={() => {
+                // se falhar png_url, tenta só manter o copia/cola
+                setQrPngUrl("");
+              }}
+            />
+          </div>
 
-          {pix.qr_text ? (
-            <div className="mt-3">
+          {qrText ? (
+            <>
               <textarea
-                value={pix.qr_text}
+                className="mt-3 w-full rounded-xl border bg-gray-50 p-3 text-xs"
+                rows={4}
+                value={qrText}
                 readOnly
-                className="w-full rounded-xl border bg-white p-3 text-xs"
-                rows={3}
               />
               <button
                 type="button"
-                onClick={copiarPix}
-                className="mt-2 w-full rounded-xl border py-3 font-extrabold hover:bg-gray-50"
+                onClick={copyPix}
+                className="mt-3 w-full rounded-xl border bg-white py-3 font-extrabold hover:bg-gray-50"
               >
                 Copiar PIX
               </button>
-            </div>
+            </>
           ) : null}
+
+          <div className="mt-3 text-[11px] text-gray-500">
+            Após pagar, a página verifica automaticamente e finaliza quando confirmar.
+          </div>
         </div>
       ) : null}
     </div>
