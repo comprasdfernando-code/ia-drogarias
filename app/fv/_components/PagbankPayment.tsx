@@ -5,8 +5,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 type Cliente = {
   name: string;
   email: string;
-  tax_id: string; // CPF (11 dígitos)
-  phone?: string; // só números
+  tax_id: string; // CPF
+  phone?: string;
 };
 
 type PayItem = {
@@ -21,11 +21,10 @@ type PixResp = {
   status?: string;
   pagbank_id?: string;
 
-  // vários formatos possíveis
-  qr_text?: string; // copia e cola
-  qr_png_url?: string; // url png
-  qr_base64?: string; // base64 puro (sem prefixo)
-  qr_base64_url?: string; // url da pagseguro que retorna base64
+  qr_text?: string;
+  qr_png_url?: string;
+  qr_base64?: string;
+  qr_base64_url?: string;
 };
 
 function onlyDigits(s: string) {
@@ -70,13 +69,40 @@ function normalizePix(resp: any): PixResp {
 
 function normalizeStatus(resp: any): string {
   const r = resp?.data ?? resp?.venda ?? resp?.pedido ?? resp ?? {};
-  const st = String(pickFirst(r?.status, resp?.status, "") || "").toUpperCase();
-  return st;
+  return String(pickFirst(r?.status, resp?.status, "") || "").toUpperCase();
 }
 
 function isPaidStatus(st: string) {
   const s = (st || "").toUpperCase();
   return s === "PAID" || s === "CONFIRMED" || s === "AUTHORIZED";
+}
+
+/** Faz POST; se der 405 tenta GET com query */
+async function fetchWith405Fallback(
+  baseUrl: string,
+  payload: any,
+  query: Record<string, string>
+): Promise<{ resp: Response; parsed: { ok: boolean; json: any; raw: string } }> {
+  // 1) POST
+  const r1 = await fetch(baseUrl, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+    cache: "no-store",
+  });
+
+  if (r1.status !== 405) {
+    const parsed = await safeJson(r1);
+    return { resp: r1, parsed };
+  }
+
+  // 2) GET fallback
+  const qs = new URLSearchParams(query).toString();
+  const urlGet = `${baseUrl}?${qs}`;
+
+  const r2 = await fetch(urlGet, { method: "GET", cache: "no-store" });
+  const parsed2 = await safeJson(r2);
+  return { resp: r2, parsed: parsed2 };
 }
 
 export default function PagbankPayment({
@@ -108,22 +134,20 @@ export default function PagbankPayment({
   const paidOnceRef = useRef(false);
   const pollingRef = useRef<any>(null);
 
-  // --- polling status (sempre que tiver pix/pagbank_id, ou mesmo sem)
   async function checkStatus() {
     try {
       const url = `/api/pagbank/status?order_id=${encodeURIComponent(orderId)}`;
       const r = await fetch(url, { cache: "no-store" });
       const parsed = await safeJson(r);
-      const st = parsed.ok ? normalizeStatus(parsed.json) : "";
+
+      if (!r.ok) return;
+
+      const st = normalizeStatus(parsed.json);
       if (st) setStatus(st);
 
       if (st && isPaidStatus(st) && !paidOnceRef.current) {
         paidOnceRef.current = true;
-        try {
-          await onPaid();
-        } catch {
-          // não trava
-        }
+        onPaid();
       }
     } catch {
       // ignora
@@ -134,7 +158,6 @@ export default function PagbankPayment({
     if (pollingRef.current) return;
     pollingRef.current = setInterval(checkStatus, 3000);
   }
-
   function stopPolling() {
     if (pollingRef.current) {
       clearInterval(pollingRef.current);
@@ -143,32 +166,17 @@ export default function PagbankPayment({
   }
 
   useEffect(() => {
-    // já começa a verificar (caso o cliente pague e volte)
     startPolling();
     checkStatus();
-
     return () => stopPolling();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orderId]);
 
-  // --- gerar pix
   async function gerarPix() {
-    if (!orderId) {
-      setErr("order_id não informado.");
-      return;
-    }
-    if (!cpfOk) {
-      setErr("CPF é obrigatório para pagamento via PIX (11 dígitos).");
-      return;
-    }
-    if (!items?.length) {
-      setErr("Sem itens válidos para pagamento.");
-      return;
-    }
-    if (totalCents <= 0) {
-      setErr("Total inválido (R$ 0,00).");
-      return;
-    }
+    if (!orderId) return setErr("order_id não informado.");
+    if (!cpfOk) return setErr("CPF é obrigatório para PIX (11 dígitos).");
+    if (!items?.length) return setErr("Sem itens válidos para pagamento.");
+    if (totalCents <= 0) return setErr("Total inválido (R$ 0,00).");
 
     setBusy(true);
     setErr(null);
@@ -186,46 +194,41 @@ export default function PagbankPayment({
       currency: "BRL",
     };
 
-    // tenta rotas em sequência (pra não te travar se o nome mudar)
+    const query = {
+      order_id: orderId,
+      tax_id: onlyDigits(cliente?.tax_id || ""),
+      amount: String(totalCents),
+    };
+
     const routes = ["/api/pagbank/create-pix", "/api/pagbank/pix", "/api/pagbank/create"];
 
-    let lastError: string | null = null;
-
     try {
+      let lastMsg = "";
+
       for (const route of routes) {
-        try {
-          const r = await fetch(route, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload),
-          });
+        const { resp, parsed } = await fetchWith405Fallback(route, payload, query);
 
-          const parsed = await safeJson(r);
-
-          if (!r.ok) {
-            lastError = parsed.ok
-              ? String(parsed.json?.error || parsed.json?.message || `HTTP ${r.status}`)
-              : `HTTP ${r.status}`;
-            continue;
-          }
-
-          const norm = normalizePix(parsed.json);
-          setPix(norm);
-
-          // status pode vir já como pending
-          if (norm?.status) setStatus(String(norm.status).toUpperCase());
-
-          // começa/continua polling
-          startPolling();
-          await checkStatus();
-
-          return;
-        } catch (e: any) {
-          lastError = String(e?.message || e);
+        if (!resp.ok) {
+          const msg =
+            (parsed.ok && (parsed.json?.error || parsed.json?.message)) ||
+            `HTTP ${resp.status} (${resp.statusText || "erro"})`;
+          lastMsg = `${route}: ${msg}`;
+          continue;
         }
+
+        // ok
+        const norm = normalizePix(parsed.json);
+        setPix(norm);
+        if (norm?.status) setStatus(String(norm.status).toUpperCase());
+
+        startPolling();
+        checkStatus();
+        return;
       }
 
-      setErr(lastError || "Falha ao gerar PIX.");
+      setErr(lastMsg || "Falha ao gerar PIX.");
+    } catch (e: any) {
+      setErr(String(e?.message || e));
     } finally {
       setBusy(false);
     }
@@ -239,7 +242,6 @@ export default function PagbankPayment({
       await navigator.clipboard.writeText(text);
       alert("PIX copiado ✅");
     } catch {
-      // fallback
       const ta = document.createElement("textarea");
       ta.value = text;
       document.body.appendChild(ta);
@@ -252,18 +254,13 @@ export default function PagbankPayment({
 
   const qrImgSrc = useMemo(() => {
     if (!pix) return "";
-
-    // 1) url png direto
     if (pix.qr_png_url && pix.qr_png_url.startsWith("http")) return pix.qr_png_url;
 
-    // 2) base64 puro
     if (pix.qr_base64 && pix.qr_base64.length > 30) {
       const b64 = pix.qr_base64.replace(/^data:image\/png;base64,/, "");
       return `data:image/png;base64,${b64}`;
     }
 
-    // 3) url que retorna base64 - não dá pra "virar imagem" sem buscar
-    // (mas dá pra tentar abrir em nova aba)
     return "";
   }, [pix]);
 
@@ -291,7 +288,6 @@ export default function PagbankPayment({
         {busy ? "Gerando..." : "Gerar PIX"}
       </button>
 
-      {/* STATUS */}
       <div className="mt-3 text-xs text-gray-500 flex items-center justify-between">
         <div>
           Status: <b className="text-gray-800">{status || "—"}</b>
@@ -305,7 +301,6 @@ export default function PagbankPayment({
         </button>
       </div>
 
-      {/* QR */}
       {pix ? (
         <div className="mt-4">
           <div className="text-sm font-extrabold mb-2">QR Code PIX</div>
@@ -316,10 +311,7 @@ export default function PagbankPayment({
               <img
                 src={qrImgSrc}
                 alt="QR Code PIX"
-                className="h-[240px] w-[240px] rounded-xl border bg-white object-contain"
-                onError={() => {
-                  // se falhar imagem, ainda tem copia e cola
-                }}
+                className="h-[260px] w-[260px] rounded-xl border bg-white object-contain"
               />
             </div>
           ) : (
@@ -327,12 +319,7 @@ export default function PagbankPayment({
               Não consegui renderizar a imagem do QR aqui, mas o “copia e cola” abaixo funciona.
               {pix.qr_base64_url ? (
                 <div className="mt-2">
-                  <a
-                    className="underline"
-                    href={pix.qr_base64_url}
-                    target="_blank"
-                    rel="noreferrer"
-                  >
+                  <a className="underline" href={pix.qr_base64_url} target="_blank" rel="noreferrer">
                     Abrir QR (base64_url)
                   </a>
                 </div>
@@ -340,7 +327,6 @@ export default function PagbankPayment({
             </div>
           )}
 
-          {/* copia e cola */}
           {pix.qr_text ? (
             <div className="mt-3">
               <textarea
