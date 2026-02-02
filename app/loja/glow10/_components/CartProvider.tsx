@@ -25,12 +25,18 @@ type CartCtx = {
 
 const Ctx = createContext<CartCtx | null>(null);
 
+// ✅ mantém seu nome original
 export function CartUIProvider({ children }: { children: React.ReactNode }) {
   const [items, setItems] = useState<CartItem[]>([]);
   const [isOpen, setIsOpen] = useState(false);
 
   const subtotal = useMemo(
-    () => items.reduce((acc, it) => acc + (Number(it.preco_unit) || 0) * (Number(it.quantidade) || 0), 0),
+    () =>
+      items.reduce(
+        (acc, it) =>
+          acc + (Number(it.preco_unit) || 0) * (Number(it.quantidade) || 0),
+        0
+      ),
     [items]
   );
 
@@ -45,17 +51,30 @@ export function CartUIProvider({ children }: { children: React.ReactNode }) {
         const idx = prev.findIndex((p) => p.produto_id === i.produto_id);
         if (idx >= 0) {
           const copy = [...prev];
-          copy[idx] = { ...copy[idx], quantidade: copy[idx].quantidade + i.quantidade };
+          copy[idx] = {
+            ...copy[idx],
+            quantidade: copy[idx].quantidade + (Number(i.quantidade) || 1),
+          };
           return copy;
         }
-        return [...prev, i];
+        return [...prev, { ...i, quantidade: Number(i.quantidade) || 1 }];
       });
+      setIsOpen(true); // ✅ opcional: já abre o carrinho ao adicionar
     },
 
-    inc: (id) => setItems((p) => p.map((it) => (it.produto_id === id ? { ...it, quantidade: it.quantidade + 1 } : it))),
+    inc: (id) =>
+      setItems((p) =>
+        p.map((it) =>
+          it.produto_id === id ? { ...it, quantidade: it.quantidade + 1 } : it
+        )
+      ),
     dec: (id) =>
       setItems((p) =>
-        p.map((it) => (it.produto_id === id ? { ...it, quantidade: Math.max(1, it.quantidade - 1) } : it))
+        p.map((it) =>
+          it.produto_id === id
+            ? { ...it, quantidade: Math.max(1, it.quantidade - 1) }
+            : it
+        )
       ),
     remove: (id) => setItems((p) => p.filter((it) => it.produto_id !== id)),
     clear: () => setItems([]),
@@ -65,8 +84,18 @@ export function CartUIProvider({ children }: { children: React.ReactNode }) {
   return <Ctx.Provider value={api}>{children}</Ctx.Provider>;
 }
 
+// ✅ mantém seu hook original
 export function useCartUI() {
   const v = useContext(Ctx);
   if (!v) throw new Error("useCartUI precisa estar dentro do CartUIProvider");
   return v;
+}
+
+// ✅ ALIASES para compatibilidade com imports antigos
+export function CartProvider({ children }: { children: React.ReactNode }) {
+  return <CartUIProvider>{children}</CartUIProvider>;
+}
+
+export function useCart() {
+  return useCartUI();
 }

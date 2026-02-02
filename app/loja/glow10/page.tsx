@@ -7,87 +7,158 @@ import { supabase } from "@/lib/supabaseClient";
 import HeaderPremium from "./_components/HeaderPremium";
 import HeroPremium from "./_components/HeroPremium";
 import ProductCard from "./_components/ProductCard";
-import { CartUIProvider } from "./_components/CartProvider";
 import CartModal from "./_components/CartModal";
+import { useCart } from "./_components/CartProvider";
 
-type Produto = {
+type Product = {
   id: string;
   nome: string;
-  marca: string | null;
-  categoria: string | null;
-  foto_url: string | null;
+  marca?: string | null;
   preco: number;
-  preco_promocional: number | null;
-  promo_ativa: boolean;
-  quantidade: number;
-  ativo: boolean;
+  estoque: number;
+  imagem_url?: string | null;
 };
 
-export default function Glow10Home() {
-  const [produtos, setProdutos] = useState<Produto[]>([]);
-  const [q, setQ] = useState("");
+const TABLE = "glow10_produtos"; // <<< se sua tabela tiver outro nome, troca aqui
+
+export default function Glow10HomePage() {
+  const cart: any = useCart();
+
+  const cartCount =
+    cart?.items?.reduce?.((acc: number, it: any) => acc + (Number(it?.qty) || 0), 0) ??
+    cart?.items?.length ??
+    0;
+
   const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+  const [products, setProducts] = useState<Product[]>([]);
+  const [q, setQ] = useState("");
 
   useEffect(() => {
-    (async () => {
-      setLoading(true);
-      const { data, error } = await supabase
-        .from("mk_produtos")
-        .select("id,nome,marca,categoria,foto_url,preco,preco_promocional,promo_ativa,quantidade,ativo")
-        .eq("ativo", true)
-        .order("created_at", { ascending: false })
-        .limit(200);
+    let alive = true;
 
-      if (!error && data) setProdutos(data as any);
-      setLoading(false);
-    })();
+    async function load() {
+      try {
+        setLoading(true);
+        setErr(null);
+
+        const { data, error } = await supabase
+          .from(TABLE)
+          .select("id,nome,marca,preco,estoque,imagem_url,created_at")
+          .order("created_at", { ascending: false });
+
+        if (error) throw error;
+
+        const list: Product[] = (data || []).map((p: any) => ({
+          id: String(p.id),
+          nome: String(p.nome ?? ""),
+          marca: p.marca ?? null,
+          preco: Number(p.preco ?? 0),
+          estoque: Number(p.estoque ?? 0),
+          imagem_url: p.imagem_url ?? null,
+        }));
+
+        if (alive) setProducts(list);
+      } catch (e: any) {
+        if (alive) setErr(e?.message || "Erro ao carregar produtos.");
+      } finally {
+        if (alive) setLoading(false);
+      }
+    }
+
+    load();
+    return () => {
+      alive = false;
+    };
   }, []);
 
-  const filtrados = useMemo(() => {
-    const s = q.trim().toLowerCase();
-    if (!s) return produtos;
-    return produtos.filter((p) => {
+  const filtered = useMemo(() => {
+    const s = (q || "").trim().toLowerCase();
+    if (!s) return products;
+
+    return products.filter((p) => {
       const nome = (p.nome || "").toLowerCase();
       const marca = (p.marca || "").toLowerCase();
-      const cat = (p.categoria || "").toLowerCase();
-      return nome.includes(s) || marca.includes(s) || cat.includes(s);
+      return nome.includes(s) || marca.includes(s);
     });
-  }, [q, produtos]);
+  }, [products, q]);
 
   return (
-    <CartUIProvider>
-      <div className="min-h-screen bg-black text-white">
-        <HeaderPremium />
-        <HeroPremium />
+    <div className="min-h-screen bg-black text-white">
+      <HeaderPremium />
+      <HeroPremium />
 
-        <div className="mx-auto max-w-6xl px-4 py-6">
-          <div className="flex items-center gap-3">
+      {/* ✅ Modal do carrinho */}
+      <CartModal />
+
+      <div className="max-w-6xl mx-auto px-4 pb-16">
+        {/* Top bar: busca + carrinho */}
+        <div className="flex items-center justify-between gap-3 pt-6">
+          <div className="flex-1">
             <input
               value={q}
               onChange={(e) => setQ(e.target.value)}
-              placeholder="Buscar maquiagem premium…"
-              className="w-full rounded-2xl bg-white/10 px-4 py-3 outline-none ring-1 ring-white/10 focus:ring-white/30"
+              placeholder="Buscar maquiagem premium..."
+              className="w-full rounded-2xl bg-zinc-900/40 border border-white/10 px-5 py-4
+                         outline-none focus:border-white/20 placeholder:text-white/40"
             />
-            <CartModal />
           </div>
 
-          <div className="mt-3 text-sm text-white/60">
-            {loading ? "Carregando produtos…" : `${filtrados.length} produto(s)`}
-          </div>
+          <button
+            type="button"
+            onClick={() => {
+              // tenta abrir conforme seu provider (se existir)
+              if (typeof cart?.open === "function") cart.open();
+              if (typeof cart?.setOpen === "function") cart.setOpen(true);
+            }}
+            className="shrink-0 rounded-2xl bg-white text-black font-bold px-6 py-4"
+            title="Abrir carrinho"
+          >
+            Carrinho ({cartCount})
+          </button>
+        </div>
 
-          <div id="produtos" className="mt-6 grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-            {filtrados.map((p) => (
-              <Link key={p.id} href={`/loja/glow10/produto/${p.id}`} className="block">
-                <ProductCard p={p} />
-              </Link>
-            ))}
-          </div>
+        {/* Status */}
+        <div className="pt-4 text-sm text-white/60">
+          {loading ? "Carregando produtos..." : `${filtered.length} produto(s)`}
+        </div>
 
-          {!loading && filtrados.length === 0 && (
-            <div className="mt-10 text-center text-white/70">Nenhum produto encontrado.</div>
-          )}
+        {/* Erro */}
+        {err ? (
+          <div className="mt-4 rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-red-200">
+            {err}
+          </div>
+        ) : null}
+
+        {/* Grid */}
+        <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+          {filtered.map((p) => (
+            <ProductCard key={p.id} product={p} />
+          ))}
+        </div>
+
+        {/* Links rápidos */}
+        <div className="mt-10 flex flex-wrap gap-3">
+          <Link
+            href="/loja/glow10/admin"
+            className="rounded-xl px-4 py-2 bg-white/10 border border-white/15 hover:bg-white/15"
+          >
+            Admin
+          </Link>
+          <Link
+            href="/loja/glow10/painel"
+            className="rounded-xl px-4 py-2 bg-white/10 border border-white/15 hover:bg-white/15"
+          >
+            Painel
+          </Link>
+          <Link
+            href="/loja/glow10/caixa"
+            className="rounded-xl px-4 py-2 bg-white/10 border border-white/15 hover:bg-white/15"
+          >
+            Caixa
+          </Link>
         </div>
       </div>
-    </CartUIProvider>
+    </div>
   );
 }

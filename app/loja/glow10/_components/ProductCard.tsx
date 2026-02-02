@@ -1,51 +1,82 @@
 "use client";
 
-type Produto = {
+import Link from "next/link";
+import Image from "next/image";
+import { useCart } from "./CartProvider";
+
+type Product = {
   id: string;
   nome: string;
-  marca: string | null;
-  categoria: string | null;
-  foto_url: string | null;
+  marca?: string | null;
   preco: number;
-  preco_promocional: number | null;
-  promo_ativa: boolean;
-  quantidade: number;
-  ativo: boolean;
+  estoque: number;
+  imagem_url?: string | null;
 };
 
 function brl(v: number) {
-  return (Number(v) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+  return (Number(v) || 0).toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  });
 }
 
-export default function ProductCard({ p }: { p: Produto }) {
-  const precoFinal = p.promo_ativa && p.preco_promocional ? p.preco_promocional : p.preco;
+export default function ProductCard({ product }: { product: Product }) {
+  const { addItem } = useCart();
+
+  function handleAdd(e: React.MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+    if ((product.estoque ?? 0) <= 0) return;
+
+    addItem({
+      produto_id: product.id,
+      nome: product.nome,
+      preco_unit: Number(product.preco) || 0,
+      quantidade: 1,
+      foto_url: product.imagem_url || null,
+    });
+  }
 
   return (
-    <div className="group rounded-3xl bg-white/5 ring-1 ring-white/10 overflow-hidden hover:ring-white/20 transition">
-      <div className="aspect-square bg-white/10 flex items-center justify-center overflow-hidden">
-        {p.foto_url ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={p.foto_url} alt={p.nome} className="h-full w-full object-cover group-hover:scale-[1.02] transition" />
+    <Link
+      href={`/loja/glow10/produto/${product.id}`}
+      className="group block rounded-2xl overflow-hidden bg-zinc-900/40 border border-white/10 hover:border-white/20 transition"
+    >
+      <div className="relative aspect-square bg-black/40">
+        {product.imagem_url ? (
+          <Image
+            src={product.imagem_url}
+            alt={product.nome}
+            fill
+            className="object-contain p-4"
+            sizes="300px"
+          />
         ) : (
-          <span className="text-white/60 text-sm">Sem foto</span>
+          <div className="w-full h-full flex items-center justify-center text-white/40">
+            Sem imagem
+          </div>
         )}
       </div>
 
-      <div className="p-3">
-        <div className="text-xs text-white/60">{p.marca || "Premium"}</div>
-        <div className="mt-1 font-medium leading-snug line-clamp-2">{p.nome}</div>
+      <div className="p-4 space-y-1">
+        <div className="text-xs text-white/50 uppercase">{product.marca || " "}</div>
 
-        <div className="mt-2 flex items-end gap-2">
-          <div className="text-lg font-semibold">{brl(precoFinal)}</div>
-          {p.promo_ativa && p.preco_promocional ? (
-            <div className="text-xs text-white/50 line-through">{brl(p.preco)}</div>
-          ) : null}
+        <div className="text-white font-semibold leading-tight line-clamp-2">
+          {product.nome}
         </div>
 
-        <div className="mt-1 text-xs text-white/60">
-          Estoque: <span className={p.quantidade > 0 ? "text-white" : "text-red-300"}>{p.quantidade}</span>
-        </div>
+        <div className="text-lg font-bold text-white">{brl(product.preco)}</div>
+
+        <div className="text-xs text-white/40">Estoque: {product.estoque}</div>
+
+        <button
+          onClick={handleAdd}
+          disabled={(product.estoque ?? 0) <= 0}
+          className="mt-3 w-full rounded-xl py-2 font-semibold bg-white text-black hover:bg-white/90 disabled:opacity-40 disabled:cursor-not-allowed"
+        >
+          {(product.estoque ?? 0) > 0 ? "Adicionar ao carrinho" : "Sem estoque"}
+        </button>
       </div>
-    </div>
+    </Link>
   );
 }

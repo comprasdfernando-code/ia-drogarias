@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import Image from "next/image";
 import { supabase } from "@/lib/supabaseClient";
 import { useCartUI } from "./CartProvider";
 
@@ -13,6 +14,12 @@ export default function CartModal() {
   const [loading, setLoading] = useState(false);
   const [clienteNome, setClienteNome] = useState("");
   const [clienteWhats, setClienteWhats] = useState("");
+
+  // ✅ contador correto (soma quantidades)
+  const cartCount = useMemo(
+    () => items.reduce((acc, it) => acc + (Number(it.quantidade) || 0), 0),
+    [items]
+  );
 
   async function finalizar() {
     if (items.length === 0) return;
@@ -69,8 +76,9 @@ export default function CartModal() {
 
   return (
     <>
+      {/* ✅ Se você QUISER manter o botão aqui, agora com contador correto */}
       <button onClick={openCart} className="rounded-2xl bg-white px-4 py-3 font-semibold text-black">
-        Carrinho ({items.length})
+        Carrinho ({cartCount})
       </button>
 
       {isOpen && (
@@ -87,7 +95,14 @@ export default function CartModal() {
               {items.map((it) => (
                 <div key={it.produto_id} className="rounded-2xl bg-white/5 p-3 ring-1 ring-white/10">
                   <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
+                    {/* ✅ Imagem (se tiver foto_url) */}
+                    {it.foto_url ? (
+                      <div className="relative h-16 w-16 shrink-0 rounded-2xl overflow-hidden bg-black/40 ring-1 ring-white/10">
+                        <Image src={it.foto_url} alt={it.nome} fill className="object-contain p-2" sizes="64px" />
+                      </div>
+                    ) : null}
+
+                    <div className="min-w-0 flex-1">
                       <div className="font-medium line-clamp-2">{it.nome}</div>
                       <div className="text-white/70">{brl(it.preco_unit)}</div>
 
