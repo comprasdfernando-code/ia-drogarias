@@ -1,8 +1,6 @@
-"use client";
-
 import React from "react";
-import { CartUIProvider } from "./CartProvider";
+import Providers from "./_components/Providers";
 
-export default function Providers({ children }: { children: React.ReactNode }) {
-  return <CartUIProvider>{children}</CartUIProvider>;
+export default function Layout({ children }: { children: React.ReactNode }) {
+  return <Providers>{children}</Providers>;
 }

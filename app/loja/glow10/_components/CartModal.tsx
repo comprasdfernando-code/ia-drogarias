@@ -27,7 +27,6 @@ export default function CartModal() {
     try {
       const total = subtotal;
 
-      // 1) cria venda
       const { data: venda, error: e1 } = await supabase
         .from("mk_vendas")
         .insert({
@@ -42,7 +41,6 @@ export default function CartModal() {
 
       if (e1 || !venda) throw e1 || new Error("Falha ao criar venda");
 
-      // 2) cria itens
       const itensInsert = items.map((it) => ({
         venda_id: venda.id,
         produto_id: it.produto_id,
@@ -54,7 +52,6 @@ export default function CartModal() {
       const { error: e2 } = await supabase.from("mk_venda_itens").insert(itensInsert);
       if (e2) throw e2;
 
-      // 3) debita estoque (RPC recomendada)
       for (const it of items) {
         const { error: e3 } = await supabase.rpc("mk_debitar_estoque_simplificado", {
           p_produto_id: it.produto_id,

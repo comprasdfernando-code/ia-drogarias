@@ -2,64 +2,73 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
-import Image from "next/image";
 import { supabase } from "@/lib/supabaseClient";
-import { useCart } from "../../_components/CartProvider";
 
-type Produto = {
-  id: string;
-  nome: string;
-  marca?: string | null;
-  descricao?: string | null;
-  preco: number;
-  estoque: number;
-  imagem_url?: string | null;
-  ean?: string | null;
-};
-
-function brl(v: number) {
-  return (Number(v) || 0).toLocaleString("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  });
+function onlyDigits(s: string) {
+  return (s || "").replace(/\D/g, "");
 }
 
-export default function ProdutoPage() {
+function genInternal5() {
+  return String(Math.floor(10000 + Math.random() * 90000));
+}
+
+export default function AdminProdutoForm() {
   const params = useParams();
   const router = useRouter();
+
   const id = useMemo(() => String((params as any)?.id || ""), [params]);
+  const isNew = id === "novo" || !id;
 
-  const { addItem } = useCart();
+  const [loading, setLoading] = useState(false);
+  const [initialLoading, setInitialLoading] = useState(!isNew);
 
-  const [produto, setProduto] = useState<Produto | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState<string | null>(null);
+  const [nome, setNome] = useState("");
+  const [marca, setMarca] = useState("");
+  const [categoria, setCategoria] = useState("");
+  const [ean, setEan] = useState("");
+  const [fotoUrl, setFotoUrl] = useState("");
+  const [descricao, setDescricao] = useState("");
+  const [preco, setPreco] = useState<number>(0);
+  const [quantidade, setQuantidade] = useState<number>(0);
+  const [ativo, setAtivo] = useState<boolean>(true);
+  const [promoAtiva, setPromoAtiva] = useState<boolean>(false);
+  const [precoPromocional, setPrecoPromocional] = useState<number>(0);
 
   useEffect(() => {
+    if (isNew) return;
+
     let alive = true;
 
     async function load() {
       try {
-        setLoading(true);
-        setErr(null);
-
-        if (!id) throw new Error("Produto inválido (id vazio).");
-
+        setInitialLoading(true);
         const { data, error } = await supabase
           .from("mk_produtos")
-.select("id,nome,marca,descricao,preco,estoque,foto_url,ean")
-
+          .select("id,nome,marca,categoria,ean,foto_url,descricao,preco,quantidade,ativo,promo_ativa,preco_promocional")
           .eq("id", id)
           .maybeSingle();
 
         if (error) throw error;
         if (!data) throw new Error("Produto não encontrado.");
 
-        if (alive) setProduto(data as Produto);
+        if (!alive) return;
+
+        setNome(data.nome ?? "");
+        setMarca(data.marca ?? "");
+        setCategoria(data.categoria ?? "");
+        setEan(data.ean ?? "");
+        setFotoUrl(data.foto_url ?? "");
+        setDescricao(data.descricao ?? "");
+        setPreco(Number(data.preco ?? 0));
+        setQuantidade(Number(data.quantidade ?? 0));
+        setAtivo(Boolean(data.ativo ?? true));
+        setPromoAtiva(Boolean(data.promo_ativa ?? false));
+        setPrecoPromocional(Number(data.preco_promocional ?? 0));
       } catch (e: any) {
-        if (alive) setErr(e?.message || "Erro ao carregar produto.");
+        alert(e?.message || "Erro ao carregar produto");
+        router.push("/loja/glow10/admin");
       } finally {
-        if (alive) setLoading(false);
+        if (alive) setInitialLoading(false);
       }
     }
 
@@ -67,107 +76,156 @@ export default function ProdutoPage() {
     return () => {
       alive = false;
     };
-  }, [id]);
+  }, [id, isNew, router]);
 
-  function onAdd() {
-    if (!produto) return;
-    if ((produto.estoque ?? 0) <= 0) return;
+  async function salvar() {
+    if (!nome.trim()) return alert("Nome do produto é obrigatório.");
 
-    addItem({
-      produto_id: produto.id,
-      nome: produto.nome,
-      preco_unit: Number(produto.preco) || 0,
-      quantidade: 1,
-      foto_url: produto.imagem_url || null,
-    });
+    setLoading(true);
+    try {
+      const eanDigits = onlyDigits(ean);
+      const eanFinal = eanDigits.length ? eanDigits : null;
+
+      // se não tiver EAN, gera código interno 5 dígitos
+      const codigoInterno = eanFinal ? null : genInternal5();
+
+      const payload: any = {
+        nome: nome.trim(),
+        marca: marca.trim() || null,
+        categoria: categoria.trim() || null,
+        ean: eanFinal,
+        codigo_interno: codigoInterno, // se sua tabela usar outro nome, ajuste aqui
+        foto_url: fotoUrl.trim() || null,
+        descricao: descricao.trim() || null,
+        preco: Number(preco) || 0,
+        quantidade: Number(quantidade) || 0,
+        ativo: Boolean(ativo),
+        promo_ativa: Boolean(promoAtiva),
+        preco_promocional: promoAtiva ? Number(precoPromocional) || 0 : null,
+      };
+
+      if (isNew) {
+        const { error } = await supabase.from("mk_produtos").insert(payload);
+        if (error) throw error;
+        alert("Produto criado!");
+        router.push("/loja/glow10/admin");
+      } else {
+        const { error } = await supabase.from("mk_produtos").update(payload).eq("id", id);
+        if (error) throw error;
+        alert("Produto atualizado!");
+        router.push("/loja/glow10/admin");
+      }
+    } catch (e: any) {
+      alert(e?.message || "Erro ao salvar");
+    } finally {
+      setLoading(false);
+    }
   }
 
-  if (loading) {
-    return (
-      <div className="min-h-screen bg-black text-white p-6">
-        <div className="max-w-4xl mx-auto">Carregando produto...</div>
-      </div>
-    );
+  if (initialLoading) {
+    return <div className="min-h-screen bg-black text-white p-8">Carregando…</div>;
   }
-
-  if (err) {
-    return (
-      <div className="min-h-screen bg-black text-white p-6">
-        <div className="max-w-4xl mx-auto space-y-3">
-          <div className="text-lg font-semibold">Não deu pra abrir esse produto</div>
-          <div className="text-white/70">{err}</div>
-
-          <div className="flex gap-2">
-            <button
-              onClick={() => router.back()}
-              className="rounded-xl px-4 py-2 bg-white text-black font-semibold"
-            >
-              Voltar
-            </button>
-
-            <button
-              onClick={() => location.reload()}
-              className="rounded-xl px-4 py-2 bg-white/10 border border-white/15 text-white"
-            >
-              Tentar de novo
-            </button>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (!produto) return null;
 
   return (
     <div className="min-h-screen bg-black text-white p-6">
-      <div className="max-w-4xl mx-auto grid md:grid-cols-2 gap-6">
-        <div className="rounded-2xl bg-zinc-900/40 border border-white/10 overflow-hidden">
-          <div className="relative w-full aspect-square bg-black/30">
-            {produto.imagem_url ? (
-              <Image
-                src={produto.imagem_url}
-                alt={produto.nome}
-                fill
-                className="object-contain p-6"
-                sizes="(max-width: 768px) 100vw, 520px"
-              />
-            ) : (
-              <div className="w-full h-full flex items-center justify-center text-white/40">
-                Sem foto
-              </div>
-            )}
+      <div className="max-w-3xl mx-auto">
+        <h1 className="text-3xl font-bold">{isNew ? "Novo produto" : "Editar produto"}</h1>
+        <p className="text-white/60 mt-2">
+          Se não tiver EAN, o sistema gera código interno de 5 dígitos automaticamente.
+        </p>
+
+        <div className="mt-6 rounded-3xl bg-zinc-900/40 border border-white/10 p-5 space-y-3">
+          <input
+            value={nome}
+            onChange={(e) => setNome(e.target.value)}
+            placeholder="Nome do produto *"
+            className="w-full rounded-2xl bg-white/10 px-4 py-3 outline-none ring-1 ring-white/10"
+          />
+
+          <div className="grid sm:grid-cols-2 gap-3">
+            <input
+              value={marca}
+              onChange={(e) => setMarca(e.target.value)}
+              placeholder="Marca"
+              className="rounded-2xl bg-white/10 px-4 py-3 outline-none ring-1 ring-white/10"
+            />
+            <input
+              value={categoria}
+              onChange={(e) => setCategoria(e.target.value)}
+              placeholder="Categoria (ex: Batom, Base, Skincare)"
+              className="rounded-2xl bg-white/10 px-4 py-3 outline-none ring-1 ring-white/10"
+            />
+          </div>
+
+          <div className="grid sm:grid-cols-2 gap-3">
+            <input
+              value={ean}
+              onChange={(e) => setEan(e.target.value)}
+              placeholder="EAN (opcional)"
+              className="rounded-2xl bg-white/10 px-4 py-3 outline-none ring-1 ring-white/10"
+            />
+            <input
+              value={fotoUrl}
+              onChange={(e) => setFotoUrl(e.target.value)}
+              placeholder="Foto URL (opcional)"
+              className="rounded-2xl bg-white/10 px-4 py-3 outline-none ring-1 ring-white/10"
+            />
+          </div>
+
+          <textarea
+            value={descricao}
+            onChange={(e) => setDescricao(e.target.value)}
+            placeholder="Descrição (opcional)"
+            className="w-full min-h-[120px] rounded-2xl bg-white/10 px-4 py-3 outline-none ring-1 ring-white/10"
+          />
+
+          <div className="grid sm:grid-cols-3 gap-3">
+            <input
+              value={preco}
+              onChange={(e) => setPreco(Number(e.target.value))}
+              placeholder="Preço"
+              type="number"
+              step="0.01"
+              className="rounded-2xl bg-white/10 px-4 py-3 outline-none ring-1 ring-white/10"
+            />
+            <input
+              value={quantidade}
+              onChange={(e) => setQuantidade(Number(e.target.value))}
+              placeholder="Estoque"
+              type="number"
+              className="rounded-2xl bg-white/10 px-4 py-3 outline-none ring-1 ring-white/10"
+            />
+            <label className="flex items-center justify-between rounded-2xl bg-white/10 px-4 py-3 ring-1 ring-white/10">
+              <span>Ativo</span>
+              <input type="checkbox" checked={ativo} onChange={(e) => setAtivo(e.target.checked)} />
+            </label>
+          </div>
+
+          <div className="grid sm:grid-cols-2 gap-3">
+            <label className="flex items-center justify-between rounded-2xl bg-white/10 px-4 py-3 ring-1 ring-white/10">
+              <span>Promo ativa</span>
+              <input type="checkbox" checked={promoAtiva} onChange={(e) => setPromoAtiva(e.target.checked)} />
+            </label>
+
+            <input
+              value={precoPromocional}
+              onChange={(e) => setPrecoPromocional(Number(e.target.value))}
+              placeholder="Preço promocional"
+              type="number"
+              step="0.01"
+              disabled={!promoAtiva}
+              className="rounded-2xl bg-white/10 px-4 py-3 outline-none ring-1 ring-white/10 disabled:opacity-50"
+            />
           </div>
         </div>
 
-        <div className="space-y-3">
-          <div className="text-xs text-white/60 uppercase">{produto.marca || " "}</div>
-          <h1 className="text-2xl font-bold leading-tight">{produto.nome}</h1>
-
-          <div className="text-3xl font-extrabold">{brl(produto.preco)}</div>
-          <div className="text-sm text-white/60">Estoque: {produto.estoque ?? 0}</div>
-
-          {produto.descricao ? (
-            <p className="text-white/75 leading-relaxed">{produto.descricao}</p>
-          ) : null}
-
-          <div className="flex gap-2 pt-2">
-            <button
-              onClick={onAdd}
-              disabled={(produto.estoque ?? 0) <= 0}
-              className="flex-1 rounded-xl py-3 font-semibold bg-white text-black hover:bg-white/90 disabled:opacity-40 disabled:cursor-not-allowed"
-            >
-              {(produto.estoque ?? 0) > 0 ? "Adicionar ao carrinho" : "Sem estoque"}
-            </button>
-
-            <button
-              onClick={() => router.push("/loja/glow10")}
-              className="rounded-xl px-4 py-3 bg-white/10 border border-white/15 text-white"
-            >
-              Voltar
-            </button>
-          </div>
-        </div>
+        <button
+          disabled={loading}
+          onClick={salvar}
+          className="mt-6 w-full rounded-2xl bg-white py-4 font-semibold text-black disabled:opacity-50"
+        >
+          {loading ? "Salvando…" : "Salvar produto"}
+        </button>
       </div>
     </div>
   );

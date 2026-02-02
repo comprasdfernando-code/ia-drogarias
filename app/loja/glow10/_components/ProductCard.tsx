@@ -1,16 +1,17 @@
 "use client";
 
+import React from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { useCart } from "./CartProvider";
+import { useCartUI } from "./CartProvider";
 
-type Product = {
+export type Product = {
   id: string;
   nome: string;
   marca?: string | null;
   preco: number;
-  estoque: number;
-  imagem_url?: string | null;
+  estoque: number;          // na HOME você monta isso vindo de quantidade
+  foto_url?: string | null; // imagem do produto
 };
 
 function brl(v: number) {
@@ -21,11 +22,12 @@ function brl(v: number) {
 }
 
 export default function ProductCard({ product }: { product: Product }) {
-  const { addItem } = useCart();
+  const { addItem } = useCartUI();
 
-  function handleAdd(e: React.MouseEvent) {
+  function handleAdd(e: React.MouseEvent<HTMLButtonElement>) {
     e.preventDefault();
     e.stopPropagation();
+
     if ((product.estoque ?? 0) <= 0) return;
 
     addItem({
@@ -33,19 +35,22 @@ export default function ProductCard({ product }: { product: Product }) {
       nome: product.nome,
       preco_unit: Number(product.preco) || 0,
       quantidade: 1,
-      foto_url: product.imagem_url || null,
+      foto_url: product.foto_url || null,
     });
   }
 
   return (
     <Link
       href={`/loja/glow10/produto/${product.id}`}
-      className="group block rounded-2xl overflow-hidden bg-zinc-900/40 border border-white/10 hover:border-white/20 transition"
+      className="group block rounded-2xl overflow-hidden
+                 bg-zinc-900/40 border border-white/10
+                 hover:border-white/20 transition"
     >
+      {/* IMAGEM */}
       <div className="relative aspect-square bg-black/40">
-        {product.imagem_url ? (
+        {product.foto_url ? (
           <Image
-            src={product.imagem_url}
+            src={product.foto_url}
             alt={product.nome}
             fill
             className="object-contain p-4"
@@ -58,6 +63,7 @@ export default function ProductCard({ product }: { product: Product }) {
         )}
       </div>
 
+      {/* CONTEÚDO */}
       <div className="p-4 space-y-1">
         <div className="text-xs text-white/50 uppercase">{product.marca || " "}</div>
 
@@ -69,10 +75,13 @@ export default function ProductCard({ product }: { product: Product }) {
 
         <div className="text-xs text-white/40">Estoque: {product.estoque}</div>
 
+        {/* BOTÃO */}
         <button
           onClick={handleAdd}
           disabled={(product.estoque ?? 0) <= 0}
-          className="mt-3 w-full rounded-xl py-2 font-semibold bg-white text-black hover:bg-white/90 disabled:opacity-40 disabled:cursor-not-allowed"
+          className="mt-3 w-full rounded-xl py-2 font-semibold
+                     bg-white text-black hover:bg-white/90
+                     disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {(product.estoque ?? 0) > 0 ? "Adicionar ao carrinho" : "Sem estoque"}
         </button>
