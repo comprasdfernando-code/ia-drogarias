@@ -1,6 +1,6 @@
 import React from "react";
-import Providers from "./_components/Providers";
+import { CartUIProvider } from "./_components/CartProvider";
 
 export default function Layout({ children }: { children: React.ReactNode }) {
-  return <Providers>{children}</Providers>;
+  return <CartUIProvider>{children}</CartUIProvider>;
 }
