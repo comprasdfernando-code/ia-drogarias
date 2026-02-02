@@ -10,15 +10,12 @@ export type Product = {
   nome: string;
   marca?: string | null;
   preco: number;
-  estoque: number;          // na HOME você monta isso vindo de quantidade
-  foto_url?: string | null; // imagem do produto
+  estoque: number;
+  foto_url?: string | null;
 };
 
 function brl(v: number) {
-  return (Number(v) || 0).toLocaleString("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  });
+  return (Number(v) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
 export default function ProductCard({ product }: { product: Product }) {
@@ -27,7 +24,6 @@ export default function ProductCard({ product }: { product: Product }) {
   function handleAdd(e: React.MouseEvent<HTMLButtonElement>) {
     e.preventDefault();
     e.stopPropagation();
-
     if ((product.estoque ?? 0) <= 0) return;
 
     addItem({
@@ -42,46 +38,26 @@ export default function ProductCard({ product }: { product: Product }) {
   return (
     <Link
       href={`/loja/glow10/produto/${product.id}`}
-      className="group block rounded-2xl overflow-hidden
-                 bg-zinc-900/40 border border-white/10
-                 hover:border-white/20 transition"
+      className="group block rounded-2xl overflow-hidden bg-zinc-900/40 border border-white/10 hover:border-white/20 transition"
     >
-      {/* IMAGEM */}
       <div className="relative aspect-square bg-black/40">
         {product.foto_url ? (
-          <Image
-            src={product.foto_url}
-            alt={product.nome}
-            fill
-            className="object-contain p-4"
-            sizes="300px"
-          />
+          <Image src={product.foto_url} alt={product.nome} fill className="object-contain p-4" sizes="300px" />
         ) : (
-          <div className="w-full h-full flex items-center justify-center text-white/40">
-            Sem imagem
-          </div>
+          <div className="w-full h-full flex items-center justify-center text-white/40">Sem imagem</div>
         )}
       </div>
 
-      {/* CONTEÚDO */}
       <div className="p-4 space-y-1">
         <div className="text-xs text-white/50 uppercase">{product.marca || " "}</div>
-
-        <div className="text-white font-semibold leading-tight line-clamp-2">
-          {product.nome}
-        </div>
-
+        <div className="text-white font-semibold leading-tight line-clamp-2">{product.nome}</div>
         <div className="text-lg font-bold text-white">{brl(product.preco)}</div>
-
         <div className="text-xs text-white/40">Estoque: {product.estoque}</div>
 
-        {/* BOTÃO */}
         <button
           onClick={handleAdd}
           disabled={(product.estoque ?? 0) <= 0}
-          className="mt-3 w-full rounded-xl py-2 font-semibold
-                     bg-white text-black hover:bg-white/90
-                     disabled:opacity-40 disabled:cursor-not-allowed"
+          className="mt-3 w-full rounded-xl py-2 font-semibold bg-white text-black hover:bg-white/90 disabled:opacity-40 disabled:cursor-not-allowed"
         >
           {(product.estoque ?? 0) > 0 ? "Adicionar ao carrinho" : "Sem estoque"}
         </button>

@@ -3,23 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
-
-import HeaderPremium from "./_components/HeaderPremium";
-import HeroPremium from "./_components/HeroPremium";
-import ProductCard from "./_components/ProductCard";
+import ProductCard, { Product } from "./_components/ProductCard";
 import CartModal from "./_components/CartModal";
 import { useCartUI } from "./_components/CartProvider";
 
-type Product = {
-  id: string;
-  nome: string;
-  marca?: string | null;
-  preco: number;
-  estoque: number; // exibição (no banco é quantidade)
-  foto_url?: string | null;
-};
-
-export default function Glow10HomePage() {
+export default function Glow10EcommerceHome() {
   const { items, openCart } = useCartUI();
 
   const cartCount = useMemo(
@@ -40,10 +28,10 @@ export default function Glow10HomePage() {
         setLoading(true);
         setErr(null);
 
-        // ✅ mk_produtos + quantidade (estoque)
         const { data, error } = await supabase
           .from("mk_produtos")
-          .select("id,nome,marca,preco,quantidade,foto_url,created_at")
+          .select("id,nome,marca,preco,quantidade,foto_url,created_at,ativo")
+          .eq("ativo", true)
           .order("created_at", { ascending: false });
 
         if (error) throw error;
@@ -71,7 +59,7 @@ export default function Glow10HomePage() {
     };
   }, []);
 
-  const filtered = useMemo(() => {
+  const filtered: Product[] = useMemo(() => {
     const s = (q || "").trim().toLowerCase();
     if (!s) return products;
     return products.filter((p) => {
@@ -83,36 +71,40 @@ export default function Glow10HomePage() {
 
   return (
     <div className="min-h-screen bg-black text-white">
-      <HeaderPremium />
-      <HeroPremium />
+      {/* ✅ modal (abre pelo botão) */}
+      <CartModal mode="ECOMMERCE" />
 
-      {/* ✅ Modal sem botão (abre pelo botão da home) */}
-      <CartModal />
+      <header className="max-w-6xl mx-auto px-4 py-6 flex items-center justify-between">
+        <div className="space-y-1">
+          <div className="text-2xl font-extrabold">Glow10 — maquiagem premium</div>
+          <div className="text-white/60 text-sm">Estilo “farmácia virtual” • só entrega</div>
+        </div>
 
-      <div className="max-w-6xl mx-auto px-4 pb-16">
-        <div className="flex items-center justify-between gap-3 pt-6">
-          <div className="flex-1">
-            <input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Buscar maquiagem premium..."
-              className="w-full rounded-2xl bg-zinc-900/40 border border-white/10 px-5 py-4
-                         outline-none focus:border-white/20 placeholder:text-white/40"
-            />
-          </div>
-
+        <div className="flex items-center gap-2">
+          <Link href="/loja/glow10/pdv" className="rounded-xl px-4 py-2 bg-white/10 border border-white/15 hover:bg-white/15">
+            PDV
+          </Link>
           <button
-            type="button"
             onClick={openCart}
-            className="shrink-0 rounded-2xl bg-white text-black font-bold px-6 py-4"
-            title="Abrir carrinho"
+            className="rounded-2xl bg-white text-black font-bold px-5 py-3"
           >
             Carrinho ({cartCount})
           </button>
         </div>
+      </header>
+
+      <main className="max-w-6xl mx-auto px-4 pb-16">
+        <div className="flex items-center gap-3">
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Buscar maquiagem premium..."
+            className="w-full rounded-2xl bg-zinc-900/40 border border-white/10 px-5 py-4 outline-none focus:border-white/20 placeholder:text-white/40"
+          />
+        </div>
 
         <div className="pt-4 text-sm text-white/60">
-          {loading ? "Carregando produtos..." : `${filtered.length} produto(s)`}
+          {loading ? "Carregando..." : `${filtered.length} produto(s)`}
         </div>
 
         {err ? (
@@ -126,19 +118,7 @@ export default function Glow10HomePage() {
             <ProductCard key={p.id} product={p} />
           ))}
         </div>
-
-        <div className="mt-10 flex flex-wrap gap-3">
-          <Link href="/loja/glow10/admin" className="rounded-xl px-4 py-2 bg-white/10 border border-white/15 hover:bg-white/15">
-            Admin
-          </Link>
-          <Link href="/loja/glow10/painel" className="rounded-xl px-4 py-2 bg-white/10 border border-white/15 hover:bg-white/15">
-            Painel
-          </Link>
-          <Link href="/loja/glow10/caixa" className="rounded-xl px-4 py-2 bg-white/10 border border-white/15 hover:bg-white/15">
-            Caixa
-          </Link>
-        </div>
-      </div>
+      </main>
     </div>
   );
 }
