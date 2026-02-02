@@ -46,8 +46,9 @@ export default function ProdutoPage() {
         if (!id) throw new Error("Produto inválido (id vazio).");
 
         const { data, error } = await supabase
-          .from("glow10_produtos")
-          .select("id,nome,marca,descricao,preco,estoque,imagem_url,ean")
+          .from("mk_produtos")
+.select("id,nome,marca,descricao,preco,estoque,foto_url,ean")
+
           .eq("id", id)
           .maybeSingle();
 

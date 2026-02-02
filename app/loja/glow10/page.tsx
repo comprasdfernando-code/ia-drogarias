@@ -19,7 +19,8 @@ type Product = {
   imagem_url?: string | null;
 };
 
-const TABLE = "glow10_produtos"; // <<< se sua tabela tiver outro nome, troca aqui
+const TABLE = "mk_produtos";
+ // <<< se sua tabela tiver outro nome, troca aqui
 
 export default function Glow10HomePage() {
   const cart: any = useCart();
