@@ -56,6 +56,110 @@ async function safeJson(resp: Response) {
   }
 }
 
+/* =========================
+   LOGS (homologação PagBank)
+========================= */
+
+/**
+ * Mostra logs apenas em PRODUÇÃO, ou se forçar PAGBANK_LOG=1
+ * (assim você consegue gerar logs em produção, como o PagBank quer).
+ */
+function shouldLog() {
+  const forced = String(process.env.PAGBANK_LOG || "").trim() === "1";
+  const isProd = process.env.NODE_ENV === "production";
+  return forced || isProd;
+}
+
+function maskEmail(email?: string) {
+  if (!email) return email;
+  const [u, d] = String(email).split("@");
+  if (!d) return "***";
+  const u2 = u.length <= 2 ? u[0] + "*" : u.slice(0, 2) + "***";
+  return `${u2}@${d}`;
+}
+
+function maskCpf(cpf?: string) {
+  const d = onlyDigits(cpf || "");
+  if (d.length !== 11) return cpf;
+  return `${d.slice(0, 3)}***${d.slice(6, 9)}**`;
+}
+
+function maskPhone(p?: string) {
+  const d = onlyDigits(p || "");
+  if (d.length < 10) return p;
+  return `${d.slice(0, 2)}*****${d.slice(-2)}`;
+}
+
+function maskLong(s?: string, keepStart = 12, keepEnd = 6) {
+  if (!s) return s;
+  const str = String(s);
+  if (str.length <= keepStart + keepEnd) return "***";
+  return `${str.slice(0, keepStart)}***${str.slice(-keepEnd)}`;
+}
+
+function sanitizeHeaders(headers: Record<string, any>) {
+  const h = { ...(headers || {}) };
+  if (h.Authorization) h.Authorization = "Bearer ***";
+  if (h.authorization) h.authorization = "Bearer ***";
+  return h;
+}
+
+function sanitizeBodyForLog(body: any) {
+  if (!body || typeof body !== "object") return body;
+
+  const clone = JSON.parse(JSON.stringify(body));
+
+  // customer
+  if (clone.customer) {
+    if (clone.customer.email) clone.customer.email = maskEmail(clone.customer.email);
+    if (clone.customer.tax_id) clone.customer.tax_id = maskCpf(clone.customer.tax_id);
+    if (clone.customer.phones?.[0]) {
+      const ph = clone.customer.phones[0];
+      const raw = `${ph.area || ""}${ph.number || ""}`;
+      clone.customer.phones[0] = { ...ph, number: maskPhone(raw) };
+    }
+  }
+
+  // card holder
+  if (clone.charges?.[0]?.payment_method?.holder?.tax_id) {
+    clone.charges[0].payment_method.holder.tax_id = maskCpf(
+      clone.charges[0].payment_method.holder.tax_id
+    );
+  }
+
+  // encrypted card
+  if (clone.charges?.[0]?.payment_method?.card?.encrypted) {
+    clone.charges[0].payment_method.card.encrypted = "***";
+  }
+
+  // qr_codes text (muito longo)
+  if (clone.qr_codes?.[0]?.text) clone.qr_codes[0].text = maskLong(clone.qr_codes[0].text);
+
+  return clone;
+}
+
+function sanitizeResponseForLog(data: any) {
+  if (!data || typeof data !== "object") return data;
+  const clone = JSON.parse(JSON.stringify(data));
+
+  // qr_codes text/base64 pode ser gigante
+  if (clone.qr_codes?.[0]?.text) clone.qr_codes[0].text = maskLong(clone.qr_codes[0].text);
+  if (clone.qr_codes?.[0]?.links?.length) {
+    // links ok, não precisa mascarar
+  }
+  return clone;
+}
+
+function logReqRes(tag: string, payload: any) {
+  if (!shouldLog()) return;
+  try {
+    // eslint-disable-next-line no-console
+    console.log(`[PAGBANK][${tag}]`, JSON.stringify(payload, null, 2));
+  } catch {
+    // ignore
+  }
+}
+
 /**
  * ✅ UPSERT por "codigo" (porque sua vendas_site NÃO tem order_id)
  * - Se existir linha com codigo=FV_..., atualiza
@@ -63,7 +167,6 @@ async function safeJson(resp: Response) {
  * - Se alguma coluna do patch não existir, tenta novamente com patch mínimo
  *
  * ✅ Corrigido:
- * - Não faz mais "update" em tabela vazia e só depois "insert" (corrida e duplicidade).
  * - Primeiro faz um SELECT, depois UPDATE ou INSERT.
  * - Tolerante a colunas inexistentes (42703).
  */
@@ -138,10 +241,7 @@ export async function POST(req: Request) {
     const siteUrl = (process.env.NEXT_PUBLIC_SITE_URL || "https://www.iadrogarias.com.br").trim();
 
     if (!token) {
-      return NextResponse.json(
-        { ok: false, error: "PAGBANK_TOKEN não configurado" },
-        { status: 500 }
-      );
+      return NextResponse.json({ ok: false, error: "PAGBANK_TOKEN não configurado" }, { status: 500 });
     }
 
     const body = await req.json();
@@ -152,10 +252,7 @@ export async function POST(req: Request) {
     const itens = body?.itens || body?.items || [];
 
     if (!order_id || !Array.isArray(itens) || itens.length === 0) {
-      return NextResponse.json(
-        { ok: false, error: "Dados insuficientes (order_id/itens)" },
-        { status: 400 }
-      );
+      return NextResponse.json({ ok: false, error: "Dados insuficientes (order_id/itens)" }, { status: 400 });
     }
 
     // 🔒 normaliza itens: unit_amount SEMPRE em centavos
@@ -163,10 +260,7 @@ export async function POST(req: Request) {
       reference_id: String(i?.reference_id || i?.ean || i?.id || i?.sku || `item-${idx + 1}`),
       name: String(i?.name || i?.nome || "Item"),
       quantity: Math.max(1, Number(i?.quantity || i?.qtd || 1)),
-      unit_amount: Math.max(
-        0,
-        Number(i?.unit_amount || i?.preco_centavos || i?.unitAmount || 0)
-      ),
+      unit_amount: Math.max(0, Number(i?.unit_amount || i?.preco_centavos || i?.unitAmount || 0)),
     }));
 
     const total = items.reduce((acc: number, it: any) => acc + it.unit_amount * it.quantity, 0);
@@ -190,7 +284,9 @@ export async function POST(req: Request) {
       );
     }
 
-    // ================== PIX (qr_codes) ==================
+    /* =========================================================
+       PIX (qr_codes)
+    ========================================================= */
     if (forma_pagamento === "PIX") {
       const payloadPIX: any = {
         reference_id: String(order_id), // FV_...
@@ -210,6 +306,18 @@ export async function POST(req: Request) {
         ],
       };
 
+      // ✅ LOG REQUEST (mascarado)
+      logReqRes("REQUEST_PIX", {
+        url: `${baseUrl}/orders`,
+        method: "POST",
+        headers: sanitizeHeaders({
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        }),
+        body: sanitizeBodyForLog(payloadPIX),
+      });
+
       const resp = await fetch(`${baseUrl}/orders`, {
         method: "POST",
         headers: {
@@ -223,14 +331,16 @@ export async function POST(req: Request) {
 
       const data = await safeJson(resp);
 
+      // ✅ LOG RESPONSE (mascarado)
+      logReqRes("RESPONSE_PIX", {
+        http_status: resp.status,
+        ok: resp.ok,
+        body: sanitizeResponseForLog(data),
+      });
+
       if (!resp.ok || !data?.id) {
         return NextResponse.json(
-          {
-            ok: false,
-            error: "Erro ao criar pedido PIX no PagBank",
-            status: resp.status,
-            dados: data,
-          },
+          { ok: false, error: "Erro ao criar pedido PIX no PagBank", status: resp.status, dados: data },
           { status: 500 }
         );
       }
@@ -250,6 +360,13 @@ export async function POST(req: Request) {
           });
           const txt = (await r2.text()).trim();
           if (txt) qr_base64 = txt;
+
+          // log best-effort do fetch base64 (sem expor conteúdo)
+          logReqRes("FETCH_QR_BASE64", {
+            href: qr.qr_base64_url,
+            http_status: r2.status,
+            got_base64: !!qr_base64,
+          });
         }
       } catch {
         // se falhar, segue
@@ -275,7 +392,9 @@ export async function POST(req: Request) {
       });
     }
 
-    // ================== CARTÃO ==================
+    /* =========================================================
+       CARTÃO
+    ========================================================= */
     if (forma_pagamento === "CREDIT_CARD") {
       const encrypted = body?.card?.encrypted;
       const holder = body?.card?.holder_name || cliente?.name;
@@ -289,19 +408,13 @@ export async function POST(req: Request) {
 
       if (!encrypted || !holder || !cpf) {
         return NextResponse.json(
-          {
-            ok: false,
-            error: "Para cartão: envie card.encrypted, card.holder_name e card.holder_cpf",
-          },
+          { ok: false, error: "Para cartão: envie card.encrypted, card.holder_name e card.holder_cpf" },
           { status: 400 }
         );
       }
 
       if (cpf.length !== 11) {
-        return NextResponse.json(
-          { ok: false, error: "CPF do titular inválido (precisa ter 11 dígitos)" },
-          { status: 400 }
-        );
+        return NextResponse.json({ ok: false, error: "CPF do titular inválido (precisa ter 11 dígitos)" }, { status: 400 });
       }
 
       const payloadCARD: any = {
@@ -330,6 +443,18 @@ export async function POST(req: Request) {
         ],
       };
 
+      // ✅ LOG REQUEST (mascarado)
+      logReqRes("REQUEST_CARD", {
+        url: `${baseUrl}/orders`,
+        method: "POST",
+        headers: sanitizeHeaders({
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        }),
+        body: sanitizeBodyForLog(payloadCARD),
+      });
+
       const resp = await fetch(`${baseUrl}/orders`, {
         method: "POST",
         headers: {
@@ -343,14 +468,16 @@ export async function POST(req: Request) {
 
       const data = await safeJson(resp);
 
+      // ✅ LOG RESPONSE (mascarado)
+      logReqRes("RESPONSE_CARD", {
+        http_status: resp.status,
+        ok: resp.ok,
+        body: sanitizeResponseForLog(data),
+      });
+
       if (!resp.ok || !data?.id) {
         return NextResponse.json(
-          {
-            ok: false,
-            error: "Erro ao criar pedido Cartão no PagBank",
-            status: resp.status,
-            dados: data,
-          },
+          { ok: false, error: "Erro ao criar pedido Cartão no PagBank", status: resp.status, dados: data },
           { status: 500 }
         );
       }
@@ -367,17 +494,10 @@ export async function POST(req: Request) {
       });
     }
 
-    return NextResponse.json(
-      { ok: false, error: "forma_pagamento inválida" },
-      { status: 400 }
-    );
+    return NextResponse.json({ ok: false, error: "forma_pagamento inválida" }, { status: 400 });
   } catch (e: any) {
     return NextResponse.json(
-      {
-        ok: false,
-        error: "Falha geral ao criar ordem PagBank",
-        detalhe: String(e?.message || e),
-      },
+      { ok: false, error: "Falha geral ao criar ordem PagBank", detalhe: String(e?.message || e) },
       { status: 500 }
     );
   }
