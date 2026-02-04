@@ -113,14 +113,18 @@ export default function LojaNinhoCarPage() {
 
         const blob = norm(`${p.nome} ${p.categoria || ""}`);
         const eanDigits = onlyDigits(p.ean || "");
-        return (qq && blob.includes(qq)) || (qDigits && eanDigits.includes(qDigits));
+        return (
+          (qq && blob.includes(qq)) || (qDigits && eanDigits.includes(qDigits))
+        );
       })
       .slice(0, 120);
   }, [produtos, q]);
 
   function addToCart(p: Produto) {
     const precoFinal =
-      p.em_promocao && p.preco_promocional ? Number(p.preco_promocional) : Number(p.preco);
+      p.em_promocao && p.preco_promocional
+        ? Number(p.preco_promocional)
+        : Number(p.preco);
 
     setCart((prev) => {
       const idx = prev.findIndex((i) => i.produto_id === p.id);
@@ -147,14 +151,18 @@ export default function LojaNinhoCarPage() {
 
   function inc(id: string) {
     setCart((prev) =>
-      prev.map((i) => (i.produto_id === id ? { ...i, quantidade: i.quantidade + 1 } : i))
+      prev.map((i) =>
+        i.produto_id === id ? { ...i, quantidade: i.quantidade + 1 } : i
+      )
     );
   }
 
   function dec(id: string) {
     setCart((prev) =>
       prev
-        .map((i) => (i.produto_id === id ? { ...i, quantidade: i.quantidade - 1 } : i))
+        .map((i) =>
+          i.produto_id === id ? { ...i, quantidade: i.quantidade - 1 } : i
+        )
         .filter((i) => i.quantidade > 0)
     );
   }
@@ -168,44 +176,52 @@ export default function LojaNinhoCarPage() {
     [cart]
   );
 
+  // ✅ SALVAR COMANDA (status = "aberta") + rollback se itens falharem
   async function salvarComanda(clienteNome: string, clienteWhats: string, obs: string) {
     if (cart.length === 0) {
       alert("Carrinho vazio.");
       return;
     }
+
     setSavingComanda(true);
 
+    let comandaId: string | null = null;
+
     try {
-      const total = subtotal;
+      const total = Number(subtotal) || 0;
+      const whatsDigits = onlyDigits(clienteWhats);
 
       // 1) cria comanda
       const { data: cmd, error: errCmd } = await supabase
         .from("ninhocar_comandas")
         .insert([
           {
-            status: "ABERTA",
-            cliente_nome: clienteNome || null,
-            cliente_whatsapp: clienteWhats || null,
+            status: "aberta", // ✅ importante: o caixa deve buscar "aberta"
+            cliente_nome: (clienteNome || "").trim() || null,
+            cliente_whatsapp: whatsDigits || null,
             subtotal: total,
             desconto: 0,
             total: total,
-            observacao: obs || null,
+            observacao: (obs || "").trim() || null,
           },
         ])
         .select("id")
         .single();
 
       if (errCmd) throw new Error(errCmd.message);
+      if (!cmd?.id) throw new Error("Comanda não retornou ID.");
+
+      comandaId = cmd.id as string;
 
       // 2) itens
       const itensPayload = cart.map((i) => ({
-        comanda_id: cmd.id,
+        comanda_id: comandaId,
         produto_id: i.produto_id,
         nome: i.nome,
         ean: i.ean,
-        preco: i.preco,
-        quantidade: i.quantidade,
-        subtotal: Number(i.preco) * Number(i.quantidade),
+        preco: Number(i.preco) || 0,
+        quantidade: Number(i.quantidade) || 1,
+        subtotal: (Number(i.preco) || 0) * (Number(i.quantidade) || 1),
       }));
 
       const { error: errItens } = await supabase
@@ -214,12 +230,23 @@ export default function LojaNinhoCarPage() {
 
       if (errItens) throw new Error(errItens.message);
 
-      alert(`✅ Comanda salva! ID: ${cmd.id.slice(0, 8)}...`);
+      alert(`✅ Comanda salva! ID: ${comandaId.slice(0, 8)}...`);
 
+      // ✅ limpa carrinho e fecha modal
       setCart([]);
       setCartOpen(false);
     } catch (e: any) {
       console.error(e);
+
+      // rollback simples: se criou comanda, remove
+      if (comandaId) {
+        try {
+          await supabase.from("ninhocar_comandas").delete().eq("id", comandaId);
+        } catch (rbErr) {
+          console.error("Rollback falhou:", rbErr);
+        }
+      }
+
       alert(`Erro ao salvar comanda: ${e?.message || "erro"}`);
     } finally {
       setSavingComanda(false);
@@ -374,7 +401,9 @@ export default function LojaNinhoCarPage() {
                               {brl(precoFinal)}
                             </div>
                             {p.em_promocao && p.preco ? (
-                              <div className="text-xs text-zinc-400 line-through">{brl(p.preco)}</div>
+                              <div className="text-xs text-zinc-400 line-through">
+                                {brl(p.preco)}
+                              </div>
                             ) : null}
                           </div>
 
@@ -494,7 +523,9 @@ function CartModal({
         <div className="flex items-start justify-between gap-3">
           <div>
             <div className="text-lg font-extrabold">🧾 Carrinho / Comanda</div>
-            <div className="text-xs text-zinc-400">Salva como comanda aberta para o Caixa finalizar.</div>
+            <div className="text-xs text-zinc-400">
+              Salva como comanda aberta para o Caixa finalizar.
+            </div>
           </div>
           <button
             onClick={onClose}
@@ -517,7 +548,7 @@ function CartModal({
               >
                 <div className="h-14 w-14 overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950">
                   <img
-                    src={(i.img || "/placeholder-produto.png")}
+                    src={i.img || "/placeholder-produto.png"}
                     alt={i.nome}
                     className="h-full w-full object-cover"
                     referrerPolicy="no-referrer"

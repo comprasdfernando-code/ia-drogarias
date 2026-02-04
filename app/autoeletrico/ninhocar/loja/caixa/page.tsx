@@ -29,6 +29,7 @@ type Item = {
   preco: number;
   quantidade: number;
   subtotal: number;
+  created_at: string;
 };
 
 export default function CaixaNinhoCar() {
@@ -44,31 +45,37 @@ export default function CaixaNinhoCar() {
 
   async function load() {
     setLoading(true);
+
+    // ✅ Tolerante: aceita "aberta" e "ABERTA"
     const { data, error } = await supabase
       .from("ninhocar_comandas")
-      .select("id,status,cliente_nome,cliente_whatsapp,subtotal,desconto,total,observacao,created_at,closed_at")
-      .eq("status", "ABERTA")
+      .select(
+        "id,status,cliente_nome,cliente_whatsapp,subtotal,desconto,total,observacao,created_at,closed_at"
+      )
+      .in("status", ["aberta", "ABERTA"])
       .order("created_at", { ascending: false });
 
     if (error) {
-      console.error(error.message);
+      console.error("Erro ao buscar comandas:", error);
       setComandas([]);
     } else {
       setComandas((data || []) as Comanda[]);
     }
+
     setLoading(false);
   }
 
   async function openComanda(id: string) {
     setOpenId(id);
+
     const { data, error } = await supabase
       .from("ninhocar_comanda_itens")
-      .select("id,comanda_id,produto_id,nome,ean,preco,quantidade,subtotal")
+      .select("id,comanda_id,produto_id,nome,ean,preco,quantidade,subtotal,created_at")
       .eq("comanda_id", id)
       .order("created_at", { ascending: true });
 
     if (error) {
-      console.error(error.message);
+      console.error("Erro ao buscar itens:", error);
       setItens([]);
     } else {
       setItens((data || []) as Item[]);
@@ -92,6 +99,7 @@ export default function CaixaNinhoCar() {
 
     const v = Number((valorPago || "0").replace(",", "."));
     const t = Number((troco || "0").replace(",", "."));
+
     if (!v || v <= 0) {
       alert("Informe o valor pago.");
       return;
@@ -195,20 +203,24 @@ export default function CaixaNinhoCar() {
               <div className="mt-4 rounded-2xl border border-zinc-800 bg-zinc-950/40 p-3">
                 <div className="text-sm font-extrabold">Itens</div>
                 <div className="mt-2 grid gap-2">
-                  {itens.map((i) => (
-                    <div
-                      key={i.id}
-                      className="flex items-center justify-between gap-3 rounded-2xl border border-zinc-800 bg-zinc-900/30 p-3"
-                    >
-                      <div>
-                        <div className="text-sm font-bold">{i.nome}</div>
-                        <div className="text-xs text-zinc-400">
-                          {i.ean ? `EAN: ${i.ean}` : "Sem EAN"} • {i.quantidade} x {brl(i.preco)}
+                  {itens.length === 0 ? (
+                    <div className="text-sm text-zinc-400">Nenhum item encontrado.</div>
+                  ) : (
+                    itens.map((i) => (
+                      <div
+                        key={i.id}
+                        className="flex items-center justify-between gap-3 rounded-2xl border border-zinc-800 bg-zinc-900/30 p-3"
+                      >
+                        <div>
+                          <div className="text-sm font-bold">{i.nome}</div>
+                          <div className="text-xs text-zinc-400">
+                            {i.ean ? `EAN: ${i.ean}` : "Sem EAN"} • {i.quantidade} x {brl(i.preco)}
+                          </div>
                         </div>
+                        <div className="text-sm font-extrabold text-yellow-300">{brl(i.subtotal)}</div>
                       </div>
-                      <div className="text-sm font-extrabold text-yellow-300">{brl(i.subtotal)}</div>
-                    </div>
-                  ))}
+                    ))
+                  )}
                 </div>
               </div>
 
