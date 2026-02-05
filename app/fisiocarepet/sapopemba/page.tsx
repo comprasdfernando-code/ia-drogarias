@@ -58,14 +58,14 @@ export default function FisioCareSapopembaHome() {
         <Card
           title="Receitas (Financeiro)"
           desc="Registrar entradas com data, paciente/tutor/serviço, forma de pagamento, status e total do período."
-          href="/fisiocaresapopemba/receita"
+          href="/fisiocarepet/sapopemba/receita"
           badge="NOVO"
         />
 
         <Card
           title="Implantação (Obra + Pós-abertura)"
           desc="Mantido como está. Página usada para organizar investimentos da construção e fase pós-abertura."
-          href="/fisiocaresapopemba/implantacao"
+          href="/fisiocarepet/sapopemba/implantacao"
           badge="MANTER"
         />
       </section>
