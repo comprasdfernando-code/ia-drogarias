@@ -46,13 +46,14 @@ type CatalogoServico = {
   ativo?: boolean | null;
 };
 
+type Mode = "imediato" | "agendar";
+
 export default function AgendaClient() {
   const searchParams = useSearchParams();
   const router = useRouter();
 
   const servicoURLRaw = searchParams.get("servico") || "";
 
-  // ✅ decodifica + normaliza
   const servicoNome = useMemo(() => {
     try {
       return normalizeSpaces(decodeURIComponent(servicoURLRaw));
@@ -60,6 +61,9 @@ export default function AgendaClient() {
       return normalizeSpaces(servicoURLRaw);
     }
   }, [servicoURLRaw]);
+
+  const [mode, setMode] = useState<Mode>("imediato");
+  const [openAgendar, setOpenAgendar] = useState(false);
 
   const [form, setForm] = useState({
     nome: "",
@@ -232,18 +236,33 @@ export default function AgendaClient() {
     setForm((prev) => ({ ...prev, [name]: value }));
   };
 
-  function validate() {
+  function validateBase() {
     if (!form.nome.trim()) return "Informe seu nome.";
     if (onlyDigits(form.telefone).length < 10) return "WhatsApp inválido (DDD + número).";
     if (!form.servico.trim()) return "Serviço inválido.";
+    return "";
+  }
+
+  function validateAgendar() {
+    const base = validateBase();
+    if (base) return base;
     if (!form.data) return "Selecione a data.";
     if (!form.horario) return "Selecione o horário.";
     return "";
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const gotoSolicitar = () => {
+    if (!servicoNome) {
+      toast.error("Serviço inválido na URL.", { position: "top-center", autoClose: 2500, theme: "colored" });
+      return;
+    }
+    router.push(`/servicos/solicitar?servico=${encodeURIComponent(servicoNome)}`);
+  };
+
+  const handleAgendar = async (e: React.FormEvent) => {
     e.preventDefault();
-    const err = validate();
+
+    const err = validateAgendar();
     if (err) {
       toast.error(err, { position: "top-center", autoClose: 3000, theme: "colored" });
       return;
@@ -277,15 +296,14 @@ export default function AgendaClient() {
           theme: "colored",
         });
 
-        setForm({
-          nome: "",
-          telefone: "",
-          endereco: "",
-          servico: servicoNome,
+        setForm((p) => ({
+          ...p,
           data: todayISO(),
           horario: "",
           observacoes: "",
-        });
+        }));
+        setOpenAgendar(false);
+        setMode("imediato");
       } else {
         console.error("API error:", result);
         toast.error("❌ Erro ao salvar agendamento. Tente novamente.", {
@@ -306,233 +324,235 @@ export default function AgendaClient() {
     }
   };
 
-  const gotoSolicitar = () => {
-    if (!servicoNome) {
-      toast.error("Serviço inválido na URL.", { position: "top-center", autoClose: 2500, theme: "colored" });
-      return;
-    }
-    router.push(`/servicos/solicitar?servico=${encodeURIComponent(servicoNome)}`);
-  };
+  const resumoPreco = (
+    <div className="mt-3 rounded-2xl border bg-slate-50 p-3">
+      <div className="text-xs font-semibold text-slate-700">Valor estimado</div>
+
+      {loadingCatalogo ? (
+        <div className="mt-2 text-xs text-slate-500">Carregando valores…</div>
+      ) : catalogo ? (
+        <div className="mt-2 space-y-1 text-sm">
+          <div className="flex justify-between">
+            <span className="text-slate-600">Serviço</span>
+            <span className="font-semibold">{`R$ ${precoServico.toFixed(2).replace(".", ",")}`}</span>
+          </div>
+          <div className="flex justify-between">
+            <span className="text-slate-600">Locomoção (ida/volta)</span>
+            <span className="font-semibold">{`R$ ${taxaLocomocao.toFixed(2).replace(".", ",")}`}</span>
+          </div>
+          <div className="mt-2 flex justify-between border-t pt-2">
+            <span className="text-slate-700">Total</span>
+            <span className="text-slate-900 font-bold">{`R$ ${total.toFixed(2).replace(".", ",")}`}</span>
+          </div>
+          <div className="mt-1 text-[11px] text-slate-500">* Valores do catálogo (se cadastrado).</div>
+        </div>
+      ) : (
+        <div className="mt-2 text-xs text-slate-500">Sem valores no catálogo para esse serviço.</div>
+      )}
+    </div>
+  );
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
       <div className="sticky top-0 z-30 border-b bg-white/80 backdrop-blur">
-        <div className="mx-auto flex max-w-6xl items-center justify-between px-4 py-3">
+        <div className="mx-auto flex max-w-3xl items-center justify-between px-4 py-3">
           <div className="text-sm font-semibold tracking-tight text-slate-900">IA Drogarias</div>
-          <div className="text-xs text-slate-500">Agendamento de Serviços</div>
+          <div className="text-xs text-slate-500">Solicitação de Serviços</div>
         </div>
       </div>
 
-      <div className="mx-auto grid max-w-6xl gap-6 px-4 py-8 lg:grid-cols-[1.3fr_0.7fr]">
+      <div className="mx-auto max-w-3xl px-4 py-8">
         <div className="rounded-2xl border bg-white p-5 shadow-sm">
-          <div className="mb-4">
-            <h1 className="text-xl font-bold text-slate-900">Agendar atendimento</h1>
-            <p className="mt-1 text-sm text-slate-600">Preencha os dados e escolha o melhor horário. Confirmação via WhatsApp.</p>
+          <div className="flex flex-col gap-1">
+            <h1 className="text-xl font-bold text-slate-900">{servicoNome || "Serviço"}</h1>
+            <p className="text-sm text-slate-600">
+              Escolha <b>Solicitar agora</b> (mais rápido) ou, se preferir, agende um horário.
+            </p>
           </div>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div>
-                <label className="text-xs font-semibold text-slate-700">Seu nome</label>
-                <input
-                  name="nome"
-                  type="text"
-                  placeholder="Nome completo"
-                  value={form.nome}
-                  onChange={handleChange}
-                  className="mt-1 w-full rounded-2xl border px-3 py-3 text-sm outline-none focus:border-slate-900"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-slate-700">WhatsApp</label>
-                <input
-                  name="telefone"
-                  type="text"
-                  placeholder="(11) 99999-9999"
-                  value={form.telefone}
-                  onChange={handleChange}
-                  className="mt-1 w-full rounded-2xl border px-3 py-3 text-sm outline-none focus:border-slate-900"
-                  required
-                />
-                <div className="mt-1 text-xs text-slate-500">Digite com DDD.</div>
-              </div>
-            </div>
-
+          {/* CAMPOS BASE (para ambos) */}
+          <div className="mt-5 grid gap-3 sm:grid-cols-2">
             <div>
-              <label className="text-xs font-semibold text-slate-700">Endereço (se for atendimento domiciliar)</label>
+              <label className="text-xs font-semibold text-slate-700">Seu nome</label>
               <input
-                name="endereco"
+                name="nome"
                 type="text"
-                placeholder="Rua, número, bairro, complemento"
-                value={form.endereco}
+                placeholder="Nome completo"
+                value={form.nome}
                 onChange={handleChange}
                 className="mt-1 w-full rounded-2xl border px-3 py-3 text-sm outline-none focus:border-slate-900"
               />
             </div>
 
             <div>
-              <label className="text-xs font-semibold text-slate-700">Serviço</label>
+              <label className="text-xs font-semibold text-slate-700">WhatsApp</label>
               <input
-                name="servico"
+                name="telefone"
                 type="text"
-                value={form.servico}
+                placeholder="(11) 99999-9999"
+                value={form.telefone}
                 onChange={handleChange}
-                className="mt-1 w-full rounded-2xl border bg-slate-100 px-3 py-3 text-sm text-slate-700"
-                readOnly
+                className="mt-1 w-full rounded-2xl border px-3 py-3 text-sm outline-none focus:border-slate-900"
               />
-              {!servicoNome ? (
-                <div className="mt-1 text-xs text-rose-600">
-                  Atenção: nenhum serviço veio na URL. Ex.: <b>?servico=Aferição%20de%20Pressão%20Arterial</b>
+              <div className="mt-1 text-xs text-slate-500">Digite com DDD.</div>
+            </div>
+          </div>
+
+          <div className="mt-3">
+            <label className="text-xs font-semibold text-slate-700">Endereço (se for atendimento domiciliar)</label>
+            <input
+              name="endereco"
+              type="text"
+              placeholder="Rua, número, bairro, complemento"
+              value={form.endereco}
+              onChange={handleChange}
+              className="mt-1 w-full rounded-2xl border px-3 py-3 text-sm outline-none focus:border-slate-900"
+            />
+          </div>
+
+          <div className="mt-3">
+            <label className="text-xs font-semibold text-slate-700">Observações</label>
+            <input
+              name="observacoes"
+              type="text"
+              placeholder="Ex.: preferência de horário, ponto de referência..."
+              value={form.observacoes}
+              onChange={handleChange}
+              className="mt-1 w-full rounded-2xl border px-3 py-3 text-sm outline-none focus:border-slate-900"
+            />
+          </div>
+
+          {!servicoNome ? (
+            <div className="mt-3 rounded-2xl border border-rose-200 bg-rose-50 p-3 text-xs text-rose-700">
+              Atenção: nenhum serviço veio na URL. Ex.: <b>?servico=Aferição%20de%20Pressão%20Arterial</b>
+            </div>
+          ) : null}
+
+          {/* PRINCIPAL: SOLICITAR AGORA */}
+          <div className="mt-5 rounded-2xl border bg-white p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <div className="text-sm font-semibold text-slate-900">Primeira opção</div>
+                <div className="mt-1 text-xs text-slate-600">
+                  Atendimento o quanto antes. A central/profissional confirma com você pelo WhatsApp.
                 </div>
-              ) : null}
+              </div>
+
+              <span className="rounded-full bg-emerald-50 px-3 py-1 text-xs font-semibold text-emerald-700">
+                Recomendado
+              </span>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div>
-                <label className="text-xs font-semibold text-slate-700">Data</label>
-                <input
-                  name="data"
-                  type="date"
-                  value={form.data}
-                  onChange={handleChange}
-                  className="mt-1 w-full rounded-2xl border px-3 py-3 text-sm outline-none focus:border-slate-900"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="text-xs font-semibold text-slate-700">Horário</label>
-                <input
-                  name="horario"
-                  type="time"
-                  value={form.horario}
-                  onChange={handleChange}
-                  className="mt-1 w-full rounded-2xl border px-3 py-3 text-sm outline-none focus:border-slate-900"
-                  required
-                />
-              </div>
-            </div>
-
-            <div className="rounded-2xl border bg-slate-50 p-3">
-              <div className="mb-2 text-xs font-semibold text-slate-700">Sugestões de horário</div>
-              <div className="grid gap-2 sm:grid-cols-6">
-                {slots.map((h) => {
-                  const active = form.horario === h;
-                  return (
-                    <button
-                      type="button"
-                      key={h}
-                      onClick={() => setForm((p) => ({ ...p, horario: h }))}
-                      className={[
-                        "rounded-xl border px-3 py-2 text-sm font-semibold transition",
-                        active ? "border-slate-900 bg-white" : "bg-white hover:bg-slate-100",
-                      ].join(" ")}
-                    >
-                      {h}
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="mt-2 text-xs text-slate-500">Você pode usar os botões ou digitar no campo “Horário”.</div>
-            </div>
-
-            <div>
-              <label className="text-xs font-semibold text-slate-700">Observações</label>
-              <textarea
-                name="observacoes"
-                placeholder="Ex.: preferir tarde, ponto de referência, detalhes do pedido..."
-                value={form.observacoes}
-                onChange={handleChange}
-                className="mt-1 min-h-[90px] w-full rounded-2xl border px-3 py-3 text-sm outline-none focus:border-slate-900"
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={sending}
-              className={[
-                "w-full rounded-2xl px-4 py-3 text-sm font-semibold text-white transition",
-                sending ? "bg-slate-400 cursor-not-allowed" : "bg-slate-900 hover:opacity-95",
-              ].join(" ")}
-            >
-              {sending ? "Enviando..." : "Confirmar Agendamento"}
-            </button>
-
-            <div className="text-center text-xs text-slate-500">IA Drogarias • intermediação entre paciente e profissionais</div>
-          </form>
-        </div>
-
-        <aside className="lg:sticky lg:top-20">
-          <div className="rounded-2xl border bg-white p-5 shadow-sm">
-            <div className="text-sm font-semibold text-slate-900">Resumo do agendamento</div>
-
-            <div className="mt-3 space-y-2 text-sm">
-              <div className="flex items-center justify-between">
-                <span className="text-slate-500">Serviço</span>
-                <span className="font-semibold text-slate-900">{form.servico || "—"}</span>
-              </div>
-
-              <div className="mt-3 rounded-2xl border bg-slate-50 p-3">
-                <div className="text-xs font-semibold text-slate-700">Valor estimado</div>
-
-                {loadingCatalogo ? (
-                  <div className="mt-2 text-xs text-slate-500">Carregando valores…</div>
-                ) : catalogo ? (
-                  <div className="mt-2 space-y-1 text-sm">
-                    <div className="flex justify-between">
-                      <span className="text-slate-600">Serviço</span>
-                      <span className="font-semibold">{`R$ ${precoServico.toFixed(2).replace(".", ",")}`}</span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-600">Locomoção (ida/volta)</span>
-                      <span className="font-semibold">{`R$ ${taxaLocomocao.toFixed(2).replace(".", ",")}`}</span>
-                    </div>
-                    <div className="mt-2 flex justify-between border-t pt-2">
-                      <span className="text-slate-700">Total</span>
-                      <span className="text-slate-900 font-bold">{`R$ ${total.toFixed(2).replace(".", ",")}`}</span>
-                    </div>
-                    <div className="mt-1 text-[11px] text-slate-500">
-                      * Valores do catálogo (se cadastrado).
-                    </div>
-                  </div>
-                ) : (
-                  <div className="mt-2 text-xs text-slate-500">Sem valores no catálogo para esse serviço.</div>
-                )}
-              </div>
-
-              <div className="flex items-center justify-between">
-                <span className="text-slate-500">Data</span>
-                <span className="font-semibold text-slate-900">{form.data || "—"}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-slate-500">Horário</span>
-                <span className="font-semibold text-slate-900">{form.horario || "—"}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-slate-500">Cliente</span>
-                <span className="font-semibold text-slate-900">{form.nome || "—"}</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-slate-500">WhatsApp</span>
-                <span className="font-semibold text-slate-900">{onlyDigits(form.telefone) ? onlyDigits(form.telefone) : "—"}</span>
-              </div>
-            </div>
+            {resumoPreco}
 
             <button
               type="button"
-              onClick={gotoSolicitar}
+              onClick={() => {
+                const baseErr = validateBase();
+                if (baseErr) {
+                  toast.error(baseErr, { position: "top-center", autoClose: 3000, theme: "colored" });
+                  return;
+                }
+                setMode("imediato");
+                gotoSolicitar();
+              }}
               className="mt-4 w-full rounded-2xl bg-emerald-600 px-4 py-3 text-sm font-semibold text-white hover:opacity-95"
             >
               Solicitar agora
             </button>
 
-            <div className="mt-4 rounded-2xl bg-slate-50 p-3 text-xs text-slate-600">
-              Depois de enviar, o profissional/central confirma com você pelo WhatsApp.
+            <div className="mt-3 text-center text-[11px] text-slate-500">
+              IA Drogarias • intermediação entre paciente e profissionais
             </div>
           </div>
-        </aside>
+
+          {/* SECUNDÁRIO: AGENDAR (DISCRETO / COLAPSÁVEL) */}
+          <div className="mt-4 rounded-2xl border bg-slate-50 p-4">
+            <button
+              type="button"
+              onClick={() => {
+                setMode("agendar");
+                setOpenAgendar((v) => !v);
+              }}
+              className="flex w-full items-center justify-between gap-3 rounded-xl bg-white px-4 py-3 text-left text-sm font-semibold text-slate-900 shadow-sm"
+            >
+              <span>Agendar por hora marcada (opcional)</span>
+              <span className="text-xs font-semibold text-slate-500">{openAgendar ? "Fechar" : "Abrir"}</span>
+            </button>
+
+            {openAgendar ? (
+              <form onSubmit={handleAgendar} className="mt-4 space-y-3">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="text-xs font-semibold text-slate-700">Data</label>
+                    <input
+                      name="data"
+                      type="date"
+                      value={form.data}
+                      onChange={handleChange}
+                      className="mt-1 w-full rounded-2xl border px-3 py-3 text-sm outline-none focus:border-slate-900"
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="text-xs font-semibold text-slate-700">Horário</label>
+                    <input
+                      name="horario"
+                      type="time"
+                      value={form.horario}
+                      onChange={handleChange}
+                      className="mt-1 w-full rounded-2xl border px-3 py-3 text-sm outline-none focus:border-slate-900"
+                      required
+                    />
+                  </div>
+                </div>
+
+                <div className="rounded-2xl border bg-white p-3">
+                  <div className="mb-2 text-xs font-semibold text-slate-700">Sugestões de horário</div>
+                  <div className="grid gap-2 sm:grid-cols-6">
+                    {slots.map((h) => {
+                      const active = form.horario === h;
+                      return (
+                        <button
+                          type="button"
+                          key={h}
+                          onClick={() => setForm((p) => ({ ...p, horario: h }))}
+                          className={[
+                            "rounded-xl border px-3 py-2 text-sm font-semibold transition",
+                            active ? "border-slate-900 bg-white" : "bg-white hover:bg-slate-100",
+                          ].join(" ")}
+                        >
+                          {h}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <div className="mt-2 text-xs text-slate-500">Você pode usar os botões ou digitar no campo “Horário”.</div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={sending}
+                  className={[
+                    "w-full rounded-2xl px-4 py-3 text-sm font-semibold text-white transition",
+                    sending ? "bg-slate-400 cursor-not-allowed" : "bg-slate-900 hover:opacity-95",
+                  ].join(" ")}
+                >
+                  {sending ? "Enviando..." : "Confirmar Agendamento"}
+                </button>
+
+                <div className="text-xs text-slate-600">
+                  Depois de enviar, o profissional/central confirma com você pelo WhatsApp.
+                </div>
+              </form>
+            ) : (
+              <div className="mt-3 text-xs text-slate-600">
+                Quer escolher um horário específico? Clique em <b>Abrir</b> para agendar.
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       <ToastContainer />
