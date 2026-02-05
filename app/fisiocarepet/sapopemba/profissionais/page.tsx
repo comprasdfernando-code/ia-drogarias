@@ -68,13 +68,13 @@ export default function ProfissionaisPage() {
 
           <div className="flex gap-2">
             <Link
-              href="/fisiocaresapopemba"
+              href="/fisiocarepet/sapopemba"
               className="rounded-xl border border-slate-200 bg-white px-4 py-2 text-sm font-semibold hover:bg-slate-100"
             >
               ← Voltar
             </Link>
             <Link
-              href="/fisiocaresapopemba/recebiveis"
+              href="/fisiocarepet/sapopemba/recebiveis"
               className="rounded-xl bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
             >
               Recebíveis →
