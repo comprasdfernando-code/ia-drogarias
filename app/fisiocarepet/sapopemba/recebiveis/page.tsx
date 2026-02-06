@@ -69,7 +69,10 @@ export default function RecebiveisPage() {
   const [servico, setServico] = useState("");
   const [paciente, setPaciente] = useState("");
   const [tutor, setTutor] = useState("");
-  const [forma, setForma] = useState("PIX");
+
+  // ✅ importante: valores precisam bater com o trigger (pix/dinheiro/credito_avista/...)
+  const [forma, setForma] = useState("pix");
+
   const [valor, setValor] = useState("");
 
   async function loadProfs() {
@@ -176,10 +179,11 @@ export default function RecebiveisPage() {
         servico: servico.trim() || null,
         paciente: paciente.trim() || null,
         tutor: tutor.trim() || null,
-        forma_pagamento: forma,
+        forma_pagamento: forma, // ✅ valores do select batendo no trigger
         valor_bruto: bruto,
 
-        // ✅ 6% em tudo + 28% comissão + 2,79% cartão (trigger decide se aplica)
+        // ✅ imposto sempre 6% + comissão 28%
+        // taxa_cartao_rate fica no registro, trigger decide aplicar conforme forma
         imposto_rate: 0.06,
         comissao_rate: 0.28,
         taxa_cartao_rate: 0.0279,
@@ -194,7 +198,7 @@ export default function RecebiveisPage() {
     setPaciente("");
     setTutor("");
     setValor("");
-    setForma("PIX");
+    setForma("pix"); // ✅ reset correto
     loadRows();
   }
 
@@ -214,8 +218,7 @@ export default function RecebiveisPage() {
     const { error } = await supabase.from("fisio_recebiveis").update({ status }).eq("id", id);
     if (error) return alert(error.message);
 
-    // Não recalculo aqui, pq o trigger recalcula no banco.
-    // Recarrega pra trazer comissao zerada quando cancelado.
+    // Recarrega pra trazer comissão zerada quando cancelado (trigger)
     await loadRows();
   }
 
@@ -228,7 +231,7 @@ export default function RecebiveisPage() {
               Recebíveis • Comissão Automática
             </h1>
             <p className="mt-1 text-sm text-slate-600">
-              Cartão: -2,79% → imposto -6% (em tudo) → comissão 28% (a pagar). Cancelado = comissão zerada.
+              Desconto conforme forma → imposto 6% (em tudo) → comissão 28% (a pagar). Cancelado = comissão zerada.
             </p>
           </div>
 
@@ -316,11 +319,12 @@ export default function RecebiveisPage() {
                 onChange={(e) => setForma(e.target.value)}
                 className="mt-1 w-full rounded-xl border border-slate-200 px-3 py-2 text-sm"
               >
-                <option>PIX</option>
-                <option>Cartão</option>
-                <option>Dinheiro</option>
-                <option>Transferência</option>
-                <option>Outro</option>
+                <option value="dinheiro">Dinheiro (sem taxa)</option>
+                <option value="pix">PIX (sem taxa)</option>
+                <option value="credito_avista">Crédito à vista (2,89%)</option>
+                <option value="credito_parcelado">Crédito parcelado até 12x (10,12%)</option>
+                <option value="convenio">Convênio (50%)</option>
+                <option value="parcerias">Parcerias (20%)</option>
               </select>
             </div>
 
@@ -465,7 +469,7 @@ export default function RecebiveisPage() {
                   <th className="px-4 py-3">Serviço</th>
                   <th className="px-4 py-3">Forma</th>
                   <th className="px-4 py-3 text-right">Bruto</th>
-                  <th className="px-4 py-3 text-right">Taxa cartão</th>
+                  <th className="px-4 py-3 text-right">Taxa/Desconto</th>
                   <th className="px-4 py-3 text-right">Imposto</th>
                   <th className="px-4 py-3 text-right">Comissão (pagar)</th>
                   <th className="px-4 py-3 text-right">Líquido Clínica</th>
