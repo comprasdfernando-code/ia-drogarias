@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   ShieldCheck,
@@ -22,15 +22,23 @@ import {
   PhoneCall,
 } from "lucide-react";
 
-type Categoria = "Clínicos" | "Atenção Farmacêutica" | "Imunização" | "Bem-estar" | "Estética";
+import { supabase } from "@/lib/supabaseClient";
+
+type Categoria =
+  | "Clínicos"
+  | "Atenção Farmacêutica"
+  | "Imunização"
+  | "Bem-estar"
+  | "Estética";
 
 type Servico = {
+  id: string;
   nome: string;
   slug: string;
   desc: string;
   categoria: Categoria;
   duracao: string;
-  preco?: string; // opcional
+  preco?: string; // total exibido
   destaque?: boolean;
   icon: React.ElementType;
   tags?: string[];
@@ -38,113 +46,6 @@ type Servico = {
 
 const WHATSAPP = "5511948343725"; // ajuste se quiser
 const BRAND = "IA Drogarias — Saúde com Inteligência";
-
-const SERVICOS: Servico[] = [
-  // Clínicos
-  {
-    nome: "Aferição de Pressão Arterial",
-    slug: "pressao",
-    desc: "Medição rápida com orientação de leitura e cuidados no dia a dia.",
-    categoria: "Clínicos",
-    duracao: "10–15 min",
-    icon: HeartPulse,
-    tags: ["hipertensão", "monitoramento", "check-up"],
-    destaque: true,
-  },
-  {
-    nome: "Medição de Glicemia",
-    slug: "glicemia",
-    desc: "Teste capilar com orientação e registro para acompanhamento.",
-    categoria: "Clínicos",
-    duracao: "10–15 min",
-    icon: ScanLine,
-    tags: ["diabetes", "controle", "glicose"],
-    destaque: true,
-  },
-
-  // Atenção Farmacêutica
-  {
-    nome: "Revisão de Medicamentos",
-    slug: "revisao",
-    desc: "Análise do seu uso de medicamentos para segurança, organização e adesão.",
-    categoria: "Atenção Farmacêutica",
-    duracao: "30–45 min",
-    icon: Pill,
-    tags: ["interações", "organização", "uso correto"],
-    destaque: true,
-  },
-  {
-    nome: "Consulta Farmacêutica",
-    slug: "consulta",
-    desc: "Atendimento individual com plano de cuidado e acompanhamento.",
-    categoria: "Atenção Farmacêutica",
-    duracao: "30–60 min",
-    icon: Stethoscope,
-    tags: ["orientação", "acompanhamento", "cuidado"],
-    destaque: true,
-  },
-
-  // Imunização
-  {
-    nome: "Aplicação de Vacinas",
-    slug: "vacinas",
-    desc: "Aplicação com segurança, acolhimento e registro do atendimento.",
-    categoria: "Imunização",
-    duracao: "20–30 min",
-    icon: Syringe,
-    tags: ["vacinação", "segurança", "registro"],
-  },
-
-  // Bem-estar
-  {
-    nome: "Consultoria em Fitoterápicos",
-    slug: "fitos",
-    desc: "Orientação responsável sobre uso seguro de plantas e fitoterápicos.",
-    categoria: "Bem-estar",
-    duracao: "20–30 min",
-    icon: Leaf,
-    tags: ["fitoterapia", "segurança", "orientação"],
-  },
-
-  // Estética
-  {
-    nome: "Limpeza de Pele",
-    slug: "limpeza-pele",
-    desc: "Higienização profunda, remoção de impurezas e sensação de pele renovada.",
-    categoria: "Estética",
-    duracao: "45–60 min",
-    icon: Droplets,
-    tags: ["pele", "cuidados", "renovação"],
-    destaque: true,
-  },
-  {
-    nome: "Peeling Químico",
-    slug: "peeling",
-    desc: "Ajuda a melhorar textura e viço da pele, com avaliação prévia.",
-    categoria: "Estética",
-    duracao: "30–45 min",
-    icon: Sparkles,
-    tags: ["textura", "manchas", "viço"],
-  },
-  {
-    nome: "Microagulhamento",
-    slug: "microagulhamento",
-    desc: "Estimula colágeno e auxilia na melhora do aspecto da pele.",
-    categoria: "Estética",
-    duracao: "45–60 min",
-    icon: Dna,
-    tags: ["colágeno", "pele", "cuidado"],
-  },
-  {
-    nome: "Aplicação de Enzimas",
-    slug: "enzimas",
-    desc: "Procedimento estético com avaliação e orientação profissional.",
-    categoria: "Estética",
-    duracao: "30–45 min",
-    icon: Waves,
-    tags: ["estética", "avaliação", "cuidado"],
-  },
-];
 
 const CATEGORIAS: { key: Categoria | "Todos"; label: string; icon: React.ElementType }[] = [
   { key: "Todos", label: "Todos", icon: ShieldCheck },
@@ -163,24 +64,164 @@ function AgendaLink({ nome }: { nome: string }) {
   return `/servicos/agenda?servico=${encodeURIComponent(nome)}`;
 }
 
+function brl(v: number) {
+  return (Number(v || 0)).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+function slugify(s: string) {
+  return (s || "")
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+}
+
+function guessCategoria(nome: string): Categoria {
+  const n = (nome || "").toLowerCase();
+
+  if (n.includes("vacina") || n.includes("imun")) return "Imunização";
+
+  if (
+    n.includes("limpeza") ||
+    n.includes("peeling") ||
+    n.includes("microagul") ||
+    n.includes("enzima") ||
+    n.includes("estét")
+  ) return "Estética";
+
+  if (n.includes("consulta") || n.includes("revis") || n.includes("medicament"))
+    return "Atenção Farmacêutica";
+
+  if (n.includes("fitoter") || n.includes("orelha") || n.includes("lóbulo") || n.includes("lobulo"))
+    return "Bem-estar";
+
+  return "Clínicos";
+}
+
+function guessDuracao(nome: string): string {
+  const n = (nome || "").toLowerCase();
+
+  if (n.includes("pressão") || n.includes("glic")) return "10–15 min";
+  if (n.includes("vacina") || n.includes("inje")) return "20–30 min";
+  if (n.includes("consulta")) return "30–60 min";
+  if (n.includes("revis")) return "30–45 min";
+
+  if (n.includes("limpeza")) return "45–60 min";
+  if (n.includes("peeling")) return "30–45 min";
+  if (n.includes("microagul")) return "45–60 min";
+  if (n.includes("enzima")) return "30–45 min";
+
+  if (n.includes("fitoter")) return "20–30 min";
+  if (n.includes("orelha") || n.includes("lóbulo") || n.includes("lobulo")) return "10–20 min";
+
+  return "—";
+}
+
+function guessIcon(nome: string) {
+  const n = (nome || "").toLowerCase();
+  if (n.includes("pressão")) return HeartPulse;
+  if (n.includes("glic")) return ScanLine;
+  if (n.includes("vacina")) return Syringe;
+  if (n.includes("inje")) return Syringe;
+  if (n.includes("consulta")) return Stethoscope;
+  if (n.includes("revis") || n.includes("medicament")) return Pill;
+  if (n.includes("fitoter")) return Leaf;
+  if (n.includes("limpeza")) return Droplets;
+  if (n.includes("peeling")) return Sparkles;
+  if (n.includes("microagul")) return Dna;
+  if (n.includes("enzima")) return Waves;
+  return ShieldCheck;
+}
+
 export default function ServicosPage() {
   const [q, setQ] = useState("");
   const [cat, setCat] = useState<Categoria | "Todos">("Todos");
   const [onlyFeatured, setOnlyFeatured] = useState(false);
   const [openFaq, setOpenFaq] = useState<number | null>(0);
 
+  const [loading, setLoading] = useState(true);
+  const [servicos, setServicos] = useState<Servico[]>([]);
+  const [erro, setErro] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+
+    async function load() {
+      setLoading(true);
+      setErro(null);
+
+      const { data, error } = await supabase
+        .from("servicos_catalogo")
+        .select("id, nome, descricao, preco_servico, taxa_locomocao, ativo")
+        .eq("ativo", true)
+        .order("nome", { ascending: true });
+
+      if (!alive) return;
+
+      if (error) {
+        setErro(error.message);
+        setServicos([]);
+        setLoading(false);
+        return;
+      }
+
+      const mapped: Servico[] = (data || []).map((r: any) => {
+        const nome = String(r.nome || "");
+        const precoServico = Number(r.preco_servico || 0);
+        const taxa = Number(r.taxa_locomocao || 0);
+        const total = precoServico + taxa;
+
+        const categoria = guessCategoria(nome);
+
+        return {
+          id: String(r.id),
+          nome,
+          slug: slugify(nome),
+          desc:
+            (r.descricao && String(r.descricao).trim()) ||
+            "Atendimento com orientação profissional e registro quando aplicável.",
+          categoria,
+          duracao: guessDuracao(nome),
+          preco: brl(total),
+          destaque: false,
+          icon: guessIcon(nome),
+          tags: [],
+        };
+      });
+
+      // ✅ Destaques automáticos: pega 4 mais “fortes” por categoria/uso
+      // (se depois você criar coluna destaque no banco, eu ajusto pra respeitar)
+      const autoFeaturedNames = new Set([
+        "Aferição de Pressão Arterial",
+        "Medição de Glicemia",
+        "Revisão de Medicamentos",
+        "Consulta Farmacêutica",
+      ]);
+      const final = mapped.map((s) => ({ ...s, destaque: autoFeaturedNames.has(s.nome) }));
+
+      setServicos(final);
+      setLoading(false);
+    }
+
+    load();
+    return () => {
+      alive = false;
+    };
+  }, []);
+
   const filtrados = useMemo(() => {
     const query = q.trim().toLowerCase();
-    return SERVICOS.filter((s) => {
+    return servicos.filter((s) => {
       const matchCat = cat === "Todos" ? true : s.categoria === cat;
       const matchFeatured = onlyFeatured ? !!s.destaque : true;
       const haystack = `${s.nome} ${s.desc} ${s.categoria} ${(s.tags || []).join(" ")}`.toLowerCase();
       const matchQ = query ? haystack.includes(query) : true;
       return matchCat && matchFeatured && matchQ;
     });
-  }, [q, cat, onlyFeatured]);
+  }, [q, cat, onlyFeatured, servicos]);
 
-  const destaques = useMemo(() => SERVICOS.filter((s) => s.destaque).slice(0, 4), []);
+  const destaques = useMemo(() => servicos.filter((s) => s.destaque).slice(0, 4), [servicos]);
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-slate-50 via-white to-slate-50">
@@ -228,6 +269,14 @@ export default function ServicosPage() {
                   Do check-up rápido à atenção farmacêutica completa — com organização, acolhimento
                   e uma experiência de agendamento simples.
                 </p>
+
+                <div className="mt-3 text-sm text-slate-500">
+                  {loading
+                    ? "Carregando catálogo…"
+                    : erro
+                    ? `Erro ao carregar catálogo: ${erro}`
+                    : `Catálogo carregado: ${servicos.length} serviço(s).`}
+                </div>
 
                 {/* Busca */}
                 <div className="mt-6 flex flex-col sm:flex-row gap-3">
@@ -287,11 +336,11 @@ export default function ServicosPage() {
                   </div>
 
                   <div className="mt-4 grid gap-3">
-                    {destaques.map((s) => {
+                    {(destaques.length ? destaques : filtrados.slice(0, 4)).map((s) => {
                       const Icon = s.icon;
                       return (
                         <Link
-                          key={s.slug}
+                          key={s.id}
                           href={AgendaLink({ nome: s.nome })}
                           className="group rounded-2xl border bg-white hover:bg-slate-50 transition p-4 flex items-center gap-3"
                         >
@@ -300,7 +349,9 @@ export default function ServicosPage() {
                           </div>
                           <div className="flex-1">
                             <div className="font-semibold text-slate-900">{s.nome}</div>
-                            <div className="text-xs text-slate-500">{s.duracao} • {s.categoria}</div>
+                            <div className="text-xs text-slate-500">
+                              {s.duracao} • {s.categoria} • <span className="font-bold">{s.preco}</span>
+                            </div>
                           </div>
                           <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-slate-700 transition" />
                         </Link>
@@ -350,7 +401,7 @@ export default function ServicosPage() {
           <div>
             <h2 className="text-2xl font-extrabold text-slate-900">Escolha seu serviço</h2>
             <p className="text-slate-600 mt-1">
-              {filtrados.length} serviço(s) encontrado(s) • clique para agendar
+              {loading ? "Carregando…" : `${filtrados.length} serviço(s) encontrado(s) • clique para agendar`}
             </p>
           </div>
 
@@ -368,7 +419,7 @@ export default function ServicosPage() {
               const Icon = s.icon;
               return (
                 <motion.div
-                  key={s.slug}
+                  key={s.id}
                   layout
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
@@ -400,23 +451,17 @@ export default function ServicosPage() {
                     <h3 className="mt-4 text-lg font-extrabold text-slate-900 leading-snug">
                       {s.nome}
                     </h3>
-                    <p className="mt-2 text-slate-600 text-sm leading-relaxed">
-                      {s.desc}
-                    </p>
+                    <p className="mt-2 text-slate-600 text-sm leading-relaxed">{s.desc}</p>
 
                     <div className="mt-4 flex flex-wrap gap-2">
                       <span className="inline-flex items-center gap-2 text-xs text-slate-700 bg-slate-50 border rounded-full px-3 py-2">
                         <Clock className="w-4 h-4 text-slate-500" />
                         {s.duracao}
                       </span>
-                      {(s.tags || []).slice(0, 2).map((t) => (
-                        <span
-                          key={t}
-                          className="text-xs text-slate-600 bg-white border rounded-full px-3 py-2"
-                        >
-                          #{t}
-                        </span>
-                      ))}
+
+                      <span className="inline-flex items-center gap-2 text-xs font-bold text-slate-900 bg-white border rounded-full px-3 py-2">
+                        Total: {s.preco || "—"}
+                      </span>
                     </div>
 
                     <div className="mt-auto pt-5 grid grid-cols-2 gap-3">
@@ -447,8 +492,7 @@ export default function ServicosPage() {
           </AnimatePresence>
         </div>
 
-        {/* vazio */}
-        {filtrados.length === 0 && (
+        {!loading && filtrados.length === 0 && (
           <div className="mt-10 rounded-3xl border bg-white p-8 text-center shadow-sm">
             <div className="text-lg font-extrabold text-slate-900">Nada por aqui 😅</div>
             <div className="text-slate-600 mt-1">
@@ -544,10 +588,7 @@ export default function ServicosPage() {
                   <div className="flex items-center justify-between gap-3">
                     <div className="font-extrabold text-slate-900">{item.q}</div>
                     <ChevronDown
-                      className={cx(
-                        "w-5 h-5 text-slate-500 transition",
-                        open && "rotate-180"
-                      )}
+                      className={cx("w-5 h-5 text-slate-500 transition", open && "rotate-180")}
                     />
                   </div>
 
@@ -560,9 +601,7 @@ export default function ServicosPage() {
                         transition={{ duration: 0.25 }}
                         className="overflow-hidden"
                       >
-                        <div className="mt-3 text-slate-600 text-sm leading-relaxed">
-                          {item.a}
-                        </div>
+                        <div className="mt-3 text-slate-600 text-sm leading-relaxed">{item.a}</div>
                       </motion.div>
                     )}
                   </AnimatePresence>
@@ -572,12 +611,10 @@ export default function ServicosPage() {
           </div>
         </div>
 
-        <p className="text-center text-slate-500 text-sm mt-10">
-          💙 {BRAND}
-        </p>
+        <p className="text-center text-slate-500 text-sm mt-10">💙 {BRAND}</p>
       </section>
 
-      {/* CTA FIXO (mobile/geral) */}
+      {/* CTA FIXO */}
       <div className="fixed bottom-4 left-0 right-0 z-50 px-4">
         <div className="max-w-6xl mx-auto">
           <div className="rounded-3xl border bg-white/85 backdrop-blur shadow-lg p-3 flex items-center justify-between gap-3">
