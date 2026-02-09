@@ -4,7 +4,7 @@ import VendasClient from "./VendasClient";
 
 export default function Page() {
   return (
-    <Suspense fallback={<div className="p-6">Carregando vendas…</div>}>
+    <Suspense fallback={<div className="p-6 text-sm text-slate-300">Carregando…</div>}>
       <VendasClient />
     </Suspense>
   );
