@@ -7,7 +7,7 @@ import ProdutoFormModal from "./components/ProdutoFormModal";
 import EstoqueAjusteModal from "./components/EstoqueAjusteModal";
 
 export default function ProdutosClient() {
-  const empresaId = "UUID_DA_EMPRESA"; // depois vem do contexto/login
+  const empresaId = "U264ceab9-6ba3-4b68-9bf7-30c5c01f15a6"; // depois vem do contexto/login
   const [lista, setLista] = useState<any[]>([]);
   const [edit, setEdit] = useState<any>(null);
   const [ajuste, setAjuste] = useState<any>(null);
