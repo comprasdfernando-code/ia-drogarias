@@ -15,11 +15,14 @@ export default function ProdutoSearch({
 
   async function buscar() {
     const { data } = await supabase
-      .from("ae_produtos")
-      .select("*")
-      .eq("empresa_id", empresaId)
-      .ilike("nome", `%${busca}%`)
-      .limit(10);
+  .from("ae_produtos")
+  .select("*")
+  .eq("empresa_id", empresaId)
+  .or(
+    `nome.ilike.%${busca}%,ean.eq.${busca},sku.eq.${busca}`
+  )
+  .limit(10);
+
 
     setResultados(data || []);
   }
