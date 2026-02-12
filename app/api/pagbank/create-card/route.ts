@@ -25,7 +25,9 @@ export async function POST(req: Request) {
   const body = await readBody(req);
 
   const token = process.env.PAGBANK_TOKEN || process.env.PAGBANK_BEARER_TOKEN;
-  if (!token) return json({ ok: false, error: "PAGBANK_TOKEN não configurado" }, { status: 500 });
+  if (!token) {
+    return json({ ok: false, error: "PAGBANK_TOKEN não configurado" }, { status: 500 });
+  }
 
   const order_id = String(body?.order_id || "");
   const cliente = body?.cliente || {};
@@ -35,28 +37,58 @@ export async function POST(req: Request) {
   const card = body?.card || {};
   const cpf = onlyDigits(String(cliente?.tax_id || ""));
 
-  if (!order_id) return json({ ok: false, error: "order_id obrigatório" }, { status: 400 });
-  if (cpf.length !== 11) return json({ ok: false, error: "CPF inválido" }, { status: 400 });
-  if (!items.length) return json({ ok: false, error: "items vazio" }, { status: 400 });
-  if (!total_centavos || total_centavos <= 0) return json({ ok: false, error: "total inválido" }, { status: 400 });
+  if (!order_id)
+    return json({ ok: false, error: "order_id obrigatório" }, { status: 400 });
 
-  // ⚠️ Em produção: trocar isso por "encrypted" vindo do SDK PagBank
+  if (cpf.length !== 11)
+    return json({ ok: false, error: "CPF inválido" }, { status: 400 });
+
+  if (!items.length)
+    return json({ ok: false, error: "items vazio" }, { status: 400 });
+
+  if (!total_centavos || total_centavos <= 0)
+    return json({ ok: false, error: "total inválido" }, { status: 400 });
+
+  // =========================
+  // 📌 DADOS DO CARTÃO
+  // =========================
+
   const number = onlyDigits(String(card?.number || ""));
   const exp_month = onlyDigits(String(card?.exp_month || ""));
-  const exp_year = onlyDigits(String(card?.exp_year || ""));
+  const exp_year_raw = onlyDigits(String(card?.exp_year || ""));
   const security_code = onlyDigits(String(card?.security_code || ""));
   const holder_name = String(card?.holder_name || "").trim();
   const installments = Number(card?.installments || 1) || 1;
 
-  if (!holder_name) return json({ ok: false, error: "holder_name obrigatório" }, { status: 400 });
-  if (number.length < 13) return json({ ok: false, error: "card number inválido" }, { status: 400 });
-  if (exp_month.length !== 2) return json({ ok: false, error: "exp_month inválido" }, { status: 400 });
-  if (exp_year.length !== 2) return json({ ok: false, error: "exp_year inválido" }, { status: 400 });
-  if (security_code.length < 3) return json({ ok: false, error: "cvv inválido" }, { status: 400 });
+  // 🔥 CONVERSÃO DEFINITIVA DO ANO (sempre YYYY)
+  const exp_year =
+    exp_year_raw.length === 2
+      ? `20${exp_year_raw}`
+      : exp_year_raw;
 
-  // Montagem genérica de charge com cartão
-  // Obs: endpoints/estrutura exata podem variar conforme sua integração atual.
-  // Aqui o objetivo é: gerar tentativa real de cartão e retornar erro do PagBank claramente.
+  // =========================
+  // 📌 VALIDAÇÕES
+  // =========================
+
+  if (!holder_name)
+    return json({ ok: false, error: "holder_name obrigatório" }, { status: 400 });
+
+  if (number.length < 13)
+    return json({ ok: false, error: "card number inválido" }, { status: 400 });
+
+  if (exp_month.length !== 2 || Number(exp_month) < 1 || Number(exp_month) > 12)
+    return json({ ok: false, error: "exp_month inválido" }, { status: 400 });
+
+  if (exp_year.length !== 4)
+    return json({ ok: false, error: "exp_year deve ter 4 dígitos (YYYY)" }, { status: 400 });
+
+  if (security_code.length < 3)
+    return json({ ok: false, error: "cvv inválido" }, { status: 400 });
+
+  // =========================
+  // 📌 PAYLOAD PAGBANK
+  // =========================
+
   const payload = {
     reference_id: order_id,
     customer: {
@@ -64,7 +96,13 @@ export async function POST(req: Request) {
       email: String(cliente?.email || "cliente@iadrogarias.com"),
       tax_id: cpf,
       phones: cliente?.phone
-        ? [{ country: "55", area: String(cliente.phone).slice(0, 2), number: String(cliente.phone).slice(2) }]
+        ? [
+            {
+              country: "55",
+              area: String(cliente.phone).slice(0, 2),
+              number: String(cliente.phone).slice(2),
+            },
+          ]
         : undefined,
     },
     items: items.map((it: any) => ({
@@ -77,7 +115,10 @@ export async function POST(req: Request) {
       {
         reference_id: order_id,
         description: "Compra Farmácia Virtual",
-        amount: { value: total_centavos, currency: "BRL" },
+        amount: {
+          value: total_centavos,
+          currency: "BRL",
+        },
         payment_method: {
           type: "CREDIT_CARD",
           installments,
@@ -85,9 +126,11 @@ export async function POST(req: Request) {
           card: {
             number,
             exp_month,
-            exp_year,
+            exp_year, // 🔥 agora sempre YYYY
             security_code,
-            holder: { name: holder_name },
+            holder: {
+              name: holder_name,
+            },
           },
         },
       },
@@ -95,7 +138,6 @@ export async function POST(req: Request) {
   };
 
   try {
-    // 🔁 ATENÇÃO: ajuste a URL conforme seu ambiente (sandbox/prod)
     const base = process.env.PAGBANK_API_BASE || "https://api.pagseguro.com";
     const url = `${base}/orders`;
 
@@ -110,6 +152,7 @@ export async function POST(req: Request) {
 
     const txt = await r.text();
     let j: any = null;
+
     try {
       j = JSON.parse(txt);
     } catch {}
@@ -121,7 +164,6 @@ export async function POST(req: Request) {
           error: "PagBank recusou",
           status: r.status,
           detalhe: j ?? { raw: txt?.slice(0, 2000) },
-
         },
         { status: 400 }
       );
@@ -129,6 +171,13 @@ export async function POST(req: Request) {
 
     return json({ ok: true, data: j });
   } catch (e: any) {
-    return json({ ok: false, error: "Falha de rede", detalhe: String(e?.message || e) }, { status: 500 });
+    return json(
+      {
+        ok: false,
+        error: "Falha de rede",
+        detalhe: String(e?.message || e),
+      },
+      { status: 500 }
+    );
   }
 }
