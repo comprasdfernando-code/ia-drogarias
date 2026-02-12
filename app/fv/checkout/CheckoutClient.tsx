@@ -4,35 +4,32 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import PagbankPayment from "../_components/PagbankPayment";
 
+type Metodo = "pix" | "cartao";
+
 type VendaLike = {
   id?: string;
   status?: string | null;
 
-  // cliente
   cliente_nome?: string | null;
   cliente_email?: string | null;
   cliente_tax_id?: string | null;
   cliente_phone?: string | null;
 
-  // itens / total
   itens?: any[] | null;
   items?: any[] | null;
 
   total_centavos?: number | null;
-  total?: number | null; // pode vir em reais
+  total?: number | null;
   subtotal?: number | null;
 
-  // entrega (fallback/session)
   entrega?: {
-    taxa?: number | null; // reais
+    taxa?: number | null;
     tipo_entrega?: string | null;
   } | null;
 
-  // ids extras (se vier)
   pedido_id?: string | null;
   grupo_id?: string | null;
 
-  // pagbank
   pagbank_id?: string | null;
 };
 
@@ -41,12 +38,9 @@ function onlyDigits(s: string) {
 }
 
 function centsFromMaybe(v: any): number {
-  // converte para CENTAVOS
   if (v == null) return 0;
 
   if (typeof v === "number") {
-    // Se for inteiro grande, pode já ser centavos
-    // Se for decimal (ex: 13.99), é reais
     if (Number.isInteger(v) && v >= 1000) return Math.round(v);
     return Math.round(v * 100);
   }
@@ -54,12 +48,10 @@ function centsFromMaybe(v: any): number {
   const str = String(v).trim();
   if (!str) return 0;
 
-  // "13,99" -> 13.99
   const norm = str.replace(/\./g, "").replace(",", ".");
   const n = Number(norm);
   if (!Number.isFinite(n)) return 0;
 
-  // se veio "1399" como string e sem vírgula, pode ser centavos
   if (/^\d+$/.test(str) && n >= 1000) return Math.round(n);
 
   return Math.round(n * 100);
@@ -130,17 +122,16 @@ function extractItems(v: VendaLike | null) {
   return arr.map((i: any, idx: number) => {
     const qty = Number(pickFirst(i?.quantity, i?.qty, i?.qtd, 1)) || 1;
 
-    // unit_amount deve ser CENTAVOS
     const unitCents = centsFromMaybe(
       pickFirst(
-        i?.unit_amount,       // centavos (PagBank)
-        i?.preco_centavos,    // centavos
-        i?.unitAmount,        // centavos
-        i?.price_cents,       // centavos
-        i?.preco,             // reais
-        i?.price,             // reais
-        i?.valor_unitario,    // reais
-        i?.valor              // reais
+        i?.unit_amount,
+        i?.preco_centavos,
+        i?.unitAmount,
+        i?.price_cents,
+        i?.preco,
+        i?.price,
+        i?.valor_unitario,
+        i?.valor
       )
     );
 
@@ -165,17 +156,14 @@ function sumTotal(items: { unit_amount: number; quantity: number }[]) {
 
 function readSessionCheckout(orderId?: string) {
   try {
-    // prioridade: chave do order_id
     if (orderId) {
       const byOrder = sessionStorage.getItem(`fv_checkout_${orderId}`);
       if (byOrder) return JSON.parse(byOrder);
     }
 
-    // chave genérica antiga
     const direct = sessionStorage.getItem("fv_checkout");
     if (direct) return JSON.parse(direct);
 
-    // varre qualquer fv_checkout*
     for (let i = 0; i < sessionStorage.length; i++) {
       const k = sessionStorage.key(i) || "";
       if (k.startsWith("fv_checkout")) {
@@ -187,7 +175,6 @@ function readSessionCheckout(orderId?: string) {
   return null;
 }
 
-// ✅ ajuste para o storageKey real do teu CartProvider FV
 const CART_STORAGE_KEYS = [
   "cart_fv",
   "cart_farmacia_virtual",
@@ -212,6 +199,18 @@ export default function CheckoutClient() {
 
   const cpfQS = onlyDigits(sp.get("cpf") || "");
 
+  // ✅ método via query (?metodo=cartao)
+  const metodoQS = (sp.get("metodo") || "pix").toLowerCase();
+  const metodoInitial: Metodo = metodoQS === "cartao" ? "cartao" : "pix";
+  const [metodo, setMetodo] = useState<Metodo>(metodoInitial);
+
+  // se mudar query, reflete no state
+  useEffect(() => {
+    const m = (sp.get("metodo") || "pix").toLowerCase();
+    setMetodo(m === "cartao" ? "cartao" : "pix");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sp]);
+
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
   const [debugFonte, setDebugFonte] = useState<string | null>(null);
@@ -219,10 +218,8 @@ export default function CheckoutClient() {
   const [venda, setVenda] = useState<VendaLike | null>(null);
   const [cpf, setCpf] = useState<string>(cpfQS);
 
-  // ✅ status só pra exibir no topo (sem polling aqui)
   const [status, setStatus] = useState<string | null>(null);
 
-  // carregar venda/status (API -> fallback)
   useEffect(() => {
     let cancelled = false;
 
@@ -238,7 +235,6 @@ export default function CheckoutClient() {
           return;
         }
 
-        // 1) POST /api/pagbank/status
         if (orderId) {
           try {
             const r1 = await fetch("/api/pagbank/status", {
@@ -266,11 +262,8 @@ export default function CheckoutClient() {
               if (!cancelled && apiCpf.length === 11 && !cpfQS) setCpf(apiCpf);
               return;
             }
-          } catch {
-            // segue
-          }
+          } catch {}
 
-          // 2) GET /api/pagbank/status?...
           try {
             const url =
               `/api/pagbank/status?order_id=${encodeURIComponent(orderId)}` +
@@ -293,7 +286,6 @@ export default function CheckoutClient() {
               return;
             }
 
-            // HTML/erro -> mostra erro
             if (!r2.ok && !parsed2.ok) {
               const snippet = String(parsed2.raw || "").slice(0, 140);
               throw new Error(
@@ -309,7 +301,6 @@ export default function CheckoutClient() {
           }
         }
 
-        // 3) sessionStorage fallback
         const ss = readSessionCheckout(orderId);
         if (ss) {
           const v = extractVenda(ss) || (ss as VendaLike);
@@ -334,11 +325,9 @@ export default function CheckoutClient() {
           return;
         }
 
-        // nada funcionou
         if (!cancelled) {
           setVenda(null);
           setDebugFonte("sem_dados");
-          // não travar checkout: deixa seguir mesmo sem venda (PagbankPayment gera o PIX)
           setErr(null);
         }
       } finally {
@@ -354,14 +343,12 @@ export default function CheckoutClient() {
 
   const itemsBase = useMemo(() => extractItems(venda), [venda]);
 
-  // ✅ taxa (reais -> centavos)
   const taxaEntregaCents = useMemo(() => {
     const t = pickFirst((venda as any)?.entrega?.taxa, (venda as any)?.taxa_entrega, null);
     const cents = centsFromMaybe(t);
     return cents > 0 ? cents : 0;
   }, [venda]);
 
-  // ✅ inclui frete automaticamente como item
   const items = useMemo(() => {
     const arr = [...itemsBase];
     if (taxaEntregaCents > 0) {
@@ -378,7 +365,6 @@ export default function CheckoutClient() {
   const totalFromItems = useMemo(() => sumTotal(items), [items]);
 
   const totalCentavos = useMemo(() => {
-    // prioridade: items -> total_centavos -> total/subtotal
     if (totalFromItems > 0) return totalFromItems;
 
     const b = centsFromMaybe(venda?.total_centavos);
@@ -397,7 +383,9 @@ export default function CheckoutClient() {
     const baseCpf = onlyDigits(pickFirst(venda?.cliente_tax_id, cpfQS, cpf) || "");
     return {
       name: String(pickFirst(venda?.cliente_nome, "Cliente") || "Cliente"),
-      email: String(pickFirst(venda?.cliente_email, "cliente@iadrogarias.com") || "cliente@iadrogarias.com"),
+      email: String(
+        pickFirst(venda?.cliente_email, "cliente@iadrogarias.com") || "cliente@iadrogarias.com"
+      ),
       tax_id: baseCpf,
       phone: onlyDigits(String(pickFirst(venda?.cliente_phone, "") || "")),
     };
@@ -414,7 +402,6 @@ export default function CheckoutClient() {
   );
 
   async function confirmPaidBackend() {
-    // ✅ tenta avisar seu backend pra marcar pedido como pago
     try {
       await fetch("/api/fv/confirm-payment", {
         method: "POST",
@@ -438,9 +425,14 @@ export default function CheckoutClient() {
     router.replace("/fv?paid=1");
   }
 
+  function pushMetodo(next: Metodo) {
+    const params = new URLSearchParams(sp.toString());
+    params.set("metodo", next);
+    router.replace(`/fv/checkout?${params.toString()}`);
+  }
+
   if (loading) return <div className="p-6">Carregando…</div>;
 
-  // se o total zerar, trava (isso sim é erro de compra)
   if (totalCentavos <= 0 || items.length === 0) {
     return (
       <div className="mx-auto max-w-2xl p-4">
@@ -452,8 +444,8 @@ export default function CheckoutClient() {
             Seu pedido ficou com total zerado (R$ 0,00) ou sem itens válidos.
           </div>
           <div className="mt-2 text-sm text-red-700">
-            Volte ao carrinho e finalize novamente. Se persistir, me mande print do <code>sessionStorage</code> de{" "}
-            <code>fv_checkout*</code>.
+            Volte ao carrinho e finalize novamente. Se persistir, me mande print do{" "}
+            <code>sessionStorage</code> de <code>fv_checkout*</code>.
           </div>
         </div>
 
@@ -471,7 +463,6 @@ export default function CheckoutClient() {
       <h1 className="mb-2 text-xl font-semibold">Finalizar pagamento</h1>
       {debugFonte && <div className="mb-2 text-xs opacity-60">Fonte: {debugFonte}</div>}
 
-      {/* topo com status (somente exibição) */}
       <div className="mb-4 flex items-center justify-between text-xs text-gray-600">
         <div>
           Status: <b className="text-gray-900">{status || "—"}</b>
@@ -479,26 +470,73 @@ export default function CheckoutClient() {
         <div>{err ? <span className="text-red-600">{err}</span> : <span />}</div>
       </div>
 
-      {/* CPF editável */}
-      <div className="mb-4 rounded-2xl border p-4">
-        <div className="mb-2 text-sm font-semibold">CPF (obrigatório para PIX)</div>
-        <input
-          value={cpf}
-          onChange={(e) => setCpf(onlyDigits(e.target.value).slice(0, 11))}
-          placeholder="Digite seu CPF (11 dígitos)"
-          inputMode="numeric"
-          className="w-full rounded-xl border px-3 py-3 text-sm outline-none focus:ring-4 focus:ring-blue-200"
-        />
-        <div className="mt-2 text-xs opacity-60">Dica: só números. Ex: 12345678901</div>
+      {/* ✅ seletor de método */}
+      <div className="mb-4 grid grid-cols-2 gap-2">
+        <button
+          type="button"
+          onClick={() => pushMetodo("pix")}
+          className={[
+            "rounded-xl border px-4 py-3 text-sm font-semibold",
+            metodo === "pix"
+              ? "border-gray-900 bg-gray-900 text-white"
+              : "border-gray-200 bg-white text-gray-900 hover:bg-gray-50",
+          ].join(" ")}
+        >
+          PIX (QRCode)
+        </button>
+
+        <button
+          type="button"
+          onClick={() => pushMetodo("cartao")}
+          className={[
+            "rounded-xl border px-4 py-3 text-sm font-semibold",
+            metodo === "cartao"
+              ? "border-gray-900 bg-gray-900 text-white"
+              : "border-gray-200 bg-white text-gray-900 hover:bg-gray-50",
+          ].join(" ")}
+        >
+          Cartão
+        </button>
       </div>
 
-      {/* Pagamento: agora o polling só começa depois de clicar em Gerar PIX */}
-      <PagbankPayment
-        orderId={orderId}
-        cliente={{ ...cliente, tax_id: cpf }} // ✅ usa o CPF digitado
-        items={items}
-        onPaid={onPaid}
-      />
+      {/* CPF só faz sentido pro PIX */}
+      {metodo === "pix" && (
+        <div className="mb-4 rounded-2xl border p-4">
+          <div className="mb-2 text-sm font-semibold">CPF (obrigatório para PIX)</div>
+          <input
+            value={cpf}
+            onChange={(e) => setCpf(onlyDigits(e.target.value).slice(0, 11))}
+            placeholder="Digite seu CPF (11 dígitos)"
+            inputMode="numeric"
+            className="w-full rounded-xl border px-3 py-3 text-sm outline-none focus:ring-4 focus:ring-blue-200"
+          />
+          <div className="mt-2 text-xs opacity-60">Dica: só números. Ex: 12345678901</div>
+        </div>
+      )}
+
+      {/* ✅ Conteúdo por método */}
+      {metodo === "pix" ? (
+        <PagbankPayment
+          orderId={orderId}
+          cliente={{ ...cliente, tax_id: cpf }}
+          items={items}
+          onPaid={onPaid}
+        />
+      ) : (
+        <div className="rounded-2xl border p-4">
+          <div className="text-sm font-semibold">Pagamento com cartão</div>
+          <div className="mt-2 text-sm text-gray-600">
+            Este checkout ainda está configurado para PIX. Para habilitar cartão, precisamos
+            adicionar o fluxo de criação de pagamento de cartão (tokenização) no PagBank.
+          </div>
+
+          <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
+            Se você quer apenas testar se o PagBank liberou cartão: assim que criarmos o endpoint de
+            cartão, o Network vai mostrar uma chamada tipo <b>/api/pagbank/card</b>. Hoje não mostra,
+            então nunca está tentando cartão.
+          </div>
+        </div>
+      )}
     </div>
   );
 }
