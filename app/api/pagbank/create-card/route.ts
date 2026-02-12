@@ -120,7 +120,8 @@ export async function POST(req: Request) {
           ok: false,
           error: "PagBank recusou",
           status: r.status,
-          detalhe: j || txt?.slice(0, 500),
+          detalhe: j ?? { raw: txt?.slice(0, 2000) },
+
         },
         { status: 400 }
       );

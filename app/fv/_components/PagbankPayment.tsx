@@ -250,11 +250,12 @@ export default function PagbankPayment({ orderId, cliente, items, onPaid, metodo
       const parsed = await safeJson(r);
 
       if (!r.ok || !parsed.ok || !parsed.json?.ok) {
-        const msg =
-          parsed.ok
-            ? (parsed.json?.error || parsed.json?.detalhe || `HTTP ${r.status}`)
-            : `HTTP ${r.status}`;
-        setErr(`create-card: ${msg}`);
+        const msg = parsed.ok
+  ? JSON.stringify(parsed.json?.detalhe || parsed.json, null, 2)
+  : `HTTP ${r.status}`;
+
+setErr(`create-card: ${parsed.ok ? (parsed.json?.error || "erro") : "erro"}\n${msg}`);
+
         setStatusLabel("ERRO");
         setBusy(false);
         return;
@@ -290,10 +291,11 @@ export default function PagbankPayment({ orderId, cliente, items, onPaid, metodo
         <div className="text-2xl font-extrabold">{brlFromCents(totalCentavos)}</div>
 
         {err ? (
-          <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
-            {err}
-          </div>
-        ) : null}
+  <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 whitespace-pre-wrap">
+    {err}
+  </div>
+) : null}
+
 
         {metodo === "pix" ? (
           <>
