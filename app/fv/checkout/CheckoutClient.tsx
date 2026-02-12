@@ -514,29 +514,17 @@ export default function CheckoutClient() {
         </div>
       )}
 
-      {/* ✅ Conteúdo por método */}
-      {metodo === "pix" ? (
-        <PagbankPayment
-          orderId={orderId}
-          cliente={{ ...cliente, tax_id: cpf }}
-          items={items}
-          onPaid={onPaid}
-        />
-      ) : (
-        <div className="rounded-2xl border p-4">
-          <div className="text-sm font-semibold">Pagamento com cartão</div>
-          <div className="mt-2 text-sm text-gray-600">
-            Este checkout ainda está configurado para PIX. Para habilitar cartão, precisamos
-            adicionar o fluxo de criação de pagamento de cartão (tokenização) no PagBank.
-          </div>
-
-          <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900">
-            Se você quer apenas testar se o PagBank liberou cartão: assim que criarmos o endpoint de
-            cartão, o Network vai mostrar uma chamada tipo <b>/api/pagbank/card</b>. Hoje não mostra,
-            então nunca está tentando cartão.
-          </div>
-        </div>
-      )}
+      {/* ✅ Conteúdo por método (CORRIGIDO: um componente único) */}
+      <PagbankPayment
+        metodo={metodo}
+        orderId={orderId}
+        cliente={{
+          ...cliente,
+          tax_id: metodo === "pix" ? cpf : cliente.tax_id,
+        }}
+        items={items}
+        onPaid={onPaid}
+      />
     </div>
   );
 }
