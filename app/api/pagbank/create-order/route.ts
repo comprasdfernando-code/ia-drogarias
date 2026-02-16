@@ -144,9 +144,6 @@ function sanitizeResponseForLog(data: any) {
 
   // qr_codes text/base64 pode ser gigante
   if (clone.qr_codes?.[0]?.text) clone.qr_codes[0].text = maskLong(clone.qr_codes[0].text);
-  if (clone.qr_codes?.[0]?.links?.length) {
-    // links ok, não precisa mascarar
-  }
   return clone;
 }
 
@@ -230,6 +227,57 @@ async function upsertVendaByCodigo(codigo: string, patch: Record<string, any>) {
   }
 }
 
+/* =========================
+   ✅ NOVO: SALVAR PEDIDO EM fv_orders (cliente logado)
+========================= */
+
+function pickEnderecoFromBody(body: any) {
+  // tenta capturar de onde você mandar no checkout
+  return body?.endereco ?? body?.address ?? body?.entrega ?? null;
+}
+
+async function upsertFvOrder(payload: {
+  order_code: string;
+  user_id?: string | null;
+
+  status?: string;
+  pagamento_metodo?: string;
+  pagamento_status?: string;
+
+  total_centavos?: number;
+  items?: any[];
+  endereco?: any;
+
+  pagbank_id?: string | null;
+}) {
+  try {
+    const sb = supabaseAdmin();
+
+    // só salva se tiver user_id (cliente logado)
+    if (!payload.user_id) return;
+
+    const patch = {
+      order_code: payload.order_code,
+      user_id: payload.user_id,
+
+      status: payload.status || "NOVO",
+      pagamento_metodo: payload.pagamento_metodo || null,
+      pagamento_status: payload.pagamento_status || "PENDENTE",
+
+      total_centavos: Number(payload.total_centavos || 0),
+      items: payload.items || [],
+      endereco: payload.endereco ?? null,
+
+      pagbank_id: payload.pagbank_id ?? null,
+      updated_at: new Date().toISOString(),
+    };
+
+    await sb.from("fv_orders").upsert(patch, { onConflict: "order_code" });
+  } catch {
+    // não derruba o checkout
+  }
+}
+
 export async function POST(req: Request) {
   try {
     const token = process.env.PAGBANK_TOKEN;
@@ -245,6 +293,10 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
+
+    // ✅ NOVO: user_id (cliente logado) + endereço opcional
+    const user_id = String(body?.user_id || "").trim() || null;
+    const endereco = pickEnderecoFromBody(body);
 
     const order_id = String(body?.order_id || "").trim(); // FV_...
     const forma_pagamento = String(body?.forma_pagamento || "PIX").toUpperCase();
@@ -288,6 +340,18 @@ export async function POST(req: Request) {
        PIX (qr_codes)
     ========================================================= */
     if (forma_pagamento === "PIX") {
+      // ✅ NOVO: salva/atualiza pedido do cliente (se estiver logado) antes de chamar PagBank
+      await upsertFvOrder({
+        order_code: order_id,
+        user_id,
+        status: "NOVO",
+        pagamento_metodo: "PIX",
+        pagamento_status: "PENDENTE",
+        total_centavos: total,
+        items,
+        endereco,
+      });
+
       const payloadPIX: any = {
         reference_id: String(order_id), // FV_...
         customer: {
@@ -381,6 +445,19 @@ export async function POST(req: Request) {
         qr_base64: qr_base64,
       });
 
+      // ✅ NOVO: atualiza fv_orders com pagbank_id
+      await upsertFvOrder({
+        order_code: order_id,
+        user_id,
+        status: "NOVO",
+        pagamento_metodo: "PIX",
+        pagamento_status: "PENDENTE",
+        total_centavos: total,
+        items,
+        endereco,
+        pagbank_id: data.id,
+      });
+
       return NextResponse.json({
         ok: true,
         pagbank_id: data.id,
@@ -414,8 +491,23 @@ export async function POST(req: Request) {
       }
 
       if (cpf.length !== 11) {
-        return NextResponse.json({ ok: false, error: "CPF do titular inválido (precisa ter 11 dígitos)" }, { status: 400 });
+        return NextResponse.json(
+          { ok: false, error: "CPF do titular inválido (precisa ter 11 dígitos)" },
+          { status: 400 }
+        );
       }
+
+      // ✅ NOVO: salva/atualiza pedido do cliente (se estiver logado) antes de chamar PagBank
+      await upsertFvOrder({
+        order_code: order_id,
+        user_id,
+        status: "NOVO",
+        pagamento_metodo: "CARTAO",
+        pagamento_status: "PENDENTE",
+        total_centavos: total,
+        items,
+        endereco,
+      });
 
       const payloadCARD: any = {
         reference_id: String(order_id),
@@ -485,6 +577,19 @@ export async function POST(req: Request) {
       await upsertVendaByCodigo(order_id, {
         pagbank_id: data.id,
         status: "pendente_cartao",
+      });
+
+      // ✅ NOVO: atualiza fv_orders com pagbank_id
+      await upsertFvOrder({
+        order_code: order_id,
+        user_id,
+        status: "NOVO",
+        pagamento_metodo: "CARTAO",
+        pagamento_status: "PROCESSANDO",
+        total_centavos: total,
+        items,
+        endereco,
+        pagbank_id: data.id,
       });
 
       return NextResponse.json({
