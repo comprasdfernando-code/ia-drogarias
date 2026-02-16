@@ -4,20 +4,19 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 
-function safeNext(next?: string | null) {
-  const n = String(next || "").trim();
-  if (!n) return "/fv/conta";
-  // evita open redirect (não deixa mandar pra site externo)
-  if (n.startsWith("http://") || n.startsWith("https://")) return "/fv/conta";
-  return n.startsWith("/") ? n : `/${n}`;
+function safeNext(nextUrl: string) {
+  if (!nextUrl) return "/fv/conta";
+  if (!nextUrl.startsWith("/")) return "/fv/conta";
+  if (nextUrl.startsWith("//")) return "/fv/conta";
+  return nextUrl;
 }
 
 export default function CallbackClient() {
   const router = useRouter();
   const sp = useSearchParams();
 
-  const nextUrl = useMemo(() => safeNext(sp.get("next")), [sp]);
-  const [status, setStatus] = useState<"working" | "ok" | "error">("working");
+  const nextUrl = useMemo(() => safeNext(sp.get("next") || "/fv/conta"), [sp]);
+  const [msg, setMsg] = useState("Confirmando…");
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
@@ -25,71 +24,70 @@ export default function CallbackClient() {
 
     (async () => {
       try {
-        setStatus("working");
         setErr(null);
 
-        // Se já tem sessão, só redireciona
-        const s0 = await supabase.auth.getSession();
-        if (s0?.data?.session) {
-          if (!alive) return;
-          setStatus("ok");
-          router.replace(nextUrl);
-          return;
-        }
-
-        // Troca o "code" por sessão (OAuth/magic link PKCE)
-        // Para links que usam #access_token, o Supabase também consegue pegar com getSession após o redirect,
-        // mas deixamos o exchangeCodeForSession para cobrir o caso de "code=".
-        const url = typeof window !== "undefined" ? window.location.href : "";
-        const hasCode = /[?&]code=/.test(url);
-
-        if (hasCode) {
-          const { error } = await supabase.auth.exchangeCodeForSession(url);
+        // ✅ 1) se for fluxo com hash (#access_token=...)
+        if (typeof window !== "undefined" && window.location.hash?.includes("access_token=")) {
+          // @ts-ignore
+          const { error } = await supabase.auth.getSessionFromUrl({ storeSession: true });
           if (error) throw error;
+        } else {
+          // ✅ 2) se for fluxo com code (?code=...)
+          const code = sp.get("code");
+          if (code) {
+            const { error } = await supabase.auth.exchangeCodeForSession(code);
+            if (error) throw error;
+          }
         }
 
-        // tenta pegar sessão de novo
-        const s1 = await supabase.auth.getSession();
-        if (!s1?.data?.session) {
-          // se não veio sessão, ainda assim manda pra entrar
-          if (!alive) return;
-          setStatus("error");
-          setErr("Não foi possível confirmar a sessão. Tente entrar novamente.");
-          router.replace(`/fv/entrar?next=${encodeURIComponent(nextUrl)}`);
-          return;
-        }
+        // ✅ garante que tem sessão
+        const { data } = await supabase.auth.getUser();
+        if (!data?.user) throw new Error("Sessão não encontrada. Tente abrir o link novamente.");
 
         if (!alive) return;
-        setStatus("ok");
+        setMsg("Acesso confirmado! Redirecionando…");
+
+        // limpa a URL (remove code/hash)
+        try {
+          const clean = new URL(window.location.href);
+          clean.searchParams.delete("code");
+          clean.hash = "";
+          window.history.replaceState({}, "", clean.toString());
+        } catch {}
+
         router.replace(nextUrl);
       } catch (e: any) {
         if (!alive) return;
-        setStatus("error");
         setErr(String(e?.message || e));
-        router.replace(`/fv/entrar?next=${encodeURIComponent(nextUrl)}`);
+        setMsg("Não consegui confirmar o acesso.");
       }
     })();
 
     return () => {
       alive = false;
     };
-  }, [router, nextUrl]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   return (
     <div className="mx-auto max-w-md p-6">
-      <div className="rounded-2xl border bg-white p-4">
-        <div className="text-lg font-extrabold">Autenticando…</div>
-        <div className="mt-2 text-sm text-slate-600">
-          Estamos confirmando seu acesso e te redirecionando.
-        </div>
+      <div className="rounded-2xl border bg-white p-5">
+        <div className="text-lg font-extrabold">Confirmação</div>
+        <div className="mt-2 text-sm text-slate-600">{msg}</div>
 
-        {status === "error" && err ? (
-          <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 whitespace-pre-wrap">
+        {err ? (
+          <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 whitespace-pre-wrap">
             {err}
           </div>
         ) : null}
 
-        <div className="mt-3 text-xs text-slate-500">Destino: {nextUrl}</div>
+        <button
+          type="button"
+          onClick={() => router.replace(nextUrl)}
+          className="mt-4 w-full rounded-xl bg-black px-4 py-3 font-extrabold text-white"
+        >
+          Ir para minha conta
+        </button>
       </div>
     </div>
   );

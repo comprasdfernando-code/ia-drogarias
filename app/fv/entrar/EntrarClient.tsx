@@ -8,31 +8,19 @@ function onlyDigits(s: string) {
   return (s || "").replace(/\D/g, "");
 }
 
-function safePath(p: string) {
-  if (!p) return "/fv/conta";
-  // se vier URL completa, tenta usar só o pathname (evita redirect estranho)
-  try {
-    if (p.startsWith("http://") || p.startsWith("https://")) {
-      const u = new URL(p);
-      return u.pathname + (u.search || "");
-    }
-  } catch {}
-  if (!p.startsWith("/")) return `/${p}`;
-  return p;
-}
-
-function buildFVRedirect(origin: string, nextUrl: string) {
-  // ✅ sempre volta pro callback do FV (não mistura com /profissional)
-  const nextSafe = safePath(nextUrl);
-  const cb = `/fv/auth/callback?next=${encodeURIComponent(nextSafe)}`;
-  return `${origin}${cb}`;
+function safeNext(nextUrl: string) {
+  // evita open redirect
+  if (!nextUrl) return "/fv/conta";
+  if (!nextUrl.startsWith("/")) return "/fv/conta";
+  if (nextUrl.startsWith("//")) return "/fv/conta";
+  return nextUrl;
 }
 
 export default function EntrarClient() {
   const router = useRouter();
   const sp = useSearchParams();
 
-  const nextUrl = useMemo(() => safePath(sp.get("next") || "/fv/conta"), [sp]);
+  const nextUrl = useMemo(() => safeNext(sp.get("next") || "/fv/conta"), [sp]);
 
   const [mode, setMode] = useState<"magic" | "senha">("magic");
   const [email, setEmail] = useState("");
@@ -45,8 +33,14 @@ export default function EntrarClient() {
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
+  // ✅ callback exclusivo do FV (não mistura com /auth/confirm)
+  const redirectTo = useMemo(() => {
+    if (typeof window === "undefined") return undefined;
+    const origin = window.location.origin;
+    return `${origin}/fv/auth/callback?next=${encodeURIComponent(nextUrl)}`;
+  }, [nextUrl]);
+
   useEffect(() => {
-    // se já está logado, manda pra conta
     (async () => {
       const { data } = await supabase.auth.getUser();
       if (data?.user) router.replace(nextUrl);
@@ -55,7 +49,6 @@ export default function EntrarClient() {
   }, []);
 
   async function ensureProfile() {
-    // cria/atualiza perfil do cliente (best-effort)
     try {
       const { data } = await supabase.auth.getUser();
       const user = data?.user;
@@ -82,19 +75,14 @@ export default function EntrarClient() {
       const e = (email || "").trim().toLowerCase();
       if (!e.includes("@")) throw new Error("Digite um e-mail válido.");
 
-      const origin = typeof window !== "undefined" ? window.location.origin : "";
-      const emailRedirectTo = origin ? buildFVRedirect(origin, nextUrl) : undefined;
-
       const { error } = await supabase.auth.signInWithOtp({
         email: e,
         options: {
-          // ✅ confirmação sempre cai no FV
-          emailRedirectTo,
+          emailRedirectTo: redirectTo, // ✅ vai pro FV callback
         },
       });
 
       if (error) throw error;
-
       setMsg("Te enviei um link de acesso no e-mail. Abra e volte pro site.");
     } catch (e: any) {
       setErr(String(e?.message || e));
@@ -133,26 +121,18 @@ export default function EntrarClient() {
       if (!e.includes("@")) throw new Error("Digite um e-mail válido.");
       if (!senha || senha.length < 6) throw new Error("Senha inválida (mín. 6).");
 
-      const origin = typeof window !== "undefined" ? window.location.origin : "";
-      const emailRedirectTo = origin ? buildFVRedirect(origin, nextUrl) : undefined;
-
       const { error } = await supabase.auth.signUp({
         email: e,
         password: senha,
         options: {
           data: { name: nome || null },
-          // ✅ confirmação de e-mail (signup) também cai no FV
-          emailRedirectTo,
+          emailRedirectTo: redirectTo, // ✅ confirmação também cai no FV callback
         },
       });
       if (error) throw error;
 
       await ensureProfile();
-      setMsg("Conta criada! Se precisar confirmar, verifique seu e-mail e clique no link.");
-
-      // tenta redirecionar (se já tiver sessão)
-      const { data } = await supabase.auth.getUser();
-      if (data?.user) router.replace(nextUrl);
+      setMsg("Conta criada! Confira seu e-mail para confirmar. Depois volta pro site.");
     } catch (e: any) {
       setErr(String(e?.message || e));
     } finally {
