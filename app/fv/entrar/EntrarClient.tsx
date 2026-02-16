@@ -9,7 +9,6 @@ function onlyDigits(s: string) {
 }
 
 function safeNext(nextUrl: string) {
-  // evita open redirect
   if (!nextUrl) return "/fv/conta";
   if (!nextUrl.startsWith("/")) return "/fv/conta";
   if (nextUrl.startsWith("//")) return "/fv/conta";
@@ -33,12 +32,11 @@ export default function EntrarClient() {
   const [msg, setMsg] = useState<string | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
-  // ✅ callback exclusivo do FV (não mistura com /auth/confirm)
+  // ✅ callback fixo do FV (SEM query pra não ser “podado”)
   const redirectTo = useMemo(() => {
     if (typeof window === "undefined") return undefined;
-    const origin = window.location.origin;
-    return `${origin}/fv/auth/callback?next=${encodeURIComponent(nextUrl)}`;
-  }, [nextUrl]);
+    return `${window.location.origin}/fv/auth/callback`;
+  }, []);
 
   useEffect(() => {
     (async () => {
@@ -67,6 +65,12 @@ export default function EntrarClient() {
     } catch {}
   }
 
+  function saveNext() {
+    try {
+      localStorage.setItem("fv_next", nextUrl);
+    } catch {}
+  }
+
   async function onSendMagicLink() {
     setBusy(true);
     setErr(null);
@@ -74,6 +78,8 @@ export default function EntrarClient() {
     try {
       const e = (email || "").trim().toLowerCase();
       if (!e.includes("@")) throw new Error("Digite um e-mail válido.");
+
+      saveNext();
 
       const { error } = await supabase.auth.signInWithOtp({
         email: e,
@@ -83,6 +89,7 @@ export default function EntrarClient() {
       });
 
       if (error) throw error;
+
       setMsg("Te enviei um link de acesso no e-mail. Abra e volte pro site.");
     } catch (e: any) {
       setErr(String(e?.message || e));
@@ -121,6 +128,8 @@ export default function EntrarClient() {
       if (!e.includes("@")) throw new Error("Digite um e-mail válido.");
       if (!senha || senha.length < 6) throw new Error("Senha inválida (mín. 6).");
 
+      saveNext();
+
       const { error } = await supabase.auth.signUp({
         email: e,
         password: senha,
@@ -132,6 +141,7 @@ export default function EntrarClient() {
       if (error) throw error;
 
       await ensureProfile();
+
       setMsg("Conta criada! Confira seu e-mail para confirmar. Depois volta pro site.");
     } catch (e: any) {
       setErr(String(e?.message || e));
