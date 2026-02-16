@@ -8,11 +8,31 @@ function onlyDigits(s: string) {
   return (s || "").replace(/\D/g, "");
 }
 
+function safePath(p: string) {
+  if (!p) return "/fv/conta";
+  // se vier URL completa, tenta usar só o pathname (evita redirect estranho)
+  try {
+    if (p.startsWith("http://") || p.startsWith("https://")) {
+      const u = new URL(p);
+      return u.pathname + (u.search || "");
+    }
+  } catch {}
+  if (!p.startsWith("/")) return `/${p}`;
+  return p;
+}
+
+function buildFVRedirect(origin: string, nextUrl: string) {
+  // ✅ sempre volta pro callback do FV (não mistura com /profissional)
+  const nextSafe = safePath(nextUrl);
+  const cb = `/fv/auth/callback?next=${encodeURIComponent(nextSafe)}`;
+  return `${origin}${cb}`;
+}
+
 export default function EntrarClient() {
   const router = useRouter();
   const sp = useSearchParams();
 
-  const nextUrl = useMemo(() => sp.get("next") || "/fv/conta", [sp]);
+  const nextUrl = useMemo(() => safePath(sp.get("next") || "/fv/conta"), [sp]);
 
   const [mode, setMode] = useState<"magic" | "senha">("magic");
   const [email, setEmail] = useState("");
@@ -63,13 +83,13 @@ export default function EntrarClient() {
       if (!e.includes("@")) throw new Error("Digite um e-mail válido.");
 
       const origin = typeof window !== "undefined" ? window.location.origin : "";
-      const redirectTo = origin ? `${origin}${nextUrl.startsWith("/") ? nextUrl : `/${nextUrl}`}` : undefined;
+      const emailRedirectTo = origin ? buildFVRedirect(origin, nextUrl) : undefined;
 
       const { error } = await supabase.auth.signInWithOtp({
         email: e,
         options: {
-          // volta pro site após clicar no link do e-mail
-          emailRedirectTo: redirectTo,
+          // ✅ confirmação sempre cai no FV
+          emailRedirectTo,
         },
       });
 
@@ -113,15 +133,22 @@ export default function EntrarClient() {
       if (!e.includes("@")) throw new Error("Digite um e-mail válido.");
       if (!senha || senha.length < 6) throw new Error("Senha inválida (mín. 6).");
 
+      const origin = typeof window !== "undefined" ? window.location.origin : "";
+      const emailRedirectTo = origin ? buildFVRedirect(origin, nextUrl) : undefined;
+
       const { error } = await supabase.auth.signUp({
         email: e,
         password: senha,
-        options: { data: { name: nome || null } },
+        options: {
+          data: { name: nome || null },
+          // ✅ confirmação de e-mail (signup) também cai no FV
+          emailRedirectTo,
+        },
       });
       if (error) throw error;
 
       await ensureProfile();
-      setMsg("Conta criada! Se o Supabase exigir confirmação, verifique seu e-mail. Se não, você já está logado.");
+      setMsg("Conta criada! Se precisar confirmar, verifique seu e-mail e clique no link.");
 
       // tenta redirecionar (se já tiver sessão)
       const { data } = await supabase.auth.getUser();
@@ -136,9 +163,7 @@ export default function EntrarClient() {
   return (
     <div className="mx-auto max-w-md p-6">
       <h1 className="text-2xl font-extrabold">Entrar</h1>
-      <p className="mt-1 text-sm text-slate-600">
-        Faça login para salvar seus dados e acompanhar pedidos.
-      </p>
+      <p className="mt-1 text-sm text-slate-600">Faça login para salvar seus dados e acompanhar pedidos.</p>
 
       <div className="mt-4 grid grid-cols-2 gap-2">
         <button
