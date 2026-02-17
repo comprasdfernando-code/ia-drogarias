@@ -1188,17 +1188,7 @@ export default function CaixaPage() {
         </div>
       </div>
 
-      {/* ========================================================== */}
-      {/* SALDO FINAL */}
-      {/* ========================================================== */}
-      <div className="mt-8 bg-white p-4 rounded-lg shadow text-center">
-        <h3 className="text-xl font-bold">
-          💵 Saldo Atual:{" "}
-          <span className={saldo >= 0 ? "text-green-700" : "text-red-700"}>
-            R$ {fmt(saldo)}
-          </span>
-        </h3>
-      </div>
+      
     </main>
   );
 }
