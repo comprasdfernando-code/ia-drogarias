@@ -74,6 +74,20 @@ function addDays(base: Date, days: number) {
   return d;
 }
 
+// ✅ evita shift de 1 dia quando vier "YYYY-MM-DD"
+function formatDateBR(value: any) {
+  if (!value) return "—";
+  const s = String(value);
+
+  // Se vier só "YYYY-MM-DD", força horário local (sem UTC shift)
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
+    return new Date(s + "T12:00:00").toLocaleDateString("pt-BR");
+  }
+
+  // Se vier timestamp (com T), pode converter direto
+  return new Date(s).toLocaleDateString("pt-BR");
+}
+
 // ======================================================
 // 🔵 COMPONENTE PRINCIPAL
 // ======================================================
@@ -394,7 +408,8 @@ export default function CaixaPage() {
       fornecedor,
       descricao: descricaoBoleto,
       valor: Number(valorBoleto),
-      data_vencimento: dataVencimento,
+      // ✅ salva com horário fixo pra evitar shift no fuso se for timestamp/timestamptz
+      data_vencimento: dataVencimento ? dataVencimento + "T12:00:00" : dataVencimento,
       linha_digitavel: linhaDigitavel,
       loja: LOJA,
     });
@@ -878,7 +893,7 @@ export default function CaixaPage() {
 
                 return (
                   <tr key={f.id} className="border hover:bg-gray-50">
-                    <td className="p-2 border text-center">{new Date(f.data).toLocaleDateString("pt-BR")}</td>
+                    <td className="p-2 border text-center">{formatDateBR(String(f.data).slice(0, 10))}</td>
                     <td className="p-2 border text-right">R$ {fmt(f.venda_total)}</td>
 
                     <td className="p-2 border text-right font-semibold text-green-700">R$ {fmt(entradasDia)}</td>
@@ -1041,9 +1056,7 @@ export default function CaixaPage() {
                       <tr key={b.id} className="border hover:bg-white">
                         <td className="p-2 border">{b.fornecedor}</td>
                         <td className="p-2 border text-right">R$ {fmt(b.valor)}</td>
-                        <td className="p-2 border text-center">
-                          {b.data_pagamento ? new Date(b.data_pagamento).toLocaleDateString("pt-BR") : "—"}
-                        </td>
+                        <td className="p-2 border text-center">{formatDateBR(b.data_pagamento)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1093,7 +1106,7 @@ export default function CaixaPage() {
                       <tr key={b.id} className="border hover:bg-white">
                         <td className="p-2 border">{b.fornecedor}</td>
                         <td className="p-2 border text-right">R$ {fmt(b.valor)}</td>
-                        <td className="p-2 border text-center">{new Date(b.data_vencimento).toLocaleDateString("pt-BR")}</td>
+                        <td className="p-2 border text-center">{formatDateBR(b.data_vencimento)}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1137,7 +1150,7 @@ export default function CaixaPage() {
                   <td className="p-2 border">{b.descricao}</td>
                   <td className="p-2 border text-right">R$ {fmt(b.valor)}</td>
 
-                  <td className="p-2 border text-center">{new Date(b.data_vencimento).toLocaleDateString("pt-BR")}</td>
+                  <td className="p-2 border text-center">{formatDateBR(b.data_vencimento)}</td>
 
                   <td className="p-2 border text-center">
                     {b.linha_digitavel ? (
