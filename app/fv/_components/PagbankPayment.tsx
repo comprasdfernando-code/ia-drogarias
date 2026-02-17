@@ -85,6 +85,28 @@ function luhnOk(cardNumber: string) {
   return sum % 10 === 0;
 }
 
+// ✅ Corrige QR quebrado: aceita base64 puro, dataURL ou URL
+function cleanBase64(v: string) {
+  return (v || "").trim().replace(/\s/g, "");
+}
+
+function toQrImgSrc(qr: any): string | null {
+  if (!qr) return null;
+  const s = String(qr).trim();
+
+  // já veio como data URL
+  if (s.startsWith("data:image/")) return s;
+
+  // veio URL
+  if (s.startsWith("http://") || s.startsWith("https://")) return s;
+
+  // base64 puro
+  const b64 = cleanBase64(s);
+  if (b64.length > 50) return `data:image/png;base64,${b64}`;
+
+  return null;
+}
+
 /**
  * ✅ PagbankPayment
  * - modo PIX: gera QR via /api/pagbank/create-order (seu endpoint atual)
@@ -164,8 +186,29 @@ export default function PagbankPayment({ orderId, cliente, items, onPaid, metodo
 
       const j = parsed.json;
 
-      const qrText = String(pickFirst(j?.qr_text, "") || "");
-      const qr64 = String(pickFirst(j?.qr_base64, "") || "");
+      const qrText = String(
+        pickFirst(
+          j?.qr_text,
+          j?.qrCodeText,
+          j?.qrcodeText,
+          j?.copia_cola,
+          j?.pix_copia_cola,
+          ""
+        ) || ""
+      );
+
+      // Pode vir como base64 puro, dataURL ou URL:
+      const qr64 = String(
+        pickFirst(
+          j?.qr_base64,
+          j?.qr_code_base64,
+          j?.qrCodeBase64,
+          j?.qrcodeBase64,
+          j?.qr_image,
+          j?.qr,
+          ""
+        ) || ""
+      );
 
       if (qrText) setPixText(qrText);
       if (qr64) setQrBase64(qr64);
@@ -251,10 +294,10 @@ export default function PagbankPayment({ orderId, cliente, items, onPaid, metodo
 
       if (!r.ok || !parsed.ok || !parsed.json?.ok) {
         const msg = parsed.ok
-  ? JSON.stringify(parsed.json?.detalhe || parsed.json, null, 2)
-  : `HTTP ${r.status}`;
+          ? JSON.stringify(parsed.json?.detalhe || parsed.json, null, 2)
+          : `HTTP ${r.status}`;
 
-setErr(`create-card: ${parsed.ok ? (parsed.json?.error || "erro") : "erro"}\n${msg}`);
+        setErr(`create-card: ${parsed.ok ? (parsed.json?.error || "erro") : "erro"}\n${msg}`);
 
         setStatusLabel("ERRO");
         setBusy(false);
@@ -275,6 +318,9 @@ setErr(`create-card: ${parsed.ok ? (parsed.json?.error || "erro") : "erro"}\n${m
     }
   }, [card, cliente, cpf, items, onPaid, orderId, totalCentavos]);
 
+  // ✅ QR src normalizado (evita imagem quebrada)
+  const qrSrc = useMemo(() => toQrImgSrc(qrBase64), [qrBase64]);
+
   return (
     <div className="rounded-2xl border bg-white p-4">
       <div className="flex items-center justify-between gap-3">
@@ -291,11 +337,10 @@ setErr(`create-card: ${parsed.ok ? (parsed.json?.error || "erro") : "erro"}\n${m
         <div className="text-2xl font-extrabold">{brlFromCents(totalCentavos)}</div>
 
         {err ? (
-  <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 whitespace-pre-wrap">
-    {err}
-  </div>
-) : null}
-
+          <div className="mt-3 rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700 whitespace-pre-wrap">
+            {err}
+          </div>
+        ) : null}
 
         {metodo === "pix" ? (
           <>
@@ -322,16 +367,24 @@ setErr(`create-card: ${parsed.ok ? (parsed.json?.error || "erro") : "erro"}\n${m
 
             {hasAnyQr ? (
               <div className="mt-4">
-                {qrBase64 ? (
+                {qrSrc ? (
                   <div className="flex justify-center">
                     {/* eslint-disable-next-line @next/next/no-img-element */}
                     <img
-                      src={`data:image/png;base64,${qrBase64}`}
+                      src={qrSrc}
                       alt="QR Code PIX"
                       className="w-[280px] max-w-full rounded-xl border bg-white p-2"
+                      onError={(e) => {
+                        (e.currentTarget as HTMLImageElement).style.display = "none";
+                        console.error("Falha ao carregar QRCode", qrBase64);
+                      }}
                     />
                   </div>
-                ) : null}
+                ) : (
+                  <div className="mt-2 text-center text-xs opacity-70">
+                    QRCode não veio em formato de imagem (base64/dataURL/url). Use o Copia e Cola abaixo.
+                  </div>
+                )}
 
                 {pixText ? (
                   <div className="mt-3">
@@ -412,7 +465,10 @@ setErr(`create-card: ${parsed.ok ? (parsed.json?.error || "erro") : "erro"}\n${m
                   <input
                     value={card.security_code}
                     onChange={(e) =>
-                      setCard((s) => ({ ...s, security_code: onlyDigits(e.target.value).slice(0, 4) }))
+                      setCard((s) => ({
+                        ...s,
+                        security_code: onlyDigits(e.target.value).slice(0, 4),
+                      }))
                     }
                     inputMode="numeric"
                     className="w-full rounded-xl border px-3 py-3 text-sm outline-none focus:ring-4 focus:ring-blue-200"
