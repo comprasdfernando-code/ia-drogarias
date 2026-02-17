@@ -1,530 +1,285 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import PagbankPayment from "../_components/PagbankPayment";
+import { useSearchParams } from "next/navigation";
+import { supabase } from "@/lib/supabaseClient";
+import { useCustomer } from "../_components/useCustomer";
 
-type Metodo = "pix" | "cartao";
+function onlyDigits(v: string) {
+  return (v || "").replace(/\D/g, "");
+}
 
-type VendaLike = {
-  id?: string;
-  status?: string | null;
+function brl(v: any) {
+  return (Number(v) || 0).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
 
-  cliente_nome?: string | null;
-  cliente_email?: string | null;
-  cliente_tax_id?: string | null;
-  cliente_phone?: string | null;
-
-  itens?: any[] | null;
-  items?: any[] | null;
-
-  total_centavos?: number | null;
-  total?: number | null;
-  subtotal?: number | null;
-
-  entrega?: {
-    taxa?: number | null;
-    tipo_entrega?: string | null;
-  } | null;
-
-  pedido_id?: string | null;
+type Snap = {
+  ok?: boolean;
+  pedido_id?: string;
   grupo_id?: string | null;
-
-  pagbank_id?: string | null;
+  order_id?: string;
+  cliente_nome?: string;
+  cliente_email?: string;
+  cliente_tax_id?: string; // CPF
+  cliente_phone?: string;
+  itens?: { reference_id: string; name: string; quantity: number; unit_amount: number }[];
+  total_centavos?: number;
+  taxa_entrega_centavos?: number;
+  entrega?: any;
+  pagamento?: string;
 };
-
-function onlyDigits(s: string) {
-  return (s || "").replace(/\D/g, "");
-}
-
-function centsFromMaybe(v: any): number {
-  if (v == null) return 0;
-
-  if (typeof v === "number") {
-    if (Number.isInteger(v) && v >= 1000) return Math.round(v);
-    return Math.round(v * 100);
-  }
-
-  const str = String(v).trim();
-  if (!str) return 0;
-
-  const norm = str.replace(/\./g, "").replace(",", ".");
-  const n = Number(norm);
-  if (!Number.isFinite(n)) return 0;
-
-  if (/^\d+$/.test(str) && n >= 1000) return Math.round(n);
-
-  return Math.round(n * 100);
-}
-
-async function safeJson(resp: Response) {
-  const txt = await resp.text();
-  try {
-    return { ok: true, json: JSON.parse(txt), raw: txt };
-  } catch {
-    return { ok: false, json: null, raw: txt };
-  }
-}
-
-function pickFirst(...vals: any[]) {
-  for (const v of vals) {
-    if (v === 0) return v;
-    if (v !== undefined && v !== null && String(v).trim?.() !== "") return v;
-  }
-  return null;
-}
-
-function extractVenda(payload: any): VendaLike | null {
-  if (!payload) return null;
-
-  const v =
-    payload?.venda ??
-    payload?.pedido ??
-    payload?.data?.venda ??
-    payload?.data?.pedido ??
-    payload;
-
-  if (!v || typeof v !== "object") return null;
-
-  const venda: VendaLike = {
-    id: pickFirst(v?.id, v?.pedido_id, v?.venda_id, v?.order_id) as any,
-    status: pickFirst(v?.status, v?.situacao, v?.state) as any,
-
-    cliente_nome: pickFirst(v?.cliente_nome, v?.nome, v?.customer_name) as any,
-    cliente_email: pickFirst(v?.cliente_email, v?.email, v?.customer_email) as any,
-    cliente_tax_id: pickFirst(v?.cliente_tax_id, v?.cpf, v?.tax_id, v?.customer_tax_id) as any,
-    cliente_phone: pickFirst(v?.cliente_phone, v?.telefone, v?.phone, v?.customer_phone) as any,
-
-    itens: (Array.isArray(v?.itens) ? v?.itens : null) as any,
-    items: (Array.isArray(v?.items) ? v?.items : null) as any,
-
-    total_centavos: (v?.total_centavos ?? v?.totalCentavos ?? null) as any,
-    total: (v?.total ?? v?.valor_total ?? v?.amount ?? null) as any,
-    subtotal: (v?.subtotal ?? null) as any,
-
-    entrega: (v?.entrega ?? v?.delivery ?? null) as any,
-
-    pedido_id: (v?.pedido_id ?? null) as any,
-    grupo_id: (v?.grupo_id ?? null) as any,
-
-    pagbank_id: (v?.pagbank_id ?? v?.charge_id ?? null) as any,
-  };
-
-  return venda;
-}
-
-function extractItems(v: VendaLike | null) {
-  const arr =
-    (Array.isArray(v?.itens) && v?.itens) ||
-    (Array.isArray(v?.items) && v?.items) ||
-    [];
-
-  return arr.map((i: any, idx: number) => {
-    const qty = Number(pickFirst(i?.quantity, i?.qty, i?.qtd, 1)) || 1;
-
-    const unitCents = centsFromMaybe(
-      pickFirst(
-        i?.unit_amount,
-        i?.preco_centavos,
-        i?.unitAmount,
-        i?.price_cents,
-        i?.preco,
-        i?.price,
-        i?.valor_unitario,
-        i?.valor
-      )
-    );
-
-    const ref = String(pickFirst(i?.reference_id, i?.ean, i?.id, i?.sku, `item-${idx + 1}`));
-    const name = String(pickFirst(i?.name, i?.nome, i?.titulo, "Item"));
-
-    return {
-      reference_id: ref,
-      name,
-      quantity: qty,
-      unit_amount: unitCents,
-    };
-  });
-}
-
-function sumTotal(items: { unit_amount: number; quantity: number }[]) {
-  return items.reduce(
-    (acc, it) => acc + (Number(it.unit_amount) || 0) * (Number(it.quantity) || 0),
-    0
-  );
-}
-
-function readSessionCheckout(orderId?: string) {
-  try {
-    if (orderId) {
-      const byOrder = sessionStorage.getItem(`fv_checkout_${orderId}`);
-      if (byOrder) return JSON.parse(byOrder);
-    }
-
-    const direct = sessionStorage.getItem("fv_checkout");
-    if (direct) return JSON.parse(direct);
-
-    for (let i = 0; i < sessionStorage.length; i++) {
-      const k = sessionStorage.key(i) || "";
-      if (k.startsWith("fv_checkout")) {
-        const v = sessionStorage.getItem(k);
-        if (v) return JSON.parse(v);
-      }
-    }
-  } catch {}
-  return null;
-}
-
-const CART_STORAGE_KEYS = [
-  "cart_fv",
-  "cart_farmacia_virtual",
-  "cart_fv_virtual",
-  "cart_iadrogarias_fv",
-];
-
-function clearPossibleCarts() {
-  try {
-    for (const k of CART_STORAGE_KEYS) localStorage.removeItem(k);
-  } catch {}
-}
 
 export default function CheckoutClient() {
   const sp = useSearchParams();
-  const router = useRouter();
 
   const orderId = sp.get("order_id") || "";
-  const pedidoIdQS = sp.get("pedido_id") || "";
-  const vendaId = sp.get("venda_id") || "";
-  const grupoIdQS = sp.get("grupo_id") || "";
+  const pedidoId = sp.get("pedido_id") || "";
+  const grupoId = sp.get("grupo_id") || "";
+  const taxaCentavos = Number(sp.get("taxa_centavos") || 0);
 
-  const cpfQS = onlyDigits(sp.get("cpf") || "");
+  // cliente logado (perfil)
+  const { user, profile } = useCustomer();
 
-  // ✅ método via query (?metodo=cartao)
-  const metodoQS = (sp.get("metodo") || "pix").toLowerCase();
-  const metodoInitial: Metodo = metodoQS === "cartao" ? "cartao" : "pix";
-  const [metodo, setMetodo] = useState<Metodo>(metodoInitial);
+  const [tab, setTab] = useState<"PIX" | "CARTAO">("PIX");
+  const [cpf, setCpf] = useState("");
+  const [status, setStatus] = useState<"NOVO" | "PAGO" | "CANCELADO" | "ERRO">("NOVO");
 
-  // se mudar query, reflete no state
+  const [loading, setLoading] = useState(false);
+  const [pixQr, setPixQr] = useState<string | null>(null);
+  const [pixCopiaCola, setPixCopiaCola] = useState<string | null>(null);
+
+  const [snap, setSnap] = useState<Snap | null>(null);
+
+  // total exibido (fallback: tenta do snapshot; se não tiver, usa taxaCentavos + 0)
+  const totalReais = useMemo(() => {
+    const totalCent = Number(snap?.total_centavos || 0);
+    if (totalCent > 0) return totalCent / 100;
+    // se não achou snap, pelo menos mostra algo
+    return Math.max(0, Number(taxaCentavos || 0)) / 100;
+  }, [snap?.total_centavos, taxaCentavos]);
+
+  // 1) pega snapshot salvo no sessionStorage (se existir)
   useEffect(() => {
-    const m = (sp.get("metodo") || "pix").toLowerCase();
-    setMetodo(m === "cartao" ? "cartao" : "pix");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sp]);
-
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState<string | null>(null);
-  const [debugFonte, setDebugFonte] = useState<string | null>(null);
-
-  const [venda, setVenda] = useState<VendaLike | null>(null);
-  const [cpf, setCpf] = useState<string>(cpfQS);
-
-  const [status, setStatus] = useState<string | null>(null);
-
-  useEffect(() => {
-    let cancelled = false;
-
-    (async () => {
-      try {
-        setLoading(true);
-        setErr(null);
-
-        if (!orderId && !pedidoIdQS && !vendaId && !grupoIdQS) {
-          setDebugFonte("sem_params");
-          setVenda(null);
-          setErr("order_id não informado.");
-          return;
-        }
-
-        if (orderId) {
-          try {
-            const r1 = await fetch("/api/pagbank/status", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                order_id: orderId,
-                pedido_id: pedidoIdQS || null,
-                venda_id: vendaId || null,
-                grupo_id: grupoIdQS || null,
-              }),
-              cache: "no-store",
-            });
-
-            const parsed = await safeJson(r1);
-            if (r1.ok && parsed.ok && parsed.json?.ok) {
-              const v = extractVenda(parsed.json);
-              if (!cancelled) {
-                setVenda(v);
-                setDebugFonte("api:/api/pagbank/status (POST)");
-                setStatus(String(parsed.json?.status || v?.status || "").toUpperCase() || null);
-              }
-
-              const apiCpf = onlyDigits(v?.cliente_tax_id || "");
-              if (!cancelled && apiCpf.length === 11 && !cpfQS) setCpf(apiCpf);
-              return;
-            }
-          } catch {}
-
-          try {
-            const url =
-              `/api/pagbank/status?order_id=${encodeURIComponent(orderId)}` +
-              (pedidoIdQS ? `&pedido_id=${encodeURIComponent(pedidoIdQS)}` : "") +
-              (vendaId ? `&venda_id=${encodeURIComponent(vendaId)}` : "") +
-              (grupoIdQS ? `&grupo_id=${encodeURIComponent(grupoIdQS)}` : "");
-
-            const r2 = await fetch(url, { cache: "no-store" });
-            const parsed2 = await safeJson(r2);
-
-            if (r2.ok && parsed2.ok && parsed2.json?.ok) {
-              const v = extractVenda(parsed2.json);
-              if (!cancelled) {
-                setVenda(v);
-                setDebugFonte(`api:${url} (GET)`);
-                setStatus(String(parsed2.json?.status || v?.status || "").toUpperCase() || null);
-              }
-              const apiCpf = onlyDigits(v?.cliente_tax_id || "");
-              if (!cancelled && apiCpf.length === 11 && !cpfQS) setCpf(apiCpf);
-              return;
-            }
-
-            if (!r2.ok && !parsed2.ok) {
-              const snippet = String(parsed2.raw || "").slice(0, 140);
-              throw new Error(
-                `Falha ao buscar venda (HTTP ${r2.status}). Verifique /api/pagbank/status. Resposta: ${snippet}`
-              );
-            }
-
-            if (parsed2.ok && parsed2.json && !parsed2.json?.ok) {
-              throw new Error(parsed2.json?.error || "Falha ao buscar venda");
-            }
-          } catch (e: any) {
-            if (!cancelled) setErr(String(e?.message || e));
-          }
-        }
-
-        const ss = readSessionCheckout(orderId);
-        if (ss) {
-          const v = extractVenda(ss) || (ss as VendaLike);
-          if (!cancelled) {
-            setVenda(v);
-            setDebugFonte("sessionStorage:fallback");
-            setStatus(String(ss?.status || v?.status || "").toUpperCase() || "PENDING");
-          }
-
-          const ssCpf = onlyDigits(
-            pickFirst(
-              ss?.cliente_tax_id,
-              ss?.cpf,
-              ss?.cliente?.tax_id,
-              ss?.cliente?.cpf,
-              ss?.tax_id,
-              ss?.customer?.tax_id,
-              ss?.customer?.cpf
-            ) || ""
-          );
-          if (!cancelled && ssCpf.length === 11 && !cpfQS) setCpf(ssCpf);
-          return;
-        }
-
-        if (!cancelled) {
-          setVenda(null);
-          setDebugFonte("sem_dados");
-          setErr(null);
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orderId, pedidoIdQS, vendaId, grupoIdQS]);
-
-  const itemsBase = useMemo(() => extractItems(venda), [venda]);
-
-  const taxaEntregaCents = useMemo(() => {
-    const t = pickFirst((venda as any)?.entrega?.taxa, (venda as any)?.taxa_entrega, null);
-    const cents = centsFromMaybe(t);
-    return cents > 0 ? cents : 0;
-  }, [venda]);
-
-  const items = useMemo(() => {
-    const arr = [...itemsBase];
-    if (taxaEntregaCents > 0) {
-      arr.push({
-        reference_id: "FRETE",
-        name: "Taxa de entrega",
-        quantity: 1,
-        unit_amount: taxaEntregaCents,
-      });
-    }
-    return arr;
-  }, [itemsBase, taxaEntregaCents]);
-
-  const totalFromItems = useMemo(() => sumTotal(items), [items]);
-
-  const totalCentavos = useMemo(() => {
-    if (totalFromItems > 0) return totalFromItems;
-
-    const b = centsFromMaybe(venda?.total_centavos);
-    if (b > 0) return b;
-
-    const c = centsFromMaybe(venda?.total);
-    if (c > 0) return c;
-
-    const d = centsFromMaybe(venda?.subtotal);
-    if (d > 0) return d;
-
-    return 0;
-  }, [totalFromItems, venda]);
-
-  const cliente = useMemo(() => {
-    const baseCpf = onlyDigits(pickFirst(venda?.cliente_tax_id, cpfQS, cpf) || "");
-    return {
-      name: String(pickFirst(venda?.cliente_nome, "Cliente") || "Cliente"),
-      email: String(
-        pickFirst(venda?.cliente_email, "cliente@iadrogarias.com") || "cliente@iadrogarias.com"
-      ),
-      tax_id: baseCpf,
-      phone: onlyDigits(String(pickFirst(venda?.cliente_phone, "") || "")),
-    };
-  }, [venda, cpf, cpfQS]);
-
-  const pedidoId = useMemo(
-    () => String(pickFirst(venda?.pedido_id, pedidoIdQS, venda?.id, "") || ""),
-    [venda, pedidoIdQS]
-  );
-
-  const grupoId = useMemo(
-    () => String(pickFirst(venda?.grupo_id, grupoIdQS, "") || ""),
-    [venda, grupoIdQS]
-  );
-
-  async function confirmPaidBackend() {
+    if (!orderId) return;
     try {
-      await fetch("/api/fv/confirm-payment", {
+      const raw = sessionStorage.getItem(`fv_checkout_${orderId}`);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as Snap;
+      setSnap(parsed);
+
+      const cpfSnap = onlyDigits(parsed?.cliente_tax_id || "");
+      if (cpfSnap && cpfSnap.length === 11) {
+        setCpf((prev) => (onlyDigits(prev).length === 11 ? prev : cpfSnap));
+      }
+    } catch {}
+  }, [orderId]);
+
+  // 2) se está logado, preenche CPF do perfil (se ainda estiver vazio)
+  useEffect(() => {
+    const cpfPerfil = onlyDigits(profile?.cpf || "");
+    if (cpfPerfil.length === 11) {
+      setCpf((prev) => (onlyDigits(prev).length === 11 ? prev : cpfPerfil));
+    }
+  }, [profile?.cpf]);
+
+  // opcional: se quiser também puxar do metadata do supabase user (se você salvar lá)
+  useEffect(() => {
+    const cpfMeta = onlyDigits((user as any)?.user_metadata?.cpf || "");
+    if (cpfMeta.length === 11) {
+      setCpf((prev) => (onlyDigits(prev).length === 11 ? prev : cpfMeta));
+    }
+  }, [user]);
+
+  const cpfOk = onlyDigits(cpf).length === 11;
+
+  async function gerarPix() {
+    if (!cpfOk) {
+      alert("Digite um CPF válido (11 dígitos) para gerar o PIX.");
+      return;
+    }
+    if (!orderId || !pedidoId) {
+      alert("order_id/pedido_id não encontrado.");
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // ✅ ajuste o endpoint conforme seu projeto
+      const res = await fetch("/api/pagbank/pix", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { "content-type": "application/json" },
         body: JSON.stringify({
           order_id: orderId,
-          pedido_id: pedidoId || null,
+          pedido_id: pedidoId,
           grupo_id: grupoId || null,
-          status: "PAID",
+          cpf: onlyDigits(cpf),
         }),
       });
-    } catch {}
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Falha ao gerar PIX");
+
+      // tente achar nos campos mais comuns
+      const qr = data?.qr_code_base64 || data?.qrCodeBase64 || data?.qrcodeBase64 || null;
+      const copia = data?.qr_code_text || data?.qrCodeText || data?.qrcodeText || null;
+
+      setPixQr(qr);
+      setPixCopiaCola(copia);
+      setStatus("NOVO");
+    } catch (e: any) {
+      console.error(e);
+      setStatus("ERRO");
+      alert("Não consegui gerar o PIX. Verifique logs.");
+    } finally {
+      setLoading(false);
+    }
   }
 
-  async function onPaid() {
-    await confirmPaidBackend();
-    clearPossibleCarts();
+  async function verificar() {
+    if (!orderId) return;
+
+    setLoading(true);
     try {
-      sessionStorage.removeItem(`fv_checkout_${orderId}`);
-    } catch {}
-    router.replace("/fv?paid=1");
-  }
+      const res = await fetch("/api/pagbank/status", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ order_id: orderId }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data?.error || "Falha ao verificar status");
 
-  function pushMetodo(next: Metodo) {
-    const params = new URLSearchParams(sp.toString());
-    params.set("metodo", next);
-    router.replace(`/fv/checkout?${params.toString()}`);
-  }
-
-  if (loading) return <div className="p-6">Carregando…</div>;
-
-  if (totalCentavos <= 0 || items.length === 0) {
-    return (
-      <div className="mx-auto max-w-2xl p-4">
-        <h1 className="mb-2 text-xl font-semibold">Finalizar pagamento</h1>
-        {debugFonte && <div className="mb-4 text-xs opacity-60">Fonte: {debugFonte}</div>}
-
-        <div className="rounded-2xl border border-red-200 bg-red-50 p-4">
-          <div className="font-semibold text-red-700">
-            Seu pedido ficou com total zerado (R$ 0,00) ou sem itens válidos.
-          </div>
-          <div className="mt-2 text-sm text-red-700">
-            Volte ao carrinho e finalize novamente. Se persistir, me mande print do{" "}
-            <code>sessionStorage</code> de <code>fv_checkout*</code>.
-          </div>
-        </div>
-
-        <div className="mt-4">
-          <button className="rounded-lg border px-3 py-2" onClick={() => router.push("/fv")}>
-            Voltar para /fv
-          </button>
-        </div>
-      </div>
-    );
+      // mapeie para seu formato real
+      const st = String(data?.status || "NOVO").toUpperCase();
+      if (st.includes("PAID") || st.includes("PAGO")) setStatus("PAGO");
+      else if (st.includes("CANCEL")) setStatus("CANCELADO");
+      else setStatus("NOVO");
+    } catch (e) {
+      console.error(e);
+      setStatus("ERRO");
+      alert("Não consegui verificar. Veja logs.");
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (
-    <div className="mx-auto max-w-2xl p-4">
-      <h1 className="mb-2 text-xl font-semibold">Finalizar pagamento</h1>
-      {debugFonte && <div className="mb-2 text-xs opacity-60">Fonte: {debugFonte}</div>}
+    <div className="max-w-2xl mx-auto px-4 py-10">
+      <h1 className="text-2xl font-extrabold text-slate-900 text-center">Finalizar pagamento</h1>
 
-      <div className="mb-4 flex items-center justify-between text-xs text-gray-600">
-        <div>
-          Status: <b className="text-gray-900">{status || "—"}</b>
-        </div>
-        <div>{err ? <span className="text-red-600">{err}</span> : <span />}</div>
+      <div className="mt-2 text-center text-xs text-slate-500">
+        Fonte: <span className="font-mono">api/api/pagbank/status (POST)</span>
       </div>
 
-      {/* ✅ seletor de método */}
-      <div className="mb-4 grid grid-cols-2 gap-2">
+      <div className="mt-1 text-center text-sm">
+        Status: <span className="font-extrabold">{status}</span>
+      </div>
+
+      <div className="mt-8 flex gap-2">
         <button
           type="button"
-          onClick={() => pushMetodo("pix")}
-          className={[
-            "rounded-xl border px-4 py-3 text-sm font-semibold",
-            metodo === "pix"
-              ? "border-gray-900 bg-gray-900 text-white"
-              : "border-gray-200 bg-white text-gray-900 hover:bg-gray-50",
-          ].join(" ")}
+          onClick={() => setTab("PIX")}
+          className={`flex-1 rounded-xl border px-4 py-3 font-extrabold ${
+            tab === "PIX" ? "bg-slate-900 text-white" : "bg-white hover:bg-slate-50"
+          }`}
         >
           PIX (QRCode)
         </button>
-
         <button
           type="button"
-          onClick={() => pushMetodo("cartao")}
-          className={[
-            "rounded-xl border px-4 py-3 text-sm font-semibold",
-            metodo === "cartao"
-              ? "border-gray-900 bg-gray-900 text-white"
-              : "border-gray-200 bg-white text-gray-900 hover:bg-gray-50",
-          ].join(" ")}
+          onClick={() => setTab("CARTAO")}
+          className={`flex-1 rounded-xl border px-4 py-3 font-extrabold ${
+            tab === "CARTAO" ? "bg-slate-900 text-white" : "bg-white hover:bg-slate-50"
+          }`}
         >
           Cartão
         </button>
       </div>
 
-      {/* CPF só faz sentido pro PIX */}
-      {metodo === "pix" && (
-        <div className="mb-4 rounded-2xl border p-4">
-          <div className="mb-2 text-sm font-semibold">CPF (obrigatório para PIX)</div>
-          <input
-            value={cpf}
-            onChange={(e) => setCpf(onlyDigits(e.target.value).slice(0, 11))}
-            placeholder="Digite seu CPF (11 dígitos)"
-            inputMode="numeric"
-            className="w-full rounded-xl border px-3 py-3 text-sm outline-none focus:ring-4 focus:ring-blue-200"
-          />
-          <div className="mt-2 text-xs opacity-60">Dica: só números. Ex: 12345678901</div>
+      <div className="mt-6 rounded-2xl border p-5">
+        <div className="font-extrabold text-slate-900">
+          CPF {tab === "PIX" ? "(obrigatório para PIX)" : "(obrigatório para cartão)"}
         </div>
-      )}
 
-      {/* ✅ Conteúdo por método (CORRIGIDO: um componente único) */}
-      <PagbankPayment
-        metodo={metodo}
-        orderId={orderId}
-        cliente={{
-          ...cliente,
-          tax_id: metodo === "pix" ? cpf : cliente.tax_id,
-        }}
-        items={items}
-        onPaid={onPaid}
-      />
+        <input
+          value={cpf}
+          onChange={(e) => setCpf(e.target.value)}
+          placeholder="Digite seu CPF (11 dígitos)"
+          className="mt-3 w-full rounded-xl border px-4 py-3 outline-none focus:ring-4 focus:ring-slate-100"
+        />
+
+        <div className="mt-2 text-xs text-slate-500">Dica: só números. Ex: 12345678901</div>
+      </div>
+
+      <div className="mt-6 rounded-2xl border p-5">
+        <div className="flex items-center justify-between">
+          <div className="font-extrabold text-slate-900">{tab === "PIX" ? "Pagamento PIX" : "Pagamento Cartão"}</div>
+          <div className="text-sm">
+            Status: <span className="font-extrabold">{status}</span>
+          </div>
+        </div>
+
+        <div className="mt-4">
+          <div className="text-sm text-slate-500">Total</div>
+          <div className="text-4xl font-extrabold text-slate-900">{brl(totalReais)}</div>
+        </div>
+
+        {tab === "PIX" ? (
+          <>
+            <button
+              type="button"
+              onClick={gerarPix}
+              disabled={loading || !cpfOk}
+              className={`mt-6 w-full rounded-xl px-4 py-3 font-extrabold ${
+                loading || !cpfOk ? "bg-slate-200 text-slate-500" : "bg-black text-white hover:opacity-95"
+              }`}
+            >
+              {loading ? "Gerando..." : "Gerar PIX"}
+            </button>
+
+            {pixQr ? (
+              <div className="mt-5 rounded-2xl border bg-slate-50 p-4">
+                <div className="text-sm font-extrabold text-slate-900">QRCode</div>
+                {/* QR em base64 */}
+                <img
+                  alt="PIX QRCode"
+                  className="mt-3 w-full max-w-[320px] mx-auto rounded-xl border bg-white p-2"
+                  src={`data:image/png;base64,${pixQr}`}
+                />
+
+                {pixCopiaCola ? (
+                  <>
+                    <div className="mt-4 text-sm font-extrabold text-slate-900">Copia e Cola</div>
+                    <textarea
+                      readOnly
+                      value={pixCopiaCola}
+                      className="mt-2 w-full rounded-xl border bg-white p-3 text-xs font-mono"
+                      rows={3}
+                    />
+                  </>
+                ) : null}
+              </div>
+            ) : null}
+          </>
+        ) : (
+          <div className="mt-6 text-sm text-slate-600">
+            Cartão: (seu fluxo atual aqui).  
+            Se você quiser, eu encaixo o mesmo “puxar CPF automático” + submit do cartão.
+          </div>
+        )}
+
+        <button
+          type="button"
+          onClick={verificar}
+          disabled={loading}
+          className="mt-3 w-full rounded-xl border px-4 py-3 font-extrabold bg-white hover:bg-slate-50 disabled:opacity-60"
+        >
+          {loading ? "Verificando..." : "Já paguei / Verificar"}
+        </button>
+      </div>
+
+      <div className="mt-6 text-xs text-slate-500">
+        Debug: order_id=<span className="font-mono">{orderId || "—"}</span> / pedido_id=<span className="font-mono">{pedidoId || "—"}</span>
+      </div>
     </div>
   );
 }

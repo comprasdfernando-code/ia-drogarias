@@ -1,11 +1,12 @@
-// app/fv/checkout/page.tsx
 import { Suspense } from "react";
 import CheckoutClient from "./CheckoutClient";
 
-export default function Page() {
+export default function CheckoutPage() {
   return (
-    <Suspense fallback={<div className="p-6">Carregando checkout…</div>}>
-      <CheckoutClient />
-    </Suspense>
+    <main className="min-h-screen bg-white">
+      <Suspense fallback={<div className="p-6 text-sm text-slate-600">Carregando checkout…</div>}>
+        <CheckoutClient />
+      </Suspense>
+    </main>
   );
 }
