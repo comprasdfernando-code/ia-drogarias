@@ -1,9 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 import Link from "next/link";
-
 
 // ======================================================
 // 🔵 CONFIG SUPABASE
@@ -50,6 +49,29 @@ function mapDestinoEntrada(forma: string) {
   }
 
   return null; // Fiado ou não definido
+}
+
+function pad2(n: number) {
+  return String(n).padStart(2, "0");
+}
+
+function toISODate(d: Date) {
+  // YYYY-MM-DD
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+function startOfDayISO(d: Date) {
+  return `${toISODate(d)}T00:00:00`;
+}
+
+function endOfDayISO(d: Date) {
+  return `${toISODate(d)}T23:59:59`;
+}
+
+function addDays(base: Date, days: number) {
+  const d = new Date(base);
+  d.setDate(d.getDate() + days);
+  return d;
 }
 
 // ======================================================
@@ -110,6 +132,18 @@ export default function CaixaPage() {
   const [saidaValor, setSaidaValor] = useState("");
   const [saidaDestino, setSaidaDestino] = useState<"CAIXA_DINHEIRO" | "CONTA_BRADESCO" | "">("");
 
+  // -----------------------------
+  // 🟨 CONSULTA BOLETOS POR PERÍODO
+  // -----------------------------
+  const [bolPagoIni, setBolPagoIni] = useState("");
+  const [bolPagoFim, setBolPagoFim] = useState("");
+  const [bolVencerIni, setBolVencerIni] = useState("");
+  const [bolVencerFim, setBolVencerFim] = useState("");
+
+  const [boletosPagosPeriodo, setBoletosPagosPeriodo] = useState<any[]>([]);
+  const [boletosVencerPeriodo, setBoletosVencerPeriodo] = useState<any[]>([]);
+  const [carregandoConsulta, setCarregandoConsulta] = useState(false);
+
   function fmt(n: number) {
     return Number(n || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 });
   }
@@ -124,20 +158,30 @@ export default function CaixaPage() {
 
   // ======================================================
   // 🔵 CARREGAR MOVIMENTAÇÕES E BOLETOS
+  // ✅ MAIS LEVE:
+  // - movimentações: limita 60 (já resolve 99% do peso)
+  // - boletos: só janela -7 a +7 dias
   // ======================================================
   async function carregarDados() {
     setCarregando(true);
+
+    const hoje = new Date();
+    const ini = startOfDayISO(addDays(hoje, -7));
+    const fim = endOfDayISO(addDays(hoje, 7));
 
     const { data: movs } = await supabase
       .from("movimentacoes_caixa")
       .select("*")
       .eq("loja", LOJA)
-      .order("data", { ascending: false });
+      .order("data", { ascending: false })
+      .limit(60);
 
     const { data: bol } = await supabase
       .from("boletos_a_vencer")
       .select("*")
       .eq("loja", LOJA)
+      .gte("data_vencimento", ini)
+      .lte("data_vencimento", fim)
       .order("data_vencimento", { ascending: true });
 
     setEntradas(movs?.filter((m) => m.tipo === "Entrada") || []);
@@ -149,13 +193,20 @@ export default function CaixaPage() {
 
   // ======================================================
   // 🔵 CARREGAR FECHAMENTOS DIÁRIOS
+  // ✅ MAIS LEVE:
+  // - últimos 30 dias + limita 30 linhas
   // ======================================================
   async function carregarFechamentos() {
+    const hoje = new Date();
+    const ini30 = startOfDayISO(addDays(hoje, -30));
+
     const { data } = await supabase
       .from("caixa_diario")
       .select("*")
       .eq("loja", LOJA)
-      .order("data", { ascending: false });
+      .gte("data", ini30)
+      .order("data", { ascending: false })
+      .limit(30);
 
     setFechamentos(data || []);
   }
@@ -293,7 +344,8 @@ export default function CaixaPage() {
       calc.dinheiro + calc.pix_cnpj + calc.pix_qr + calc.cartoes + calc.receb_fiado;
 
     // ✅ saldo final
-    calc.saldo_final = calc.entradas_periodo - (calc.sangrias + calc.despesas + calc.boletos + calc.compras);
+    calc.saldo_final =
+      calc.entradas_periodo - (calc.sangrias + calc.despesas + calc.boletos + calc.compras);
 
     setAcumulado(calc);
   }
@@ -414,6 +466,64 @@ export default function CaixaPage() {
   }
 
   // ======================================================
+  // 🟨 CONSULTAR BOLETOS PAGOS POR PERÍODO
+  // ======================================================
+  async function consultarBoletosPagosPeriodo() {
+    if (!bolPagoIni || !bolPagoFim) {
+      alert("Selecione data inicial e final (Pagos)!");
+      return;
+    }
+    setCarregandoConsulta(true);
+
+    const { data, error } = await supabase
+      .from("boletos_a_vencer")
+      .select("*")
+      .eq("loja", LOJA)
+      .eq("pago", true)
+      .gte("data_pagamento", startOfDayISO(new Date(bolPagoIni)))
+      .lte("data_pagamento", endOfDayISO(new Date(bolPagoFim)))
+      .order("data_pagamento", { ascending: false });
+
+    setCarregandoConsulta(false);
+
+    if (error) {
+      console.error(error);
+      alert("Erro ao consultar boletos pagos!");
+      return;
+    }
+    setBoletosPagosPeriodo(data || []);
+  }
+
+  // ======================================================
+  // 🟨 CONSULTAR BOLETOS A VENCER POR PERÍODO
+  // ======================================================
+  async function consultarBoletosVencerPeriodo() {
+    if (!bolVencerIni || !bolVencerFim) {
+      alert("Selecione data inicial e final (A vencer)!");
+      return;
+    }
+    setCarregandoConsulta(true);
+
+    const { data, error } = await supabase
+      .from("boletos_a_vencer")
+      .select("*")
+      .eq("loja", LOJA)
+      .eq("pago", false)
+      .gte("data_vencimento", startOfDayISO(new Date(bolVencerIni)))
+      .lte("data_vencimento", endOfDayISO(new Date(bolVencerFim)))
+      .order("data_vencimento", { ascending: true });
+
+    setCarregandoConsulta(false);
+
+    if (error) {
+      console.error(error);
+      alert("Erro ao consultar boletos a vencer!");
+      return;
+    }
+    setBoletosVencerPeriodo(data || []);
+  }
+
+  // ======================================================
   // 🔵 RESUMO FINANCEIRO POR DESTINO
   // ======================================================
   const entradasDinheiro = entradas
@@ -494,7 +604,6 @@ export default function CaixaPage() {
                 </label>
               </div>
             </div>
-            
 
             <div className="flex justify-end gap-3 mt-6">
               <button onClick={() => setModalSaidaAberto(false)} className="px-4 py-2 rounded border">
@@ -511,21 +620,22 @@ export default function CaixaPage() {
 
       {/* TÍTULO */}
       <h1 className="text-2xl font-bold text-blue-700 mb-6 text-center">💼 Caixa - Drogaria Rede Fabiano</h1>
-      <div className="flex flex-wrap justify-center gap-3 mb-6">
-  <Link
-    href="/drogarias/drogariaredefabiano/caixa/relatorio"
-    className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-semibold"
-  >
-    📄 Relatórios
-  </Link>
 
-  <Link
-    href="/drogarias/drogariaredefabiano/caixa/posicao"
-    className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-semibold"
-  >
-    📊 Posição do Caixa
-  </Link>
-</div>
+      <div className="flex flex-wrap justify-center gap-3 mb-6">
+        <Link
+          href="/drogarias/drogariaredefabiano/caixa/relatorio"
+          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-semibold"
+        >
+          📄 Relatórios
+        </Link>
+
+        <Link
+          href="/drogarias/drogariaredefabiano/caixa/posicao"
+          className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-semibold"
+        >
+          📊 Posição do Caixa
+        </Link>
+      </div>
 
       <button
         onClick={() => setModalSaidaAberto(true)}
@@ -706,10 +816,10 @@ export default function CaixaPage() {
       </div>
 
       {/* ===================================================== */}
-      {/* 🟦 TABELA DE FECHAMENTOS DIÁRIOS */}
+      {/* 🟦 TABELA DE FECHAMENTOS DIÁRIOS (ÚLTIMOS 30 DIAS) */}
       {/* ===================================================== */}
       <div className="bg-white rounded-lg shadow p-4 mb-6">
-        <h2 className="font-bold text-lg text-blue-700 mb-3">📘 Fechamentos Diários</h2>
+        <h2 className="font-bold text-lg text-blue-700 mb-3">📘 Fechamentos Diários (Últimos 30 dias)</h2>
 
         <div className="overflow-x-auto">
           <table className="w-full text-sm border">
@@ -872,10 +982,100 @@ export default function CaixaPage() {
       </div>
 
       {/* ========================================================== */}
-      {/* TABELA DE BOLETOS */}
+      {/* CONSULTA BOLETOS POR PERÍODO */}
+      {/* ========================================================== */}
+      <div className="bg-white rounded-lg shadow p-4 mb-6">
+        <h2 className="text-lg font-bold text-blue-700 mb-3">🔎 Consultar Boletos por Período</h2>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* PAGOS */}
+          <div className="border rounded p-4 bg-gray-50">
+            <h3 className="font-bold text-green-700 mb-3">✅ Boletos Pagos (por data de pagamento)</h3>
+            <div className="grid grid-cols-2 gap-3">
+              <input type="date" value={bolPagoIni} onChange={(e) => setBolPagoIni(e.target.value)} className="border p-2 rounded" />
+              <input type="date" value={bolPagoFim} onChange={(e) => setBolPagoFim(e.target.value)} className="border p-2 rounded" />
+            </div>
+            <button
+              onClick={consultarBoletosPagosPeriodo}
+              className="mt-3 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-semibold"
+            >
+              Buscar Pagos
+            </button>
+
+            {boletosPagosPeriodo.length > 0 && (
+              <div className="mt-4 overflow-x-auto">
+                <table className="w-full text-sm border">
+                  <thead className="bg-green-100 text-green-800">
+                    <tr>
+                      <th className="p-2 border">Fornecedor</th>
+                      <th className="p-2 border">Valor</th>
+                      <th className="p-2 border">Pagamento</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {boletosPagosPeriodo.map((b) => (
+                      <tr key={b.id} className="border hover:bg-white">
+                        <td className="p-2 border">{b.fornecedor}</td>
+                        <td className="p-2 border text-right">R$ {fmt(b.valor)}</td>
+                        <td className="p-2 border text-center">
+                          {b.data_pagamento ? new Date(b.data_pagamento).toLocaleDateString("pt-BR") : "—"}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+
+          {/* A VENCER */}
+          <div className="border rounded p-4 bg-gray-50">
+            <h3 className="font-bold text-blue-700 mb-3">📌 Boletos a Vencer (por vencimento)</h3>
+            <div className="grid grid-cols-2 gap-3">
+              <input type="date" value={bolVencerIni} onChange={(e) => setBolVencerIni(e.target.value)} className="border p-2 rounded" />
+              <input type="date" value={bolVencerFim} onChange={(e) => setBolVencerFim(e.target.value)} className="border p-2 rounded" />
+            </div>
+            <button
+              onClick={consultarBoletosVencerPeriodo}
+              className="mt-3 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-semibold"
+            >
+              Buscar a Vencer
+            </button>
+
+            {boletosVencerPeriodo.length > 0 && (
+              <div className="mt-4 overflow-x-auto">
+                <table className="w-full text-sm border">
+                  <thead className="bg-blue-100 text-blue-700">
+                    <tr>
+                      <th className="p-2 border">Fornecedor</th>
+                      <th className="p-2 border">Valor</th>
+                      <th className="p-2 border">Vencimento</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {boletosVencerPeriodo.map((b) => (
+                      <tr key={b.id} className="border hover:bg-white">
+                        <td className="p-2 border">{b.fornecedor}</td>
+                        <td className="p-2 border text-right">R$ {fmt(b.valor)}</td>
+                        <td className="p-2 border text-center">{new Date(b.data_vencimento).toLocaleDateString("pt-BR")}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {carregandoConsulta && <p className="mt-3 text-sm text-gray-600">Consultando…</p>}
+      </div>
+
+      {/* ========================================================== */}
+      {/* TABELA DE BOLETOS (JANELA -7 A +7 DIAS) */}
       {/* ========================================================== */}
       <div className="bg-white rounded-lg shadow p-4">
-        <h2 className="text-lg font-bold text-blue-700 mb-3">📑 Boletos a Vencer</h2>
+        <h2 className="text-lg font-bold text-blue-700 mb-1">📑 Boletos a Vencer</h2>
+        <p className="text-xs text-gray-600 mb-3">Mostrando: últimos 7 dias e próximos 7 dias</p>
 
         <div className="overflow-x-auto">
           <table className="w-full text-sm border">
@@ -923,6 +1123,13 @@ export default function CaixaPage() {
                   </td>
                 </tr>
               ))}
+              {boletos.length === 0 && (
+                <tr>
+                  <td className="p-3 text-center text-sm text-gray-500" colSpan={6}>
+                    Nenhum boleto na janela de -7 a +7 dias.
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
