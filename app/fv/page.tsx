@@ -11,6 +11,9 @@ import { ToastProvider, useToast } from "./_components/toast";
 import FVBanners from "./_components/FVBanners";
 import { CartUIProvider, useCartUI } from "./_components/cart-ui";
 
+import ClienteBadge from "./_components/ClienteBadge";
+import { useCustomer, onlyDigits as onlyDigits2 } from "./_components/useCustomer";
+
 /* =========================
    SERVIÇOS (BANNERS LATERAIS - DESKTOP)
 ========================= */
@@ -330,19 +333,22 @@ function FarmaciaVirtualHome() {
               IA Drogarias <span className="opacity-80">• FV</span>
             </div>
 
-            <button
-              type="button"
-              onClick={openCart}
-              className="relative text-white font-extrabold whitespace-nowrap bg-white/10 hover:bg-white/15 px-4 py-2 rounded-full"
-              title="Abrir carrinho"
-            >
-              🛒 {brl(totalCarrinho)}
-              {qtdCarrinho > 0 && (
-                <span className="absolute -top-2 -right-2 h-6 min-w-[24px] px-1 rounded-full bg-green-400 text-blue-900 text-xs font-extrabold flex items-center justify-center border-2 border-blue-700">
-                  {qtdCarrinho}
-                </span>
-              )}
-            </button>
+            <div className="flex items-center gap-2">
+              <ClienteBadge />
+              <button
+                type="button"
+                onClick={openCart}
+                className="relative text-white font-extrabold whitespace-nowrap bg-white/10 hover:bg-white/15 px-4 py-2 rounded-full"
+                title="Abrir carrinho"
+              >
+                🛒 {brl(totalCarrinho)}
+                {qtdCarrinho > 0 && (
+                  <span className="absolute -top-2 -right-2 h-6 min-w-[24px] px-1 rounded-full bg-green-400 text-blue-900 text-xs font-extrabold flex items-center justify-center border-2 border-blue-700">
+                    {qtdCarrinho}
+                  </span>
+                )}
+              </button>
+            </div>
           </div>
 
           <div className="mt-3 md:hidden">
@@ -421,6 +427,8 @@ function FarmaciaVirtualHome() {
                 <div className="mt-1 text-[11px] text-white/80 min-h-[16px]"> </div>
               )}
             </div>
+
+            <ClienteBadge />
 
             <button
               type="button"
@@ -511,6 +519,10 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
   const router = useRouter();
   const cart = useCart();
 
+  // ✅ cliente logado
+  const { user, profile, updateProfile } = useCustomer();
+  const locked = !!user;
+
   // ✅ taxa fixa (você pode trocar depois por regra por bairro/distância)
   const TAXA_ENTREGA_FIXA = 10;
   const PEDIDOS_TABLE = "fv_pedidos";
@@ -550,6 +562,17 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
     }
     return true;
   }, [cart.items.length, clienteNome, clienteTelefone, needsCpf, clienteCpf, tipoEntrega, endereco, numero, bairro]);
+
+  // ✅ autopreenche quando abrir carrinho e estiver logado
+  useEffect(() => {
+    if (!open) return;
+    if (!user || !profile) return;
+
+    setClienteNome((prev) => prev || profile.nome || "");
+    setClienteTelefone((prev) => prev || profile.phone || "");
+    setClienteCpf((prev) => prev || profile.cpf || "");
+    setClienteEmail((prev) => prev || profile.email || "");
+  }, [open, user, profile]);
 
   useEffect(() => {
     if (!open) return;
@@ -677,8 +700,19 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
     try {
       const grupoId = (globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : undefined) || undefined;
 
-      // ✅ snapshot antes de qualquer coisa (pra pagamento automático)
       const willPayOnline = pagamento === "PIX" || pagamento === "CARTAO";
+
+      // ✅ se estiver logado, salva o que foi usado no checkout no perfil
+      if (user) {
+        try {
+          await updateProfile({
+            nome: clienteNome.trim() || null,
+            phone: onlyDigits2(clienteTelefone) || null,
+            cpf: onlyDigits2(clienteCpf) || null,
+            email: (clienteEmail || "").trim().toLowerCase() || null,
+          });
+        } catch {}
+      }
 
       // 1) estoque consolidado
       const eans = cart.items.map((i) => i.ean);
@@ -755,15 +789,13 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
 
       setPedidoCriado(created);
 
-      // ✅ PATCH PRINCIPAL:
-      // Se pagamento online (PIX/CARTAO), vai direto pro checkout AUTOMÁTICO (sem clique)
+      // ✅ Se pagamento online, vai direto pro checkout
       if (willPayOnline) {
-        // NÃO pode limpar o carrinho antes do snapshot do goToPayment (ele usa cart.items)
         goToPayment(created);
         return;
       }
 
-      // Dinheiro/Combinar: pode limpar e mostrar sucesso
+      // Dinheiro/Combinar
       clearCartSafe();
     } catch (e: any) {
       console.error(e);
@@ -855,7 +887,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
                         className="w-10 h-10 rounded-xl border bg-white hover:bg-gray-50 font-extrabold"
                         disabled={saving || !!pedidoCriado}
                       >
-                        –
+                        –{/* ok */}
                       </button>
 
                       <div className="w-10 h-10 rounded-xl border bg-gray-50 flex items-center justify-center font-extrabold">
@@ -888,45 +920,64 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
 
           {/* DADOS */}
           <div className="mt-5 bg-gray-50 border rounded-2xl p-4">
-            <div className="font-extrabold text-gray-900">Dados</div>
+            <div className="font-extrabold text-gray-900 flex items-center justify-between">
+              <span>Dados</span>
+              {locked ? (
+                <span className="text-[11px] font-extrabold text-blue-700 bg-white border px-2 py-1 rounded-full">
+                  Logado ✅
+                </span>
+              ) : null}
+            </div>
 
             <div className="mt-3 space-y-2">
               <input
                 placeholder="Nome do cliente"
                 value={clienteNome}
                 onChange={(e) => setClienteNome(e.target.value)}
-                className="w-full border bg-white px-3 py-2.5 rounded-xl outline-none focus:ring-4 focus:ring-blue-100"
-                disabled={saving || !!pedidoCriado}
+                className={`w-full border px-3 py-2.5 rounded-xl outline-none focus:ring-4 focus:ring-blue-100 ${
+                  locked ? "bg-slate-100 cursor-not-allowed" : "bg-white"
+                }`}
+                disabled={saving || !!pedidoCriado || locked}
               />
               <input
                 placeholder="WhatsApp com DDD (ex: 11999999999)"
                 value={clienteTelefone}
                 onChange={(e) => setClienteTelefone(e.target.value)}
-                className="w-full border bg-white px-3 py-2.5 rounded-xl outline-none focus:ring-4 focus:ring-blue-100"
-                disabled={saving || !!pedidoCriado}
+                className={`w-full border px-3 py-2.5 rounded-xl outline-none focus:ring-4 focus:ring-blue-100 ${
+                  locked ? "bg-slate-100 cursor-not-allowed" : "bg-white"
+                }`}
+                disabled={saving || !!pedidoCriado || locked}
               />
 
               <input
                 placeholder={needsCpf ? "CPF (obrigatório para PIX/CARTÃO)" : "CPF (opcional)"}
                 value={clienteCpf}
                 onChange={(e) => setClienteCpf(e.target.value)}
-                className={`w-full border bg-white px-3 py-2.5 rounded-xl outline-none focus:ring-4 ${
+                className={`w-full border px-3 py-2.5 rounded-xl outline-none focus:ring-4 ${
                   needsCpf ? "focus:ring-amber-100" : "focus:ring-blue-100"
-                }`}
-                disabled={saving || !!pedidoCriado}
+                } ${locked ? "bg-slate-100 cursor-not-allowed" : "bg-white"}`}
+                disabled={saving || !!pedidoCriado || locked}
               />
 
               <input
                 placeholder="Email (opcional)"
                 value={clienteEmail}
                 onChange={(e) => setClienteEmail(e.target.value)}
-                className="w-full border bg-white px-3 py-2.5 rounded-xl outline-none focus:ring-4 focus:ring-blue-100"
-                disabled={saving || !!pedidoCriado}
+                className={`w-full border px-3 py-2.5 rounded-xl outline-none focus:ring-4 focus:ring-blue-100 ${
+                  locked ? "bg-slate-100 cursor-not-allowed" : "bg-white"
+                }`}
+                disabled={saving || !!pedidoCriado || locked}
               />
 
               <div className="text-[11px] text-gray-500">Dica: WhatsApp com DDD. CPF só números (11 dígitos).</div>
               {needsCpf && onlyDigits(clienteCpf).length !== 11 ? (
                 <div className="text-[11px] text-red-600 font-bold">Para {pagamento}, o CPF é obrigatório (11 dígitos).</div>
+              ) : null}
+
+              {!locked ? (
+                <div className="text-[11px] text-gray-500">
+                  Dica: fazendo login você não precisa preencher esses dados toda vez.
+                </div>
               ) : null}
             </div>
           </div>
