@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import { createClient } from "@supabase/supabase-js";
 import Link from "next/link";
 
@@ -144,6 +144,10 @@ export default function CaixaPage() {
   const [boletosVencerPeriodo, setBoletosVencerPeriodo] = useState<any[]>([]);
   const [carregandoConsulta, setCarregandoConsulta] = useState(false);
 
+  // ✅ totais da consulta
+  const [totalPagosPeriodo, setTotalPagosPeriodo] = useState(0);
+  const [totalVencerPeriodo, setTotalVencerPeriodo] = useState(0);
+
   function fmt(n: number) {
     return Number(n || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 });
   }
@@ -159,7 +163,7 @@ export default function CaixaPage() {
   // ======================================================
   // 🔵 CARREGAR MOVIMENTAÇÕES E BOLETOS
   // ✅ MAIS LEVE:
-  // - movimentações: limita 60 (já resolve 99% do peso)
+  // - movimentações: limita 60
   // - boletos: só janela -7 a +7 dias
   // ======================================================
   async function carregarDados() {
@@ -466,7 +470,7 @@ export default function CaixaPage() {
   }
 
   // ======================================================
-  // 🟨 CONSULTAR BOLETOS PAGOS POR PERÍODO
+  // 🟨 CONSULTAR BOLETOS PAGOS POR PERÍODO (SOMA TOTAL)
   // ======================================================
   async function consultarBoletosPagosPeriodo() {
     if (!bolPagoIni || !bolPagoFim) {
@@ -491,11 +495,17 @@ export default function CaixaPage() {
       alert("Erro ao consultar boletos pagos!");
       return;
     }
-    setBoletosPagosPeriodo(data || []);
+
+    const list = data || [];
+    setBoletosPagosPeriodo(list);
+
+    // ✅ total pagos no período
+    const total = list.reduce((acc: number, b: any) => acc + Number(b.valor || 0), 0);
+    setTotalPagosPeriodo(total);
   }
 
   // ======================================================
-  // 🟨 CONSULTAR BOLETOS A VENCER POR PERÍODO
+  // 🟨 CONSULTAR BOLETOS A VENCER POR PERÍODO (SOMA TOTAL)
   // ======================================================
   async function consultarBoletosVencerPeriodo() {
     if (!bolVencerIni || !bolVencerFim) {
@@ -520,7 +530,13 @@ export default function CaixaPage() {
       alert("Erro ao consultar boletos a vencer!");
       return;
     }
-    setBoletosVencerPeriodo(data || []);
+
+    const list = data || [];
+    setBoletosVencerPeriodo(list);
+
+    // ✅ total a vencer no período
+    const total = list.reduce((acc: number, b: any) => acc + Number(b.valor || 0), 0);
+    setTotalVencerPeriodo(total);
   }
 
   // ======================================================
@@ -982,7 +998,7 @@ export default function CaixaPage() {
       </div>
 
       {/* ========================================================== */}
-      {/* CONSULTA BOLETOS POR PERÍODO */}
+      {/* CONSULTA BOLETOS POR PERÍODO (COM TOTAL) */}
       {/* ========================================================== */}
       <div className="bg-white rounded-lg shadow p-4 mb-6">
         <h2 className="text-lg font-bold text-blue-700 mb-3">🔎 Consultar Boletos por Período</h2>
@@ -991,16 +1007,24 @@ export default function CaixaPage() {
           {/* PAGOS */}
           <div className="border rounded p-4 bg-gray-50">
             <h3 className="font-bold text-green-700 mb-3">✅ Boletos Pagos (por data de pagamento)</h3>
+
             <div className="grid grid-cols-2 gap-3">
               <input type="date" value={bolPagoIni} onChange={(e) => setBolPagoIni(e.target.value)} className="border p-2 rounded" />
               <input type="date" value={bolPagoFim} onChange={(e) => setBolPagoFim(e.target.value)} className="border p-2 rounded" />
             </div>
+
             <button
               onClick={consultarBoletosPagosPeriodo}
               className="mt-3 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded font-semibold"
             >
               Buscar Pagos
             </button>
+
+            {/* ✅ TOTAL */}
+            <div className="mt-3 bg-white rounded border p-3 text-sm">
+              <span className="text-gray-600">Total pago no período: </span>
+              <strong className="text-green-700">R$ {fmt(totalPagosPeriodo)}</strong>
+            </div>
 
             {boletosPagosPeriodo.length > 0 && (
               <div className="mt-4 overflow-x-auto">
@@ -1026,21 +1050,33 @@ export default function CaixaPage() {
                 </table>
               </div>
             )}
+
+            {boletosPagosPeriodo.length === 0 && totalPagosPeriodo === 0 && (
+              <p className="mt-3 text-xs text-gray-500">Sem resultados ainda (faça a busca).</p>
+            )}
           </div>
 
           {/* A VENCER */}
           <div className="border rounded p-4 bg-gray-50">
             <h3 className="font-bold text-blue-700 mb-3">📌 Boletos a Vencer (por vencimento)</h3>
+
             <div className="grid grid-cols-2 gap-3">
               <input type="date" value={bolVencerIni} onChange={(e) => setBolVencerIni(e.target.value)} className="border p-2 rounded" />
               <input type="date" value={bolVencerFim} onChange={(e) => setBolVencerFim(e.target.value)} className="border p-2 rounded" />
             </div>
+
             <button
               onClick={consultarBoletosVencerPeriodo}
               className="mt-3 bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-semibold"
             >
               Buscar a Vencer
             </button>
+
+            {/* ✅ TOTAL */}
+            <div className="mt-3 bg-white rounded border p-3 text-sm">
+              <span className="text-gray-600">Total a vencer no período: </span>
+              <strong className="text-blue-700">R$ {fmt(totalVencerPeriodo)}</strong>
+            </div>
 
             {boletosVencerPeriodo.length > 0 && (
               <div className="mt-4 overflow-x-auto">
@@ -1063,6 +1099,10 @@ export default function CaixaPage() {
                   </tbody>
                 </table>
               </div>
+            )}
+
+            {boletosVencerPeriodo.length === 0 && totalVencerPeriodo === 0 && (
+              <p className="mt-3 text-xs text-gray-500">Sem resultados ainda (faça a busca).</p>
             )}
           </div>
         </div>
