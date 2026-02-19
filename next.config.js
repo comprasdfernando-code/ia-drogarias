@@ -5,8 +5,9 @@ const nextConfig = {
     esmExternals: true,
   },
   images: {
+    unoptimized: true, // 👈 ADICIONA ISSO
+
     remotePatterns: [
-      // ✅ SUPABASE (CORRIGIDO: ...cti e liberando object e render)
       {
         protocol: "https",
         hostname: "skzcvpkmcktjryvstcti.supabase.co",
@@ -17,14 +18,11 @@ const nextConfig = {
         hostname: "skzcvpkmcktjryvstcti.supabase.co",
         pathname: "/storage/v1/render/image/**",
       },
-      // (opcional, mas deixo pra garantir)
       {
         protocol: "https",
         hostname: "skzcvpkmcktjryvstcti.supabase.co",
         pathname: "/storage/v1/object/public/**",
       },
-
-      // ✅ CDN que você já usa
       {
         protocol: "https",
         hostname: "distro.fbitstatic.net",
