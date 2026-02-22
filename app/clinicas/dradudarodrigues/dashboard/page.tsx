@@ -15,6 +15,14 @@ function fmtDateTime(iso: string) {
   }
 }
 
+function todayISO() {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
 export default function DashboardPage() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
@@ -22,8 +30,10 @@ export default function DashboardPage() {
   const [totalPacientes, setTotalPacientes] = useState<number>(0);
   const [ultimosPacientes, setUltimosPacientes] = useState<Paciente[]>([]);
 
+  // ✅ Agora agenda hoje é AO VIVO
+  const [agendamentosHoje, setAgendamentosHoje] = useState<number>(0);
+
   // placeholders (a gente conecta quando criar as tabelas)
-  const [agendamentosHoje] = useState<number>(0);
   const [documentosPendentes] = useState<number>(0);
   const [receitaMes] = useState<number>(0);
 
@@ -55,8 +65,19 @@ export default function DashboardPage() {
 
       if (eRecent) throw eRecent;
 
+      // 3) ✅ agendamentos de hoje (count exato)
+      const hoje = todayISO();
+      const { count: cAgenda, error: eAgenda } = await supabase
+        .from("agenda_eventos")
+        .select("id", { count: "exact", head: true })
+        .eq("clinica_slug", CLINICA_SLUG)
+        .eq("data", hoje);
+
+      if (eAgenda) throw eAgenda;
+
       setTotalPacientes(count || 0);
       setUltimosPacientes((recents || []) as Paciente[]);
+      setAgendamentosHoje(cAgenda || 0);
     } catch (e: any) {
       setErr(e?.message || "Erro ao carregar dashboard.");
     } finally {
@@ -124,10 +145,10 @@ export default function DashboardPage() {
 
         <CardStat
           title="Agenda (hoje)"
-          value={String(agendamentosHoje)}
-          hint="(vamos integrar já já)"
+          value={loading ? "…" : String(agendamentosHoje)}
+          hint="agendamentos do dia"
           href="/clinicas/dradudarodrigues/agenda"
-          tag="EM BREVE"
+          tag="AO VIVO"
         />
 
         <CardStat
@@ -154,9 +175,7 @@ export default function DashboardPage() {
           <div className="flex items-center justify-between">
             <div>
               <div className="text-base font-semibold">Últimos pacientes</div>
-              <div className="text-xs text-slate-400">
-                Novos cadastros recentes
-              </div>
+              <div className="text-xs text-slate-400">Novos cadastros recentes</div>
             </div>
 
             <Link
@@ -238,7 +257,7 @@ export default function DashboardPage() {
 
             <li className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-950/50 px-3 py-2">
               <span>Agenda</span>
-              <span className="text-xs text-slate-300">próximo</span>
+              <span className="text-xs text-emerald-300">OK</span>
             </li>
 
             <li className="flex items-center justify-between rounded-xl border border-slate-800 bg-slate-950/50 px-3 py-2">
@@ -253,7 +272,7 @@ export default function DashboardPage() {
           </ul>
 
           <div className="mt-4 text-xs text-slate-400">
-            * Quando a agenda estiver pronta, esse dashboard já mostra “Agendamentos hoje”.
+            * Agora o dashboard já mostra “Agendamentos hoje” em tempo real.
           </div>
         </div>
       </div>
