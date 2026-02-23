@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
-import { CLINICA_SLUG } from "../../_lib/clinic";
+import { CLINICA_SLUG } from "../../../../_lib/clinic";
 
 type Modelo = {
   id: string;
