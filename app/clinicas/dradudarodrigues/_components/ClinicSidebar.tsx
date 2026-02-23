@@ -20,25 +20,34 @@ export default function ClinicSidebar() {
   const path = usePathname();
 
   return (
-    <aside className="hidden md:flex md:w-72 md:flex-col md:border-r md:border-slate-800 md:bg-slate-950">
-      <div className="p-5">
-        <div className="text-lg font-semibold">Dra Duda Rodrigues</div>
-        <div className="text-xs text-slate-400">Sistema Clínico • v0</div>
+    <aside className="hidden md:flex md:w-72 md:flex-col border-r border-[#2a1c2f]/70 bg-[#06030a]/70 backdrop-blur-md">
+      {/* Header */}
+      <div className="p-6 border-b border-[#2a1c2f]/60">
+        <div className="text-lg font-semibold text-[#f7d9c4] tracking-wide">
+          Dra Duda Rodrigues
+        </div>
+        <div className="text-xs text-slate-400 mt-1">
+          Sistema Clínico • v0
+        </div>
       </div>
 
-      <nav className="flex-1 px-3 pb-6">
-        <div className="space-y-1">
+      {/* Navegação */}
+      <nav className="flex-1 px-4 py-6">
+        <div className="space-y-2">
           {nav.map((item) => {
             const active = path === item.href;
+
             return (
               <Link
                 key={item.href}
                 href={item.href}
                 className={[
-                  "block rounded-xl px-3 py-2 text-sm",
+                  "block rounded-xl px-4 py-2.5 text-sm font-medium transition-all duration-200 border",
                   active
-                    ? "bg-slate-900 text-white"
-                    : "text-slate-300 hover:bg-slate-900/60 hover:text-white",
+                    ? // ativo dourado
+                      "bg-gradient-to-r from-[#f7d9c4] via-[#fff2d9] to-[#f2caa2] text-slate-900 border-[#b88a5a]/60 shadow-[0_0_0_1px_rgba(184,138,90,0.25)]"
+                    : // normal
+                      "border-transparent text-slate-300 hover:bg-[#0b0612]/60 hover:border-[#b88a5a]/25 hover:text-[#f7d9c4]",
                 ].join(" ")}
               >
                 {item.label}
@@ -47,6 +56,11 @@ export default function ClinicSidebar() {
           })}
         </div>
       </nav>
+
+      {/* Rodapé elegante */}
+      <div className="p-4 border-t border-[#2a1c2f]/60 text-xs text-slate-500">
+        Estética & Harmonização
+      </div>
     </aside>
   );
 }
