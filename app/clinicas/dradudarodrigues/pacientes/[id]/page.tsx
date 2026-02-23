@@ -149,8 +149,7 @@ export default function PacienteDetalhePage() {
         <div>
           <div className="text-xl font-semibold">{p.nome}</div>
           <div className="text-sm text-slate-300">
-            {p.telefone ? p.telefone : "Sem telefone"} •{" "}
-            {p.email ? p.email : "Sem e-mail"}
+            {p.telefone ? p.telefone : "Sem telefone"} • {p.email ? p.email : "Sem e-mail"}
           </div>
         </div>
 
@@ -177,7 +176,11 @@ export default function PacienteDetalhePage() {
         {[
           { href: `/clinicas/dradudarodrigues/pacientes/${p.id}/historico`, label: "Histórico" },
           { href: `/clinicas/dradudarodrigues/pacientes/${p.id}/prontuario`, label: "Prontuário" },
-          { href: `/clinicas/dradudarodrigues/pacientes/${p.id}/documentos`, label: "Documentos" },
+
+          // ✅ NOVO: gerar documento + lista de documentos
+          { href: `/clinicas/dradudarodrigues/pacientes/${p.id}/documentos/novo`, label: "Gerar documento" },
+          { href: `/clinicas/dradudarodrigues/documentos`, label: "Lista documentos" },
+
           { href: `/clinicas/dradudarodrigues/pacientes/${p.id}/fotos`, label: "Fotos" },
         ].map((x) => (
           <Link
