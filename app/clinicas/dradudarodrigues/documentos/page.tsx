@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { CLINICA_SLUG } from "../_lib/clinic";
+import { DUDA_THEME } from "../_lib/theme";
 
 type DocPaciente = {
   id: string;
@@ -36,17 +37,23 @@ function fmtDateTime(iso?: string | null) {
 
 function badgeClass(status: string) {
   const s = (status || "").toLowerCase();
-  const base = "inline-flex items-center rounded-full border px-2 py-0.5 text-[11px]";
-  if (s === "assinado") return `${base} border-emerald-900/40 bg-emerald-950/30 text-emerald-200`;
-  if (s === "cancelado") return `${base} border-rose-900/40 bg-rose-950/30 text-rose-200`;
-  return `${base} border-amber-900/40 bg-amber-950/30 text-amber-200`; // pendente
+  const base =
+    "inline-flex items-center rounded-full border px-3 py-1 text-xs md:text-sm font-semibold";
+
+  if (s === "assinado")
+    return `${base} border-emerald-300/15 bg-emerald-950/25 text-emerald-100`;
+  if (s === "cancelado")
+    return `${base} border-rose-300/15 bg-rose-950/25 text-rose-100`;
+  return `${base} border-[#f2caa2]/20 bg-[#050208]/45 text-[#f2caa2]`; // pendente
 }
 
 export default function DocumentosPage() {
   const [loading, setLoading] = useState(true);
   const [err, setErr] = useState<string | null>(null);
 
-  const [status, setStatus] = useState<"todos" | "pendente" | "assinado" | "cancelado">("pendente");
+  const [status, setStatus] = useState<"todos" | "pendente" | "assinado" | "cancelado">(
+    "pendente"
+  );
   const [q, setQ] = useState("");
   const [items, setItems] = useState<DocPaciente[]>([]);
 
@@ -76,7 +83,6 @@ export default function DocumentosPage() {
 
       const arr = (data || []) as any as DocPaciente[];
 
-      // filtro local por nome/título (rápido e simples)
       const filtered = !qNorm
         ? arr
         : arr.filter((d) => {
@@ -99,114 +105,111 @@ export default function DocumentosPage() {
   }, [status]);
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
       {/* topo */}
       <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
-          <div className="text-xl font-semibold">Documentos</div>
-          <div className="text-sm text-slate-300">
+          <div className={DUDA_THEME.h1}>Documentos</div>
+          <div className={DUDA_THEME.muted}>
             Termos e consentimentos do paciente (MVP com checkbox).
           </div>
         </div>
 
         <div className="flex gap-2">
-          <button
-            onClick={carregar}
-            className="rounded-xl border border-slate-700 bg-slate-950 px-4 py-2 text-sm text-slate-200 hover:bg-slate-900 disabled:opacity-60"
-            disabled={loading}
-          >
+          <button onClick={carregar} className={DUDA_THEME.btnGhost} disabled={loading}>
             {loading ? "Atualizando…" : "Atualizar"}
           </button>
 
-          <Link
-            href="/clinicas/dradudarodrigues/documentos/modelos"
-            className="rounded-xl border border-slate-700 bg-slate-950 px-4 py-2 text-sm text-slate-200 hover:bg-slate-900"
-          >
+          <Link href="/clinicas/dradudarodrigues/documentos/modelos" className={DUDA_THEME.btnPrimary}>
             Modelos
           </Link>
         </div>
       </div>
 
       {err && (
-        <div className="rounded-xl border border-rose-900/40 bg-rose-950/30 p-3 text-sm text-rose-200">
+        <div className="rounded-xl border border-rose-500/25 bg-rose-950/30 p-4 text-base text-rose-100">
           {err}
         </div>
       )}
 
       {/* filtros */}
-      <div className="rounded-2xl border border-slate-800 bg-slate-900/20 p-4">
+      <div className={`rounded-2xl p-5 ${DUDA_THEME.surface}`}>
         <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div className="flex flex-wrap gap-2">
-            {(["todos", "pendente", "assinado", "cancelado"] as const).map((s) => (
-              <button
-                key={s}
-                onClick={() => setStatus(s)}
-                className={[
-                  "rounded-xl border px-3 py-2 text-xs",
-                  status === s
-                    ? "border-slate-500 bg-slate-100 text-slate-900"
-                    : "border-slate-700 bg-slate-950 text-slate-200 hover:bg-slate-900",
-                ].join(" ")}
-              >
-                {s}
-              </button>
-            ))}
+            {(["todos", "pendente", "assinado", "cancelado"] as const).map((s) => {
+              const active = status === s;
+              return (
+                <button
+                  key={s}
+                  onClick={() => setStatus(s)}
+                  className={[
+                    "rounded-xl border px-4 py-2 text-sm md:text-base font-semibold transition",
+                    active
+                      ? "border-[#f2caa2]/30 bg-[#140a18]/65 text-[#f2caa2]"
+                      : "border-[#f2caa2]/15 bg-[#050208]/35 text-slate-200 hover:bg-[#140a18]/45",
+                  ].join(" ")}
+                >
+                  {s}
+                </button>
+              );
+            })}
           </div>
 
           <input
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Buscar por paciente ou título…"
-            className="w-full md:max-w-md rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-500"
+            className={`${DUDA_THEME.input} md:max-w-md`}
           />
         </div>
 
         {/* tabela */}
-        <div className="mt-4 overflow-hidden rounded-2xl border border-slate-800">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-950/60 text-slate-300">
+        <div className={`mt-5 ${DUDA_THEME.tableWrap}`}>
+          <table className="w-full">
+            <thead className={DUDA_THEME.tableHead}>
               <tr>
-                <th className="px-3 py-2 text-left">Documento</th>
-                <th className="px-3 py-2 text-left hidden md:table-cell">Paciente</th>
-                <th className="px-3 py-2 text-left">Status</th>
-                <th className="px-3 py-2 text-left hidden lg:table-cell">Criado</th>
-                <th className="px-3 py-2 text-left hidden lg:table-cell">Assinado</th>
-                <th className="px-3 py-2 text-right">Ação</th>
+                <th className="px-4 py-3 text-left">Documento</th>
+                <th className="px-4 py-3 text-left hidden md:table-cell">Paciente</th>
+                <th className="px-4 py-3 text-left">Status</th>
+                <th className="px-4 py-3 text-left hidden lg:table-cell">Criado</th>
+                <th className="px-4 py-3 text-left hidden lg:table-cell">Assinado</th>
+                <th className="px-4 py-3 text-right">Ação</th>
               </tr>
             </thead>
 
-            <tbody className="divide-y divide-slate-800">
+            <tbody className="divide-y divide-[#f2caa2]/10">
               {items.map((d) => (
-                <tr key={d.id} className="bg-slate-900/10">
-                  <td className="px-3 py-3">
-                    <div className="font-semibold text-slate-100">{d.titulo}</div>
-                    <div className="text-xs text-slate-400">
+                <tr key={d.id} className={DUDA_THEME.tableRow}>
+                  <td className={DUDA_THEME.tableCell}>
+                    <div className="font-semibold text-base md:text-lg">{d.titulo}</div>
+                    <div className="text-sm md:text-base text-slate-300">
                       #{d.id.slice(0, 8)} • {d.assinado_nome ? `Ass.: ${d.assinado_nome}` : "—"}
                     </div>
                   </td>
 
-                  <td className="px-3 py-3 hidden md:table-cell">
-                    <div className="font-semibold text-slate-100">{d.pacientes?.nome || "—"}</div>
-                    <div className="text-xs text-slate-400">{d.pacientes?.telefone || "—"}</div>
+                  <td className={`${DUDA_THEME.tableCell} hidden md:table-cell`}>
+                    <div className="font-semibold text-base md:text-lg">
+                      {d.pacientes?.nome || "—"}
+                    </div>
+                    <div className="text-sm md:text-base text-slate-300">
+                      {d.pacientes?.telefone || "—"}
+                    </div>
                   </td>
 
-                  <td className="px-3 py-3">
+                  <td className="px-4 py-3">
                     <span className={badgeClass(d.status)}>{d.status}</span>
                   </td>
 
-                  <td className="px-3 py-3 hidden lg:table-cell text-slate-200">
+                  <td className={`${DUDA_THEME.tableCellMuted} hidden lg:table-cell`}>
                     {fmtDateTime(d.created_at)}
                   </td>
 
-                  <td className="px-3 py-3 hidden lg:table-cell text-slate-200">
+                  <td className={`${DUDA_THEME.tableCellMuted} hidden lg:table-cell`}>
                     {fmtDateTime(d.assinado_at)}
                   </td>
 
-                  <td className="px-3 py-3 text-right">
-                    <Link
-                      href={`/clinicas/dradudarodrigues/documentos/${d.id}`}
-                      className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-1.5 text-xs text-slate-200 hover:bg-slate-900"
-                    >
+                  <td className="px-4 py-3 text-right">
+                    <Link href={`/clinicas/dradudarodrigues/documentos/${d.id}`} className={DUDA_THEME.btnGhost}>
                       Abrir
                     </Link>
                   </td>
@@ -215,7 +218,7 @@ export default function DocumentosPage() {
 
               {!loading && items.length === 0 && (
                 <tr>
-                  <td colSpan={6} className="px-3 py-10 text-center text-slate-400">
+                  <td colSpan={6} className="px-4 py-10 text-center text-base text-slate-300">
                     Nenhum documento encontrado.
                   </td>
                 </tr>
@@ -223,7 +226,7 @@ export default function DocumentosPage() {
 
               {loading && (
                 <tr>
-                  <td colSpan={6} className="px-3 py-10 text-center text-slate-400">
+                  <td colSpan={6} className="px-4 py-10 text-center text-base text-slate-300">
                     Carregando…
                   </td>
                 </tr>
@@ -232,7 +235,7 @@ export default function DocumentosPage() {
           </table>
         </div>
 
-        <div className="mt-3 text-xs text-slate-400">
+        <div className="mt-4 text-sm md:text-base text-slate-300">
           Dica: gere documentos pelo paciente (vamos colocar o botão “Gerar termo” no perfil do paciente).
         </div>
       </div>

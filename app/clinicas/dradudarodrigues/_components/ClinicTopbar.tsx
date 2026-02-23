@@ -2,6 +2,7 @@
 
 // app/clinicas/dradudarodrigues/_components/ClinicTopbar.tsx
 import { usePathname } from "next/navigation";
+import { DUDA_THEME } from "../_lib/theme";
 
 function titleFromPath(path: string) {
   const p = path.split("/").filter(Boolean);
@@ -25,26 +26,17 @@ export default function ClinicTopbar() {
   const title = titleFromPath(path);
 
   return (
-    <header className="sticky top-0 z-20 border-b border-[#2a1c2f]/70 bg-[#06030a]/65 backdrop-blur-md">
-      {/* glow superior sutil */}
-      <div className="absolute inset-x-0 top-0 h-[1px] bg-gradient-to-r from-transparent via-[#b88a5a]/40 to-transparent" />
-
-      <div className="flex items-center justify-between px-4 py-4 md:px-6">
+    <header className="sticky top-0 z-20 border-b border-[#f2caa2]/15 bg-[#07030b]/70 backdrop-blur">
+      <div className="flex items-center justify-between px-4 py-4 md:px-8">
         <div>
-          <div className="text-sm text-slate-400">
-            Clínicas / <span className="text-[#f7d9c4]">Dra Duda</span>
+          <div className="text-sm md:text-base text-slate-300">
+            Clínicas / <span className="text-[#f2caa2] font-semibold">Dra Duda</span>
           </div>
-          <div className="text-lg font-semibold text-slate-100 tracking-wide">
-            {title}
-          </div>
+          <div className="text-xl md:text-2xl font-semibold tracking-tight">{title}</div>
         </div>
 
-        {/* Status badge elegante */}
-        <div className="text-xs">
-          <span className="mr-2 text-slate-400">Status:</span>
-          <span className="rounded-full bg-gradient-to-r from-[#f7d9c4] via-[#fff2d9] to-[#f2caa2] text-slate-900 px-3 py-1 font-medium border border-[#b88a5a]/50 shadow-[0_0_0_1px_rgba(184,138,90,0.25)]">
-            MVP
-          </span>
+        <div className="flex items-center gap-3">
+          <span className={DUDA_THEME.badge}>Status: MVP</span>
         </div>
       </div>
     </header>

@@ -1,27 +1,44 @@
+// app/clinicas/dradudarodrigues/_lib/theme.ts
 export const DUDA_THEME = {
-  // fundo / cards
-  bg: "from-[#07040b] via-[#0b0612] to-[#06030a]",
-  panel: "bg-[#0b0612]/50 border-[#2a1c2f]/60",
-  panelHover: "hover:bg-[#0b0612]/65",
-
-  // texto
+  // fundo e texto base
   text: "text-slate-100",
-  muted: "text-slate-300",
+  bg: "from-[#120812] via-[#07020a] to-[#050208]",
 
-  // acento rosé/dourado
-  accentText: "text-[#f7d9c4]", // rosé claro
-  accentBorder: "border-[#b88a5a]/40",
-  accentRing: "focus:ring-2 focus:ring-[#f7d9c4]/25 focus:border-[#b88a5a]/45",
+  // superfícies com contraste alto
+  surface: "bg-[#0b0612]/70 border border-[#f2caa2]/15",
+  surfaceStrong: "bg-[#0b0612]/85 border border-[#f2caa2]/20",
+
+  // tipografia (maior / legível)
+  h1: "text-2xl md:text-3xl font-semibold tracking-tight",
+  h2: "text-xl md:text-2xl font-semibold tracking-tight",
+  label: "text-sm md:text-base text-slate-200",
+  muted: "text-sm md:text-base text-slate-300",
+  small: "text-xs md:text-sm text-slate-300",
 
   // botões
-  accentBtn:
-    "bg-gradient-to-r from-[#f7d9c4] via-[#fff2d9] to-[#f2caa2] text-slate-900 " +
-    "border border-[#b88a5a]/50 hover:from-[#ffe8d7] hover:to-[#f6d1aa]",
+  btnPrimary:
+    "rounded-xl bg-gradient-to-r from-[#f2caa2] to-[#d8a06a] px-4 py-2.5 text-sm md:text-base font-semibold text-[#1a0f12] hover:opacity-95 shadow-[0_0_0_1px_rgba(242,202,162,0.25)]",
+  btnGhost:
+    "rounded-xl border border-[#f2caa2]/25 bg-[#0b0612]/60 px-4 py-2.5 text-sm md:text-base text-slate-100 hover:bg-[#140a18]/60",
 
-  accentSoft:
-    "bg-[#2a1422]/25 border border-[#b88a5a]/25 text-[#f7d9c4] hover:bg-[#2a1422]/35",
+  // inputs
+  input:
+    "w-full rounded-xl border border-[#f2caa2]/20 bg-[#050208]/60 px-3 py-2.5 text-sm md:text-base text-slate-100 placeholder:text-slate-400 outline-none focus:ring-2 focus:ring-[#f2caa2]/30 focus:border-[#f2caa2]/35",
 
-  // badges
+  // badge
   badge:
-    "rounded-full border border-[#b88a5a]/30 bg-[#1a0d18]/60 text-[#f7d9c4] text-[10px] px-2 py-0.5",
+    "inline-flex items-center rounded-full border border-[#f2caa2]/25 bg-[#0b0612]/70 px-2.5 py-1 text-xs md:text-sm text-[#f2caa2]",
+
+  // tabela
+  tableWrap: "overflow-hidden rounded-2xl border border-[#f2caa2]/15",
+  tableHead:
+    "bg-[#07030b]/70 text-slate-200 text-xs md:text-sm font-semibold",
+  tableRow:
+    "bg-[#0b0612]/55 hover:bg-[#140a18]/45",
+  tableCell: "px-4 py-3 text-sm md:text-base text-slate-100",
+  tableCellMuted: "px-4 py-3 text-sm md:text-base text-slate-200",
+
+  // “pílula” status
+  pill:
+    "inline-flex items-center rounded-full border border-[#f2caa2]/20 bg-[#050208]/50 px-2.5 py-1 text-xs md:text-sm text-slate-100",
 };

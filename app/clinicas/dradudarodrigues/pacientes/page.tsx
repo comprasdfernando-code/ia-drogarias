@@ -5,6 +5,7 @@ import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { CLINICA_SLUG } from "../_lib/clinic";
 import type { Paciente } from "../_lib/types";
+import { DUDA_THEME } from "../_lib/theme";
 
 const PAGE_SIZE = 20;
 
@@ -35,7 +36,6 @@ export default function PacientesPage() {
         const from = page * PAGE_SIZE;
         const to = from + PAGE_SIZE - 1;
 
-        // base query (sempre filtra pela clínica)
         let query = supabase
           .from("pacientes")
           .select("*", { count: "exact" })
@@ -43,15 +43,10 @@ export default function PacientesPage() {
           .order("created_at", { ascending: false })
           .range(from, to);
 
-        // busca: por nome (ilike) e por telefone/cpf (igual ao digitado, sem máscara)
-        // OBS: ilike funciona bem pra nome; telefone/cpf exigem que você armazene com/sem máscara.
-        // Aqui vamos fazer: se tiver dígitos, tenta bater em telefone e cpf também.
         if (qNorm) {
-          // nome
           const like = `%${qNorm}%`;
 
           if (qDigits.length >= 6) {
-            // tenta nome OU cpf OU telefone
             query = query.or(
               `nome.ilike.${like},cpf.ilike.%${qDigits}%,telefone.ilike.%${qDigits}%`
             );
@@ -84,11 +79,12 @@ export default function PacientesPage() {
   const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
+      {/* topo */}
       <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
-          <div className="text-xl font-semibold">Pacientes</div>
-          <div className="text-sm text-slate-300">
+          <div className={DUDA_THEME.h1}>Pacientes</div>
+          <div className={DUDA_THEME.muted}>
             Cadastro e histórico centralizado da clínica.
           </div>
         </div>
@@ -96,15 +92,16 @@ export default function PacientesPage() {
         <div className="flex gap-2">
           <Link
             href="/clinicas/dradudarodrigues/pacientes/novo"
-            className="rounded-xl bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-white"
+            className={DUDA_THEME.btnPrimary}
           >
             + Novo paciente
           </Link>
         </div>
       </div>
 
-      <div className="rounded-2xl border border-slate-800 bg-slate-900/20 p-4">
-        <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+      {/* caixa */}
+      <div className={`rounded-2xl p-5 ${DUDA_THEME.surface}`}>
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <input
             value={q}
             onChange={(e) => {
@@ -112,58 +109,59 @@ export default function PacientesPage() {
               setPage(0);
             }}
             placeholder="Buscar por nome (ou telefone/CPF)…"
-            className="w-full md:max-w-lg rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-500"
+            className={`${DUDA_THEME.input} md:max-w-xl`}
           />
 
-          <div className="text-xs text-slate-400">
+          <div className="text-sm md:text-base text-slate-300">
             {loading ? "Carregando…" : `${total} registro(s)`}
           </div>
         </div>
 
         {err && (
-          <div className="mt-3 rounded-xl border border-rose-900/40 bg-rose-950/30 p-3 text-sm text-rose-200">
+          <div className="mt-4 rounded-xl border border-rose-500/25 bg-rose-950/30 p-4 text-base text-rose-100">
             {err}
           </div>
         )}
 
-        <div className="mt-4 overflow-hidden rounded-2xl border border-slate-800">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-950/60 text-slate-300">
+        {/* tabela */}
+        <div className={`mt-5 ${DUDA_THEME.tableWrap}`}>
+          <table className="w-full">
+            <thead className={DUDA_THEME.tableHead}>
               <tr>
-                <th className="px-3 py-2 text-left">Paciente</th>
-                <th className="px-3 py-2 text-left hidden md:table-cell">Telefone</th>
-                <th className="px-3 py-2 text-left hidden md:table-cell">E-mail</th>
-                <th className="px-3 py-2 text-left hidden lg:table-cell">Origem</th>
-                <th className="px-3 py-2 text-right">Ações</th>
+                <th className="px-4 py-3 text-left">Paciente</th>
+                <th className="px-4 py-3 text-left hidden md:table-cell">Telefone</th>
+                <th className="px-4 py-3 text-left hidden md:table-cell">E-mail</th>
+                <th className="px-4 py-3 text-left hidden lg:table-cell">Origem</th>
+                <th className="px-4 py-3 text-right">Ações</th>
               </tr>
             </thead>
 
-            <tbody className="divide-y divide-slate-800">
+            <tbody className="divide-y divide-[#f2caa2]/10">
               {items.map((p) => (
-                <tr key={p.id} className="bg-slate-900/10">
-                  <td className="px-3 py-3">
-                    <div className="font-semibold text-slate-100">{p.nome}</div>
-                    <div className="text-xs text-slate-400">
+                <tr key={p.id} className={DUDA_THEME.tableRow}>
+                  <td className={DUDA_THEME.tableCell}>
+                    <div className="font-semibold">{p.nome}</div>
+                    <div className="text-sm text-slate-300">
                       {p.tags?.length ? p.tags.join(" • ") : "Sem tags"}
                     </div>
                   </td>
 
-                  <td className="px-3 py-3 hidden md:table-cell text-slate-200">
+                  <td className={`${DUDA_THEME.tableCellMuted} hidden md:table-cell`}>
                     {p.telefone || "—"}
                   </td>
 
-                  <td className="px-3 py-3 hidden md:table-cell text-slate-200">
+                  <td className={`${DUDA_THEME.tableCellMuted} hidden md:table-cell`}>
                     {p.email || "—"}
                   </td>
 
-                  <td className="px-3 py-3 hidden lg:table-cell text-slate-200">
+                  <td className={`${DUDA_THEME.tableCellMuted} hidden lg:table-cell`}>
                     {p.origem || "—"}
                   </td>
 
-                  <td className="px-3 py-3 text-right">
+                  <td className="px-4 py-3 text-right">
                     <Link
                       href={`/clinicas/dradudarodrigues/pacientes/${p.id}`}
-                      className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-1.5 text-xs text-slate-200 hover:bg-slate-900"
+                      className={DUDA_THEME.btnGhost}
                     >
                       Abrir
                     </Link>
@@ -173,8 +171,16 @@ export default function PacientesPage() {
 
               {!loading && items.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-3 py-10 text-center text-slate-400">
+                  <td colSpan={5} className="px-4 py-10 text-center text-base text-slate-300">
                     Nenhum paciente encontrado.
+                  </td>
+                </tr>
+              )}
+
+              {loading && (
+                <tr>
+                  <td colSpan={5} className="px-4 py-10 text-center text-base text-slate-300">
+                    Carregando…
                   </td>
                 </tr>
               )}
@@ -182,22 +188,23 @@ export default function PacientesPage() {
           </table>
         </div>
 
-        <div className="mt-4 flex items-center justify-between">
+        {/* paginação */}
+        <div className="mt-5 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <button
-            className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-200 disabled:opacity-40"
+            className={DUDA_THEME.btnGhost}
             disabled={page <= 0 || loading}
             onClick={() => setPage((p) => Math.max(0, p - 1))}
           >
             ← Anterior
           </button>
 
-          <div className="text-xs text-slate-400">
-            Página <span className="text-slate-200">{page + 1}</span> de{" "}
-            <span className="text-slate-200">{totalPages}</span>
+          <div className="text-sm md:text-base text-slate-300">
+            Página <span className="text-[#f2caa2] font-semibold">{page + 1}</span> de{" "}
+            <span className="text-[#f2caa2] font-semibold">{totalPages}</span>
           </div>
 
           <button
-            className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-200 disabled:opacity-40"
+            className={DUDA_THEME.btnGhost}
             disabled={loading || page + 1 >= totalPages}
             onClick={() => setPage((p) => p + 1)}
           >

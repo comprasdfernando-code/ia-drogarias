@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { CLINICA_SLUG } from "../../_lib/clinic";
+import { DUDA_THEME } from "../../_lib/theme";
 
 type PacienteLite = {
   id: string;
@@ -22,6 +23,7 @@ function todayISO() {
 export default function NovoAgendamentoPage() {
   const router = useRouter();
   const [saving, setSaving] = useState(false);
+  const [loadingPacientes, setLoadingPacientes] = useState(false);
 
   const [pacientes, setPacientes] = useState<PacienteLite[]>([]);
   const [qPaciente, setQP] = useState("");
@@ -39,14 +41,19 @@ export default function NovoAgendamentoPage() {
     let alive = true;
 
     async function loadPacientes() {
+      setLoadingPacientes(true);
+
       const { data, error } = await supabase
         .from("pacientes")
         .select("id,nome,telefone")
         .eq("clinica_slug", CLINICA_SLUG)
         .order("nome", { ascending: true })
-        .limit(300);
+        .limit(600);
 
       if (!alive) return;
+
+      setLoadingPacientes(false);
+
       if (error) {
         alert(error.message);
         return;
@@ -62,29 +69,17 @@ export default function NovoAgendamentoPage() {
 
   const pacientesFiltrados = useMemo(() => {
     const q = qPaciente.trim().toLowerCase();
-    if (!q) return pacientes.slice(0, 30);
+    if (!q) return pacientes.slice(0, 40);
     return pacientes
       .filter((p) => p.nome.toLowerCase().includes(q) || (p.telefone || "").includes(q))
-      .slice(0, 30);
+      .slice(0, 40);
   }, [pacientes, qPaciente]);
 
   async function salvar() {
-    if (!pacienteId) {
-      alert("Selecione um paciente.");
-      return;
-    }
-    if (!titulo.trim()) {
-      alert("Informe um título.");
-      return;
-    }
-    if (!data) {
-      alert("Informe a data.");
-      return;
-    }
-    if (!horaInicio) {
-      alert("Informe a hora de início.");
-      return;
-    }
+    if (!pacienteId) return alert("Selecione um paciente.");
+    if (!titulo.trim()) return alert("Informe um título.");
+    if (!data) return alert("Informe a data.");
+    if (!horaInicio) return alert("Informe a hora de início.");
 
     setSaving(true);
     try {
@@ -117,34 +112,44 @@ export default function NovoAgendamentoPage() {
   }
 
   return (
-    <div className="space-y-4">
-      <div>
-        <div className="text-xl font-semibold">Novo agendamento</div>
-        <div className="text-sm text-slate-300">
-          Selecione o paciente e defina data/horário.
+    <div className="space-y-5">
+      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+        <div>
+          <div className={DUDA_THEME.h1}>Novo agendamento</div>
+          <div className={DUDA_THEME.muted}>
+            Selecione o paciente e defina data/horário.
+          </div>
         </div>
+
+        <button onClick={() => router.back()} className={DUDA_THEME.btnGhost} disabled={saving}>
+          Voltar
+        </button>
       </div>
 
-      <div className="rounded-2xl border border-slate-800 bg-slate-900/20 p-5">
-        <div className="grid gap-4 md:grid-cols-2">
+      <div className={`rounded-2xl p-6 ${DUDA_THEME.surface}`}>
+        <div className="grid gap-5 md:grid-cols-2">
           {/* paciente */}
           <div className="md:col-span-2">
-            <label className="text-sm text-slate-300">Paciente *</label>
+            <label className="text-base md:text-lg font-semibold text-slate-100">
+              Paciente <span className="text-[#f2caa2]">*</span>
+            </label>
 
-            <div className="mt-1 grid gap-2 md:grid-cols-2">
+            <div className="mt-2 grid gap-3 md:grid-cols-2">
               <input
                 value={qPaciente}
                 onChange={(e) => setQP(e.target.value)}
-                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-500"
+                className={DUDA_THEME.input}
                 placeholder="Buscar paciente por nome ou telefone…"
               />
 
               <select
                 value={pacienteId}
                 onChange={(e) => setPacienteId(e.target.value)}
-                className="w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-500"
+                className={DUDA_THEME.input}
               >
-                <option value="">Selecionar…</option>
+                <option value="">
+                  {loadingPacientes ? "Carregando pacientes…" : "Selecionar…"}
+                </option>
                 {pacientesFiltrados.map((p) => (
                   <option key={p.id} value={p.id}>
                     {p.nome} {p.telefone ? `• ${p.telefone}` : ""}
@@ -153,59 +158,72 @@ export default function NovoAgendamentoPage() {
               </select>
             </div>
 
-            <div className="mt-1 text-xs text-slate-400">
-              * Mostrando até 30 resultados. Digite para filtrar.
+            <div className="mt-2 text-sm md:text-base text-slate-300">
+              * Mostrando até 40 resultados. Digite para filtrar.
             </div>
           </div>
 
-          {/* dados */}
+          {/* título */}
           <div className="md:col-span-2">
-            <label className="text-sm text-slate-300">Título *</label>
+            <label className="text-base md:text-lg font-semibold text-slate-100">
+              Título <span className="text-[#f2caa2]">*</span>
+            </label>
             <input
               value={titulo}
               onChange={(e) => setTitulo(e.target.value)}
-              className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-500"
+              className={`${DUDA_THEME.input} mt-2`}
               placeholder="Ex: Avaliação, Retorno, Botox…"
             />
           </div>
 
+          {/* data */}
           <div>
-            <label className="text-sm text-slate-300">Data *</label>
+            <label className="text-base md:text-lg font-semibold text-slate-100">
+              Data <span className="text-[#f2caa2]">*</span>
+            </label>
             <input
               type="date"
               value={data}
               onChange={(e) => setData(e.target.value)}
-              className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-500"
+              className={`${DUDA_THEME.input} mt-2`}
             />
           </div>
 
-          <div className="grid gap-4 md:grid-cols-2">
+          {/* horas */}
+          <div className="grid gap-5 md:grid-cols-2">
             <div>
-              <label className="text-sm text-slate-300">Início *</label>
+              <label className="text-base md:text-lg font-semibold text-slate-100">
+                Início <span className="text-[#f2caa2]">*</span>
+              </label>
               <input
                 type="time"
                 value={horaInicio}
                 onChange={(e) => setHoraInicio(e.target.value)}
-                className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-500"
+                className={`${DUDA_THEME.input} mt-2`}
               />
             </div>
             <div>
-              <label className="text-sm text-slate-300">Fim</label>
+              <label className="text-base md:text-lg font-semibold text-slate-100">
+                Fim
+              </label>
               <input
                 type="time"
                 value={horaFim}
                 onChange={(e) => setHoraFim(e.target.value)}
-                className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-500"
+                className={`${DUDA_THEME.input} mt-2`}
               />
             </div>
           </div>
 
+          {/* status */}
           <div>
-            <label className="text-sm text-slate-300">Status</label>
+            <label className="text-base md:text-lg font-semibold text-slate-100">
+              Status
+            </label>
             <select
               value={status}
               onChange={(e) => setStatus(e.target.value)}
-              className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-500"
+              className={`${DUDA_THEME.input} mt-2`}
             >
               <option value="agendado">agendado</option>
               <option value="confirmado">confirmado</option>
@@ -215,42 +233,44 @@ export default function NovoAgendamentoPage() {
             </select>
           </div>
 
+          {/* valor */}
           <div>
-            <label className="text-sm text-slate-300">Valor (opcional)</label>
+            <label className="text-base md:text-lg font-semibold text-slate-100">
+              Valor (opcional)
+            </label>
             <input
               value={valor}
               onChange={(e) => setValor(e.target.value)}
-              className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-500"
+              className={`${DUDA_THEME.input} mt-2`}
               placeholder="Ex: 250,00"
             />
           </div>
 
+          {/* observações */}
           <div className="md:col-span-2">
-            <label className="text-sm text-slate-300">Observações</label>
+            <label className="text-base md:text-lg font-semibold text-slate-100">
+              Observações
+            </label>
             <textarea
               value={descricao}
               onChange={(e) => setDescricao(e.target.value)}
-              rows={4}
-              className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-500"
+              rows={5}
+              className={`${DUDA_THEME.input} mt-2`}
               placeholder="Notas internas do atendimento…"
             />
           </div>
         </div>
 
-        <div className="mt-5 flex gap-2">
+        <div className="mt-6 flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <button
             onClick={() => router.back()}
-            className="rounded-xl border border-slate-700 bg-slate-950 px-4 py-2 text-sm text-slate-200 hover:bg-slate-900 disabled:opacity-60"
+            className={DUDA_THEME.btnGhost}
             disabled={saving}
           >
             Voltar
           </button>
 
-          <button
-            onClick={salvar}
-            className="rounded-xl bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-white disabled:opacity-60"
-            disabled={saving}
-          >
+          <button onClick={salvar} className={DUDA_THEME.btnPrimary} disabled={saving}>
             {saving ? "Salvando…" : "Salvar agendamento"}
           </button>
         </div>

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { CLINICA_SLUG } from "../_lib/clinic";
+import { DUDA_THEME } from "../_lib/theme";
 
 type AgendaEvento = {
   id: string;
@@ -23,7 +24,6 @@ type AgendaEvento = {
   created_at: string;
   updated_at: string;
 
-  // join
   pacientes?: {
     id: string;
     nome: string;
@@ -41,23 +41,31 @@ function todayISO() {
 
 function padHM(t: string) {
   if (!t) return "—";
-  // supabase pode retornar HH:MM:SS
   return t.slice(0, 5);
 }
 
-function statusBadge(status: string) {
+function brl(v: number | null) {
+  if (v == null) return "—";
+  return Number(v).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+}
+
+function statusPill(status: string) {
   const s = (status || "").toLowerCase();
   const base =
-    "inline-flex items-center rounded-full border px-2 py-0.5 text-[11px]";
+    "inline-flex items-center rounded-full border px-3 py-1 text-xs md:text-sm font-semibold";
+
+  // mantendo a paleta dentro do rosé/dourado (sem neon)
   if (s === "confirmado")
-    return `${base} border-emerald-900/40 bg-emerald-950/30 text-emerald-200`;
+    return `${base} border-[#b9f6c7]/20 bg-emerald-950/25 text-emerald-100`;
   if (s === "concluido")
-    return `${base} border-sky-900/40 bg-sky-950/30 text-sky-200`;
+    return `${base} border-sky-300/15 bg-sky-950/25 text-sky-100`;
   if (s === "faltou")
-    return `${base} border-amber-900/40 bg-amber-950/30 text-amber-200`;
+    return `${base} border-amber-300/15 bg-amber-950/25 text-amber-100`;
   if (s === "cancelado")
-    return `${base} border-rose-900/40 bg-rose-950/30 text-rose-200`;
-  return `${base} border-slate-700 bg-slate-950 text-slate-200`;
+    return `${base} border-rose-300/15 bg-rose-950/25 text-rose-100`;
+
+  // agendado
+  return `${base} border-[#f2caa2]/20 bg-[#050208]/45 text-[#f2caa2]`;
 }
 
 export default function AgendaPage() {
@@ -118,21 +126,18 @@ export default function AgendaPage() {
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-5">
+      {/* topo */}
       <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
-          <div className="text-xl font-semibold">Agenda</div>
-          <div className="text-sm text-slate-300">
+          <div className={DUDA_THEME.h1}>Agenda</div>
+          <div className={DUDA_THEME.muted}>
             {diaFmt} {loading ? "• Carregando…" : ""}
           </div>
         </div>
 
         <div className="flex flex-wrap gap-2">
-          <button
-            onClick={() => shiftDay(-1)}
-            className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-200 hover:bg-slate-900"
-            disabled={loading}
-          >
+          <button onClick={() => shiftDay(-1)} className={DUDA_THEME.btnGhost} disabled={loading}>
             ← Dia anterior
           </button>
 
@@ -140,100 +145,76 @@ export default function AgendaPage() {
             type="date"
             value={dia}
             onChange={(e) => setDia(e.target.value)}
-            className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-200 outline-none focus:ring-2 focus:ring-slate-500"
+            className={DUDA_THEME.input}
+            style={{ maxWidth: 190 }}
           />
 
-          <button
-            onClick={() => setDia(todayISO())}
-            className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-200 hover:bg-slate-900"
-            disabled={loading}
-          >
+          <button onClick={() => setDia(todayISO())} className={DUDA_THEME.btnGhost} disabled={loading}>
             Hoje
           </button>
 
-          <button
-            onClick={() => shiftDay(1)}
-            className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-200 hover:bg-slate-900"
-            disabled={loading}
-          >
+          <button onClick={() => shiftDay(1)} className={DUDA_THEME.btnGhost} disabled={loading}>
             Próximo dia →
           </button>
 
-          <Link
-            href="/clinicas/dradudarodrigues/agenda/novo"
-            className="rounded-xl bg-slate-100 px-4 py-2 text-xs font-semibold text-slate-900 hover:bg-white"
-          >
+          <Link href="/clinicas/dradudarodrigues/agenda/novo" className={DUDA_THEME.btnPrimary}>
             + Novo agendamento
           </Link>
         </div>
       </div>
 
       {err && (
-        <div className="rounded-xl border border-rose-900/40 bg-rose-950/30 p-3 text-sm text-rose-200">
+        <div className="rounded-xl border border-rose-500/25 bg-rose-950/30 p-4 text-base text-rose-100">
           {err}
         </div>
       )}
 
-      <div className="rounded-2xl border border-slate-800 bg-slate-900/20 p-4">
-        <div className="overflow-hidden rounded-2xl border border-slate-800">
-          <table className="w-full text-sm">
-            <thead className="bg-slate-950/60 text-slate-300">
+      <div className={`rounded-2xl p-5 ${DUDA_THEME.surface}`}>
+        <div className={DUDA_THEME.tableWrap}>
+          <table className="w-full">
+            <thead className={DUDA_THEME.tableHead}>
               <tr>
-                <th className="px-3 py-2 text-left">Horário</th>
-                <th className="px-3 py-2 text-left">Paciente</th>
-                <th className="px-3 py-2 text-left hidden lg:table-cell">
-                  Título
-                </th>
-                <th className="px-3 py-2 text-left">Status</th>
-                <th className="px-3 py-2 text-right">Ação</th>
+                <th className="px-4 py-3 text-left">Horário</th>
+                <th className="px-4 py-3 text-left">Paciente</th>
+                <th className="px-4 py-3 text-left hidden lg:table-cell">Título</th>
+                <th className="px-4 py-3 text-left">Status</th>
+                <th className="px-4 py-3 text-right">Ação</th>
               </tr>
             </thead>
 
-            <tbody className="divide-y divide-slate-800">
+            <tbody className="divide-y divide-[#f2caa2]/10">
               {items.map((ev) => (
-                <tr key={ev.id} className="bg-slate-900/10">
-                  <td className="px-3 py-3 text-slate-200">
-                    <div className="font-semibold">
+                <tr key={ev.id} className={DUDA_THEME.tableRow}>
+                  <td className={DUDA_THEME.tableCell}>
+                    <div className="font-semibold text-base md:text-lg">
                       {padHM(ev.hora_inicio)}
                       {ev.hora_fim ? `–${padHM(ev.hora_fim)}` : ""}
                     </div>
-                    <div className="text-xs text-slate-400">
-                      {ev.valor != null
-                        ? Number(ev.valor).toLocaleString("pt-BR", {
-                            style: "currency",
-                            currency: "BRL",
-                          })
-                        : "—"}
-                    </div>
+                    <div className="text-sm md:text-base text-slate-300">{brl(ev.valor)}</div>
                   </td>
 
-                  <td className="px-3 py-3">
-                    <div className="font-semibold text-slate-100">
+                  <td className={DUDA_THEME.tableCell}>
+                    <div className="font-semibold text-base md:text-lg">
                       {ev.pacientes?.nome || "Paciente"}
                     </div>
-                    <div className="text-xs text-slate-400">
+                    <div className="text-sm md:text-base text-slate-300">
                       {ev.pacientes?.telefone || "—"}
                     </div>
                   </td>
 
-                  <td className="px-3 py-3 hidden lg:table-cell text-slate-200">
-                    {ev.titulo}
+                  <td className={`${DUDA_THEME.tableCellMuted} hidden lg:table-cell`}>
+                    <div className="font-semibold text-slate-100">{ev.titulo}</div>
                     {ev.descricao ? (
-                      <div className="text-xs text-slate-400 line-clamp-1">
-                        {ev.descricao}
-                      </div>
+                      <div className="text-sm text-slate-300 line-clamp-1">{ev.descricao}</div>
                     ) : null}
                   </td>
 
-                  <td className="px-3 py-3">
-                    <span className={statusBadge(ev.status)}>{ev.status}</span>
+                  <td className="px-4 py-3">
+                    <span className={statusPill(ev.status)}>{ev.status}</span>
                   </td>
 
-                  <td className="px-3 py-3 text-right">
-                    <Link
-                      href={`/clinicas/dradudarodrigues/agenda/${ev.id}`}
-                      className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-1.5 text-xs text-slate-200 hover:bg-slate-900"
-                    >
+                  <td className="px-4 py-3 text-right">
+                    <Link href={`/clinicas/dradudarodrigues/agenda/${ev.id}`} className={DUDA_THEME.btnGhost}>
                       Abrir
                     </Link>
                   </td>
@@ -242,8 +223,16 @@ export default function AgendaPage() {
 
               {!loading && items.length === 0 && (
                 <tr>
-                  <td colSpan={5} className="px-3 py-10 text-center text-slate-400">
+                  <td colSpan={5} className="px-4 py-10 text-center text-base text-slate-300">
                     Nenhum agendamento para este dia.
+                  </td>
+                </tr>
+              )}
+
+              {loading && (
+                <tr>
+                  <td colSpan={5} className="px-4 py-10 text-center text-base text-slate-300">
+                    Carregando…
                   </td>
                 </tr>
               )}
@@ -251,8 +240,9 @@ export default function AgendaPage() {
           </table>
         </div>
 
-        <div className="mt-3 text-xs text-slate-400">
-          Dica: use <b>Confirmado</b> quando o paciente responder, e <b>Concluído</b> ao finalizar o atendimento.
+        <div className="mt-4 text-sm md:text-base text-slate-300">
+          Dica: use <b className="text-[#f2caa2]">Confirmado</b> quando o paciente responder, e{" "}
+          <b className="text-[#f2caa2]">Concluído</b> ao finalizar o atendimento.
         </div>
       </div>
     </div>

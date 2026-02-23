@@ -6,6 +6,7 @@ import { useParams, useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabaseClient";
 import { CLINICA_SLUG } from "../../_lib/clinic";
 import type { Paciente } from "../../_lib/types";
+import { DUDA_THEME } from "../../_lib/theme";
 
 function cleanTags(s: string) {
   const arr = (s || "")
@@ -137,33 +138,36 @@ export default function PacienteDetalhePage() {
     }
   }
 
-  if (loading) {
-    return <div className="text-slate-300">Carregando…</div>;
-  }
-
+  if (loading) return <div className="text-slate-200 text-base">Carregando…</div>;
   if (!p) return null;
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-col gap-2 md:flex-row md:items-end md:justify-between">
+    <div className="space-y-5">
+      <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
         <div>
-          <div className="text-xl font-semibold">{p.nome}</div>
-          <div className="text-sm text-slate-300">
-            {p.telefone ? p.telefone : "Sem telefone"} • {p.email ? p.email : "Sem e-mail"}
+          <div className={DUDA_THEME.h1}>{p.nome}</div>
+          <div className={DUDA_THEME.muted}>
+            {p.telefone ? p.telefone : "Sem telefone"} •{" "}
+            {p.email ? p.email : "Sem e-mail"}
           </div>
         </div>
 
         <div className="flex gap-2">
           <button
             onClick={excluir}
-            className="rounded-xl border border-rose-900/40 bg-rose-950/30 px-4 py-2 text-sm text-rose-200 hover:bg-rose-950/40 disabled:opacity-60"
+            className={[
+              "rounded-xl px-4 py-2 text-base font-semibold",
+              "border border-rose-300/15 bg-rose-950/25 text-rose-100",
+              "hover:bg-rose-950/35 disabled:opacity-60",
+            ].join(" ")}
             disabled={saving}
           >
             Excluir
           </button>
+
           <button
             onClick={salvar}
-            className="rounded-xl bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-white disabled:opacity-60"
+            className={DUDA_THEME.btnPrimary}
             disabled={saving}
           >
             {saving ? "Salvando…" : "Salvar"}
@@ -171,103 +175,124 @@ export default function PacienteDetalhePage() {
         </div>
       </div>
 
-      {/* atalhos próximos módulos */}
+      {/* atalhos */}
       <div className="flex flex-wrap gap-2">
         {[
           { href: `/clinicas/dradudarodrigues/pacientes/${p.id}/historico`, label: "Histórico" },
           { href: `/clinicas/dradudarodrigues/pacientes/${p.id}/prontuario`, label: "Prontuário" },
 
-          // ✅ NOVO: gerar documento + lista de documentos
+          // ✅ NOVO: gerar documento + lista
           { href: `/clinicas/dradudarodrigues/pacientes/${p.id}/documentos/novo`, label: "Gerar documento" },
-          { href: `/clinicas/dradudarodrigues/documentos`, label: "Lista documentos" },
+          { href: `/clinicas/dradudarodrigues/documentos`, label: "Lista de documentos" },
 
           { href: `/clinicas/dradudarodrigues/pacientes/${p.id}/fotos`, label: "Fotos" },
         ].map((x) => (
           <Link
             key={x.href}
             href={x.href}
-            className="rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-xs text-slate-200 hover:bg-slate-900"
+            className={[
+              "rounded-xl px-3 py-2 text-sm md:text-base font-semibold",
+              "border border-[#f2caa2]/15 bg-[#050208]/30 text-slate-100",
+              "hover:bg-[#050208]/45 hover:border-[#f2caa2]/25",
+            ].join(" ")}
           >
             {x.label}
           </Link>
         ))}
       </div>
 
-      <div className="rounded-2xl border border-slate-800 bg-slate-900/20 p-5">
-        <div className="grid gap-4 md:grid-cols-2">
+      {/* formulário */}
+      <div className={`rounded-2xl p-6 ${DUDA_THEME.surface}`}>
+        <div className="grid gap-5 md:grid-cols-2">
           <div>
-            <label className="text-sm text-slate-300">Nome *</label>
+            <label className="text-base md:text-lg font-semibold text-slate-100">
+              Nome <span className="text-[#f2caa2]">*</span>
+            </label>
             <input
               value={nome}
               onChange={(e) => setNome(e.target.value)}
-              className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-500"
+              className={`${DUDA_THEME.input} mt-2`}
             />
           </div>
 
           <div>
-            <label className="text-sm text-slate-300">Telefone</label>
+            <label className="text-base md:text-lg font-semibold text-slate-100">
+              Telefone
+            </label>
             <input
               value={telefone}
               onChange={(e) => setTelefone(e.target.value)}
-              className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-500"
+              className={`${DUDA_THEME.input} mt-2`}
             />
           </div>
 
           <div>
-            <label className="text-sm text-slate-300">E-mail</label>
+            <label className="text-base md:text-lg font-semibold text-slate-100">
+              E-mail
+            </label>
             <input
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-500"
+              className={`${DUDA_THEME.input} mt-2`}
             />
           </div>
 
           <div>
-            <label className="text-sm text-slate-300">CPF</label>
+            <label className="text-base md:text-lg font-semibold text-slate-100">
+              CPF
+            </label>
             <input
               value={cpf}
               onChange={(e) => setCpf(e.target.value)}
-              className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-500"
+              className={`${DUDA_THEME.input} mt-2`}
             />
           </div>
 
           <div>
-            <label className="text-sm text-slate-300">Data de nascimento</label>
+            <label className="text-base md:text-lg font-semibold text-slate-100">
+              Data de nascimento
+            </label>
             <input
               type="date"
               value={dataNascimento}
               onChange={(e) => setDataNascimento(e.target.value)}
-              className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-500"
+              className={`${DUDA_THEME.input} mt-2`}
             />
           </div>
 
           <div>
-            <label className="text-sm text-slate-300">Origem</label>
+            <label className="text-base md:text-lg font-semibold text-slate-100">
+              Origem
+            </label>
             <input
               value={origem}
               onChange={(e) => setOrigem(e.target.value)}
-              className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-500"
+              className={`${DUDA_THEME.input} mt-2`}
               placeholder="Instagram / Indicação / etc."
             />
           </div>
 
           <div className="md:col-span-2">
-            <label className="text-sm text-slate-300">Tags</label>
+            <label className="text-base md:text-lg font-semibold text-slate-100">
+              Tags
+            </label>
             <input
               value={tags}
               onChange={(e) => setTags(e.target.value)}
-              className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-500"
+              className={`${DUDA_THEME.input} mt-2`}
               placeholder="botox, retorno, preenchimento"
             />
           </div>
 
           <div className="md:col-span-2">
-            <label className="text-sm text-slate-300">Observações</label>
+            <label className="text-base md:text-lg font-semibold text-slate-100">
+              Observações
+            </label>
             <textarea
               value={observacoes}
               onChange={(e) => setObservacoes(e.target.value)}
-              rows={4}
-              className="mt-1 w-full rounded-xl border border-slate-700 bg-slate-950 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-slate-500"
+              rows={5}
+              className={`${DUDA_THEME.input} mt-2`}
             />
           </div>
         </div>
