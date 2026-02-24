@@ -35,7 +35,7 @@ function SectionTitle({
       {kicker ? <div className="text-sm text-[#f2caa2]">{kicker}</div> : null}
       <h2 className="text-2xl md:text-3xl font-extrabold text-[#f7d9c4]">{title}</h2>
       {subtitle ? (
-        <p className="max-w-3xl text-base md:text-lg text-slate-200/85">{subtitle}</p>
+        <p className="max-w-3xl text-base md:text-lg text-[#f3eee9]/95">{subtitle}</p>
       ) : null}
     </div>
   );
@@ -51,7 +51,7 @@ function Card({
   return (
     <div className="rounded-3xl border border-[#2a1c2f]/70 bg-[#0b0612]/55 p-6 md:p-7 backdrop-blur">
       <div className="text-lg md:text-xl font-semibold text-[#f7d9c4]">{title}</div>
-      <div className="mt-3 text-base md:text-lg leading-relaxed text-slate-200/90">
+      <div className="mt-3 text-base md:text-lg leading-relaxed text-[#f3eee9]/95">
         {children}
       </div>
     </div>
@@ -110,16 +110,16 @@ export default function Page() {
 
           <h1 className="text-3xl md:text-5xl font-extrabold tracking-tight">
             <span className="text-[#f7d9c4]">Mentoria VIP</span>{" "}
-            <span className="text-slate-100">— Anatomia, Técnicas e Intercorrências</span>
+            <span className="text-[#fff6ee]">— Anatomia, Técnicas e Intercorrências</span>
           </h1>
 
-          <p className="text-base md:text-xl text-slate-200/90 max-w-xl leading-relaxed">
+          <p className="text-base md:text-xl text-[#f3eee9]/95 max-w-xl leading-relaxed">
             Mentoria premium para profissionais da saúde que querem dominar estética facial com{" "}
             <span className="text-[#f2caa2] font-semibold">segurança, raciocínio anatômico</span>{" "}
             e execução prática.
           </p>
 
-          <div className="flex flex-wrap gap-2 text-sm md:text-base text-slate-200/85">
+          <div className="flex flex-wrap gap-2 text-sm md:text-base text-[#f3eee9]/90">
             <span className="rounded-full border border-[#b88a5a]/20 bg-[#0b0612]/40 px-3 py-1">
               💉 Toxina Botulínica
             </span>
@@ -142,8 +142,9 @@ export default function Page() {
             <CTA variant="outline" />
           </div>
 
-          <div className="text-sm md:text-base text-slate-300/85">
-            ⚠ <span className="text-[#f7d9c4] font-bold">Apenas 5 vagas</span>. Quando fechar, encerra.
+          <div className="text-sm md:text-base text-[#e9ddd5]/90">
+            ⚠ <span className="text-[#f7d9c4] font-bold">Apenas 5 vagas</span>. Quando fechar,
+            encerra.
           </div>
         </div>
 
@@ -165,17 +166,17 @@ export default function Page() {
             <div className="p-5 md:p-6">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <div className="text-xs md:text-sm text-slate-300/90">Investimento</div>
-                  <div className="mt-1 text-2xl md:text-3xl font-extrabold text-slate-100">
+                  <div className="text-xs md:text-sm text-[#e9ddd5]/90">Investimento</div>
+                  <div className="mt-1 text-2xl md:text-3xl font-extrabold text-[#fff6ee]">
                     5x <span className="text-[#f7d9c4]">R$ 649,00</span>
                   </div>
-                  <div className="mt-2 text-xs md:text-sm text-slate-300/90">
+                  <div className="mt-2 text-xs md:text-sm text-[#e9ddd5]/90">
                     Bônus: kit aluno • paciente modelo • certificado • coffee break
                   </div>
                 </div>
 
                 <div className="text-right">
-                  <div className="text-xs md:text-sm text-slate-300/90">Contato</div>
+                  <div className="text-xs md:text-sm text-[#e9ddd5]/90">Contato</div>
                   <div className="mt-1 text-sm md:text-base font-semibold text-[#f2caa2]">
                     (11) 96873-0302
                   </div>
@@ -210,18 +211,18 @@ export default function Page() {
       <section className="grid gap-6 md:grid-cols-2">
         <Card title="Quem é a Dra. Duda Rodrigues">
           Biomédica esteta, há 4 anos aprofundando estudos principalmente em{" "}
-          <b>anatomia facial</b> para oferecer o melhor em procedimentos estéticos,
-          conforto e principalmente <b>segurança</b> aos pacientes.
+          <b>anatomia facial</b> para oferecer o melhor em procedimentos estéticos, conforto e
+          principalmente <b>segurança</b> aos pacientes.
         </Card>
 
         <div className="rounded-3xl border border-[#2a1c2f]/70 bg-[#0b0612]/55 p-6 md:p-7 backdrop-blur">
           <div className="text-lg md:text-xl font-semibold text-[#f7d9c4]">
             Participação internacional AO VIVO
           </div>
-          <div className="mt-3 text-base md:text-lg leading-relaxed text-slate-200/90">
+          <div className="mt-3 text-base md:text-lg leading-relaxed text-[#f3eee9]/95">
             Transmissão direta de Miami com{" "}
-            <span className="text-[#f2caa2] font-bold">Dra. Patrícia Oyole</span>,
-            referência mundial em anatomia facial.
+            <span className="text-[#f2caa2] font-bold">Dra. Patrícia Oyole</span>, referência
+            mundial em anatomia facial.
           </div>
 
           <div className="mt-5 grid gap-4 md:grid-cols-2">
@@ -237,10 +238,10 @@ export default function Page() {
             </div>
 
             <div className="rounded-2xl border border-[#b88a5a]/20 bg-[#06030a]/60 p-4">
-              <div className="text-sm md:text-base font-semibold text-slate-100">
+              <div className="text-sm md:text-base font-semibold text-[#fff6ee]">
                 O que isso muda pra você:
               </div>
-              <ul className="mt-3 space-y-2 text-sm md:text-base text-slate-200/90 list-disc pl-5">
+              <ul className="mt-3 space-y-2 text-sm md:text-base text-[#f3eee9]/95 list-disc pl-5">
                 <li>Raciocínio anatômico real (não “macete”)</li>
                 <li>Mais segurança em cada plano facial</li>
                 <li>Prevenção e conduta em intercorrências</li>
@@ -312,8 +313,8 @@ export default function Page() {
         </Card>
 
         <Card title="⚠ Vagas limitadas (VIP)">
-          Turma reduzida para atenção individual: <b>apenas 5 vagas</b>.  
-          Se você quer se destacar no mercado de estética facial com segurança, essa é a chance.
+          Turma reduzida para atenção individual: <b>apenas 5 vagas</b>. Se você quer se destacar
+          no mercado de estética facial com segurança, essa é a chance.
         </Card>
       </section>
 
@@ -321,21 +322,21 @@ export default function Page() {
       <section className="mt-12 rounded-3xl border border-[#2a1c2f]/70 bg-gradient-to-r from-[#0b0612]/70 to-[#06030a]/70 p-8 backdrop-blur">
         <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
           <div>
-            <div className="text-2xl md:text-3xl font-extrabold text-slate-100">
-              Mentoria VIP —{" "}
-              <span className="text-[#f7d9c4]">eleve sua carreira</span>
+            <div className="text-2xl md:text-3xl font-extrabold text-[#fff6ee]">
+              Mentoria VIP — <span className="text-[#f7d9c4]">eleve sua carreira</span>
             </div>
-            <div className="mt-2 text-base md:text-lg text-slate-200/85">
+            <div className="mt-2 text-base md:text-lg text-[#f3eee9]/95">
               Anatomia • técnicas • intercorrências • transmissão ao vivo de Miami.
             </div>
-            <div className="mt-3 text-sm md:text-base text-slate-300">
-              WhatsApp: <span className="text-[#f2caa2] font-semibold">(11) 96873-0302</span>
+            <div className="mt-3 text-sm md:text-base text-[#e9ddd5]/90">
+              WhatsApp:{" "}
+              <span className="text-[#f2caa2] font-semibold">(11) 96873-0302</span>
             </div>
           </div>
 
           <div className="flex flex-col items-start gap-3">
             <CTA />
-            <div className="text-xs md:text-sm text-slate-400">
+            <div className="text-xs md:text-sm text-[#cdbfb6]/85">
               Ao clicar, abre o WhatsApp com mensagem pronta.
             </div>
           </div>
@@ -343,7 +344,7 @@ export default function Page() {
       </section>
 
       {/* rodapé */}
-      <footer className="mt-10 flex flex-col gap-2 text-center text-xs text-slate-500">
+      <footer className="mt-10 flex flex-col gap-2 text-center text-xs text-[#cdbfb6]/80">
         <div>Página criada para alta conversão • LP premium rosé + dourado • IA Drogarias</div>
         <div className="opacity-80">Produzido por Tech Fernando Pereira</div>
         <div className="pt-2">
