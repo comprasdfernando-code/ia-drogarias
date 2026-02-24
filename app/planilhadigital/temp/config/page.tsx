@@ -79,7 +79,11 @@ export default function TempConfigPage() {
 
     const channel = supabase
       .channel("rt-temp-locais")
-      .on({ event: "*", schema: "public", table: "temp_locais" }, () => loadLocais())
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "temp_locais" },
+        () => loadLocais()
+      )
       .subscribe();
 
     return () => {
@@ -252,14 +256,21 @@ export default function TempConfigPage() {
             <div className="mt-4 space-y-3">
               <label className="block">
                 <span className="text-sm">Nome</span>
-                <input className="mt-1 w-full rounded border p-2" value={form.nome}
-                  onChange={(e) => setForm((p) => ({ ...p, nome: e.target.value }))} placeholder="Ex: Geladeira 1" />
+                <input
+                  className="mt-1 w-full rounded border p-2"
+                  value={form.nome}
+                  onChange={(e) => setForm((p) => ({ ...p, nome: e.target.value }))}
+                  placeholder="Ex: Geladeira 1"
+                />
               </label>
 
               <label className="block">
                 <span className="text-sm">Tipo</span>
-                <select className="mt-1 w-full rounded border p-2" value={form.tipo}
-                  onChange={(e) => setForm((p) => ({ ...p, tipo: e.target.value }))}>
+                <select
+                  className="mt-1 w-full rounded border p-2"
+                  value={form.tipo}
+                  onChange={(e) => setForm((p) => ({ ...p, tipo: e.target.value }))}
+                >
                   <option value="geladeira">geladeira</option>
                   <option value="ambiente">ambiente</option>
                   <option value="camara">camara</option>
@@ -269,31 +280,53 @@ export default function TempConfigPage() {
               <div className="grid grid-cols-2 gap-3">
                 <label className="block">
                   <span className="text-sm">Temp mínima (°C)</span>
-                  <input className="mt-1 w-full rounded border p-2" value={form.temp_min}
-                    onChange={(e) => setForm((p) => ({ ...p, temp_min: e.target.value }))} inputMode="decimal" />
+                  <input
+                    className="mt-1 w-full rounded border p-2"
+                    value={form.temp_min}
+                    onChange={(e) => setForm((p) => ({ ...p, temp_min: e.target.value }))}
+                    inputMode="decimal"
+                  />
                 </label>
                 <label className="block">
                   <span className="text-sm">Temp máxima (°C)</span>
-                  <input className="mt-1 w-full rounded border p-2" value={form.temp_max}
-                    onChange={(e) => setForm((p) => ({ ...p, temp_max: e.target.value }))} inputMode="decimal" />
+                  <input
+                    className="mt-1 w-full rounded border p-2"
+                    value={form.temp_max}
+                    onChange={(e) => setForm((p) => ({ ...p, temp_max: e.target.value }))}
+                    inputMode="decimal"
+                  />
                 </label>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <label className="block">
                   <span className="text-sm">Umid mín (%)</span>
-                  <input className="mt-1 w-full rounded border p-2" value={form.umid_min}
-                    onChange={(e) => setForm((p) => ({ ...p, umid_min: e.target.value }))} inputMode="decimal" placeholder="opcional" />
+                  <input
+                    className="mt-1 w-full rounded border p-2"
+                    value={form.umid_min}
+                    onChange={(e) => setForm((p) => ({ ...p, umid_min: e.target.value }))}
+                    inputMode="decimal"
+                    placeholder="opcional"
+                  />
                 </label>
                 <label className="block">
                   <span className="text-sm">Umid máx (%)</span>
-                  <input className="mt-1 w-full rounded border p-2" value={form.umid_max}
-                    onChange={(e) => setForm((p) => ({ ...p, umid_max: e.target.value }))} inputMode="decimal" placeholder="opcional" />
+                  <input
+                    className="mt-1 w-full rounded border p-2"
+                    value={form.umid_max}
+                    onChange={(e) => setForm((p) => ({ ...p, umid_max: e.target.value }))}
+                    inputMode="decimal"
+                    placeholder="opcional"
+                  />
                 </label>
               </div>
 
               <label className="flex items-center gap-2 text-sm">
-                <input type="checkbox" checked={form.ativo} onChange={(e) => setForm((p) => ({ ...p, ativo: e.target.checked }))} />
+                <input
+                  type="checkbox"
+                  checked={form.ativo}
+                  onChange={(e) => setForm((p) => ({ ...p, ativo: e.target.checked }))}
+                />
                 Ativo
               </label>
 
@@ -301,8 +334,11 @@ export default function TempConfigPage() {
                 <button onClick={() => setShowForm(false)} className="rounded border px-3 py-2 text-sm hover:bg-black/5">
                   Cancelar
                 </button>
-                <button onClick={save} disabled={!canEdit || saving}
-                  className="rounded bg-black px-3 py-2 text-sm text-white disabled:opacity-50">
+                <button
+                  onClick={save}
+                  disabled={!canEdit || saving}
+                  className="rounded bg-black px-3 py-2 text-sm text-white disabled:opacity-50"
+                >
                   {saving ? "Salvando…" : "Salvar"}
                 </button>
               </div>

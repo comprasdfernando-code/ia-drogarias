@@ -31,7 +31,6 @@ export default function AdminUsuariosPage() {
   const [convites, setConvites] = useState<Convite[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // modal simples
   const [openInvite, setOpenInvite] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteRole, setInviteRole] = useState("operador");
@@ -65,16 +64,29 @@ export default function AdminUsuariosPage() {
 
   useEffect(() => {
     if (lojaLoading || !lojaId) return;
+
     load();
 
     const ch1 = supabase
       .channel("rt-admin-usuario_lojas")
-      .on({ event: "*", schema: "public", table: "usuario_lojas" }, () => load())
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "usuario_lojas" },
+        () => {
+          load();
+        }
+      )
       .subscribe();
 
     const ch2 = supabase
       .channel("rt-admin-loja_convites")
-      .on({ event: "*", schema: "public", table: "loja_convites" }, () => load())
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "loja_convites" },
+        () => {
+          load();
+        }
+      )
       .subscribe();
 
     return () => {
@@ -108,17 +120,20 @@ export default function AdminUsuariosPage() {
     alert(
       data?.mode === "linked_existing_user"
         ? "Usuário já existia e foi vinculado à loja ✅"
-        : "Convite criado ✅ (agora você pode enviar o link/token por e-mail/WhatsApp quando quiser)"
+        : "Convite criado ✅"
     );
   }
 
   async function changeRole(user_id: string, newRole: string) {
     if (!isAdmin) return alert("Somente admin pode alterar perfis.");
+
     const { data, error } = await supabase.functions.invoke("update_user_role", {
       body: { loja_id: lojaId, user_id, role: newRole },
     });
+
     if (error) return alert("Erro: " + error.message);
     if (data?.error) return alert("Erro: " + data.error);
+
     await load();
   }
 
@@ -129,8 +144,10 @@ export default function AdminUsuariosPage() {
     const { data, error } = await supabase.functions.invoke("remove_user_from_loja", {
       body: { loja_id: lojaId, user_id },
     });
+
     if (error) return alert("Erro: " + error.message);
     if (data?.error) return alert("Erro: " + data.error);
+
     await load();
   }
 
@@ -167,10 +184,7 @@ export default function AdminUsuariosPage() {
             Módulo Temperatura
           </Link>
 
-          <button
-            onClick={() => setOpenInvite(true)}
-            className="rounded bg-black px-3 py-2 text-sm text-white"
-          >
+          <button onClick={() => setOpenInvite(true)} className="rounded bg-black px-3 py-2 text-sm text-white">
             + Convidar usuário
           </button>
         </div>
@@ -180,7 +194,6 @@ export default function AdminUsuariosPage() {
         <p className="mt-4">Carregando…</p>
       ) : (
         <>
-          {/* Membros */}
           <div className="mt-6">
             <div className="text-lg font-semibold">Membros da loja</div>
             <div className="mt-3 grid gap-3 md:grid-cols-2">
@@ -226,7 +239,6 @@ export default function AdminUsuariosPage() {
             </div>
           </div>
 
-          {/* Convites */}
           <div className="mt-10">
             <div className="text-lg font-semibold">Convites</div>
             <div className="mt-3 grid gap-3 md:grid-cols-2">
@@ -244,26 +256,21 @@ export default function AdminUsuariosPage() {
                   </div>
                 </div>
               ))}
+
               {convites.length === 0 ? (
-                <div className="rounded border p-4 text-sm opacity-80">
-                  Nenhum convite ainda.
-                </div>
+                <div className="rounded border p-4 text-sm opacity-80">Nenhum convite ainda.</div>
               ) : null}
             </div>
           </div>
         </>
       )}
 
-      {/* Modal Convidar */}
       {openInvite ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-lg rounded bg-white p-4">
             <div className="flex items-center justify-between">
               <div className="text-lg font-semibold">Convidar usuário</div>
-              <button
-                onClick={() => setOpenInvite(false)}
-                className="rounded border px-2 py-1 text-sm hover:bg-black/5"
-              >
+              <button onClick={() => setOpenInvite(false)} className="rounded border px-2 py-1 text-sm hover:bg-black/5">
                 Fechar
               </button>
             </div>
@@ -293,10 +300,7 @@ export default function AdminUsuariosPage() {
               </label>
 
               <div className="mt-4 flex items-center justify-end gap-2">
-                <button
-                  onClick={() => setOpenInvite(false)}
-                  className="rounded border px-3 py-2 text-sm hover:bg-black/5"
-                >
+                <button onClick={() => setOpenInvite(false)} className="rounded border px-3 py-2 text-sm hover:bg-black/5">
                   Cancelar
                 </button>
                 <button
@@ -309,7 +313,7 @@ export default function AdminUsuariosPage() {
               </div>
 
               <div className="text-xs opacity-70">
-                * Por enquanto o convite fica registrado no sistema. Depois a gente liga envio automático por e-mail/WhatsApp.
+                * Depois a gente liga envio automático por e-mail/WhatsApp com link de aceite.
               </div>
             </div>
           </div>
