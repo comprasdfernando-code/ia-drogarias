@@ -9,14 +9,19 @@ export const metadata = {
 
 export default function Layout({ children }: { children: ReactNode }) {
   return (
-    <div className="min-h-screen text-slate-100">
-      {/* Fundo rosé + dourado (não mexe no resto do sistema) */}
-      <div className="fixed inset-0 -z-10 bg-[#06030a]" />
-      <div className="fixed inset-0 -z-10">
-        <div className="absolute -top-40 left-1/2 h-[520px] w-[520px] -translate-x-1/2 rounded-full blur-3xl bg-[#f7d9c4]/10" />
-        <div className="absolute top-28 right-[-140px] h-[460px] w-[460px] rounded-full blur-3xl bg-[#f2caa2]/10" />
-        <div className="absolute bottom-[-160px] left-[-160px] h-[520px] w-[520px] rounded-full blur-3xl bg-[#ff9fcf]/10" />
+    <div className="min-h-screen text-white">
+      {/* Fundo premium (não mexe no resto do sistema) */}
+      <div className="fixed inset-0 -z-20 bg-[#07030b]" />
+
+      {/* Glow rosé/dourado */}
+      <div className="fixed inset-0 -z-10 pointer-events-none">
+        <div className="absolute -top-52 left-1/2 h-[620px] w-[620px] -translate-x-1/2 rounded-full blur-3xl bg-[#f7d9c4]/20" />
+        <div className="absolute top-24 right-[-180px] h-[540px] w-[540px] rounded-full blur-3xl bg-[#f2caa2]/18" />
+        <div className="absolute bottom-[-220px] left-[-220px] h-[640px] w-[640px] rounded-full blur-3xl bg-[#ff9fcf]/18" />
       </div>
+
+      {/* Vinheta pra dar contraste e “sumir” o cinza */}
+      <div className="fixed inset-0 -z-10 pointer-events-none bg-[radial-gradient(ellipse_at_center,rgba(0,0,0,0)_0%,rgba(0,0,0,0.55)_70%,rgba(0,0,0,0.85)_100%)]" />
 
       {children}
     </div>
