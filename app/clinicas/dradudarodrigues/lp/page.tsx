@@ -1,17 +1,18 @@
 // app/clinicas/dradudarodrigues/lp/page.tsx
-"use client";
-
 import Link from "next/link";
 
-const DASHBOARD_DEMO = "https://iadrogarias.com.br/clinicas/dradudarodrigues/dashboard";
-const WHATSAPP = "5511953996537"; // ajuste se quiser outro
-const WHATS_LINK = `https://wa.me/${WHATSAPP}?text=${encodeURIComponent(
-  "Olá! Vi a LP do Sistema Clínico da Dra Duda e quero uma demonstração/briefing para a minha clínica."
-)}`;
+const WHATSAPP_NUMBER = "5511968730302"; // 55 + DDD + número (sem espaços)
+const WHATSAPP_MSG =
+  "Olá Dra Duda, quero garantir minha vaga na Mentoria VIP em São Paulo. Ainda tem disponibilidade?";
 
-function Pill({ children }: { children: React.ReactNode }) {
+function waLink() {
+  const text = encodeURIComponent(WHATSAPP_MSG);
+  return `https://wa.me/${WHATSAPP_NUMBER}?text=${text}`;
+}
+
+function Badge({ children }: { children: any }) {
   return (
-    <span className="inline-flex items-center rounded-full border border-[#b88a5a]/25 bg-[#0b0612]/55 px-3 py-1 text-xs text-[#f7d9c4]">
+    <span className="inline-flex items-center rounded-full border border-[#b88a5a]/30 bg-[#0b0612]/60 px-3 py-1 text-xs text-[#f7d9c4] backdrop-blur">
       {children}
     </span>
   );
@@ -19,331 +20,282 @@ function Pill({ children }: { children: React.ReactNode }) {
 
 function Card({
   title,
-  desc,
-  icon,
+  children,
 }: {
   title: string;
-  desc: string;
-  icon: string;
+  children: any;
 }) {
   return (
-    <div className="rounded-2xl border border-[#2a1c2f]/70 bg-[#06030a]/60 p-5 backdrop-blur hover:border-[#b88a5a]/40 transition">
-      <div className="flex items-start gap-3">
-        <div className="h-10 w-10 shrink-0 rounded-2xl border border-[#b88a5a]/25 bg-[#0b0612]/70 grid place-items-center text-lg">
-          {icon}
+    <div className="rounded-3xl border border-[#2a1c2f]/70 bg-[#0b0612]/55 p-6 backdrop-blur">
+      <div className="text-lg font-semibold text-[#f7d9c4]">{title}</div>
+      <div className="mt-3 text-sm leading-relaxed text-slate-200/90">{children}</div>
+    </div>
+  );
+}
+
+function CTA() {
+  return (
+    <a
+      href={waLink()}
+      target="_blank"
+      rel="noreferrer"
+      className="inline-flex items-center justify-center gap-2 rounded-2xl bg-gradient-to-r from-[#f7d9c4] to-[#f2caa2] px-6 py-3 text-base font-semibold text-[#140a18] shadow-lg shadow-[#b88a5a]/10 hover:opacity-95"
+    >
+      Garantir minha vaga no WhatsApp
+      <span aria-hidden>→</span>
+    </a>
+  );
+}
+
+export default function Page() {
+  return (
+    <main className="mx-auto max-w-6xl px-5 py-10 md:px-8 md:py-14">
+      {/* Topbar simples */}
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div className="space-y-2">
+          <div className="flex flex-wrap gap-2">
+            <Badge>Mentoria VIP • Presencial</Badge>
+            <Badge>São Paulo</Badge>
+            <Badge>Vagas limitadas</Badge>
+          </div>
+
+          <h1 className="text-3xl font-extrabold tracking-tight md:text-5xl">
+            <span className="text-[#f7d9c4]">MENTORIA VIP</span>{" "}
+            <span className="text-slate-100">— Anatomia, Técnicas e Intercorrências</span>
+          </h1>
+
+          <p className="max-w-2xl text-base text-slate-200/85 md:text-lg">
+            A mentoria presencial para profissionais da saúde que querem dominar a estética facial com{" "}
+            <span className="text-[#f2caa2] font-semibold">segurança real</span>, técnica e
+            posicionamento premium.
+          </p>
+
+          <div className="flex flex-wrap gap-2 pt-1 text-sm text-slate-200/85">
+            <span className="rounded-full border border-[#b88a5a]/20 bg-[#0b0612]/40 px-3 py-1">
+              💉 Toxina Botulínica
+            </span>
+            <span className="rounded-full border border-[#b88a5a]/20 bg-[#0b0612]/40 px-3 py-1">
+              💉 Fios de PDO
+            </span>
+            <span className="rounded-full border border-[#b88a5a]/20 bg-[#0b0612]/40 px-3 py-1">
+              💉 Ácido Hialurônico
+            </span>
+            <span className="rounded-full border border-[#b88a5a]/20 bg-[#0b0612]/40 px-3 py-1">
+              💎 Full Face
+            </span>
+          </div>
+
+          <div className="pt-3 flex flex-wrap gap-3 items-center">
+            <CTA />
+            <div className="text-sm text-slate-300/80">
+              ⚠ <span className="text-[#f7d9c4] font-semibold">Apenas 5 vagas</span> • quando fechar, encerra.
+            </div>
+          </div>
         </div>
+
+        {/* Box de destaque (substitui foto depois se quiser) */}
+        <div className="w-full md:max-w-sm">
+          <div className="rounded-3xl border border-[#2a1c2f]/70 bg-[#0b0612]/55 p-6 backdrop-blur">
+            <div className="text-sm text-slate-200/80">Participação especial</div>
+            <div className="mt-2 text-xl font-bold text-[#f2caa2]">
+              AO VIVO direto de Miami
+            </div>
+            <div className="mt-2 text-sm text-slate-200/85">
+              Com <span className="font-semibold text-[#f7d9c4]">Dra. Patrícia Oyole</span> — referência mundial em anatomia facial.
+            </div>
+
+            <div className="mt-5 rounded-2xl border border-[#b88a5a]/20 bg-[#06030a]/60 p-4">
+              <div className="text-xs text-slate-300">Investimento</div>
+              <div className="mt-1 text-3xl font-extrabold text-slate-100">
+                5x <span className="text-[#f7d9c4]">R$ 649,00</span>
+              </div>
+              <div className="mt-2 text-xs text-slate-300/90">
+                Bônus: kit aluno • paciente modelo • certificado • coffee break
+              </div>
+            </div>
+
+            <div className="mt-5">
+              <CTA />
+              <div className="mt-2 text-center text-xs text-slate-400">
+                WhatsApp: (11) 96873-0302
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Linha separadora */}
+      <div className="my-10 h-px w-full bg-gradient-to-r from-transparent via-[#b88a5a]/30 to-transparent" />
+
+      {/* Seção: Quem é */}
+      <section className="grid gap-6 md:grid-cols-2">
+        <Card title="Quem é a Dra. Duda Rodrigues">
+          Biomédica esteta, há 4 anos aprofundando estudos principalmente em{" "}
+          <b>anatomia facial</b> para oferecer o melhor em procedimentos estéticos,
+          conforto e principalmente <b>segurança</b> aos pacientes.
+          <div className="mt-3 text-slate-200/85">
+            Esta mentoria não é conteúdo raso. É formação prática + raciocínio anatômico.
+          </div>
+        </Card>
+
+        <Card title="O diferencial que muda seu nível">
+          Aula exclusiva de <b>Anatomia Facial</b> com transmissão ao vivo direto de Miami,
+          ao lado de referência mundial no tema.
+          <div className="mt-3">
+            Você aprende <b>o porquê</b> das técnicas — e como executar com segurança.
+          </div>
+        </Card>
+      </section>
+
+      {/* Para quem é / não é */}
+      <section className="mt-10 grid gap-6 md:grid-cols-2">
+        <Card title="Para quem é">
+          <ul className="list-disc pl-5 space-y-2">
+            <li>Profissionais da saúde iniciando na estética/harmonização</li>
+            <li>Quem sente insegurança na anatomia</li>
+            <li>Quem quer dominar intercorrências</li>
+            <li>Quem quer elevar padrão e se posicionar no premium</li>
+          </ul>
+        </Card>
+
+        <Card title="Para quem não é">
+          <ul className="list-disc pl-5 space-y-2">
+            <li>Quem busca conteúdo superficial</li>
+            <li>Quem quer “atalhos” e não valoriza segurança clínica</li>
+            <li>Quem não quer atenção individual (turma VIP)</li>
+          </ul>
+        </Card>
+      </section>
+
+      {/* Conteúdo */}
+      <section className="mt-10">
+        <div className="flex items-center justify-between gap-4">
+          <h2 className="text-2xl font-extrabold text-[#f7d9c4] md:text-3xl">
+            O que você vai dominar
+          </h2>
+          <Badge>Mentoria prática + raciocínio</Badge>
+        </div>
+
+        <div className="mt-6 grid gap-6 md:grid-cols-2">
+          <Card title="💉 Toxina Botulínica">
+            Mapeamento facial • aplicação estratégica • naturalidade • correções.
+          </Card>
+
+          <Card title="💉 Ácido Hialurônico / Preenchedores">
+            Planejamento facial • harmonização equilibrada • Full Face estruturado.
+          </Card>
+
+          <Card title="💉 Lifting com Fios de PDO">
+            Vetores corretos • indicações seguras • planejamento anatômico.
+          </Card>
+
+          <Card title="🧠 Intercorrências">
+            Prevenção • conduta • raciocínio clínico • segurança em cada plano.
+          </Card>
+        </div>
+      </section>
+
+      {/* Bônus */}
+      <section className="mt-10">
+        <div className="rounded-3xl border border-[#2a1c2f]/70 bg-[#0b0612]/55 p-6 backdrop-blur">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+            <div>
+              <div className="text-xl font-bold text-[#f2caa2]">Bônus inclusos</div>
+              <div className="text-sm text-slate-200/85">
+                Tudo pensado para experiência VIP e aplicação prática.
+              </div>
+            </div>
+            <Badge>Incluído na mentoria</Badge>
+          </div>
+
+          <div className="mt-5 grid gap-3 md:grid-cols-4">
+            {["Kit aluno", "Paciente modelo", "Certificado", "Coffee break"].map((x) => (
+              <div
+                key={x}
+                className="rounded-2xl border border-[#b88a5a]/20 bg-[#06030a]/60 px-4 py-4 text-center text-sm text-slate-100"
+              >
+                <div className="text-[#f7d9c4] font-semibold">{x}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Formato + escassez */}
+      <section className="mt-10 grid gap-6 md:grid-cols-2">
+        <Card title="📍 Formato">
+          Presencial — São Paulo • Turma VIP <b>(apenas 5 alunos)</b>.
+          <div className="mt-3">
+            Por quê 5? Porque atenção individual muda resultado e acelera confiança.
+          </div>
+        </Card>
+
+        <Card title="⚠ Escassez real">
+          <b>Somente 5 vagas.</b> Quando fechar as 5, encerra.
+          <div className="mt-3">
+            Se você quer se destacar no mercado, essa é a hora de virar a chave.
+          </div>
+        </Card>
+      </section>
+
+      {/* FAQ */}
+      <section className="mt-10">
+        <h2 className="text-2xl font-extrabold text-[#f7d9c4] md:text-3xl">Perguntas frequentes</h2>
+
+        <div className="mt-6 grid gap-6 md:grid-cols-2">
+          <Card title="Tem certificado?">Sim, certificado incluso.</Card>
+          <Card title="É presencial?">Sim, presencial em São Paulo.</Card>
+          <Card title="Tem prática?">
+            Sim. Mentoria VIP com foco em aplicação e segurança.
+          </Card>
+          <Card title="Posso parcelar?">Sim, em 5x.</Card>
+        </div>
+      </section>
+
+      {/* CTA FINAL */}
+      <section className="mt-12 rounded-3xl border border-[#2a1c2f]/70 bg-gradient-to-r from-[#0b0612]/70 to-[#06030a]/70 p-8 backdrop-blur">
+        <div className="flex flex-col gap-6 md:flex-row md:items-center md:justify-between">
+          <div>
+            <div className="text-2xl font-extrabold text-slate-100">
+              Mentoria VIP —{" "}
+              <span className="text-[#f7d9c4]">eleve sua carreira</span>
+            </div>
+            <div className="mt-2 text-sm text-slate-200/85">
+              Anatomia • técnicas • intercorrências • transmissão ao vivo de Miami.
+            </div>
+            <div className="mt-3 text-sm text-slate-300">
+              ⚠ Apenas 5 vagas — quando fechar, encerra.
+            </div>
+          </div>
+
+          <div className="flex flex-col items-start gap-3">
+            <CTA />
+            <div className="text-xs text-slate-400">
+              Ao clicar, você será direcionado para o WhatsApp com a mensagem pronta.
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Rodapé técnico (pra impressionar) */}
+      <footer className="mt-10 flex flex-col gap-2 text-center text-xs text-slate-500">
         <div>
-          <div className="text-base font-semibold text-[#f7d9c4]">{title}</div>
-          <div className="mt-1 text-sm text-slate-200/80 leading-relaxed">
-            {desc}
-          </div>
+          Página criada para alta conversão • LP premium rosé + dourado • IA Drogarias
         </div>
-      </div>
-    </div>
-  );
-}
-
-function SectionTitle({
-  kicker,
-  title,
-  subtitle,
-}: {
-  kicker: string;
-  title: string;
-  subtitle?: string;
-}) {
-  return (
-    <div className="space-y-2">
-      <div className="text-xs tracking-widest uppercase text-[#b88a5a]">
-        {kicker}
-      </div>
-      <h2 className="text-2xl md:text-3xl font-semibold text-[#f7d9c4]">
-        {title}
-      </h2>
-      {subtitle ? (
-        <p className="text-sm md:text-base text-slate-200/80 leading-relaxed max-w-2xl">
-          {subtitle}
-        </p>
-      ) : null}
-    </div>
-  );
-}
-
-export default function DudaLPPage() {
-  return (
-    <div className="min-h-screen text-slate-100">
-      {/* Fundo rosé + dourado */}
-      <div className="fixed inset-0 -z-10 bg-gradient-to-b from-[#05010a] via-[#07020f] to-[#020007]" />
-      <div className="fixed inset-0 -z-10">
-        <div className="absolute -top-48 left-1/2 h-[560px] w-[560px] -translate-x-1/2 rounded-full blur-3xl bg-[#f7d9c4]/12" />
-        <div className="absolute top-28 right-[-160px] h-[520px] w-[520px] rounded-full blur-3xl bg-[#f2caa2]/10" />
-        <div className="absolute bottom-[-220px] left-[-140px] h-[520px] w-[520px] rounded-full blur-3xl bg-[#b88a5a]/10" />
-      </div>
-
-      {/* Topbar */}
-      <header className="sticky top-0 z-30 border-b border-[#2a1c2f]/70 bg-[#06030a]/55 backdrop-blur">
-        <div className="mx-auto max-w-6xl px-5 md:px-6 py-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <div className="h-9 w-9 rounded-2xl border border-[#b88a5a]/25 bg-[#0b0612]/70 grid place-items-center">
-              ✨
-            </div>
-            <div className="leading-tight">
-              <div className="text-sm font-semibold text-[#f7d9c4]">
-                Dra Duda Rodrigues
-              </div>
-              <div className="text-[11px] text-slate-200/70">
-                Sistema Clínico • Demonstração
-              </div>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-2">
-            <a
-              href={DASHBOARD_DEMO}
-              className="hidden md:inline-flex rounded-xl border border-[#b88a5a]/25 bg-[#0b0612]/60 px-3 py-2 text-sm text-slate-100 hover:border-[#b88a5a]/45 hover:bg-[#0b0612]/75 transition"
-            >
-              Ver Dashboard
-            </a>
-            <a
-              href={WHATS_LINK}
-              target="_blank"
-              rel="noreferrer"
-              className="inline-flex rounded-xl bg-[#f7d9c4] px-4 py-2 text-sm font-semibold text-[#1b0b1f] hover:bg-[#ffe6d6] transition"
-            >
-              Falar no WhatsApp
-            </a>
-          </div>
+        <div className="opacity-80">
+          Produzido por Tech Fernando Pereira
         </div>
-      </header>
 
-      {/* Hero */}
-      <section className="mx-auto max-w-6xl px-5 md:px-6 pt-10 md:pt-14 pb-10">
-        <div className="grid gap-8 md:grid-cols-2 md:items-center">
-          <div className="space-y-5">
-            <div className="flex flex-wrap gap-2">
-              <Pill>rosé + dourado</Pill>
-              <Pill>agenda • pacientes • documentos</Pill>
-              <Pill>100% online</Pill>
-            </div>
-
-            <h1 className="text-3xl md:text-4xl font-semibold text-[#f7d9c4] leading-tight">
-              Um sistema clínico com cara de{" "}
-              <span className="text-[#b88a5a]">clínica premium</span>.
-            </h1>
-
-            <p className="text-base md:text-lg text-slate-200/85 leading-relaxed">
-              A Dra Duda precisava sair do Excel/Forms e centralizar tudo:
-              <b> cadastro de pacientes</b>, <b>agenda</b>, <b>documentos</b> e
-              crescimento do consultório em um painel moderno e organizado.
-            </p>
-
-            <div className="flex flex-col sm:flex-row gap-3">
-              <a
-                href={DASHBOARD_DEMO}
-                className="inline-flex items-center justify-center rounded-xl bg-[#f7d9c4] px-5 py-3 text-sm font-semibold text-[#1b0b1f] hover:bg-[#ffe6d6] transition"
-              >
-                Ver Demonstração (Dashboard)
-              </a>
-
-              <a
-                href={WHATS_LINK}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center justify-center rounded-xl border border-[#b88a5a]/30 bg-[#0b0612]/60 px-5 py-3 text-sm text-slate-100 hover:border-[#b88a5a]/50 hover:bg-[#0b0612]/75 transition"
-              >
-                Quero um sistema assim
-              </a>
-            </div>
-
-            <div className="text-xs text-slate-200/65">
-              * Demonstração em evolução contínua (MVP → versão completa).
-            </div>
-          </div>
-
-          {/* Mock / painel */}
-          <div className="rounded-3xl border border-[#2a1c2f]/70 bg-[#06030a]/60 p-5 backdrop-blur">
-            <div className="flex items-center justify-between">
-              <div className="text-sm font-semibold text-[#f7d9c4]">
-                Preview do Painel
-              </div>
-              <span className="rounded-full border border-[#b88a5a]/25 bg-[#0b0612]/65 px-2 py-1 text-[11px] text-slate-100">
-                MVP
-              </span>
-            </div>
-
-            <div className="mt-4 grid gap-3">
-              <div className="rounded-2xl border border-[#2a1c2f]/70 bg-[#0b0612]/55 p-4">
-                <div className="text-sm text-slate-200/80">Hoje</div>
-                <div className="mt-1 text-xl font-semibold text-[#f7d9c4]">
-                  Agenda organizada
-                </div>
-                <div className="mt-1 text-sm text-slate-200/70">
-                  Status: Agendado • Confirmado • Concluído • Faltou • Cancelado
-                </div>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="rounded-2xl border border-[#2a1c2f]/70 bg-[#0b0612]/55 p-4">
-                  <div className="text-sm text-slate-200/80">Pacientes</div>
-                  <div className="mt-1 text-2xl font-semibold text-[#f7d9c4]">
-                    Cadastro
-                  </div>
-                  <div className="mt-1 text-xs text-slate-200/65">
-                    tags • origem • observações
-                  </div>
-                </div>
-
-                <div className="rounded-2xl border border-[#2a1c2f]/70 bg-[#0b0612]/55 p-4">
-                  <div className="text-sm text-slate-200/80">Documentos</div>
-                  <div className="mt-1 text-2xl font-semibold text-[#f7d9c4]">
-                    Aceite
-                  </div>
-                  <div className="mt-1 text-xs text-slate-200/65">
-                    snapshot • data/hora • registro
-                  </div>
-                </div>
-              </div>
-
-              <a
-                href={DASHBOARD_DEMO}
-                className="mt-1 inline-flex items-center justify-center rounded-2xl border border-[#b88a5a]/25 bg-[#0b0612]/60 px-4 py-3 text-sm text-slate-100 hover:border-[#b88a5a]/50 hover:bg-[#0b0612]/75 transition"
-              >
-                Abrir painel demo →
-              </a>
-            </div>
-          </div>
+        {/* link discreto para a clínica (opcional) */}
+        <div className="pt-2">
+          <Link
+            href="/clinicas/dradudarodrigues/dashboard"
+            className="text-[#f2caa2]/80 hover:text-[#f7d9c4]"
+          >
+            Voltar para o sistema
+          </Link>
         </div>
-      </section>
-
-      {/* Problema / Solução */}
-      <section className="mx-auto max-w-6xl px-5 md:px-6 py-10">
-        <div className="grid gap-8 md:grid-cols-2">
-          <div className="space-y-4">
-            <SectionTitle
-              kicker="o problema"
-              title="Planilhas e ferramentas soltas travam o crescimento"
-              subtitle="Excel + Forms + CRM limitado = informação fragmentada, pouca automação e pouca visão do consultório."
-            />
-            <div className="grid gap-3">
-              {[
-                "Cadastro disperso e difícil de achar informações",
-                "Agenda sem confirmação organizada",
-                "Documentos em papel e sem rastreabilidade",
-                "Falta de histórico centralizado do paciente",
-              ].map((t) => (
-                <div
-                  key={t}
-                  className="rounded-2xl border border-[#2a1c2f]/70 bg-[#06030a]/60 p-4 text-sm text-slate-200/85"
-                >
-                  ✅ {t}
-                </div>
-              ))}
-            </div>
-          </div>
-
-          <div className="space-y-4">
-            <SectionTitle
-              kicker="a solução"
-              title="Tudo em um único painel, com identidade premium"
-              subtitle="Sistema feito sob medida para o fluxo da clínica — com rosé + dourado e experiência de alto padrão."
-            />
-
-            <div className="grid gap-3">
-              <Card
-                icon="🧍‍♀️"
-                title="Pacientes centralizados"
-                desc="Cadastro completo, tags, origem e observações — tudo fácil de buscar."
-              />
-              <Card
-                icon="📅"
-                title="Agenda inteligente"
-                desc="Agendamentos por dia, status por atendimento e controle organizado."
-              />
-              <Card
-                icon="📄"
-                title="Documentos digitais"
-                desc="Termos com snapshot + aceite com registro de data/hora e dispositivo."
-              />
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Módulos */}
-      <section className="mx-auto max-w-6xl px-5 md:px-6 py-10">
-        <SectionTitle
-          kicker="módulos"
-          title="O que está incluído no sistema da Dra Duda"
-          subtitle="MVP já funcional e evoluindo para versão completa (CRM, automações e financeiro avançado)."
-        />
-
-        <div className="mt-6 grid gap-4 md:grid-cols-2">
-          <Card
-            icon="📌"
-            title="Dashboard"
-            desc="Visão geral e atalhos rápidos. Base para métricas e relatórios."
-          />
-          <Card
-            icon="🧾"
-            title="Documentos"
-            desc="Modelos + geração por paciente + assinatura com checkbox (MVP)."
-          />
-          <Card
-            icon="🗂"
-            title="CRM"
-            desc="Organização por status e acompanhamento de relacionamento (próximas fases)."
-          />
-          <Card
-            icon="💰"
-            title="Financeiro"
-            desc="Valores por atendimento e base para relatórios por período (evolutivo)."
-          />
-        </div>
-      </section>
-
-      {/* CTA final */}
-      <section className="mx-auto max-w-6xl px-5 md:px-6 py-12">
-        <div className="rounded-3xl border border-[#b88a5a]/25 bg-[#06030a]/65 p-7 md:p-9 backdrop-blur">
-          <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-6">
-            <div className="space-y-2">
-              <div className="text-xs tracking-widest uppercase text-[#b88a5a]">
-                pronto para elevar o padrão?
-              </div>
-              <div className="text-2xl md:text-3xl font-semibold text-[#f7d9c4]">
-                Quer uma LP + Sistema com identidade premium?
-              </div>
-              <div className="text-sm md:text-base text-slate-200/80">
-                Eu monto a LP, deixo a demo no ar e evoluímos o sistema por fases.
-              </div>
-            </div>
-
-            <div className="flex flex-col sm:flex-row gap-3">
-              <a
-                href={DASHBOARD_DEMO}
-                className="inline-flex items-center justify-center rounded-xl border border-[#b88a5a]/30 bg-[#0b0612]/60 px-5 py-3 text-sm text-slate-100 hover:border-[#b88a5a]/50 hover:bg-[#0b0612]/75 transition"
-              >
-                Ver demo agora
-              </a>
-              <a
-                href={WHATS_LINK}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center justify-center rounded-xl bg-[#f7d9c4] px-5 py-3 text-sm font-semibold text-[#1b0b1f] hover:bg-[#ffe6d6] transition"
-              >
-                Pedir orçamento no WhatsApp
-              </a>
-            </div>
-          </div>
-
-          <div className="mt-5 text-xs text-slate-200/60">
-            Assinado: <span className="text-slate-100 font-semibold">Tech Fernando Pereira</span>
-          </div>
-        </div>
-      </section>
-
-      <footer className="py-8 text-center text-xs text-slate-200/55">
-        © {new Date().getFullYear()} IA Drogarias • IA Clínicas — Dra Duda Rodrigues (demo)
       </footer>
-    </div>
+    </main>
   );
 }
