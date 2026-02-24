@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
+import { useLoja } from "../_components/LojaProvider";
 
 type Local = {
   id: string;
@@ -34,8 +35,7 @@ function toNum(s: string) {
 }
 
 export default function TempConfigPage() {
-  const [lojaId, setLojaId] = useState<string>("");
-  const [role, setRole] = useState<string>("operador");
+  const { lojaId, role, loading: lojaLoading } = useLoja();
   const canEdit = useMemo(() => ["gerente", "admin"].includes(role), [role]);
 
   const [locais, setLocais] = useState<Local[]>([]);
@@ -53,23 +53,14 @@ export default function TempConfigPage() {
     ativo: true,
   });
 
-  async function loadBase() {
-    const { data: ul } = await supabase
-      .from("usuario_lojas")
-      .select("loja_id, role")
-      .limit(1)
-      .maybeSingle();
-
-    if (!ul?.loja_id) return { loja_id: "", role: "operador" };
-    return { loja_id: ul.loja_id as string, role: (ul.role as string) || "operador" };
-  }
-
-  async function loadLocais(loja_id: string) {
+  async function loadLocais() {
+    if (!lojaId) return;
     setLoading(true);
+
     const { data, error } = await supabase
       .from("temp_locais")
       .select("id,loja_id,nome,tipo,temp_min,temp_max,umid_min,umid_max,ativo,created_at")
-      .eq("loja_id", loja_id)
+      .eq("loja_id", lojaId)
       .order("nome");
 
     if (error) {
@@ -82,34 +73,20 @@ export default function TempConfigPage() {
     setLoading(false);
   }
 
-  async function loadAll() {
-    const base = await loadBase();
-    if (!base.loja_id) {
-      setLoading(false);
-      return;
-    }
-    setLojaId(base.loja_id);
-    setRole(base.role);
-    await loadLocais(base.loja_id);
-  }
-
   useEffect(() => {
-    loadAll();
+    if (lojaLoading || !lojaId) return;
+    loadLocais();
 
     const channel = supabase
       .channel("rt-temp-locais")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "temp_locais" },
-        () => lojaId && loadLocais(lojaId)
-      )
+      .on({ event: "*", schema: "public", table: "temp_locais" }, () => loadLocais())
       .subscribe();
 
     return () => {
       supabase.removeChannel(channel);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [lojaId, lojaLoading]);
 
   function openNew() {
     setForm({
@@ -160,73 +137,52 @@ export default function TempConfigPage() {
     setSaving(true);
 
     if (form.id) {
-      const { error } = await supabase
-        .from("temp_locais")
-        .update(payload)
-        .eq("id", form.id);
-
+      const { error } = await supabase.from("temp_locais").update(payload).eq("id", form.id);
       setSaving(false);
       if (error) return alert("Erro ao atualizar: " + error.message);
       setShowForm(false);
-      lojaId && (await loadLocais(lojaId));
+      await loadLocais();
     } else {
       const { error } = await supabase.from("temp_locais").insert(payload);
-
       setSaving(false);
       if (error) return alert("Erro ao criar: " + error.message);
       setShowForm(false);
-      lojaId && (await loadLocais(lojaId));
+      await loadLocais();
     }
   }
 
   async function toggleAtivo(l: Local) {
     if (!canEdit) return;
-    const { error } = await supabase
-      .from("temp_locais")
-      .update({ ativo: !l.ativo })
-      .eq("id", l.id);
-
+    const { error } = await supabase.from("temp_locais").update({ ativo: !l.ativo }).eq("id", l.id);
     if (error) alert("Erro: " + error.message);
-    else lojaId && (await loadLocais(lojaId));
+    else await loadLocais();
   }
 
+  if (lojaLoading) return <div className="p-4">Carregando…</div>;
+
   return (
-    <div className="p-4">
+    <div className="p-2">
       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-xl font-semibold">Temperatura — Configuração</h1>
           <p className="text-sm opacity-70">
-            {canEdit
-              ? "Gerencie locais e limites (RLS valida no banco)."
-              : "Somente gerente/admin pode editar locais e limites."}
+            {canEdit ? "Gerencie locais e limites (RLS valida no banco)." : "Somente gerente/admin pode editar."}
           </p>
         </div>
 
         <div className="flex items-center gap-2">
-          <Link
-            href="/planilhadigital/temp"
-            className="rounded border px-3 py-2 text-sm hover:bg-black/5"
-          >
+          <Link href="/planilhadigital/temp" className="rounded border px-3 py-2 text-sm hover:bg-black/5">
             Dashboard
           </Link>
-          <Link
-            href="/planilhadigital/temp/registro"
-            className="rounded border px-3 py-2 text-sm hover:bg-black/5"
-          >
+          <Link href="/planilhadigital/temp/registro" className="rounded border px-3 py-2 text-sm hover:bg-black/5">
             Registrar
           </Link>
-          <Link
-            href="/planilhadigital/temp/alertas"
-            className="rounded border px-3 py-2 text-sm hover:bg-black/5"
-          >
+          <Link href="/planilhadigital/temp/alertas" className="rounded border px-3 py-2 text-sm hover:bg-black/5">
             Alertas
           </Link>
 
           {canEdit ? (
-            <button
-              onClick={openNew}
-              className="rounded bg-black px-3 py-2 text-sm text-white"
-            >
+            <button onClick={openNew} className="rounded bg-black px-3 py-2 text-sm text-white">
               + Novo local
             </button>
           ) : null}
@@ -260,16 +216,10 @@ export default function TempConfigPage() {
 
                 {canEdit ? (
                   <div className="flex items-center gap-2">
-                    <button
-                      onClick={() => openEdit(l)}
-                      className="rounded border px-3 py-1.5 text-sm hover:bg-black/5"
-                    >
+                    <button onClick={() => openEdit(l)} className="rounded border px-3 py-1.5 text-sm hover:bg-black/5">
                       Editar
                     </button>
-                    <button
-                      onClick={() => toggleAtivo(l)}
-                      className="rounded border px-3 py-1.5 text-sm hover:bg-black/5"
-                    >
+                    <button onClick={() => toggleAtivo(l)} className="rounded border px-3 py-1.5 text-sm hover:bg-black/5">
                       {l.ativo ? "Desativar" : "Ativar"}
                     </button>
                   </div>
@@ -281,9 +231,7 @@ export default function TempConfigPage() {
                   Temp: <b>{l.temp_min}</b> a <b>{l.temp_max}</b> °C
                 </div>
                 <div className="opacity-80">
-                  Umid:{" "}
-                  <b>{l.umid_min == null ? "—" : l.umid_min}</b> a{" "}
-                  <b>{l.umid_max == null ? "—" : l.umid_max}</b> %
+                  Umid: <b>{l.umid_min == null ? "—" : l.umid_min}</b> a <b>{l.umid_max == null ? "—" : l.umid_max}</b> %
                 </div>
               </div>
             </div>
@@ -291,18 +239,12 @@ export default function TempConfigPage() {
         </div>
       )}
 
-      {/* Modal simples */}
       {showForm ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
           <div className="w-full max-w-lg rounded bg-white p-4">
             <div className="flex items-center justify-between">
-              <div className="text-lg font-semibold">
-                {form.id ? "Editar local" : "Novo local"}
-              </div>
-              <button
-                onClick={() => setShowForm(false)}
-                className="rounded border px-2 py-1 text-sm hover:bg-black/5"
-              >
+              <div className="text-lg font-semibold">{form.id ? "Editar local" : "Novo local"}</div>
+              <button onClick={() => setShowForm(false)} className="rounded border px-2 py-1 text-sm hover:bg-black/5">
                 Fechar
               </button>
             </div>
@@ -310,21 +252,14 @@ export default function TempConfigPage() {
             <div className="mt-4 space-y-3">
               <label className="block">
                 <span className="text-sm">Nome</span>
-                <input
-                  className="mt-1 w-full rounded border p-2"
-                  value={form.nome}
-                  onChange={(e) => setForm((p) => ({ ...p, nome: e.target.value }))}
-                  placeholder="Ex: Geladeira 1"
-                />
+                <input className="mt-1 w-full rounded border p-2" value={form.nome}
+                  onChange={(e) => setForm((p) => ({ ...p, nome: e.target.value }))} placeholder="Ex: Geladeira 1" />
               </label>
 
               <label className="block">
                 <span className="text-sm">Tipo</span>
-                <select
-                  className="mt-1 w-full rounded border p-2"
-                  value={form.tipo}
-                  onChange={(e) => setForm((p) => ({ ...p, tipo: e.target.value }))}
-                >
+                <select className="mt-1 w-full rounded border p-2" value={form.tipo}
+                  onChange={(e) => setForm((p) => ({ ...p, tipo: e.target.value }))}>
                   <option value="geladeira">geladeira</option>
                   <option value="ambiente">ambiente</option>
                   <option value="camara">camara</option>
@@ -334,81 +269,45 @@ export default function TempConfigPage() {
               <div className="grid grid-cols-2 gap-3">
                 <label className="block">
                   <span className="text-sm">Temp mínima (°C)</span>
-                  <input
-                    className="mt-1 w-full rounded border p-2"
-                    value={form.temp_min}
-                    onChange={(e) => setForm((p) => ({ ...p, temp_min: e.target.value }))}
-                    inputMode="decimal"
-                  />
+                  <input className="mt-1 w-full rounded border p-2" value={form.temp_min}
+                    onChange={(e) => setForm((p) => ({ ...p, temp_min: e.target.value }))} inputMode="decimal" />
                 </label>
-
                 <label className="block">
                   <span className="text-sm">Temp máxima (°C)</span>
-                  <input
-                    className="mt-1 w-full rounded border p-2"
-                    value={form.temp_max}
-                    onChange={(e) => setForm((p) => ({ ...p, temp_max: e.target.value }))}
-                    inputMode="decimal"
-                  />
+                  <input className="mt-1 w-full rounded border p-2" value={form.temp_max}
+                    onChange={(e) => setForm((p) => ({ ...p, temp_max: e.target.value }))} inputMode="decimal" />
                 </label>
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <label className="block">
                   <span className="text-sm">Umid mín (%)</span>
-                  <input
-                    className="mt-1 w-full rounded border p-2"
-                    value={form.umid_min}
-                    onChange={(e) => setForm((p) => ({ ...p, umid_min: e.target.value }))}
-                    inputMode="decimal"
-                    placeholder="opcional"
-                  />
+                  <input className="mt-1 w-full rounded border p-2" value={form.umid_min}
+                    onChange={(e) => setForm((p) => ({ ...p, umid_min: e.target.value }))} inputMode="decimal" placeholder="opcional" />
                 </label>
-
                 <label className="block">
                   <span className="text-sm">Umid máx (%)</span>
-                  <input
-                    className="mt-1 w-full rounded border p-2"
-                    value={form.umid_max}
-                    onChange={(e) => setForm((p) => ({ ...p, umid_max: e.target.value }))}
-                    inputMode="decimal"
-                    placeholder="opcional"
-                  />
+                  <input className="mt-1 w-full rounded border p-2" value={form.umid_max}
+                    onChange={(e) => setForm((p) => ({ ...p, umid_max: e.target.value }))} inputMode="decimal" placeholder="opcional" />
                 </label>
               </div>
 
               <label className="flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={form.ativo}
-                  onChange={(e) => setForm((p) => ({ ...p, ativo: e.target.checked }))}
-                />
+                <input type="checkbox" checked={form.ativo} onChange={(e) => setForm((p) => ({ ...p, ativo: e.target.checked }))} />
                 Ativo
               </label>
 
               <div className="mt-4 flex items-center justify-end gap-2">
-                <button
-                  onClick={() => setShowForm(false)}
-                  className="rounded border px-3 py-2 text-sm hover:bg-black/5"
-                >
+                <button onClick={() => setShowForm(false)} className="rounded border px-3 py-2 text-sm hover:bg-black/5">
                   Cancelar
                 </button>
-                <button
-                  onClick={save}
-                  disabled={!canEdit || saving}
-                  className="rounded bg-black px-3 py-2 text-sm text-white disabled:opacity-50"
-                >
+                <button onClick={save} disabled={!canEdit || saving}
+                  className="rounded bg-black px-3 py-2 text-sm text-white disabled:opacity-50">
                   {saving ? "Salvando…" : "Salvar"}
                 </button>
               </div>
             </div>
           </div>
-        </div>
-      ) : null}
-
-      {lojaId ? (
-        <div className="mt-6 text-xs opacity-60">
-          Loja: {lojaId} • Perfil: {role}
         </div>
       ) : null}
     </div>

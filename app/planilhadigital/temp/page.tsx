@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import { useLoja } from "./_components/LojaProvider";
 
 type Ultima = {
   local_id: string;
@@ -16,36 +17,35 @@ type Ultima = {
 };
 
 export default function TempDashboard() {
-  const [lojaId, setLojaId] = useState<string>("");
+  const { lojaId, loading: lojaLoading } = useLoja();
   const [ultimas, setUltimas] = useState<Ultima[]>([]);
   const [loading, setLoading] = useState(true);
 
   async function load() {
+    if (!lojaId) return;
     setLoading(true);
 
-    const { data: ul } = await supabase
-      .from("usuario_lojas")
-      .select("loja_id")
-      .limit(1)
-      .maybeSingle();
-
-    if (!ul?.loja_id) return;
-    setLojaId(ul.loja_id);
-
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("temp_ultimas_por_local")
       .select("*")
-      .eq("loja_id", ul.loja_id)
+      .eq("loja_id", lojaId)
       .order("local_nome");
+
+    if (error) {
+      console.error(error);
+      setUltimas([]);
+      setLoading(false);
+      return;
+    }
 
     setUltimas((data || []) as any);
     setLoading(false);
   }
 
   useEffect(() => {
+    if (lojaLoading) return;
     load();
 
-    // realtime: quando inserir leitura, atualiza
     const channel = supabase
       .channel("rt-temp")
       .on(
@@ -58,10 +58,13 @@ export default function TempDashboard() {
     return () => {
       supabase.removeChannel(channel);
     };
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lojaId, lojaLoading]);
+
+  if (lojaLoading) return <div className="p-4">Carregando…</div>;
 
   return (
-    <div className="p-4">
+    <div className="p-2">
       <h1 className="text-xl font-semibold">Temperatura — Dashboard</h1>
 
       {loading ? (
@@ -91,12 +94,6 @@ export default function TempDashboard() {
               </div>
             </div>
           ))}
-        </div>
-      )}
-
-      {lojaId && (
-        <div className="mt-6 text-sm opacity-70">
-          Loja: {lojaId}
         </div>
       )}
     </div>

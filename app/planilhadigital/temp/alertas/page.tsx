@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
+import { useLoja } from "../_components/LojaProvider";
 
 type Alerta = {
   id: string;
@@ -20,32 +21,21 @@ type Alerta = {
 type LocalMap = Record<string, { nome: string; tipo?: string }>;
 
 export default function TempAlertasPage() {
-  const [lojaId, setLojaId] = useState<string>("");
-  const [role, setRole] = useState<string>("operador");
+  const { lojaId, role, loading: lojaLoading } = useLoja();
+  const canResolve = useMemo(() => ["gerente", "admin"].includes(role), [role]);
+
   const [alertas, setAlertas] = useState<Alerta[]>([]);
   const [locaisMap, setLocaisMap] = useState<LocalMap>({});
   const [loading, setLoading] = useState(true);
   const [onlyOpen, setOnlyOpen] = useState(true);
   const [resolvingId, setResolvingId] = useState<string>("");
 
-  const canResolve = useMemo(() => ["gerente", "admin"].includes(role), [role]);
-
-  async function loadBase() {
-    const { data: ul } = await supabase
-      .from("usuario_lojas")
-      .select("loja_id, role")
-      .limit(1)
-      .maybeSingle();
-
-    if (!ul?.loja_id) return { loja_id: "", role: "operador" };
-    return { loja_id: ul.loja_id as string, role: (ul.role as string) || "operador" };
-  }
-
-  async function loadLocaisMap(loja_id: string) {
+  async function loadLocaisMap() {
+    if (!lojaId) return;
     const { data: locs } = await supabase
       .from("temp_locais")
       .select("id,nome,tipo")
-      .eq("loja_id", loja_id);
+      .eq("loja_id", lojaId);
 
     const map: LocalMap = {};
     (locs || []).forEach((l: any) => {
@@ -54,13 +44,14 @@ export default function TempAlertasPage() {
     setLocaisMap(map);
   }
 
-  async function loadAlertas(loja_id: string) {
+  async function loadAlertas() {
+    if (!lojaId) return;
     setLoading(true);
 
     let q = supabase
       .from("temp_alertas")
       .select("id,loja_id,local_id,leitura_id,nivel,mensagem,resolvido,resolvido_em,resolvido_por,created_at")
-      .eq("loja_id", loja_id)
+      .eq("loja_id", lojaId)
       .order("created_at", { ascending: false })
       .limit(200);
 
@@ -78,31 +69,17 @@ export default function TempAlertasPage() {
     setLoading(false);
   }
 
-  async function loadAll() {
-    const base = await loadBase();
-    if (!base.loja_id) {
-      setLoading(false);
-      return;
-    }
-    setLojaId(base.loja_id);
-    setRole(base.role);
-    await Promise.all([loadLocaisMap(base.loja_id), loadAlertas(base.loja_id)]);
-  }
-
   useEffect(() => {
-    loadAll();
+    if (lojaLoading || !lojaId) return;
+    loadLocaisMap();
+    loadAlertas();
 
     const channel = supabase
       .channel("rt-temp-alertas")
       .on(
         "postgres_changes",
-        { event: "INSERT", schema: "public", table: "temp_alertas" },
-        () => lojaId && loadAlertas(lojaId)
-      )
-      .on(
-        "postgres_changes",
-        { event: "UPDATE", schema: "public", table: "temp_alertas" },
-        () => lojaId && loadAlertas(lojaId)
+        { event: "*", schema: "public", table: "temp_alertas" },
+        () => loadAlertas()
       )
       .subscribe();
 
@@ -110,11 +87,11 @@ export default function TempAlertasPage() {
       supabase.removeChannel(channel);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [lojaId, lojaLoading]);
 
   useEffect(() => {
-    if (!lojaId) return;
-    loadAlertas(lojaId);
+    if (lojaLoading || !lojaId) return;
+    loadAlertas();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [onlyOpen]);
 
@@ -140,8 +117,7 @@ export default function TempAlertasPage() {
       return;
     }
 
-    // atualiza lista
-    if (lojaId) await loadAlertas(lojaId);
+    await loadAlertas();
   }
 
   function badgeNivel(n: string) {
@@ -150,8 +126,10 @@ export default function TempAlertasPage() {
     return <span className={`${base} border-yellow-500/40 bg-yellow-500/10`}>ATENÇÃO</span>;
   }
 
+  if (lojaLoading) return <div className="p-4">Carregando…</div>;
+
   return (
-    <div className="p-4">
+    <div className="p-2">
       <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
         <div>
           <h1 className="text-xl font-semibold">Temperatura — Alertas</h1>
@@ -161,22 +139,13 @@ export default function TempAlertasPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          <Link
-            href="/planilhadigital/temp"
-            className="rounded border px-3 py-2 text-sm hover:bg-black/5"
-          >
+          <Link href="/planilhadigital/temp" className="rounded border px-3 py-2 text-sm hover:bg-black/5">
             Dashboard
           </Link>
-          <Link
-            href="/planilhadigital/temp/registro"
-            className="rounded border px-3 py-2 text-sm hover:bg-black/5"
-          >
+          <Link href="/planilhadigital/temp/registro" className="rounded border px-3 py-2 text-sm hover:bg-black/5">
             Registrar
           </Link>
-          <Link
-            href="/planilhadigital/temp/config"
-            className="rounded border px-3 py-2 text-sm hover:bg-black/5"
-          >
+          <Link href="/planilhadigital/temp/config" className="rounded border px-3 py-2 text-sm hover:bg-black/5">
             Config
           </Link>
         </div>
@@ -184,18 +153,11 @@ export default function TempAlertasPage() {
 
       <div className="mt-4 flex items-center gap-3">
         <label className="flex items-center gap-2 text-sm">
-          <input
-            type="checkbox"
-            checked={onlyOpen}
-            onChange={(e) => setOnlyOpen(e.target.checked)}
-          />
+          <input type="checkbox" checked={onlyOpen} onChange={(e) => setOnlyOpen(e.target.checked)} />
           Mostrar só pendentes
         </label>
 
-        <button
-          onClick={() => lojaId && loadAlertas(lojaId)}
-          className="rounded border px-3 py-2 text-sm hover:bg-black/5"
-        >
+        <button onClick={() => loadAlertas()} className="rounded border px-3 py-2 text-sm hover:bg-black/5">
           Atualizar
         </button>
       </div>
@@ -226,34 +188,25 @@ export default function TempAlertasPage() {
                     </div>
                     <div className="text-sm">{a.mensagem}</div>
                     <div className="text-xs opacity-70">
-                      Criado: {dt} • Status:{" "}
-                      <b>{a.resolvido ? "RESOLVIDO" : "PENDENTE"}</b>
+                      Criado: {dt} • Status: <b>{a.resolvido ? "RESOLVIDO" : "PENDENTE"}</b>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2">
-                    {!a.resolvido && canResolve ? (
-                      <button
-                        onClick={() => resolver(a.id)}
-                        disabled={resolvingId === a.id}
-                        className="rounded bg-black px-3 py-2 text-sm text-white disabled:opacity-50"
-                      >
-                        {resolvingId === a.id ? "Resolvendo…" : "Resolver"}
-                      </button>
-                    ) : null}
-                  </div>
+                  {!a.resolvido && canResolve ? (
+                    <button
+                      onClick={() => resolver(a.id)}
+                      disabled={resolvingId === a.id}
+                      className="rounded bg-black px-3 py-2 text-sm text-white disabled:opacity-50"
+                    >
+                      {resolvingId === a.id ? "Resolvendo…" : "Resolver"}
+                    </button>
+                  ) : null}
                 </div>
               </div>
             );
           })}
         </div>
       )}
-
-      {lojaId ? (
-        <div className="mt-6 text-xs opacity-60">
-          Loja: {lojaId} • Perfil: {role}
-        </div>
-      ) : null}
     </div>
   );
 }

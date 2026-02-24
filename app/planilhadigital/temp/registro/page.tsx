@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import { useLoja } from "../_components/LojaProvider";
 
 type Local = {
   id: string;
@@ -12,41 +13,37 @@ type Local = {
 };
 
 export default function RegistroTemperaturaPage() {
-  const [lojaId, setLojaId] = useState<string>("");
+  const { lojaId, loading: lojaLoading } = useLoja();
+
   const [locais, setLocais] = useState<Local[]>([]);
   const [localId, setLocalId] = useState("");
   const [temp, setTemp] = useState<string>("");
   const [umid, setUmid] = useState<string>("");
   const [obs, setObs] = useState<string>("");
   const [saving, setSaving] = useState(false);
+
   const now = useMemo(() => new Date(), []);
 
   useEffect(() => {
+    if (lojaLoading || !lojaId) return;
     (async () => {
-      const { data: u } = await supabase.auth.getUser();
-      if (!u?.user) return;
-
-      // pega primeira loja do usuário (ou use seletor de loja do seu layout)
-      const { data: ul } = await supabase
-        .from("usuario_lojas")
-        .select("loja_id")
-        .limit(1)
-        .maybeSingle();
-
-      if (!ul?.loja_id) return;
-      setLojaId(ul.loja_id);
-
-      const { data: locs } = await supabase
+      const { data: locs, error } = await supabase
         .from("temp_locais")
         .select("id,nome,tipo,temp_min,temp_max")
-        .eq("loja_id", ul.loja_id)
+        .eq("loja_id", lojaId)
         .eq("ativo", true)
         .order("nome");
+
+      if (error) {
+        console.error(error);
+        setLocais([]);
+        return;
+      }
 
       setLocais((locs || []) as any);
       if (locs?.[0]?.id) setLocalId(locs[0].id);
     })();
-  }, []);
+  }, [lojaId, lojaLoading]);
 
   const localSel = useMemo(
     () => locais.find((l) => l.id === localId),
@@ -63,9 +60,10 @@ export default function RegistroTemperaturaPage() {
 
   async function salvar() {
     if (!lojaId || !localId) return;
+
     const t = Number((temp || "").replace(",", "."));
     const u = umid ? Number((umid || "").replace(",", ".")) : null;
-    if (Number.isNaN(t)) return;
+    if (Number.isNaN(t)) return alert("Temperatura inválida.");
 
     setSaving(true);
     const { data: userRes } = await supabase.auth.getUser();
@@ -94,12 +92,12 @@ export default function RegistroTemperaturaPage() {
     alert("Leitura registrada ✅");
   }
 
+  if (lojaLoading) return <div className="p-4">Carregando…</div>;
+
   return (
-    <div className="p-4 max-w-xl">
+    <div className="p-2 max-w-xl">
       <h1 className="text-xl font-semibold">Registro de Temperatura</h1>
-      <p className="text-sm opacity-80">
-        {now.toLocaleString("pt-BR")}
-      </p>
+      <p className="text-sm opacity-80">{now.toLocaleString("pt-BR")}</p>
 
       <div className="mt-4 space-y-3">
         <label className="block">
