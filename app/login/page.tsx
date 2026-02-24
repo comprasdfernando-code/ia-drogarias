@@ -1,71 +1,77 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 
-export default function LoginCliente() {
-  const [telefone, setTelefone] = useState("");
-  const [codigo, setCodigo] = useState("");
-  const [fase, setFase] = useState(1);
+const APP_PASSWORD = "021185"; // 🔴 senha simples (troque quando quiser)
+const LS_KEY = "iadrogarias_simple_auth";
 
-  async function enviarCodigo() {
-    await fetch("/api/login/enviar-codigo", {
-      method: "POST",
-      body: JSON.stringify({ telefone }),
-    });
-    setFase(2);
+export default function LoginPage() {
+  const router = useRouter();
+  const [senha, setSenha] = useState("");
+  const [err, setErr] = useState<string>("");
+
+  const isAuthed = useMemo(() => {
+    if (typeof window === "undefined") return false;
+    return localStorage.getItem(LS_KEY) === "1";
+  }, []);
+
+  useEffect(() => {
+    if (isAuthed) {
+      router.replace("/planilhadigital/temp");
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function entrar() {
+    setErr("");
+    if ((senha || "").trim() !== APP_PASSWORD) {
+      setErr("Senha incorreta.");
+      return;
+    }
+    localStorage.setItem(LS_KEY, "1");
+    router.replace("/planilhadigital/temp");
   }
 
-  async function validarCodigo() {
-    const r = await fetch("/api/login/validar", {
-      method: "POST",
-      body: JSON.stringify({ telefone, codigo }),
-    });
-
-    const data = await r.json();
-    if (data.ok) window.location.href = "/meus-pedidos";
+  function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter") entrar();
   }
 
   return (
-    <main className="max-w-sm mx-auto px-6 py-10">
-      {fase === 1 && (
-        <>
-          <h1 className="text-2xl font-bold text-blue-600 mb-6">Entrar</h1>
+    <div className="min-h-screen bg-[#f3f5f7]">
+      <div className="mx-auto max-w-md px-4 py-10">
+        <div className="rounded-xl bg-white p-6 shadow-sm border">
+          <h1 className="text-xl font-semibold text-center">IA Drogarias</h1>
+          <p className="text-sm text-center opacity-70 mt-1">
+            Acesso rápido (senha simples)
+          </p>
 
-          <input
-            value={telefone}
-            onChange={(e) => setTelefone(e.target.value)}
-            placeholder="WhatsApp"
-            className="w-full border p-3 rounded mb-4"
-          />
-
-          <button
-            onClick={enviarCodigo}
-            className="w-full py-3 bg-blue-600 text-white rounded"
-          >
-            Receber código
-          </button>
-        </>
-      )}
-
-      {fase === 2 && (
-        <>
-          <h1 className="text-2xl font-bold text-blue-600 mb-6">Código enviado</h1>
-
-          <input
-            value={codigo}
-            onChange={(e) => setCodigo(e.target.value)}
-            placeholder="Código"
-            className="w-full border p-3 rounded mb-4"
-          />
+          <div className="mt-6">
+            <label className="text-sm font-medium">Senha</label>
+            <input
+              type="password"
+              value={senha}
+              onChange={(e) => setSenha(e.target.value)}
+              onKeyDown={onKeyDown}
+              className="mt-1 w-full rounded-lg border p-3 outline-none focus:ring-2 focus:ring-black/10"
+              placeholder="Digite a senha"
+              autoFocus
+            />
+            {err ? <div className="mt-2 text-sm text-red-600">{err}</div> : null}
+          </div>
 
           <button
-            onClick={validarCodigo}
-            className="w-full py-3 bg-green-600 text-white rounded"
+            onClick={entrar}
+            className="mt-4 w-full rounded-lg bg-green-600 py-3 font-semibold text-white hover:opacity-95"
           >
             Entrar
           </button>
-        </>
-      )}
-    </main>
+
+          <div className="mt-4 text-xs opacity-60 text-center">
+            * Login local para operação/demonstração. Depois a gente liga login Supabase multi-loja.
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }
