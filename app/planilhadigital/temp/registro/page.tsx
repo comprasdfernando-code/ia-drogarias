@@ -55,9 +55,11 @@ function pad2(n: number) {
 export default function RegistroTempPage() {
   const { lojaId } = useLoja();
 
-  // ✅ Nome da loja usado no PDF (linha única)
+  // ✅ Dados que vão no cabeçalho do PDF (edite aqui)
   const LOJA_NOME = "Drogaria Rede Fabiano";
-  const PERFIL_LABEL = "admin"; // (se quiser dinâmico depois, eu ajusto)
+  const LOJA_CNPJ = "62.157.257/0001-09";
+  const LOJA_ENDERECO = "Rua Av Sapopemba , nº 16034, Bairro Jd Rodolfo Pirani, São Paulo - SP";
+  const LOJA_TELEFONE = "(11) 9 4834-3725";
 
   const [locais, setLocais] = useState<Local[]>([]);
   const [leituras, setLeituras] = useState<Leitura[]>([]);
@@ -66,7 +68,7 @@ export default function RegistroTempPage() {
   const [turno, setTurno] = useState<"manha" | "tarde">("manha");
   const [assinatura, setAssinatura] = useState("");
 
-  // Temperatura: min / atual / max (do momento)
+  // Temperatura: min / atual / max
   const [tempMin, setTempMin] = useState("");
   const [tempAtual, setTempAtual] = useState("");
   const [tempMax, setTempMax] = useState("");
@@ -162,12 +164,10 @@ export default function RegistroTempPage() {
       loja_id: lojaId,
       local_id: localId,
 
-      // ✅ do momento (não fixo)
       temp_min_c: tempMin.trim() ? toNum(tempMin) : null,
       temp_c: tAtual,
       temp_max_c: tempMax.trim() ? toNum(tempMax) : null,
 
-      // ✅ só atual
       umid_pct: umidAtual.trim() ? toNum(umidAtual) : null,
 
       turno,
@@ -258,53 +258,29 @@ export default function RegistroTempPage() {
         </div>
 
         <div className="mt-4">
-          <div className="text-sm font-semibold">Temperatura (°C) — do momento</div>
+          <div className="text-sm font-semibold">Temperatura (°C) — do aparelho</div>
           <div className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-3">
             <label className="block">
-              <span className="text-xs opacity-70">Temp mín (momento)</span>
-              <input
-                className="mt-1 w-full rounded border p-2"
-                value={tempMin}
-                onChange={(e) => setTempMin(e.target.value)}
-                inputMode="decimal"
-                placeholder="ex: 2,0"
-              />
+              <span className="text-xs opacity-70">Temp mín</span>
+              <input className="mt-1 w-full rounded border p-2" value={tempMin} onChange={(e) => setTempMin(e.target.value)} inputMode="decimal" placeholder="ex: 2,0" />
             </label>
             <label className="block">
               <span className="text-xs opacity-70">Temp atual *</span>
-              <input
-                className="mt-1 w-full rounded border p-2"
-                value={tempAtual}
-                onChange={(e) => setTempAtual(e.target.value)}
-                inputMode="decimal"
-                placeholder="ex: 5,2"
-              />
+              <input className="mt-1 w-full rounded border p-2" value={tempAtual} onChange={(e) => setTempAtual(e.target.value)} inputMode="decimal" placeholder="ex: 5,2" />
             </label>
             <label className="block">
-              <span className="text-xs opacity-70">Temp máx (momento)</span>
-              <input
-                className="mt-1 w-full rounded border p-2"
-                value={tempMax}
-                onChange={(e) => setTempMax(e.target.value)}
-                inputMode="decimal"
-                placeholder="ex: 8,0"
-              />
+              <span className="text-xs opacity-70">Temp máx</span>
+              <input className="mt-1 w-full rounded border p-2" value={tempMax} onChange={(e) => setTempMax(e.target.value)} inputMode="decimal" placeholder="ex: 8,0" />
             </label>
           </div>
         </div>
 
         <div className="mt-4">
-          <div className="text-sm font-semibold">Umidade (%) — do momento</div>
+          <div className="text-sm font-semibold">Umidade (%) — do aparelho</div>
           <div className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-2">
             <label className="block">
               <span className="text-xs opacity-70">Umid atual</span>
-              <input
-                className="mt-1 w-full rounded border p-2"
-                value={umidAtual}
-                onChange={(e) => setUmidAtual(e.target.value)}
-                inputMode="decimal"
-                placeholder="ex: 55"
-              />
+              <input className="mt-1 w-full rounded border p-2" value={umidAtual} onChange={(e) => setUmidAtual(e.target.value)} inputMode="decimal" placeholder="ex: 55" />
             </label>
             <div className="text-xs opacity-60 self-end pb-2">* Umidade mínima/máxima não é usada.</div>
           </div>
@@ -326,15 +302,28 @@ export default function RegistroTempPage() {
 
       {/* ======================
           BLOCO DO PDF (somente isso imprime)
-          ✅ “Loja ativa: ... Perfil: ...” + TABELA
       ======================= */}
       <div id="print-area" className="print-only">
-        <div className="print-topline">
-          <div className="print-left">
-            Loja ativa: <b>{LOJA_NOME}</b> • Perfil: <b>{PERFIL_LABEL}</b>
+        <div className="print-header">
+          <div className="print-title">{LOJA_NOME}</div>
+          <div className="print-sub">
+            <div>
+              <b>CNPJ:</b> {LOJA_CNPJ}
+            </div>
+            <div>
+              <b>Endereço:</b> {LOJA_ENDERECO}
+            </div>
+            <div>
+              <b>Telefone:</b> {LOJA_TELEFONE}
+            </div>
           </div>
-          <div className="print-right">
-            <b>Mês/Ano:</b> {mesTitulo}
+          <div className="print-meta">
+            <div>
+              <b>Planilha de Controle de Temperatura e Umidade</b>
+            </div>
+            <div>
+              <b>Mês/Ano:</b> {mesTitulo}
+            </div>
           </div>
         </div>
 
@@ -369,10 +358,13 @@ export default function RegistroTempPage() {
                     <td>{turnoLabel}</td>
                     <td>{hora}</td>
                     <td>{loc?.nome || r.local_id}</td>
+
                     <td>{r.temp_min_c ?? ""}</td>
                     <td>{r.temp_c ?? ""}</td>
                     <td>{r.temp_max_c ?? ""}</td>
+
                     <td>{r.umid_pct ?? ""}</td>
+
                     <td>{r.status || ""}</td>
                     <td>{r.assinatura || ""}</td>
                     <td>{r.observacao || ""}</td>
@@ -381,6 +373,10 @@ export default function RegistroTempPage() {
               })}
             </tbody>
           </table>
+
+          <div className="print-footer">
+            <div>Gerado em: {new Date().toLocaleString("pt-BR")}</div>
+          </div>
         </div>
       </div>
 
@@ -451,7 +447,7 @@ export default function RegistroTempPage() {
       </div>
 
       {/* ======================
-          CSS de impressão LIMPO (PDF CLARO)
+          CSS de impressão LIMPO
       ======================= */}
       <style jsx global>{`
         .print-only {
@@ -459,62 +455,77 @@ export default function RegistroTempPage() {
         }
 
         @media print {
+          /* some tudo que não é impressão */
           .no-print {
             display: none !important;
           }
 
+          /* mostra só o bloco do PDF */
           .print-only {
             display: block !important;
           }
 
+          /* remove margens feias e deixa branco */
           html,
           body {
             background: #fff !important;
           }
 
-          .print-topline {
-            display: flex;
-            justify-content: space-between;
-            align-items: flex-end;
-            gap: 12px;
+          /* header do PDF */
+          .print-header {
             border-bottom: 2px solid #111;
-            padding-bottom: 6px;
-            margin-bottom: 10px;
-            font-size: 12px;
+            padding-bottom: 10px;
+            margin-bottom: 12px;
+          }
+          .print-title {
+            font-size: 18px;
+            font-weight: 800;
             color: #111;
           }
-
-          .print-left {
-            font-weight: 500;
+          .print-sub {
+            margin-top: 6px;
+            font-size: 11px;
+            color: #111;
+            line-height: 1.35;
+          }
+          .print-meta {
+            margin-top: 10px;
+            font-size: 12px;
+            color: #111;
+            display: flex;
+            justify-content: space-between;
+            gap: 12px;
           }
 
-          .print-right {
-            white-space: nowrap;
-          }
-
+          /* tabela do PDF */
           .print-table-wrap {
             width: 100%;
           }
-
           .print-table {
             width: 100%;
             border-collapse: collapse;
             font-size: 10.5px;
             color: #111;
           }
-
           .print-table th,
           .print-table td {
             border: 1px solid #111;
             padding: 6px 6px;
             vertical-align: top;
           }
-
           .print-table th {
             background: #f2f2f2;
             font-weight: 700;
           }
 
+          /* footer */
+          .print-footer {
+            margin-top: 8px;
+            font-size: 10px;
+            color: #111;
+          }
+
+          /* evita quebrar tabela no meio */
           table,
           tr,
           td,
