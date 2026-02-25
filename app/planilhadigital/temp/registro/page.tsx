@@ -15,14 +15,13 @@ type Leitura = {
   id: string;
   local_id: string;
 
-  // valores do aparelho
+  // Temperatura (aparelho): min / atual / max
   temp_min_c: number | null;
   temp_c: number;
   temp_max_c: number | null;
 
-  umid_min_pct: number | null;
+  // Umidade: SOMENTE atual
   umid_pct: number | null;
-  umid_max_pct: number | null;
 
   turno: string | null; // manha | tarde
   assinatura: string | null;
@@ -59,15 +58,13 @@ export default function RegistroTempPage() {
   const [turno, setTurno] = useState<"manha" | "tarde">("manha");
   const [assinatura, setAssinatura] = useState("");
 
-  // Temperatura (aparelho): min / atual / max
+  // Temperatura: min / atual / max
   const [tempMin, setTempMin] = useState("");
   const [tempAtual, setTempAtual] = useState("");
   const [tempMax, setTempMax] = useState("");
 
-  // Umidade (aparelho): min / atual / max
-  const [umidMin, setUmidMin] = useState("");
+  // Umidade: só atual
   const [umidAtual, setUmidAtual] = useState("");
-  const [umidMax, setUmidMax] = useState("");
 
   const [obs, setObs] = useState("");
 
@@ -108,12 +105,10 @@ export default function RegistroTempPage() {
 
     const { data, error } = await supabase
       .from("temp_leituras")
-      .select(
-        "id,local_id,temp_min_c,temp_c,temp_max_c,umid_min_pct,umid_pct,umid_max_pct,turno,assinatura,lida_em,observacao,status"
-      )
+      .select("id,local_id,temp_min_c,temp_c,temp_max_c,umid_pct,turno,assinatura,lida_em,observacao,status")
       .eq("loja_id", lojaId)
       .gte("lida_em", monthStartISO())
-      .order("lida_em", { ascending: true }) // para ficar “dia a dia”
+      .order("lida_em", { ascending: true })
       .limit(5000);
 
     if (error) {
@@ -163,9 +158,8 @@ export default function RegistroTempPage() {
       temp_c: tAtual,
       temp_max_c: tempMax.trim() ? toNum(tempMax) : null,
 
-      umid_min_pct: umidMin.trim() ? toNum(umidMin) : null,
+      // Umidade somente atual (opcional)
       umid_pct: umidAtual.trim() ? toNum(umidAtual) : null,
-      umid_max_pct: umidMax.trim() ? toNum(umidMax) : null,
 
       turno,
       assinatura: assinatura.trim(),
@@ -173,12 +167,8 @@ export default function RegistroTempPage() {
       origem: "manual",
     };
 
-    // validações básicas
     if (payload.temp_min_c != null && payload.temp_max_c != null && payload.temp_min_c > payload.temp_max_c) {
       return alert("Temp mín não pode ser maior que temp máx.");
-    }
-    if (payload.umid_min_pct != null && payload.umid_max_pct != null && payload.umid_min_pct > payload.umid_max_pct) {
-      return alert("Umid mín não pode ser maior que umid máx.");
     }
 
     setSaving(true);
@@ -197,9 +187,7 @@ export default function RegistroTempPage() {
     setTempMin("");
     setTempAtual("");
     setTempMax("");
-    setUmidMin("");
     setUmidAtual("");
-    setUmidMax("");
     setObs("");
 
     await loadMes();
@@ -223,7 +211,7 @@ export default function RegistroTempPage() {
         </button>
       </div>
 
-      {/* FORM (igual planilha física) */}
+      {/* FORM */}
       <div className="mt-4 rounded border p-4">
         <label className="block">
           <span className="text-sm">Local</span>
@@ -262,7 +250,7 @@ export default function RegistroTempPage() {
           </label>
         </div>
 
-        {/* Temperatura: min / atual / max */}
+        {/* Temperatura */}
         <div className="mt-4">
           <div className="text-sm font-semibold">Temperatura (°C) — do aparelho</div>
           <div className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-3">
@@ -281,22 +269,17 @@ export default function RegistroTempPage() {
           </div>
         </div>
 
-        {/* Umidade: min / atual / max */}
+        {/* Umidade (somente atual) */}
         <div className="mt-4">
           <div className="text-sm font-semibold">Umidade (%) — do aparelho</div>
-          <div className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-3">
-            <label className="block">
-              <span className="text-xs opacity-70">Umid mín</span>
-              <input className="mt-1 w-full rounded border p-2" value={umidMin} onChange={(e) => setUmidMin(e.target.value)} inputMode="decimal" placeholder="ex: 40" />
-            </label>
+          <div className="mt-2 grid grid-cols-1 gap-3 md:grid-cols-2">
             <label className="block">
               <span className="text-xs opacity-70">Umid atual</span>
               <input className="mt-1 w-full rounded border p-2" value={umidAtual} onChange={(e) => setUmidAtual(e.target.value)} inputMode="decimal" placeholder="ex: 55" />
             </label>
-            <label className="block">
-              <span className="text-xs opacity-70">Umid máx</span>
-              <input className="mt-1 w-full rounded border p-2" value={umidMax} onChange={(e) => setUmidMax(e.target.value)} inputMode="decimal" placeholder="ex: 70" />
-            </label>
+            <div className="text-xs opacity-60 self-end pb-2">
+              * Umidade mínima/máxima não é necessária neste modelo.
+            </div>
           </div>
         </div>
 
@@ -314,7 +297,7 @@ export default function RegistroTempPage() {
         </button>
       </div>
 
-      {/* PLANILHA DO MÊS — parecido com a física */}
+      {/* PLANILHA DO MÊS */}
       <div className="mt-6 rounded border p-4">
         <div className="flex items-center justify-between">
           <div>
@@ -329,7 +312,7 @@ export default function RegistroTempPage() {
           <div className="mt-3 text-sm opacity-70">Nenhum registro no mês ainda.</div>
         ) : (
           <div className="mt-3 overflow-auto">
-            <table className="min-w-[1400px] w-full border-collapse text-sm">
+            <table className="min-w-[1200px] w-full border-collapse text-sm">
               <thead>
                 <tr className="bg-black/5">
                   <th className="border p-2">Dia</th>
@@ -341,9 +324,7 @@ export default function RegistroTempPage() {
                   <th className="border p-2">Temp atual</th>
                   <th className="border p-2">Temp máx</th>
 
-                  <th className="border p-2">Umid mín</th>
                   <th className="border p-2">Umid atual</th>
-                  <th className="border p-2">Umid máx</th>
 
                   <th className="border p-2">Status</th>
                   <th className="border p-2">Ass.</th>
@@ -369,9 +350,7 @@ export default function RegistroTempPage() {
                       <td className="border p-2">{r.temp_c}</td>
                       <td className="border p-2">{r.temp_max_c ?? "—"}</td>
 
-                      <td className="border p-2">{r.umid_min_pct ?? "—"}</td>
                       <td className="border p-2">{r.umid_pct ?? "—"}</td>
-                      <td className="border p-2">{r.umid_max_pct ?? "—"}</td>
 
                       <td className="border p-2 font-semibold" style={{ color: ok ? "#0a7" : "#c00" }}>
                         {r.status}
@@ -385,13 +364,13 @@ export default function RegistroTempPage() {
             </table>
 
             <div className="mt-2 text-xs opacity-60">
-              * Linha em vermelho quando o status não for OK (o trigger do banco continua classificando).
+              * Linha em vermelho quando o status não for OK.
             </div>
           </div>
         )}
       </div>
 
-      {/* impressão mais limpa */}
+      {/* impressão */}
       <style jsx global>{`
         @media print {
           header,
