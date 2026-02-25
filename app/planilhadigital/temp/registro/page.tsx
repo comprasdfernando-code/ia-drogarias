@@ -23,6 +23,8 @@ type Leitura = {
   lida_em: string;
   observacao: string | null;
   status: string;
+  turno?: string | null; // manha | tarde
+  assinatura?: string | null; // nome do responsável
 };
 
 function toNum(s: string) {
@@ -37,6 +39,11 @@ function monthStartISO() {
   return d.toISOString();
 }
 
+function monthLabelPtBr() {
+  const d = new Date();
+  return d.toLocaleDateString("pt-BR", { month: "long", year: "numeric" });
+}
+
 export default function RegistroTempPage() {
   const { lojaId } = useLoja();
 
@@ -44,6 +51,8 @@ export default function RegistroTempPage() {
   const [leituras, setLeituras] = useState<Leitura[]>([]);
   const [localId, setLocalId] = useState("");
 
+  const [turno, setTurno] = useState<"manha" | "tarde">("manha");
+  const [assinatura, setAssinatura] = useState("");
   const [temp, setTemp] = useState("");
   const [umid, setUmid] = useState("");
   const [obs, setObs] = useState("");
@@ -85,7 +94,7 @@ export default function RegistroTempPage() {
 
     const { data, error } = await supabase
       .from("temp_leituras")
-      .select("id,local_id,temp_c,umid_pct,lida_em,observacao,status")
+      .select("id,local_id,temp_c,umid_pct,lida_em,observacao,status,turno,assinatura")
       .eq("loja_id", lojaId)
       .gte("lida_em", monthStartISO())
       .order("lida_em", { ascending: false })
@@ -132,6 +141,8 @@ export default function RegistroTempPage() {
     const u = umid.trim() ? toNum(umid) : null;
     if (umid.trim() && u == null) return alert("Umidade inválida (ex: 55).");
 
+    if (!assinatura.trim()) return alert("Informe a assinatura (responsável).");
+
     setSaving(true);
 
     const { error } = await supabase.from("temp_leituras").insert({
@@ -141,6 +152,9 @@ export default function RegistroTempPage() {
       umid_pct: u,
       observacao: obs.trim() ? obs.trim() : null,
       origem: "manual",
+      turno,
+      assinatura: assinatura.trim(),
+      // lida_em: default now() no banco (já existe)
     });
 
     setSaving(false);
@@ -154,18 +168,29 @@ export default function RegistroTempPage() {
     setTemp("");
     setUmid("");
     setObs("");
-    loadMes();
+    await loadMes();
     alert("Leitura registrada ✅");
   }
 
   function gerarPDF() {
-    // simples e funcional: abre impressão -> salvar como PDF
+    // impressão simples (salvar como PDF)
     window.print();
   }
 
+  const mesTitulo = useMemo(() => monthLabelPtBr(), []);
+
   return (
     <div className="p-2">
-      <h1 className="text-xl font-semibold">Registro de Temperatura</h1>
+      <div className="flex flex-col gap-2 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h1 className="text-xl font-semibold">Registro de Temperatura e Umidade</h1>
+          <p className="text-sm opacity-70">Planilha do mês: {mesTitulo}</p>
+        </div>
+
+        <button onClick={gerarPDF} className="rounded border px-3 py-2 text-sm hover:bg-black/5">
+          Gerar PDF
+        </button>
+      </div>
 
       {/* FORM */}
       <div className="mt-4 rounded border p-4">
@@ -202,7 +227,28 @@ export default function RegistroTempPage() {
           )}
         </div>
 
-        {/* CAMPOS: temp atual + umidade atual + obs */}
+        {/* Turno + Assinatura */}
+        <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
+          <label className="block">
+            <span className="text-sm">Turno</span>
+            <select className="mt-1 w-full rounded border p-2" value={turno} onChange={(e) => setTurno(e.target.value as any)}>
+              <option value="manha">Manhã</option>
+              <option value="tarde">Tarde</option>
+            </select>
+          </label>
+
+          <label className="block">
+            <span className="text-sm">Assinatura (responsável)</span>
+            <input
+              className="mt-1 w-full rounded border p-2"
+              value={assinatura}
+              onChange={(e) => setAssinatura(e.target.value)}
+              placeholder="Ex: Maria Silva"
+            />
+          </label>
+        </div>
+
+        {/* Campos (temp atual + umidade atual) */}
         <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
           <label className="block">
             <span className="text-sm">Temperatura atual (°C)</span>
@@ -241,17 +287,13 @@ export default function RegistroTempPage() {
         </button>
       </div>
 
-      {/* PLANILHA DO MÊS */}
+      {/* PLANILHA DO MÊS (igual vigilância) */}
       <div className="mt-6 rounded border p-4">
         <div className="flex items-center justify-between">
           <div>
             <div className="text-lg font-semibold">Planilha do mês</div>
-            <div className="text-sm opacity-70">{loadingMes ? "Carregando…" : `${leituras.length} leitura(s) no mês`}</div>
+            <div className="text-sm opacity-70">{loadingMes ? "Carregando…" : `${leituras.length} registro(s) no mês`}</div>
           </div>
-
-          <button onClick={gerarPDF} className="rounded border px-3 py-2 text-sm hover:bg-black/5">
-            Gerar PDF
-          </button>
         </div>
 
         {loadingMes ? (
@@ -260,38 +302,44 @@ export default function RegistroTempPage() {
           <div className="mt-3 text-sm opacity-70">Nenhuma leitura registrada no mês ainda.</div>
         ) : (
           <div className="mt-3 overflow-auto">
-            <table className="min-w-[1100px] w-full border-collapse text-sm">
+            <table className="min-w-[1200px] w-full border-collapse text-sm">
               <thead>
                 <tr className="bg-black/5">
-                  <th className="border p-2">Data/Hora</th>
+                  <th className="border p-2">Dia</th>
+                  <th className="border p-2">Turno</th>
+                  <th className="border p-2">Hora</th>
                   <th className="border p-2">Local</th>
-                  <th className="border p-2">Temp atual</th>
                   <th className="border p-2">Temp mín</th>
+                  <th className="border p-2">Temp atual</th>
                   <th className="border p-2">Temp máx</th>
-                  <th className="border p-2">Umid atual</th>
-                  <th className="border p-2">Umid mín</th>
-                  <th className="border p-2">Umid máx</th>
+                  <th className="border p-2">Umidade (%)</th>
                   <th className="border p-2">Status</th>
+                  <th className="border p-2">Ass.</th>
                   <th className="border p-2">Obs</th>
                 </tr>
               </thead>
               <tbody>
                 {leituras.map((r) => {
                   const loc = locais.find((l) => l.id === r.local_id);
+                  const dt = new Date(r.lida_em);
+                  const dia = dt.getDate().toString().padStart(2, "0");
+                  const hora = dt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
                   const ok = (r.status || "").toLowerCase() === "ok";
+
                   return (
                     <tr key={r.id} className={!ok ? "bg-red-50" : ""}>
-                      <td className="border p-2">{new Date(r.lida_em).toLocaleString("pt-BR")}</td>
+                      <td className="border p-2">{dia}</td>
+                      <td className="border p-2">{(r.turno || "").toLowerCase() === "tarde" ? "Tarde" : "Manhã"}</td>
+                      <td className="border p-2">{hora}</td>
                       <td className="border p-2">{loc?.nome || r.local_id}</td>
-                      <td className="border p-2">{r.temp_c}</td>
                       <td className="border p-2">{loc?.temp_min ?? "—"}</td>
+                      <td className="border p-2">{r.temp_c}</td>
                       <td className="border p-2">{loc?.temp_max ?? "—"}</td>
                       <td className="border p-2">{r.umid_pct ?? "—"}</td>
-                      <td className="border p-2">{loc?.umid_min ?? "—"}</td>
-                      <td className="border p-2">{loc?.umid_max ?? "—"}</td>
                       <td className="border p-2 font-semibold" style={{ color: ok ? "#0a7" : "#c00" }}>
                         {r.status}
                       </td>
+                      <td className="border p-2">{r.assinatura || "—"}</td>
                       <td className="border p-2">{r.observacao || ""}</td>
                     </tr>
                   );
@@ -300,7 +348,7 @@ export default function RegistroTempPage() {
             </table>
 
             <div className="mt-2 text-xs opacity-60">
-              * A linha fica vermelha quando o status não for OK (seu trigger do banco já classifica automaticamente).
+              * Linha em vermelho quando o status não for OK (seu trigger do banco já classifica automaticamente).
             </div>
           </div>
         )}
@@ -309,8 +357,20 @@ export default function RegistroTempPage() {
       {/* impressão mais limpa */}
       <style jsx global>{`
         @media print {
-          header, nav, aside, button, a { display: none !important; }
-          body { background: #fff !important; }
+          header,
+          nav,
+          aside,
+          button,
+          a,
+          .no-print {
+            display: none !important;
+          }
+          body {
+            background: #fff !important;
+          }
+          table {
+            page-break-inside: avoid;
+          }
         }
       `}</style>
     </div>
