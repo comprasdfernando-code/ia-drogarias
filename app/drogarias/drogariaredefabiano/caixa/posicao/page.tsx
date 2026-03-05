@@ -25,14 +25,6 @@ function toISODate(d: Date) {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 
-// ✅ Brasil (-03:00) — garante dia correto ao filtrar created_at (timestamptz)
-function startOfDayTZ(dateISO: string) {
-  return new Date(`${dateISO}T00:00:00-03:00`).toISOString();
-}
-function endOfDayTZ(dateISO: string) {
-  return new Date(`${dateISO}T23:59:59-03:00`).toISOString();
-}
-
 function formatDateBR(value: any) {
   if (!value) return "—";
   const s = String(value);
@@ -48,11 +40,21 @@ function formatTimeBR(value: any) {
   return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 }
 
+// usado caso a saída não tenha created_at (bem raro)
+function fallbackTs(dateISO: string) {
+  return new Date(`${dateISO}T12:00:00-03:00`).getTime();
+}
+
 // ================= TYPES =================
 type Fechamento = {
   id: any;
   loja: string;
+
+  // em alguns bancos isso é timestamptz, em outros é date/timestamp
   data: string;
+
+  // ✅ importante: se existir na tabela, ele é o horário real do fechamento
+  created_at?: string | null;
 
   venda_total: number;
 
@@ -66,7 +68,7 @@ type Fechamento = {
   pix_qr?: number | null;
   cartoes?: number | null;
 
-  // saídas
+  // saídas (resumo)
   sangrias?: number | null;
   despesas?: number | null;
   boletos?: number | null;
@@ -83,7 +85,7 @@ type MovCaixa = {
   forma_pagamento?: string | null;
   destino_financeiro?: string | null;
   data?: string | null; // date
-  created_at?: string | null; // timestamp (timestamptz)
+  created_at?: string | null; // timestamptz
   loja: string;
 };
 
@@ -104,6 +106,12 @@ function calcSaidasDia(f: Fechamento) {
     Number(f.boletos || 0) +
     Number(f.compras || 0)
   );
+}
+
+function fechamentoTimestamp(f: Fechamento) {
+  // ✅ prioriza created_at (horário real), senão usa data
+  const v = f.created_at || f.data;
+  return new Date(v).getTime();
 }
 
 export default function PosicaoFinanceiraPage() {
@@ -138,7 +146,6 @@ export default function PosicaoFinanceiraPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dataSelecionada]);
 
-  // ✅ quando carregar fechamentos, carregar também as saídas detalhadas por turno
   useEffect(() => {
     if (!loadingFechDia) {
       carregarSaidasDetalhadasPorTurno(dataSelecionada, fechamentosDia);
@@ -166,14 +173,15 @@ export default function PosicaoFinanceiraPage() {
   async function carregarFechamentosDoDia(dateISO: string) {
     setLoadingFechDia(true);
 
-    // ✅ filtra por dia com timezone Brasil
+    // ✅ aqui filtramos pelo "data" do dia (se for timestamptz, ainda funciona,
+    // mas o importante é que sua tela seleciona por dia)
     const { data, error } = await supabase
       .from("caixa_diario")
-      .select("*")
+      .select("*") // precisa vir created_at se existir
       .eq("loja", LOJA)
-      .gte("data", startOfDayTZ(dateISO))
-      .lte("data", endOfDayTZ(dateISO))
-      .order("data", { ascending: true });
+      .gte("data", `${dateISO}T00:00:00`)
+      .lte("data", `${dateISO}T23:59:59`)
+      .order("created_at", { ascending: true, nullsFirst: false });
 
     if (error) console.error(error);
 
@@ -181,9 +189,7 @@ export default function PosicaoFinanceiraPage() {
     setLoadingFechDia(false);
   }
 
-  // ✅ saídas detalhadas por turno com:
-  // - janela por fechamento
-  // - TRAVA do dia selecionado (pra não puxar dia anterior por UTC)
+  // ✅ Puxa todas as saídas do DIA e separa por turno no FRONT
   async function carregarSaidasDetalhadasPorTurno(dateISO: string, fechs: Fechamento[]) {
     if (!fechs || fechs.length === 0) {
       setSaidasPorTurno({});
@@ -193,42 +199,49 @@ export default function PosicaoFinanceiraPage() {
     setLoadingSaidasTurno(true);
 
     try {
-      const diaStart = startOfDayTZ(dateISO);
-      const diaEnd = endOfDayTZ(dateISO);
+      // 1) pega todas as saídas do DIA selecionado
+      const { data: saidasDia, error } = await supabase
+        .from("movimentacoes_caixa")
+        .select("id,tipo,descricao,valor,forma_pagamento,destino_financeiro,data,created_at,loja")
+        .eq("loja", LOJA)
+        .eq("tipo", "Saída")
+        .eq("data", dateISO) // ✅ garante que é do DIA selecionado
+        .order("created_at", { ascending: true });
 
-      const results = await Promise.all(
-        fechs.map(async (f, idx) => {
-          // janela do turno (em ISO UTC)
-          const inicioTurno =
-            idx === 0 ? diaStart : new Date(fechs[idx - 1].data).toISOString();
-          const fimTurno = new Date(f.data).toISOString();
+      if (error) {
+        console.error("Erro saídas do dia:", error);
+        setSaidasPorTurno({});
+        return;
+      }
 
-          // ✅ trava dentro do dia selecionado
-          const inicioFinal = inicioTurno < diaStart ? diaStart : inicioTurno;
-          const fimFinal = fimTurno > diaEnd ? diaEnd : fimTurno;
+      const saidasList = ((saidasDia || []) as MovCaixa[]).map((s) => ({
+        ...s,
+      }));
 
-          const { data, error } = await supabase
-            .from("movimentacoes_caixa")
-            .select(
-              "id,tipo,descricao,valor,forma_pagamento,destino_financeiro,data,created_at,loja"
-            )
-            .eq("loja", LOJA)
-            .eq("tipo", "Saída")
-            .gte("created_at", inicioFinal)
-            .lte("created_at", fimFinal)
-            .order("created_at", { ascending: true });
+      // 2) define os limites de cada turno pelo timestamp do fechamento
+      const fechOrdenado = [...fechs].sort((a, b) => fechamentoTimestamp(a) - fechamentoTimestamp(b));
+      const limites = fechOrdenado.map((f) => ({
+        id: String(f.id),
+        ts: fechamentoTimestamp(f),
+      }));
 
-          if (error) {
-            console.error("Erro saídas turno:", f.id, error);
-            return { key: String(f.id), rows: [] as MovCaixa[] };
-          }
-
-          return { key: String(f.id), rows: (data || []) as MovCaixa[] };
-        })
-      );
-
+      // 3) cria mapa vazio
       const map: Record<string, MovCaixa[]> = {};
-      for (const r of results) map[r.key] = r.rows;
+      for (const l of limites) map[l.id] = [];
+
+      // 4) joga cada saída no turno correto
+      for (const s of saidasList) {
+        const tsSaida = s.created_at ? new Date(s.created_at).getTime() : fallbackTs(dateISO);
+
+        // acha o primeiro fechamento cujo ts >= saida
+        let idxTurno = limites.findIndex((l) => tsSaida <= l.ts);
+
+        // se passou de todos, joga no último turno
+        if (idxTurno === -1) idxTurno = limites.length - 1;
+
+        map[limites[idxTurno].id].push(s);
+      }
+
       setSaidasPorTurno(map);
     } finally {
       setLoadingSaidasTurno(false);
@@ -260,21 +273,25 @@ export default function PosicaoFinanceiraPage() {
 
   // ================= RESUMO DO DIA (TURNOS) =================
   const resumoDia = useMemo(() => {
-    const turnos = fechamentosDia.map((f) => {
-      const entradasT = calcEntradasDia(f);
-      const saidasT = calcSaidasDia(f);
-      const saldoT = entradasT - saidasT;
+    const turnos = fechamentosDia
+      .slice()
+      .sort((a, b) => fechamentoTimestamp(a) - fechamentoTimestamp(b))
+      .map((f) => {
+        const entradasT = calcEntradasDia(f);
+        const saidasT = calcSaidasDia(f);
+        const saldoT = entradasT - saidasT;
 
-      return {
-        id: f.id,
-        hora: formatTimeBR(f.data),
-        venda: Number(f.venda_total || 0),
-        entradas: entradasT,
-        saidas: saidasT,
-        saldo: saldoT,
-        dataFech: f.data,
-      };
-    });
+        const ts = fechamentoTimestamp(f);
+        return {
+          id: f.id,
+          hora: formatTimeBR(new Date(ts).toISOString()),
+          venda: Number(f.venda_total || 0),
+          entradas: entradasT,
+          saidas: saidasT,
+          saldo: saldoT,
+          tsFech: ts,
+        };
+      });
 
     const totalDia = {
       venda: turnos.reduce((t, x) => t + x.venda, 0),
@@ -380,9 +397,7 @@ export default function PosicaoFinanceiraPage() {
                 <p>Saídas: R$ {fmt(saidasDinheiro)}</p>
                 <p className="border-t mt-2 pt-2 font-bold">
                   Saldo:{" "}
-                  <span
-                    className={saldoDinheiro >= 0 ? "text-green-700" : "text-red-700"}
-                  >
+                  <span className={saldoDinheiro >= 0 ? "text-green-700" : "text-red-700"}>
                     R$ {fmt(saldoDinheiro)}
                   </span>
                 </p>
@@ -402,11 +417,7 @@ export default function PosicaoFinanceiraPage() {
 
               <div className="border rounded p-4 text-center">
                 <h4 className="font-bold text-gray-700 mb-2">💰 Saldo Geral</h4>
-                <p
-                  className={`text-2xl font-bold ${
-                    saldoGeral >= 0 ? "text-green-700" : "text-red-700"
-                  }`}
-                >
+                <p className={`text-2xl font-bold ${saldoGeral >= 0 ? "text-green-700" : "text-red-700"}`}>
                   R$ {fmt(saldoGeral)}
                 </p>
               </div>
@@ -430,13 +441,11 @@ export default function PosicaoFinanceiraPage() {
             <div className="grid grid-cols-1 gap-4">
               {resumoDia.turnos.map((t, idx) => {
                 const lista = saidasPorTurno[String(t.id)] || [];
-                const totalDetalhado = lista.reduce(
-                  (acc, x) => acc + Number(x.valor || 0),
-                  0
-                );
+                const totalDetalhado = lista.reduce((acc, x) => acc + Number(x.valor || 0), 0);
 
                 const janelaInicio =
-                  idx === 0 ? "início do dia" : formatTimeBR(resumoDia.turnos[idx - 1]?.dataFech);
+                  idx === 0 ? "início do dia" : formatTimeBR(new Date(resumoDia.turnos[idx - 1].tsFech).toISOString());
+                const janelaFim = formatTimeBR(new Date(t.tsFech).toISOString());
 
                 return (
                   <div key={t.id} className="bg-white border rounded p-3 avoid-break">
@@ -498,7 +507,7 @@ export default function PosicaoFinanceiraPage() {
                       )}
 
                       <div className="mt-2 text-xs text-gray-500">
-                        Janela do turno: {janelaInicio} → {formatTimeBR(t.dataFech)}
+                        Janela do turno: {janelaInicio} → {janelaFim}
                       </div>
                     </div>
 
@@ -519,11 +528,7 @@ export default function PosicaoFinanceiraPage() {
                   Entradas: R$ {fmt(resumoDia.totalDia.entradas)}
                 </p>
                 <p className="text-sm text-red-700">Saídas: R$ {fmt(resumoDia.totalDia.saidas)}</p>
-                <p
-                  className={`text-2xl font-bold mt-2 ${
-                    resumoDia.totalDia.saldo >= 0 ? "text-green-700" : "text-red-700"
-                  }`}
-                >
+                <p className={`text-2xl font-bold mt-2 ${resumoDia.totalDia.saldo >= 0 ? "text-green-700" : "text-red-700"}`}>
                   R$ {fmt(resumoDia.totalDia.saldo)}
                 </p>
               </div>
