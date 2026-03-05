@@ -12,6 +12,7 @@ const supabase = createClient(
 
 const LOJA = "drogariaredefabiano";
 
+// ================= HELPERS =================
 function fmt(n: number) {
   return Number(n || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 });
 }
@@ -24,11 +25,12 @@ function toISODate(d: Date) {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 
-function startOfDayISO(dateISO: string) {
-  return `${dateISO}T00:00:00`;
+// ✅ Brasil (-03:00) — garante dia correto ao filtrar created_at (timestamptz)
+function startOfDayTZ(dateISO: string) {
+  return new Date(`${dateISO}T00:00:00-03:00`).toISOString();
 }
-function endOfDayISO(dateISO: string) {
-  return `${dateISO}T23:59:59`;
+function endOfDayTZ(dateISO: string) {
+  return new Date(`${dateISO}T23:59:59-03:00`).toISOString();
 }
 
 function formatDateBR(value: any) {
@@ -46,6 +48,7 @@ function formatTimeBR(value: any) {
   return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 }
 
+// ================= TYPES =================
 type Fechamento = {
   id: any;
   loja: string;
@@ -63,7 +66,7 @@ type Fechamento = {
   pix_qr?: number | null;
   cartoes?: number | null;
 
-  // saídas (resumo)
+  // saídas
   sangrias?: number | null;
   despesas?: number | null;
   boletos?: number | null;
@@ -80,7 +83,7 @@ type MovCaixa = {
   forma_pagamento?: string | null;
   destino_financeiro?: string | null;
   data?: string | null; // date
-  created_at?: string | null; // timestamp
+  created_at?: string | null; // timestamp (timestamptz)
   loja: string;
 };
 
@@ -117,7 +120,9 @@ export default function PosicaoFinanceiraPage() {
   const [loadingFechDia, setLoadingFechDia] = useState(true);
 
   // ✅ saídas detalhadas por turno (chave = fechamento.id)
-  const [saidasPorTurno, setSaidasPorTurno] = useState<Record<string, MovCaixa[]>>({});
+  const [saidasPorTurno, setSaidasPorTurno] = useState<Record<string, MovCaixa[]>>(
+    {}
+  );
   const [loadingSaidasTurno, setLoadingSaidasTurno] = useState(false);
 
   const ano = new Date().getFullYear();
@@ -133,7 +138,7 @@ export default function PosicaoFinanceiraPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dataSelecionada]);
 
-  // quando carregar fechamentos, carregar também as saídas detalhadas por turno
+  // ✅ quando carregar fechamentos, carregar também as saídas detalhadas por turno
   useEffect(() => {
     if (!loadingFechDia) {
       carregarSaidasDetalhadasPorTurno(dataSelecionada, fechamentosDia);
@@ -161,12 +166,13 @@ export default function PosicaoFinanceiraPage() {
   async function carregarFechamentosDoDia(dateISO: string) {
     setLoadingFechDia(true);
 
+    // ✅ filtra por dia com timezone Brasil
     const { data, error } = await supabase
       .from("caixa_diario")
       .select("*")
       .eq("loja", LOJA)
-      .gte("data", startOfDayISO(dateISO))
-      .lte("data", endOfDayISO(dateISO))
+      .gte("data", startOfDayTZ(dateISO))
+      .lte("data", endOfDayTZ(dateISO))
       .order("data", { ascending: true });
 
     if (error) console.error(error);
@@ -175,8 +181,9 @@ export default function PosicaoFinanceiraPage() {
     setLoadingFechDia(false);
   }
 
-  // ✅ busca saídas detalhadas por turno, usando janelas:
-  // turno i = [ (i==0 ? inicio do dia : data do fechamento anterior) , data do fechamento atual ]
+  // ✅ saídas detalhadas por turno com:
+  // - janela por fechamento
+  // - TRAVA do dia selecionado (pra não puxar dia anterior por UTC)
   async function carregarSaidasDetalhadasPorTurno(dateISO: string, fechs: Fechamento[]) {
     if (!fechs || fechs.length === 0) {
       setSaidasPorTurno({});
@@ -186,23 +193,29 @@ export default function PosicaoFinanceiraPage() {
     setLoadingSaidasTurno(true);
 
     try {
-      const inicioDia = startOfDayISO(dateISO);
+      const diaStart = startOfDayTZ(dateISO);
+      const diaEnd = endOfDayTZ(dateISO);
 
       const results = await Promise.all(
         fechs.map(async (f, idx) => {
-          const inicio = idx === 0 ? inicioDia : fechs[idx - 1]?.data;
-          const fim = f.data;
+          // janela do turno (em ISO UTC)
+          const inicioTurno =
+            idx === 0 ? diaStart : new Date(fechs[idx - 1].data).toISOString();
+          const fimTurno = new Date(f.data).toISOString();
 
-          // se por algum motivo não tiver data, evita query ruim
-          if (!inicio || !fim) return { key: String(f.id), rows: [] as MovCaixa[] };
+          // ✅ trava dentro do dia selecionado
+          const inicioFinal = inicioTurno < diaStart ? diaStart : inicioTurno;
+          const fimFinal = fimTurno > diaEnd ? diaEnd : fimTurno;
 
           const { data, error } = await supabase
             .from("movimentacoes_caixa")
-            .select("id,tipo,descricao,valor,forma_pagamento,destino_financeiro,data,created_at,loja")
+            .select(
+              "id,tipo,descricao,valor,forma_pagamento,destino_financeiro,data,created_at,loja"
+            )
             .eq("loja", LOJA)
             .eq("tipo", "Saída")
-            .gte("created_at", inicio)
-            .lte("created_at", fim)
+            .gte("created_at", inicioFinal)
+            .lte("created_at", fimFinal)
             .order("created_at", { ascending: true });
 
           if (error) {
@@ -367,7 +380,9 @@ export default function PosicaoFinanceiraPage() {
                 <p>Saídas: R$ {fmt(saidasDinheiro)}</p>
                 <p className="border-t mt-2 pt-2 font-bold">
                   Saldo:{" "}
-                  <span className={saldoDinheiro >= 0 ? "text-green-700" : "text-red-700"}>
+                  <span
+                    className={saldoDinheiro >= 0 ? "text-green-700" : "text-red-700"}
+                  >
                     R$ {fmt(saldoDinheiro)}
                   </span>
                 </p>
@@ -415,7 +430,13 @@ export default function PosicaoFinanceiraPage() {
             <div className="grid grid-cols-1 gap-4">
               {resumoDia.turnos.map((t, idx) => {
                 const lista = saidasPorTurno[String(t.id)] || [];
-                const totalDetalhado = lista.reduce((acc, x) => acc + Number(x.valor || 0), 0);
+                const totalDetalhado = lista.reduce(
+                  (acc, x) => acc + Number(x.valor || 0),
+                  0
+                );
+
+                const janelaInicio =
+                  idx === 0 ? "início do dia" : formatTimeBR(resumoDia.turnos[idx - 1]?.dataFech);
 
                 return (
                   <div key={t.id} className="bg-white border rounded p-3 avoid-break">
@@ -438,7 +459,9 @@ export default function PosicaoFinanceiraPage() {
                       </div>
 
                       {loadingSaidasTurno ? (
-                        <p className="text-sm text-gray-600 mt-2">Carregando saídas detalhadas…</p>
+                        <p className="text-sm text-gray-600 mt-2">
+                          Carregando saídas detalhadas…
+                        </p>
                       ) : lista.length === 0 ? (
                         <p className="text-sm text-gray-600 mt-2">
                           Nenhuma saída registrada neste turno.
@@ -474,11 +497,8 @@ export default function PosicaoFinanceiraPage() {
                         </div>
                       )}
 
-                      {/* bate/mostra diferença se precisar */}
                       <div className="mt-2 text-xs text-gray-500">
-                        Janela do turno:{" "}
-                        {idx === 0 ? "início do dia" : formatTimeBR(resumoDia.turnos[idx - 1]?.dataFech)}{" "}
-                        → {formatTimeBR(t.dataFech)}
+                        Janela do turno: {janelaInicio} → {formatTimeBR(t.dataFech)}
                       </div>
                     </div>
 
@@ -498,9 +518,7 @@ export default function PosicaoFinanceiraPage() {
                 <p className="text-sm text-green-700">
                   Entradas: R$ {fmt(resumoDia.totalDia.entradas)}
                 </p>
-                <p className="text-sm text-red-700">
-                  Saídas: R$ {fmt(resumoDia.totalDia.saidas)}
-                </p>
+                <p className="text-sm text-red-700">Saídas: R$ {fmt(resumoDia.totalDia.saidas)}</p>
                 <p
                   className={`text-2xl font-bold mt-2 ${
                     resumoDia.totalDia.saldo >= 0 ? "text-green-700" : "text-red-700"
