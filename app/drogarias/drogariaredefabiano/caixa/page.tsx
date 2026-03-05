@@ -173,6 +173,16 @@ export default function CaixaPage() {
   const [arquivoComp, setArquivoComp] = useState<File | null>(null);
   const [enviandoComp, setEnviandoComp] = useState(false);
 
+  // ======================================================
+  // ✅ PAGAR BOLETO (NOVO) - abater do caixa dinheiro/banco
+  // ======================================================
+  const [modalPagarBoletoAberto, setModalPagarBoletoAberto] = useState(false);
+  const [boletoParaPagar, setBoletoParaPagar] = useState<any>(null);
+  const [destinoPagamentoBoleto, setDestinoPagamentoBoleto] = useState<"CAIXA_DINHEIRO" | "CONTA_BRADESCO">(
+    "CONTA_BRADESCO"
+  );
+  const [pagandoBoleto, setPagandoBoleto] = useState(false);
+
   function fmt(n: number) {
     return Number(n || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 });
   }
@@ -422,33 +432,66 @@ export default function CaixaPage() {
   }
 
   // ======================================================
-  // 🔵 MARCAR BOLETO COMO PAGO
+  // ✅ PAGAR BOLETO (NOVO): abre modal p/ escolher dinheiro/banco
+  // ======================================================
+  function abrirModalPagarBoleto(boleto: any) {
+    setBoletoParaPagar(boleto);
+    setDestinoPagamentoBoleto("CONTA_BRADESCO"); // padrão
+    setModalPagarBoletoAberto(true);
+  }
+
+  async function confirmarPagamentoBoleto() {
+    if (!boletoParaPagar) return;
+
+    setPagandoBoleto(true);
+    try {
+      const { error } = await supabase
+        .from("boletos_a_vencer")
+        .update({
+          pago: true,
+          data_pagamento: new Date(),
+        })
+        .eq("id", boletoParaPagar.id);
+
+      if (error) {
+        console.error(error);
+        alert("Erro ao atualizar!");
+        return;
+      }
+
+      const forma = destinoPagamentoBoleto === "CAIXA_DINHEIRO" ? "Dinheiro" : "Conta Bancária";
+
+      const { error: movErr } = await supabase.from("movimentacoes_caixa").insert({
+        tipo: "Saída",
+        descricao: `Pagamento boleto - ${boletoParaPagar.fornecedor}`,
+        valor: Number(boletoParaPagar.valor),
+        forma_pagamento: forma,
+        destino_financeiro: destinoPagamentoBoleto,
+        data: new Date(),
+        loja: LOJA,
+        linha_digitavel: boletoParaPagar.linha_digitavel || null,
+      });
+
+      if (movErr) {
+        console.error(movErr);
+        alert("Boleto marcado como pago, mas deu erro ao lançar no caixa!");
+        return;
+      }
+
+      alert("Boleto pago!");
+      setModalPagarBoletoAberto(false);
+      setBoletoParaPagar(null);
+      carregarDados();
+    } finally {
+      setPagandoBoleto(false);
+    }
+  }
+
+  // ======================================================
+  // 🔵 MARCAR BOLETO COMO PAGO (mantido p/ compat, agora abre modal)
   // ======================================================
   async function marcarComoPago(boleto: any) {
-    const { error } = await supabase
-      .from("boletos_a_vencer")
-      .update({
-        pago: true,
-        data_pagamento: new Date(),
-      })
-      .eq("id", boleto.id);
-
-    if (error) {
-      alert("Erro ao atualizar!");
-      return;
-    }
-
-    await supabase.from("movimentacoes_caixa").insert({
-      tipo: "Saída",
-      descricao: `Pagamento boleto - ${boleto.fornecedor}`,
-      valor: Number(boleto.valor),
-      forma_pagamento: "Boleto",
-      data: new Date(),
-      loja: LOJA,
-    });
-
-    alert("Boleto pago!");
-    carregarDados();
+    abrirModalPagarBoleto(boleto);
   }
 
   async function salvarSaidaModal() {
@@ -685,13 +728,75 @@ export default function CaixaPage() {
   // ======================================================
   return (
     <main className="min-h-screen bg-gray-100 p-6">
+      {/* ✅ MODAL PAGAR BOLETO (NOVO) */}
+      {modalPagarBoletoAberto && boletoParaPagar && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
+            <h2 className="text-lg font-bold text-blue-700 mb-2">🧾 Pagar Boleto</h2>
+            <p className="text-xs text-gray-600 mb-4">
+              Fornecedor: <strong>{boletoParaPagar.fornecedor}</strong> • Valor:{" "}
+              <strong>R$ {fmt(boletoParaPagar.valor)}</strong>
+            </p>
+
+            <div className="border rounded p-3 mb-4">
+              <p className="text-sm font-semibold mb-2">De onde saiu o pagamento?</p>
+              <div className="flex gap-4">
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="destinoBoleto"
+                    value="CAIXA_DINHEIRO"
+                    checked={destinoPagamentoBoleto === "CAIXA_DINHEIRO"}
+                    onChange={() => setDestinoPagamentoBoleto("CAIXA_DINHEIRO")}
+                  />
+                  Caixa Dinheiro
+                </label>
+
+                <label className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="destinoBoleto"
+                    value="CONTA_BRADESCO"
+                    checked={destinoPagamentoBoleto === "CONTA_BRADESCO"}
+                    onChange={() => setDestinoPagamentoBoleto("CONTA_BRADESCO")}
+                  />
+                  Conta Bancária
+                </label>
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => {
+                  setModalPagarBoletoAberto(false);
+                  setBoletoParaPagar(null);
+                }}
+                className="px-4 py-2 rounded border"
+                disabled={pagandoBoleto}
+              >
+                Cancelar
+              </button>
+
+              <button
+                onClick={confirmarPagamentoBoleto}
+                className="px-4 py-2 rounded bg-green-600 text-white font-semibold disabled:opacity-60"
+                disabled={pagandoBoleto}
+              >
+                {pagandoBoleto ? "Salvando..." : "Confirmar Pagamento"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* ✅ MODAL COMPROVANTE (NOVO) */}
       {modalCompAberto && boletoSelecionado && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
             <h2 className="text-lg font-bold text-blue-700 mb-2">📎 Comprovante do Boleto</h2>
             <p className="text-xs text-gray-600 mb-4">
-              Fornecedor: <strong>{boletoSelecionado.fornecedor}</strong> • Valor: <strong>R$ {fmt(boletoSelecionado.valor)}</strong>
+              Fornecedor: <strong>{boletoSelecionado.fornecedor}</strong> • Valor:{" "}
+              <strong>R$ {fmt(boletoSelecionado.valor)}</strong>
             </p>
 
             <div className="space-y-3">
