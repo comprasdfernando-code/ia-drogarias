@@ -63,13 +63,25 @@ type Fechamento = {
   pix_qr?: number | null;
   cartoes?: number | null;
 
-  // saídas
+  // saídas (resumo)
   sangrias?: number | null;
   despesas?: number | null;
   boletos?: number | null;
   compras?: number | null;
 
   saldo_dia?: number | null;
+};
+
+type MovCaixa = {
+  id: number;
+  tipo: string;
+  descricao: string;
+  valor: number;
+  forma_pagamento?: string | null;
+  destino_financeiro?: string | null;
+  data?: string | null; // date
+  created_at?: string | null; // timestamp
+  loja: string;
 };
 
 function calcEntradasDia(f: Fechamento) {
@@ -92,8 +104,8 @@ function calcSaidasDia(f: Fechamento) {
 }
 
 export default function PosicaoFinanceiraPage() {
-  const [entradas, setEntradas] = useState<any[]>([]);
-  const [saidas, setSaidas] = useState<any[]>([]);
+  const [entradas, setEntradas] = useState<MovCaixa[]>([]);
+  const [saidas, setSaidas] = useState<MovCaixa[]>([]);
   const [loading, setLoading] = useState(true);
 
   // ✅ data selecionada (turnos)
@@ -103,6 +115,10 @@ export default function PosicaoFinanceiraPage() {
   // ✅ fechamentos do dia (turnos)
   const [fechamentosDia, setFechamentosDia] = useState<Fechamento[]>([]);
   const [loadingFechDia, setLoadingFechDia] = useState(true);
+
+  // ✅ saídas detalhadas por turno (chave = fechamento.id)
+  const [saidasPorTurno, setSaidasPorTurno] = useState<Record<string, MovCaixa[]>>({});
+  const [loadingSaidasTurno, setLoadingSaidasTurno] = useState(false);
 
   const ano = new Date().getFullYear();
   const inicioAno = `${ano}-01-01T00:00:00`;
@@ -117,6 +133,14 @@ export default function PosicaoFinanceiraPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [dataSelecionada]);
 
+  // quando carregar fechamentos, carregar também as saídas detalhadas por turno
+  useEffect(() => {
+    if (!loadingFechDia) {
+      carregarSaidasDetalhadasPorTurno(dataSelecionada, fechamentosDia);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadingFechDia, fechamentosDia, dataSelecionada]);
+
   async function carregarPosicaoAno() {
     setLoading(true);
 
@@ -128,8 +152,9 @@ export default function PosicaoFinanceiraPage() {
 
     if (error) console.error(error);
 
-    setEntradas(data?.filter((m) => m.tipo === "Entrada") || []);
-    setSaidas(data?.filter((m) => m.tipo === "Saída") || []);
+    const rows = (data || []) as MovCaixa[];
+    setEntradas(rows.filter((m) => m.tipo === "Entrada"));
+    setSaidas(rows.filter((m) => m.tipo === "Saída"));
     setLoading(false);
   }
 
@@ -150,24 +175,71 @@ export default function PosicaoFinanceiraPage() {
     setLoadingFechDia(false);
   }
 
+  // ✅ busca saídas detalhadas por turno, usando janelas:
+  // turno i = [ (i==0 ? inicio do dia : data do fechamento anterior) , data do fechamento atual ]
+  async function carregarSaidasDetalhadasPorTurno(dateISO: string, fechs: Fechamento[]) {
+    if (!fechs || fechs.length === 0) {
+      setSaidasPorTurno({});
+      return;
+    }
+
+    setLoadingSaidasTurno(true);
+
+    try {
+      const inicioDia = startOfDayISO(dateISO);
+
+      const results = await Promise.all(
+        fechs.map(async (f, idx) => {
+          const inicio = idx === 0 ? inicioDia : fechs[idx - 1]?.data;
+          const fim = f.data;
+
+          // se por algum motivo não tiver data, evita query ruim
+          if (!inicio || !fim) return { key: String(f.id), rows: [] as MovCaixa[] };
+
+          const { data, error } = await supabase
+            .from("movimentacoes_caixa")
+            .select("id,tipo,descricao,valor,forma_pagamento,destino_financeiro,data,created_at,loja")
+            .eq("loja", LOJA)
+            .eq("tipo", "Saída")
+            .gte("created_at", inicio)
+            .lte("created_at", fim)
+            .order("created_at", { ascending: true });
+
+          if (error) {
+            console.error("Erro saídas turno:", f.id, error);
+            return { key: String(f.id), rows: [] as MovCaixa[] };
+          }
+
+          return { key: String(f.id), rows: (data || []) as MovCaixa[] };
+        })
+      );
+
+      const map: Record<string, MovCaixa[]> = {};
+      for (const r of results) map[r.key] = r.rows;
+      setSaidasPorTurno(map);
+    } finally {
+      setLoadingSaidasTurno(false);
+    }
+  }
+
   // ================= CÁLCULOS POSIÇÃO (ANO) =================
   const entradasDinheiro = entradas
     .filter((e) => e.forma_pagamento === "Dinheiro")
-    .reduce((t, e) => t + e.valor, 0);
+    .reduce((t, e) => t + Number(e.valor || 0), 0);
 
   const saidasDinheiro = saidas
     .filter((s) => s.destino_financeiro === "CAIXA_DINHEIRO")
-    .reduce((t, s) => t + s.valor, 0);
+    .reduce((t, s) => t + Number(s.valor || 0), 0);
 
   const saldoDinheiro = entradasDinheiro - saidasDinheiro;
 
   const entradasBanco = entradas
     .filter((e) => e.destino_financeiro === "CONTA_BRADESCO")
-    .reduce((t, e) => t + e.valor, 0);
+    .reduce((t, e) => t + Number(e.valor || 0), 0);
 
   const saidasBanco = saidas
     .filter((s) => s.destino_financeiro === "CONTA_BRADESCO")
-    .reduce((t, s) => t + s.valor, 0);
+    .reduce((t, s) => t + Number(s.valor || 0), 0);
 
   const saldoBanco = entradasBanco - saidasBanco;
 
@@ -187,6 +259,7 @@ export default function PosicaoFinanceiraPage() {
         entradas: entradasT,
         saidas: saidasT,
         saldo: saldoT,
+        dataFech: f.data,
       };
     });
 
@@ -214,6 +287,7 @@ export default function PosicaoFinanceiraPage() {
           .no-print { display: none !important; }
           .print-area { box-shadow: none !important; border: none !important; }
           a { color: black !important; text-decoration: none !important; }
+          .avoid-break { break-inside: avoid; page-break-inside: avoid; }
         }
       `}</style>
 
@@ -225,7 +299,7 @@ export default function PosicaoFinanceiraPage() {
               📊 Posição Financeira — {ano}
             </h1>
             <p className="text-sm text-gray-600">
-              PDF único (posição + turnos do dia selecionado)
+              PDF único (posição + turnos do dia selecionado + saídas detalhadas)
             </p>
           </div>
 
@@ -269,7 +343,7 @@ export default function PosicaoFinanceiraPage() {
             Drogaria Rede Fabiano
           </h2>
           <p className="text-sm text-gray-600">
-            Relatório Único — Posição Financeira + Turnos do Dia
+            Relatório Único — Posição Financeira + Turnos do Dia (com Saídas Detalhadas)
           </p>
           <p className="text-xs text-gray-500">
             Loja: {LOJA} • Ano: {ano} • Dia: {formatDateBR(dataSelecionada)} • Gerado em{" "}
@@ -281,7 +355,7 @@ export default function PosicaoFinanceiraPage() {
         {loading ? (
           <p>Carregando dados…</p>
         ) : (
-          <div>
+          <div className="avoid-break">
             <h3 className="text-lg font-bold text-slate-800 mb-3">
               📌 Posição Financeira (Acumulado do ano)
             </h3>
@@ -313,7 +387,11 @@ export default function PosicaoFinanceiraPage() {
 
               <div className="border rounded p-4 text-center">
                 <h4 className="font-bold text-gray-700 mb-2">💰 Saldo Geral</h4>
-                <p className={`text-2xl font-bold ${saldoGeral >= 0 ? "text-green-700" : "text-red-700"}`}>
+                <p
+                  className={`text-2xl font-bold ${
+                    saldoGeral >= 0 ? "text-green-700" : "text-red-700"
+                  }`}
+                >
                   R$ {fmt(saldoGeral)}
                 </p>
               </div>
@@ -330,32 +408,104 @@ export default function PosicaoFinanceiraPage() {
           {loadingFechDia ? (
             <p>Carregando fechamentos do dia…</p>
           ) : resumoDia.turnos.length === 0 ? (
-            <p className="text-sm text-gray-600">Nenhum fechamento encontrado na data selecionada.</p>
+            <p className="text-sm text-gray-600">
+              Nenhum fechamento encontrado na data selecionada.
+            </p>
           ) : (
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {resumoDia.turnos.map((t, idx) => (
-                <div key={t.id} className="bg-white border rounded p-3">
-                  <p className="font-bold text-slate-800">
-                    Turno {idx + 1} • {t.hora} • ID {t.id}
-                  </p>
-                  <p className="text-sm">Venda: R$ {fmt(t.venda)}</p>
-                  <p className="text-sm text-green-700">Entradas: R$ {fmt(t.entradas)}</p>
-                  <p className="text-sm text-red-700">Saídas: R$ {fmt(t.saidas)}</p>
-                  <p className="border-t mt-2 pt-2 font-bold">
-                    Total do turno:{" "}
-                    <span className={t.saldo >= 0 ? "text-green-700" : "text-red-700"}>
-                      R$ {fmt(t.saldo)}
-                    </span>
-                  </p>
-                </div>
-              ))}
+            <div className="grid grid-cols-1 gap-4">
+              {resumoDia.turnos.map((t, idx) => {
+                const lista = saidasPorTurno[String(t.id)] || [];
+                const totalDetalhado = lista.reduce((acc, x) => acc + Number(x.valor || 0), 0);
 
-              <div className="bg-white border rounded p-3 text-center">
+                return (
+                  <div key={t.id} className="bg-white border rounded p-3 avoid-break">
+                    <p className="font-bold text-slate-800">
+                      Turno {idx + 1} • {t.hora} • ID {t.id}
+                    </p>
+                    <p className="text-sm">Venda: R$ {fmt(t.venda)}</p>
+                    <p className="text-sm text-green-700">Entradas: R$ {fmt(t.entradas)}</p>
+                    <p className="text-sm text-red-700">Saídas (Resumo): R$ {fmt(t.saidas)}</p>
+
+                    {/* ✅ SAÍDAS DETALHADAS */}
+                    <div className="mt-3 border-t pt-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="font-semibold text-slate-700">
+                          Saídas detalhadas do turno
+                        </p>
+                        <p className="text-sm text-red-700 font-semibold">
+                          Total: R$ {fmt(totalDetalhado)}
+                        </p>
+                      </div>
+
+                      {loadingSaidasTurno ? (
+                        <p className="text-sm text-gray-600 mt-2">Carregando saídas detalhadas…</p>
+                      ) : lista.length === 0 ? (
+                        <p className="text-sm text-gray-600 mt-2">
+                          Nenhuma saída registrada neste turno.
+                        </p>
+                      ) : (
+                        <div className="mt-2 overflow-x-auto">
+                          <table className="w-full text-sm border">
+                            <thead className="bg-slate-100">
+                              <tr>
+                                <th className="text-left p-2 border">Hora</th>
+                                <th className="text-left p-2 border">Descrição</th>
+                                <th className="text-left p-2 border">Destino</th>
+                                <th className="text-right p-2 border">Valor</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {lista.map((s) => (
+                                <tr key={s.id}>
+                                  <td className="p-2 border whitespace-nowrap">
+                                    {formatTimeBR(s.created_at)}
+                                  </td>
+                                  <td className="p-2 border">{s.descricao || "—"}</td>
+                                  <td className="p-2 border">
+                                    {s.destino_financeiro || s.forma_pagamento || "—"}
+                                  </td>
+                                  <td className="p-2 border text-right text-red-700 font-semibold">
+                                    R$ {fmt(s.valor)}
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
+                      )}
+
+                      {/* bate/mostra diferença se precisar */}
+                      <div className="mt-2 text-xs text-gray-500">
+                        Janela do turno:{" "}
+                        {idx === 0 ? "início do dia" : formatTimeBR(resumoDia.turnos[idx - 1]?.dataFech)}{" "}
+                        → {formatTimeBR(t.dataFech)}
+                      </div>
+                    </div>
+
+                    <p className="border-t mt-3 pt-3 font-bold">
+                      Total do turno:{" "}
+                      <span className={t.saldo >= 0 ? "text-green-700" : "text-red-700"}>
+                        R$ {fmt(t.saldo)}
+                      </span>
+                    </p>
+                  </div>
+                );
+              })}
+
+              <div className="bg-white border rounded p-3 text-center avoid-break">
                 <p className="font-bold text-slate-800">Total do Dia</p>
                 <p className="text-sm">Venda: R$ {fmt(resumoDia.totalDia.venda)}</p>
-                <p className="text-sm text-green-700">Entradas: R$ {fmt(resumoDia.totalDia.entradas)}</p>
-                <p className="text-sm text-red-700">Saídas: R$ {fmt(resumoDia.totalDia.saidas)}</p>
-                <p className={`text-2xl font-bold mt-2 ${resumoDia.totalDia.saldo >= 0 ? "text-green-700" : "text-red-700"}`}>
+                <p className="text-sm text-green-700">
+                  Entradas: R$ {fmt(resumoDia.totalDia.entradas)}
+                </p>
+                <p className="text-sm text-red-700">
+                  Saídas: R$ {fmt(resumoDia.totalDia.saidas)}
+                </p>
+                <p
+                  className={`text-2xl font-bold mt-2 ${
+                    resumoDia.totalDia.saldo >= 0 ? "text-green-700" : "text-red-700"
+                  }`}
+                >
                   R$ {fmt(resumoDia.totalDia.saldo)}
                 </p>
               </div>
