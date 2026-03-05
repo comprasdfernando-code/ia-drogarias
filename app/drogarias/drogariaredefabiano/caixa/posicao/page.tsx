@@ -25,6 +25,14 @@ function toISODate(d: Date) {
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 
+// ✅ Brasil (-03:00) => converte o dia local para ISO UTC certo (timestamptz)
+function startOfDayTZ(dateISO: string) {
+  return new Date(`${dateISO}T00:00:00-03:00`).toISOString();
+}
+function endOfDayTZ(dateISO: string) {
+  return new Date(`${dateISO}T23:59:59-03:00`).toISOString();
+}
+
 function formatDateBR(value: any) {
   if (!value) return "—";
   const s = String(value);
@@ -40,20 +48,15 @@ function formatTimeBR(value: any) {
   return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
 }
 
-// usado caso a saída não tenha created_at (bem raro)
-function fallbackTs(dateISO: string) {
-  return new Date(`${dateISO}T12:00:00-03:00`).getTime();
-}
-
 // ================= TYPES =================
 type Fechamento = {
   id: any;
   loja: string;
 
-  // em alguns bancos isso é timestamptz, em outros é date/timestamp
+  // timestamp do fechamento (pode ser timestamptz)
   data: string;
 
-  // ✅ importante: se existir na tabela, ele é o horário real do fechamento
+  // se existir, é melhor ainda
   created_at?: string | null;
 
   venda_total: number;
@@ -109,7 +112,6 @@ function calcSaidasDia(f: Fechamento) {
 }
 
 function fechamentoTimestamp(f: Fechamento) {
-  // ✅ prioriza created_at (horário real), senão usa data
   const v = f.created_at || f.data;
   return new Date(v).getTime();
 }
@@ -119,18 +121,18 @@ export default function PosicaoFinanceiraPage() {
   const [saidas, setSaidas] = useState<MovCaixa[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // ✅ data selecionada (turnos)
   const hoje = useMemo(() => toISODate(new Date()), []);
   const [dataSelecionada, setDataSelecionada] = useState<string>(hoje);
 
-  // ✅ fechamentos do dia (turnos)
   const [fechamentosDia, setFechamentosDia] = useState<Fechamento[]>([]);
   const [loadingFechDia, setLoadingFechDia] = useState(true);
 
-  // ✅ saídas detalhadas por turno (chave = fechamento.id)
   const [saidasPorTurno, setSaidasPorTurno] = useState<Record<string, MovCaixa[]>>(
     {}
   );
+
+  // ✅ saídas que ficaram AFTER do último fechamento (se quiser mostrar)
+  const [saidasAposUltimoFech, setSaidasAposUltimoFech] = useState<MovCaixa[]>([]);
   const [loadingSaidasTurno, setLoadingSaidasTurno] = useState(false);
 
   const ano = new Date().getFullYear();
@@ -173,15 +175,14 @@ export default function PosicaoFinanceiraPage() {
   async function carregarFechamentosDoDia(dateISO: string) {
     setLoadingFechDia(true);
 
-    // ✅ aqui filtramos pelo "data" do dia (se for timestamptz, ainda funciona,
-    // mas o importante é que sua tela seleciona por dia)
+    // ✅ puxa fechamentos do dia (usando TZ)
     const { data, error } = await supabase
       .from("caixa_diario")
-      .select("*") // precisa vir created_at se existir
+      .select("*") // inclui created_at se existir
       .eq("loja", LOJA)
-      .gte("data", `${dateISO}T00:00:00`)
-      .lte("data", `${dateISO}T23:59:59`)
-      .order("created_at", { ascending: true, nullsFirst: false });
+      .gte("data", startOfDayTZ(dateISO))
+      .lte("data", endOfDayTZ(dateISO))
+      .order("data", { ascending: true });
 
     if (error) console.error(error);
 
@@ -189,23 +190,33 @@ export default function PosicaoFinanceiraPage() {
     setLoadingFechDia(false);
   }
 
-  // ✅ Puxa todas as saídas do DIA e separa por turno no FRONT
+  // ✅ puxa TODAS as saídas do DIA pelo created_at (TZ certo)
+  // e distribui SOMENTE dentro da janela do turno:
+  // turno i: (prevFech, fechAtual]
+  // saídas > último fechamento vão para saidasAposUltimoFech (bloco separado)
   async function carregarSaidasDetalhadasPorTurno(dateISO: string, fechs: Fechamento[]) {
-    if (!fechs || fechs.length === 0) {
-      setSaidasPorTurno({});
-      return;
-    }
-
     setLoadingSaidasTurno(true);
+    setSaidasAposUltimoFech([]);
 
     try {
-      // 1) pega todas as saídas do DIA selecionado
+      if (!fechs || fechs.length === 0) {
+        setSaidasPorTurno({});
+        return;
+      }
+
+      const diaStartISO = startOfDayTZ(dateISO);
+      const diaEndISO = endOfDayTZ(dateISO);
+      const diaStartTs = new Date(diaStartISO).getTime();
+      const diaEndTs = new Date(diaEndISO).getTime();
+
+      // 1) saídas do dia (por created_at, com TZ)
       const { data: saidasDia, error } = await supabase
         .from("movimentacoes_caixa")
         .select("id,tipo,descricao,valor,forma_pagamento,destino_financeiro,data,created_at,loja")
         .eq("loja", LOJA)
         .eq("tipo", "Saída")
-        .eq("data", dateISO) // ✅ garante que é do DIA selecionado
+        .gte("created_at", diaStartISO)
+        .lte("created_at", diaEndISO)
         .order("created_at", { ascending: true });
 
       if (error) {
@@ -214,32 +225,40 @@ export default function PosicaoFinanceiraPage() {
         return;
       }
 
-      const saidasList = ((saidasDia || []) as MovCaixa[]).map((s) => ({
-        ...s,
-      }));
+      const saidasList = (saidasDia || []) as MovCaixa[];
 
-      // 2) define os limites de cada turno pelo timestamp do fechamento
+      // 2) fechamentos ordenados
       const fechOrdenado = [...fechs].sort((a, b) => fechamentoTimestamp(a) - fechamentoTimestamp(b));
-      const limites = fechOrdenado.map((f) => ({
-        id: String(f.id),
-        ts: fechamentoTimestamp(f),
-      }));
 
-      // 3) cria mapa vazio
+      // 3) prepara mapa por turno
       const map: Record<string, MovCaixa[]> = {};
-      for (const l of limites) map[l.id] = [];
+      fechOrdenado.forEach((f) => (map[String(f.id)] = []));
 
-      // 4) joga cada saída no turno correto
+      const ultimoFechTs = fechamentoTimestamp(fechOrdenado[fechOrdenado.length - 1]);
+
+      // 4) bucket certo: (prev, atual]
       for (const s of saidasList) {
-        const tsSaida = s.created_at ? new Date(s.created_at).getTime() : fallbackTs(dateISO);
+        const tsSaida = s.created_at ? new Date(s.created_at).getTime() : diaStartTs;
 
-        // acha o primeiro fechamento cujo ts >= saida
-        let idxTurno = limites.findIndex((l) => tsSaida <= l.ts);
+        // trava extra (segurança)
+        if (tsSaida < diaStartTs || tsSaida > diaEndTs) continue;
 
-        // se passou de todos, joga no último turno
-        if (idxTurno === -1) idxTurno = limites.length - 1;
+        // se é depois do último fechamento, joga no bloco separado
+        if (tsSaida > ultimoFechTs) {
+          setSaidasAposUltimoFech((prev) => [...prev, s]);
+          continue;
+        }
 
-        map[limites[idxTurno].id].push(s);
+        // acha o primeiro fechamento que "fecha" essa saída
+        for (let i = 0; i < fechOrdenado.length; i++) {
+          const atualTs = fechamentoTimestamp(fechOrdenado[i]);
+          const prevTs = i === 0 ? diaStartTs : fechamentoTimestamp(fechOrdenado[i - 1]);
+
+          if (tsSaida > prevTs && tsSaida <= atualTs) {
+            map[String(fechOrdenado[i].id)].push(s);
+            break;
+          }
+        }
       }
 
       setSaidasPorTurno(map);
@@ -309,7 +328,6 @@ export default function PosicaoFinanceiraPage() {
 
   return (
     <main className="min-h-screen bg-gray-100 p-6">
-      {/* ===== CSS PDF ===== */}
       <style>{`
         @page { size: A4; margin: 12mm; }
         @media print {
@@ -321,7 +339,6 @@ export default function PosicaoFinanceiraPage() {
         }
       `}</style>
 
-      {/* ===== CABEÇALHO / CONTROLES ===== */}
       <div className="no-print max-w-5xl mx-auto bg-white rounded shadow p-4 mb-6">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -365,9 +382,7 @@ export default function PosicaoFinanceiraPage() {
         </p>
       </div>
 
-      {/* ===== ÁREA DE IMPRESSÃO ===== */}
       <div className="print-area max-w-5xl mx-auto bg-white rounded shadow p-6">
-        {/* CAPA / RESUMO */}
         <div className="border-b pb-4 mb-6">
           <h2 className="text-2xl font-bold text-blue-800">
             Drogaria Rede Fabiano
@@ -381,7 +396,6 @@ export default function PosicaoFinanceiraPage() {
           </p>
         </div>
 
-        {/* POSIÇÃO FINANCEIRA (ANO) */}
         {loading ? (
           <p>Carregando dados…</p>
         ) : (
@@ -425,7 +439,6 @@ export default function PosicaoFinanceiraPage() {
           </div>
         )}
 
-        {/* RESUMO DO DIA — TURNOS */}
         <div className="mt-8 border rounded p-4 bg-slate-50">
           <h3 className="text-lg font-bold text-blue-800 mb-2">
             📆 Resumo do Dia — Turnos ({formatDateBR(dataSelecionada)})
@@ -443,8 +456,10 @@ export default function PosicaoFinanceiraPage() {
                 const lista = saidasPorTurno[String(t.id)] || [];
                 const totalDetalhado = lista.reduce((acc, x) => acc + Number(x.valor || 0), 0);
 
-                const janelaInicio =
-                  idx === 0 ? "início do dia" : formatTimeBR(new Date(resumoDia.turnos[idx - 1].tsFech).toISOString());
+                const diaStartTs = new Date(startOfDayTZ(dataSelecionada)).getTime();
+                const prevTs = idx === 0 ? diaStartTs : resumoDia.turnos[idx - 1].tsFech;
+
+                const janelaInicio = idx === 0 ? "início do dia" : formatTimeBR(new Date(prevTs).toISOString());
                 const janelaFim = formatTimeBR(new Date(t.tsFech).toISOString());
 
                 return (
@@ -456,25 +471,16 @@ export default function PosicaoFinanceiraPage() {
                     <p className="text-sm text-green-700">Entradas: R$ {fmt(t.entradas)}</p>
                     <p className="text-sm text-red-700">Saídas (Resumo): R$ {fmt(t.saidas)}</p>
 
-                    {/* ✅ SAÍDAS DETALHADAS */}
                     <div className="mt-3 border-t pt-3">
                       <div className="flex items-center justify-between gap-2">
-                        <p className="font-semibold text-slate-700">
-                          Saídas detalhadas do turno
-                        </p>
-                        <p className="text-sm text-red-700 font-semibold">
-                          Total: R$ {fmt(totalDetalhado)}
-                        </p>
+                        <p className="font-semibold text-slate-700">Saídas detalhadas do turno</p>
+                        <p className="text-sm text-red-700 font-semibold">Total: R$ {fmt(totalDetalhado)}</p>
                       </div>
 
                       {loadingSaidasTurno ? (
-                        <p className="text-sm text-gray-600 mt-2">
-                          Carregando saídas detalhadas…
-                        </p>
+                        <p className="text-sm text-gray-600 mt-2">Carregando saídas detalhadas…</p>
                       ) : lista.length === 0 ? (
-                        <p className="text-sm text-gray-600 mt-2">
-                          Nenhuma saída registrada neste turno.
-                        </p>
+                        <p className="text-sm text-gray-600 mt-2">Nenhuma saída registrada neste turno.</p>
                       ) : (
                         <div className="mt-2 overflow-x-auto">
                           <table className="w-full text-sm border">
@@ -489,16 +495,10 @@ export default function PosicaoFinanceiraPage() {
                             <tbody>
                               {lista.map((s) => (
                                 <tr key={s.id}>
-                                  <td className="p-2 border whitespace-nowrap">
-                                    {formatTimeBR(s.created_at)}
-                                  </td>
+                                  <td className="p-2 border whitespace-nowrap">{formatTimeBR(s.created_at)}</td>
                                   <td className="p-2 border">{s.descricao || "—"}</td>
-                                  <td className="p-2 border">
-                                    {s.destino_financeiro || s.forma_pagamento || "—"}
-                                  </td>
-                                  <td className="p-2 border text-right text-red-700 font-semibold">
-                                    R$ {fmt(s.valor)}
-                                  </td>
+                                  <td className="p-2 border">{s.destino_financeiro || s.forma_pagamento || "—"}</td>
+                                  <td className="p-2 border text-right text-red-700 font-semibold">R$ {fmt(s.valor)}</td>
                                 </tr>
                               ))}
                             </tbody>
@@ -521,12 +521,43 @@ export default function PosicaoFinanceiraPage() {
                 );
               })}
 
+              {/* ✅ BLOCO EXTRA (se houver) */}
+              {saidasAposUltimoFech.length > 0 && (
+                <div className="bg-white border rounded p-3 avoid-break">
+                  <p className="font-bold text-slate-800">Saídas após o último fechamento</p>
+                  <p className="text-xs text-gray-500 mb-2">
+                    Essas saídas pertencem ao próximo turno (ainda não fechado).
+                  </p>
+
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm border">
+                      <thead className="bg-slate-100">
+                        <tr>
+                          <th className="text-left p-2 border">Hora</th>
+                          <th className="text-left p-2 border">Descrição</th>
+                          <th className="text-left p-2 border">Destino</th>
+                          <th className="text-right p-2 border">Valor</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {saidasAposUltimoFech.map((s) => (
+                          <tr key={s.id}>
+                            <td className="p-2 border whitespace-nowrap">{formatTimeBR(s.created_at)}</td>
+                            <td className="p-2 border">{s.descricao || "—"}</td>
+                            <td className="p-2 border">{s.destino_financeiro || s.forma_pagamento || "—"}</td>
+                            <td className="p-2 border text-right text-red-700 font-semibold">R$ {fmt(s.valor)}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
               <div className="bg-white border rounded p-3 text-center avoid-break">
                 <p className="font-bold text-slate-800">Total do Dia</p>
                 <p className="text-sm">Venda: R$ {fmt(resumoDia.totalDia.venda)}</p>
-                <p className="text-sm text-green-700">
-                  Entradas: R$ {fmt(resumoDia.totalDia.entradas)}
-                </p>
+                <p className="text-sm text-green-700">Entradas: R$ {fmt(resumoDia.totalDia.entradas)}</p>
                 <p className="text-sm text-red-700">Saídas: R$ {fmt(resumoDia.totalDia.saidas)}</p>
                 <p className={`text-2xl font-bold mt-2 ${resumoDia.totalDia.saldo >= 0 ? "text-green-700" : "text-red-700"}`}>
                   R$ {fmt(resumoDia.totalDia.saldo)}
@@ -536,7 +567,6 @@ export default function PosicaoFinanceiraPage() {
           )}
         </div>
 
-        {/* ASSINATURA */}
         <div className="mt-10 text-right text-sm">
           <p className="font-semibold">Fernando dos Santos Pereira</p>
           <p className="text-gray-500">Responsável</p>
