@@ -13,6 +13,9 @@ const supabase = createClient(supabaseUrl, supabaseAnonKey);
 
 const LOJA = "drogariaredefabiano";
 
+// ✅ bucket do storage (já criado por SQL)
+const BUCKET_COMPROVANTES = "comprovantes-boletos";
+
 // ======================================================
 // 🔷 COMPONENTE CARD DE ACUMULADO
 // ======================================================
@@ -162,6 +165,14 @@ export default function CaixaPage() {
   const [totalPagosPeriodo, setTotalPagosPeriodo] = useState(0);
   const [totalVencerPeriodo, setTotalVencerPeriodo] = useState(0);
 
+  // ======================================================
+  // ✅ COMPROVANTE (NOVO) - estados
+  // ======================================================
+  const [modalCompAberto, setModalCompAberto] = useState(false);
+  const [boletoSelecionado, setBoletoSelecionado] = useState<any>(null);
+  const [arquivoComp, setArquivoComp] = useState<File | null>(null);
+  const [enviandoComp, setEnviandoComp] = useState(false);
+
   function fmt(n: number) {
     return Number(n || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 });
   }
@@ -176,9 +187,6 @@ export default function CaixaPage() {
 
   // ======================================================
   // 🔵 CARREGAR MOVIMENTAÇÕES E BOLETOS
-  // ✅ MAIS LEVE:
-  // - movimentações: limita 60
-  // - boletos: só janela -7 a +7 dias
   // ======================================================
   async function carregarDados() {
     setCarregando(true);
@@ -211,8 +219,6 @@ export default function CaixaPage() {
 
   // ======================================================
   // 🔵 CARREGAR FECHAMENTOS DIÁRIOS
-  // ✅ MAIS LEVE:
-  // - últimos 30 dias + limita 30 linhas
   // ======================================================
   async function carregarFechamentos() {
     const hoje = new Date();
@@ -238,7 +244,6 @@ export default function CaixaPage() {
       return;
     }
 
-    // ✅ saldo do fechamento: entradas (din/pix/cartoes + receb_fiado) - saídas
     const entradasFech =
       Number(dinheiroDia || 0) +
       Number(pixCNPJ || 0) +
@@ -260,9 +265,8 @@ export default function CaixaPage() {
 
       venda_total: Number(vendaTotal || 0),
 
-      // ✅ FIADO separado
-      venda_fiado: Number(vendafiado || 0), // só registra
-      receb_fiado: Number(recebFiado || 0), // entra como entrada
+      venda_fiado: Number(vendafiado || 0),
+      receb_fiado: Number(recebFiado || 0),
 
       dinheiro: Number(dinheiroDia || 0),
       pix_cnpj: Number(pixCNPJ || 0),
@@ -274,7 +278,6 @@ export default function CaixaPage() {
       boletos: Number(boletosDia || 0),
       compras: Number(comprasDia || 0),
 
-      // descrições
       desc_sangrias: descSangrias || null,
       desc_despesas: descDespesas || null,
       desc_boletos: descBoletosPagos || null,
@@ -291,7 +294,6 @@ export default function CaixaPage() {
 
     alert("Fechamento salvo com sucesso! ✔️");
 
-    // limpa campos (opcional)
     setVendaTotal("");
     setDinheiroDia("");
     setVendaFiado("");
@@ -341,7 +343,6 @@ export default function CaixaPage() {
     const calc: any = {
       venda_total: data.reduce((t, d) => t + (d.venda_total ?? 0), 0),
 
-      // ✅ FIADO separado
       venda_fiado: data.reduce((t, d) => t + (d.venda_fiado ?? 0), 0),
       receb_fiado: data.reduce((t, d) => t + (d.receb_fiado ?? 0), 0),
 
@@ -357,11 +358,9 @@ export default function CaixaPage() {
       entradas_periodo: 0,
     };
 
-    // ✅ entradas período: din/pix/cartoes + receb_fiado
     calc.entradas_periodo =
       calc.dinheiro + calc.pix_cnpj + calc.pix_qr + calc.cartoes + calc.receb_fiado;
 
-    // ✅ saldo final
     calc.saldo_final =
       calc.entradas_periodo - (calc.sangrias + calc.despesas + calc.boletos + calc.compras);
 
@@ -408,7 +407,6 @@ export default function CaixaPage() {
       fornecedor,
       descricao: descricaoBoleto,
       valor: Number(valorBoleto),
-      // ✅ salva com horário fixo pra evitar shift no fuso se for timestamp/timestamptz
       data_vencimento: dataVencimento ? dataVencimento + "T12:00:00" : dataVencimento,
       linha_digitavel: linhaDigitavel,
       loja: LOJA,
@@ -440,7 +438,6 @@ export default function CaixaPage() {
       return;
     }
 
-    // registra no caixa
     await supabase.from("movimentacoes_caixa").insert({
       tipo: "Saída",
       descricao: `Pagamento boleto - ${boleto.fornecedor}`,
@@ -485,7 +482,7 @@ export default function CaixaPage() {
   }
 
   // ======================================================
-  // 🟨 CONSULTAR BOLETOS PAGOS POR PERÍODO (SOMA TOTAL)
+  // 🟨 CONSULTAR BOLETOS PAGOS POR PERÍODO
   // ======================================================
   async function consultarBoletosPagosPeriodo() {
     if (!bolPagoIni || !bolPagoFim) {
@@ -514,13 +511,12 @@ export default function CaixaPage() {
     const list = data || [];
     setBoletosPagosPeriodo(list);
 
-    // ✅ total pagos no período
     const total = list.reduce((acc: number, b: any) => acc + Number(b.valor || 0), 0);
     setTotalPagosPeriodo(total);
   }
 
   // ======================================================
-  // 🟨 CONSULTAR BOLETOS A VENCER POR PERÍODO (SOMA TOTAL)
+  // 🟨 CONSULTAR BOLETOS A VENCER POR PERÍODO
   // ======================================================
   async function consultarBoletosVencerPeriodo() {
     if (!bolVencerIni || !bolVencerFim) {
@@ -549,9 +545,109 @@ export default function CaixaPage() {
     const list = data || [];
     setBoletosVencerPeriodo(list);
 
-    // ✅ total a vencer no período
     const total = list.reduce((acc: number, b: any) => acc + Number(b.valor || 0), 0);
     setTotalVencerPeriodo(total);
+  }
+
+  // ======================================================
+  // ✅ COMPROVANTE (NOVO) - helpers
+  // ======================================================
+  function abrirModalComprovante(boleto: any) {
+    setBoletoSelecionado(boleto);
+    setArquivoComp(null);
+    setModalCompAberto(true);
+  }
+
+  function getExtFromFile(file: File) {
+    const name = file?.name || "";
+    const parts = name.split(".");
+    if (parts.length < 2) return "bin";
+    return parts[parts.length - 1].toLowerCase();
+  }
+
+  function sanitizeFileName(name: string) {
+    return (name || "arquivo")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-zA-Z0-9._-]/g, "_")
+      .slice(0, 120);
+  }
+
+  async function enviarComprovante() {
+    if (!boletoSelecionado) return;
+    if (!arquivoComp) {
+      alert("Selecione um arquivo (PDF, imagem)!");
+      return;
+    }
+
+    setEnviandoComp(true);
+
+    try {
+      const ext = getExtFromFile(arquivoComp);
+      const safe = sanitizeFileName(arquivoComp.name);
+      const ts = Date.now();
+      const path = `${LOJA}/boletos/${boletoSelecionado.id}/${ts}_${safe}`;
+
+      // upload (upsert true pra trocar)
+      const { error: upErr } = await supabase.storage
+        .from(BUCKET_COMPROVANTES)
+        .upload(path, arquivoComp, {
+          cacheControl: "3600",
+          upsert: true,
+          contentType: arquivoComp.type || undefined,
+        });
+
+      if (upErr) {
+        console.error(upErr);
+        alert("Erro ao enviar comprovante!");
+        return;
+      }
+
+      // salva no boleto
+      const { error: updErr } = await supabase
+        .from("boletos_a_vencer")
+        .update({
+          comprovante_path: path,
+          comprovante_nome: arquivoComp.name,
+          comprovante_mime: arquivoComp.type || null,
+          comprovante_uploaded_at: new Date().toISOString(),
+        })
+        .eq("id", boletoSelecionado.id);
+
+      if (updErr) {
+        console.error(updErr);
+        alert("Erro ao salvar caminho do comprovante no boleto!");
+        return;
+      }
+
+      alert("Comprovante salvo! ✅");
+      setModalCompAberto(false);
+      setBoletoSelecionado(null);
+      setArquivoComp(null);
+      carregarDados();
+    } finally {
+      setEnviandoComp(false);
+    }
+  }
+
+  async function abrirComprovante(boleto: any) {
+    const path = boleto?.comprovante_path;
+    if (!path) {
+      alert("Sem comprovante neste boleto.");
+      return;
+    }
+
+    const { data, error } = await supabase.storage
+      .from(BUCKET_COMPROVANTES)
+      .createSignedUrl(path, 60 * 10); // 10 min
+
+    if (error || !data?.signedUrl) {
+      console.error(error);
+      alert("Não foi possível abrir o comprovante.");
+      return;
+    }
+
+    window.open(data.signedUrl, "_blank", "noopener,noreferrer");
   }
 
   // ======================================================
@@ -589,6 +685,58 @@ export default function CaixaPage() {
   // ======================================================
   return (
     <main className="min-h-screen bg-gray-100 p-6">
+      {/* ✅ MODAL COMPROVANTE (NOVO) */}
+      {modalCompAberto && boletoSelecionado && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
+            <h2 className="text-lg font-bold text-blue-700 mb-2">📎 Comprovante do Boleto</h2>
+            <p className="text-xs text-gray-600 mb-4">
+              Fornecedor: <strong>{boletoSelecionado.fornecedor}</strong> • Valor: <strong>R$ {fmt(boletoSelecionado.valor)}</strong>
+            </p>
+
+            <div className="space-y-3">
+              <input
+                type="file"
+                accept="application/pdf,image/*"
+                onChange={(e) => setArquivoComp(e.target.files?.[0] || null)}
+                className="border p-2 rounded w-full"
+              />
+
+              {boletoSelecionado.comprovante_path && (
+                <button
+                  onClick={() => abrirComprovante(boletoSelecionado)}
+                  className="w-full bg-slate-700 hover:bg-slate-800 text-white px-4 py-2 rounded font-semibold"
+                >
+                  Ver comprovante atual
+                </button>
+              )}
+            </div>
+
+            <div className="flex justify-end gap-3 mt-6">
+              <button
+                onClick={() => {
+                  setModalCompAberto(false);
+                  setBoletoSelecionado(null);
+                  setArquivoComp(null);
+                }}
+                className="px-4 py-2 rounded border"
+                disabled={enviandoComp}
+              >
+                Cancelar
+              </button>
+
+              <button
+                onClick={enviarComprovante}
+                className="px-4 py-2 rounded bg-blue-600 text-white font-semibold disabled:opacity-60"
+                disabled={enviandoComp}
+              >
+                {enviandoComp ? "Enviando..." : "Salvar Comprovante"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {modalSaidaAberto && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
@@ -736,7 +884,6 @@ export default function CaixaPage() {
             className="border p-2 rounded"
           />
 
-          {/* ✅ RECEB FIADO (SOMA NAS ENTRADAS) */}
           <input
             type="number"
             placeholder="Receb. Fiado"
@@ -749,7 +896,6 @@ export default function CaixaPage() {
           <input type="number" placeholder="Pix QR" value={pixQR} onChange={(e) => setPixQR(e.target.value)} className="border p-2 rounded" />
           <input type="number" placeholder="Cartões" value={cartoesDia} onChange={(e) => setCartoesDia(e.target.value)} className="border p-2 rounded" />
 
-          {/* ✅ VENDA FIADO (SÓ REGISTRA) */}
           <input
             type="number"
             placeholder="Venda Fiado"
@@ -758,7 +904,6 @@ export default function CaixaPage() {
             className="border p-2 rounded"
           />
 
-          {/* SANGRIAS */}
           <input type="number" placeholder="Sangrias" value={sangriasDia} onChange={(e) => setSangriasDia(e.target.value)} className="border p-2 rounded" />
 
           <input
@@ -769,7 +914,6 @@ export default function CaixaPage() {
             className="border p-2 rounded col-span-2"
           />
 
-          {/* DESPESAS */}
           <input type="number" placeholder="Despesas" value={despesasDia} onChange={(e) => setDespesasDia(e.target.value)} className="border p-2 rounded" />
 
           <input
@@ -780,7 +924,6 @@ export default function CaixaPage() {
             className="border p-2 rounded col-span-2"
           />
 
-          {/* BOLETOS */}
           <input type="number" placeholder="Boletos pagos" value={boletosDia} onChange={(e) => setBoletosDia(e.target.value)} className="border p-2 rounded" />
 
           <input
@@ -791,7 +934,6 @@ export default function CaixaPage() {
             className="border p-2 rounded col-span-2"
           />
 
-          {/* COMPRAS */}
           <input type="number" placeholder="Compras" value={comprasDia} onChange={(e) => setComprasDia(e.target.value)} className="border p-2 rounded" />
 
           <input
@@ -875,7 +1017,6 @@ export default function CaixaPage() {
 
             <tbody>
               {fechamentos.map((f) => {
-                // ✅ ENTRADAS: soma receb_fiado, NÃO soma venda_fiado
                 const entradasDia =
                   Number(f.dinheiro || 0) +
                   Number(f.pix_cnpj || 0) +
@@ -1035,7 +1176,6 @@ export default function CaixaPage() {
               Buscar Pagos
             </button>
 
-            {/* ✅ TOTAL */}
             <div className="mt-3 bg-white rounded border p-3 text-sm">
               <span className="text-gray-600">Total pago no período: </span>
               <strong className="text-green-700">R$ {fmt(totalPagosPeriodo)}</strong>
@@ -1085,7 +1225,6 @@ export default function CaixaPage() {
               Buscar a Vencer
             </button>
 
-            {/* ✅ TOTAL */}
             <div className="mt-3 bg-white rounded border p-3 text-sm">
               <span className="text-gray-600">Total a vencer no período: </span>
               <strong className="text-blue-700">R$ {fmt(totalVencerPeriodo)}</strong>
@@ -1139,6 +1278,7 @@ export default function CaixaPage() {
                 <th className="p-2 border">Valor</th>
                 <th className="p-2 border">Vencimento</th>
                 <th className="p-2 border">Linha Digitável</th>
+                <th className="p-2 border">Comprovante</th>
                 <th className="p-2 border">Status</th>
               </tr>
             </thead>
@@ -1156,7 +1296,10 @@ export default function CaixaPage() {
                     {b.linha_digitavel ? (
                       <>
                         <span className="font-mono text-xs">{b.linha_digitavel}</span>
-                        <button onClick={() => navigator.clipboard.writeText(b.linha_digitavel)} className="ml-2 text-blue-600 underline text-xs">
+                        <button
+                          onClick={() => navigator.clipboard.writeText(b.linha_digitavel)}
+                          className="ml-2 text-blue-600 underline text-xs"
+                        >
                           Copiar
                         </button>
                       </>
@@ -1165,11 +1308,41 @@ export default function CaixaPage() {
                     )}
                   </td>
 
+                  {/* ✅ NOVO: coluna comprovante */}
+                  <td className="p-2 border text-center">
+                    {b.comprovante_path ? (
+                      <div className="flex items-center justify-center gap-2">
+                        <button
+                          onClick={() => abrirComprovante(b)}
+                          className="bg-slate-700 hover:bg-slate-800 text-white px-2 py-1 text-xs rounded"
+                        >
+                          Ver
+                        </button>
+                        <button
+                          onClick={() => abrirModalComprovante(b)}
+                          className="bg-blue-600 hover:bg-blue-700 text-white px-2 py-1 text-xs rounded"
+                        >
+                          Trocar
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => abrirModalComprovante(b)}
+                        className="bg-blue-600 hover:bg-blue-700 text-white px-3 py-1 text-xs rounded"
+                      >
+                        Adicionar
+                      </button>
+                    )}
+                  </td>
+
                   <td className="p-2 border text-center">
                     {b.pago ? (
                       <span className="text-green-700 font-bold">Pago ✔️</span>
                     ) : (
-                      <button onClick={() => marcarComoPago(b)} className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 text-xs rounded">
+                      <button
+                        onClick={() => marcarComoPago(b)}
+                        className="bg-green-600 hover:bg-green-700 text-white px-3 py-1 text-xs rounded"
+                      >
                         Marcar Pago
                       </button>
                     )}
@@ -1178,7 +1351,7 @@ export default function CaixaPage() {
               ))}
               {boletos.length === 0 && (
                 <tr>
-                  <td className="p-3 text-center text-sm text-gray-500" colSpan={6}>
+                  <td className="p-3 text-center text-sm text-gray-500" colSpan={7}>
                     Nenhum boleto na janela de -7 a +7 dias.
                   </td>
                 </tr>
@@ -1187,8 +1360,6 @@ export default function CaixaPage() {
           </table>
         </div>
       </div>
-
-      
     </main>
   );
 }
