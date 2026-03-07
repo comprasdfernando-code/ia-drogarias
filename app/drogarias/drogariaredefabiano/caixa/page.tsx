@@ -16,6 +16,19 @@ const LOJA = "drogariaredefabiano";
 // ✅ bucket do storage (já criado por SQL)
 const BUCKET_COMPROVANTES = "comprovantes-boletos";
 
+type CaixaSessao = {
+  id: string;
+  loja_slug: string;
+  operador: string | null;
+  turno: string | null;
+  status: string;
+  valor_abertura: number | null;
+  valor_fechamento: number | null;
+  aberto_em: string;
+  fechado_em: string | null;
+  observacoes: string | null;
+};
+
 // ======================================================
 // 🔷 COMPONENTE CARD DE ACUMULADO
 // ======================================================
@@ -59,7 +72,6 @@ function pad2(n: number) {
 }
 
 function toISODate(d: Date) {
-  // YYYY-MM-DD
   return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
 }
 
@@ -77,18 +89,20 @@ function addDays(base: Date, days: number) {
   return d;
 }
 
-// ✅ evita shift de 1 dia quando vier "YYYY-MM-DD"
 function formatDateBR(value: any) {
   if (!value) return "—";
   const s = String(value);
 
-  // Se vier só "YYYY-MM-DD", força horário local (sem UTC shift)
   if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
     return new Date(s + "T12:00:00").toLocaleDateString("pt-BR");
   }
 
-  // Se vier timestamp (com T), pode converter direto
   return new Date(s).toLocaleDateString("pt-BR");
+}
+
+function formatDateTimeBR(value: any) {
+  if (!value) return "—";
+  return new Date(String(value)).toLocaleString("pt-BR");
 }
 
 // ======================================================
@@ -100,13 +114,30 @@ export default function CaixaPage() {
   const [boletos, setBoletos] = useState<any[]>([]);
   const [carregando, setCarregando] = useState(true);
 
+  // ======================================================
+  // 🟢 SESSÃO DE CAIXA (NOVO)
+  // ======================================================
+  const [caixaAtual, setCaixaAtual] = useState<CaixaSessao | null>(null);
+  const [historicoCaixa, setHistoricoCaixa] = useState<CaixaSessao[]>([]);
+
+  const [operadorCaixa, setOperadorCaixa] = useState("");
+  const [turnoCaixa, setTurnoCaixa] = useState("caixa_1");
+  const [valorAberturaCaixa, setValorAberturaCaixa] = useState("");
+  const [obsAberturaCaixa, setObsAberturaCaixa] = useState("");
+
+  const [valorFechamentoCaixa, setValorFechamentoCaixa] = useState("");
+  const [obsFechamentoCaixa, setObsFechamentoCaixa] = useState("");
+
+  const [abrindoCaixa, setAbrindoCaixa] = useState(false);
+  const [fechandoCaixa, setFechandoCaixa] = useState(false);
+
   // --- Estados fechamento diário ---
   const [dataFechamento, setDataFechamento] = useState("");
   const [vendaTotal, setVendaTotal] = useState("");
 
   // ✅ FIADO separado
-  const [vendafiado, setVendaFiado] = useState(""); // só registra
-  const [recebFiado, setRecebFiado] = useState(""); // entra nas entradas
+  const [vendafiado, setVendaFiado] = useState("");
+  const [recebFiado, setRecebFiado] = useState("");
 
   const [dinheiroDia, setDinheiroDia] = useState("");
   const [pixCNPJ, setPixCNPJ] = useState("");
@@ -191,9 +222,149 @@ export default function CaixaPage() {
   // 🔵 USE EFFECT
   // ======================================================
   useEffect(() => {
-    carregarDados();
-    carregarFechamentos();
+    carregarTudoInicial();
   }, []);
+
+  async function carregarTudoInicial() {
+    await Promise.all([carregarDados(), carregarFechamentos(), carregarCaixaAtual(), carregarHistoricoCaixa()]);
+  }
+
+  // ======================================================
+  // 🟢 CAIXA SESSÃO (NOVO)
+  // ======================================================
+  async function carregarCaixaAtual() {
+    const { data, error } = await supabase
+      .from("caixa_sessoes")
+      .select("*")
+      .eq("loja_slug", LOJA)
+      .eq("status", "aberto")
+      .order("aberto_em", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      console.error("Erro carregarCaixaAtual:", error);
+      return;
+    }
+
+    setCaixaAtual((data as CaixaSessao | null) ?? null);
+  }
+
+  async function carregarHistoricoCaixa() {
+    const { data, error } = await supabase
+      .from("caixa_sessoes")
+      .select("*")
+      .eq("loja_slug", LOJA)
+      .order("aberto_em", { ascending: false })
+      .limit(10);
+
+    if (error) {
+      console.error("Erro carregarHistoricoCaixa:", error);
+      return;
+    }
+
+    setHistoricoCaixa((data as CaixaSessao[]) || []);
+  }
+
+  async function abrirCaixaSessao() {
+    if (caixaAtual) {
+      alert("Já existe um caixa aberto para esta loja.");
+      return;
+    }
+
+    setAbrindoCaixa(true);
+
+    try {
+      const valorAbertura = Number(valorAberturaCaixa || 0);
+
+      const { data, error } = await supabase
+        .from("caixa_sessoes")
+        .insert({
+          loja_slug: LOJA,
+          operador: operadorCaixa || null,
+          turno: turnoCaixa || null,
+          status: "aberto",
+          valor_abertura: valorAbertura,
+          observacoes: obsAberturaCaixa || null,
+        })
+        .select("*")
+        .single();
+
+      if (error) {
+        console.error(error);
+        alert("Erro ao abrir caixa.");
+        return;
+      }
+
+      const sessao = data as CaixaSessao;
+
+      if (valorAbertura > 0) {
+        const { error: movError } = await supabase.from("movimentacoes_caixa").insert({
+          tipo: "Entrada",
+          descricao: "Abertura de caixa",
+          valor: valorAbertura,
+          forma_pagamento: "Dinheiro",
+          destino_financeiro: "CAIXA_DINHEIRO",
+          data: new Date(),
+          loja: LOJA,
+          caixa_sessao_id: sessao.id,
+        });
+
+        if (movError) {
+          console.error(movError);
+          alert("Caixa aberto, mas houve erro ao lançar a abertura em movimentações.");
+        }
+      }
+
+      setOperadorCaixa("");
+      setTurnoCaixa("caixa_1");
+      setValorAberturaCaixa("");
+      setObsAberturaCaixa("");
+
+      alert("Caixa aberto com sucesso! ✔️");
+      await Promise.all([carregarCaixaAtual(), carregarHistoricoCaixa(), carregarDados()]);
+    } finally {
+      setAbrindoCaixa(false);
+    }
+  }
+
+  async function fecharCaixaSessao() {
+    if (!caixaAtual) {
+      alert("Não existe caixa aberto.");
+      return;
+    }
+
+    const confirmar = window.confirm("Deseja realmente fechar o caixa atual?");
+    if (!confirmar) return;
+
+    setFechandoCaixa(true);
+
+    try {
+      const { error } = await supabase
+        .from("caixa_sessoes")
+        .update({
+          status: "fechado",
+          valor_fechamento: valorFechamentoCaixa ? Number(valorFechamentoCaixa) : null,
+          fechado_em: new Date().toISOString(),
+          observacoes: [caixaAtual.observacoes, obsFechamentoCaixa].filter(Boolean).join(" | ") || null,
+        })
+        .eq("id", caixaAtual.id);
+
+      if (error) {
+        console.error(error);
+        alert("Erro ao fechar caixa.");
+        return;
+      }
+
+      setValorFechamentoCaixa("");
+      setObsFechamentoCaixa("");
+
+      alert("Caixa fechado com sucesso! ✔️");
+      await Promise.all([carregarCaixaAtual(), carregarHistoricoCaixa(), carregarDados()]);
+    } finally {
+      setFechandoCaixa(false);
+    }
+  }
 
   // ======================================================
   // 🔵 CARREGAR MOVIMENTAÇÕES E BOLETOS
@@ -395,6 +566,7 @@ export default function CaixaPage() {
       data: new Date(),
       loja: LOJA,
       linha_digitavel: linhaDigitavelMov || null,
+      caixa_sessao_id: caixaAtual?.id || null,
     });
 
     alert("Movimentação salva!");
@@ -436,7 +608,7 @@ export default function CaixaPage() {
   // ======================================================
   function abrirModalPagarBoleto(boleto: any) {
     setBoletoParaPagar(boleto);
-    setDestinoPagamentoBoleto("CONTA_BRADESCO"); // padrão
+    setDestinoPagamentoBoleto("CONTA_BRADESCO");
     setModalPagarBoletoAberto(true);
   }
 
@@ -470,6 +642,7 @@ export default function CaixaPage() {
         data: new Date(),
         loja: LOJA,
         linha_digitavel: boletoParaPagar.linha_digitavel || null,
+        caixa_sessao_id: caixaAtual?.id || null,
       });
 
       if (movErr) {
@@ -488,7 +661,7 @@ export default function CaixaPage() {
   }
 
   // ======================================================
-  // 🔵 MARCAR BOLETO COMO PAGO (mantido p/ compat, agora abre modal)
+  // 🔵 MARCAR BOLETO COMO PAGO
   // ======================================================
   async function marcarComoPago(boleto: any) {
     abrirModalPagarBoleto(boleto);
@@ -508,6 +681,7 @@ export default function CaixaPage() {
       forma_pagamento: saidaDestino === "CAIXA_DINHEIRO" ? "Dinheiro" : "Conta Bancária",
       data: new Date(),
       loja: LOJA,
+      caixa_sessao_id: caixaAtual?.id || null,
     });
 
     if (error) {
@@ -626,12 +800,10 @@ export default function CaixaPage() {
     setEnviandoComp(true);
 
     try {
-      const ext = getExtFromFile(arquivoComp);
       const safe = sanitizeFileName(arquivoComp.name);
       const ts = Date.now();
       const path = `${LOJA}/boletos/${boletoSelecionado.id}/${ts}_${safe}`;
 
-      // upload (upsert true pra trocar)
       const { error: upErr } = await supabase.storage
         .from(BUCKET_COMPROVANTES)
         .upload(path, arquivoComp, {
@@ -646,7 +818,6 @@ export default function CaixaPage() {
         return;
       }
 
-      // salva no boleto
       const { error: updErr } = await supabase
         .from("boletos_a_vencer")
         .update({
@@ -682,7 +853,7 @@ export default function CaixaPage() {
 
     const { data, error } = await supabase.storage
       .from(BUCKET_COMPROVANTES)
-      .createSignedUrl(path, 60 * 10); // 10 min
+      .createSignedUrl(path, 60 * 10);
 
     if (error || !data?.signedUrl) {
       console.error(error);
@@ -728,7 +899,7 @@ export default function CaixaPage() {
   // ======================================================
   return (
     <main className="min-h-screen bg-gray-100 p-6">
-      {/* ✅ MODAL PAGAR BOLETO (NOVO) */}
+      {/* ✅ MODAL PAGAR BOLETO */}
       {modalPagarBoletoAberto && boletoParaPagar && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
@@ -765,6 +936,12 @@ export default function CaixaPage() {
               </div>
             </div>
 
+            {!caixaAtual && (
+              <div className="mb-4 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+                Sem caixa aberto no momento. O lançamento será salvo sem vínculo de sessão.
+              </div>
+            )}
+
             <div className="flex justify-end gap-3">
               <button
                 onClick={() => {
@@ -789,7 +966,7 @@ export default function CaixaPage() {
         </div>
       )}
 
-      {/* ✅ MODAL COMPROVANTE (NOVO) */}
+      {/* ✅ MODAL COMPROVANTE */}
       {modalCompAberto && boletoSelecionado && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg shadow-lg p-6 w-full max-w-md">
@@ -887,6 +1064,12 @@ export default function CaixaPage() {
                   Conta Bancária
                 </label>
               </div>
+
+              {!caixaAtual && (
+                <div className="rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+                  Sem caixa aberto no momento. O lançamento será salvo sem vínculo de sessão.
+                </div>
+              )}
             </div>
 
             <div className="flex justify-end gap-3 mt-6">
@@ -919,6 +1102,155 @@ export default function CaixaPage() {
         >
           📊 Posição do Caixa
         </Link>
+      </div>
+
+      {/* ====================================================== */}
+      {/* 🟢 SESSÃO DE CAIXA (NOVO) */}
+      {/* ====================================================== */}
+      <div className="bg-white rounded-lg shadow p-4 mb-6">
+        <h2 className="font-bold text-lg text-emerald-700 mb-3">🟢 Abertura / Fechamento de Caixa</h2>
+
+        {caixaAtual ? (
+          <div className="space-y-4">
+            <div className="rounded-lg border border-emerald-200 bg-emerald-50 p-4">
+              <div className="grid md:grid-cols-2 gap-3 text-sm">
+                <p>
+                  <strong>Status:</strong> Aberto
+                </p>
+                <p>
+                  <strong>Turno:</strong> {caixaAtual.turno || "—"}
+                </p>
+                <p>
+                  <strong>Operador:</strong> {caixaAtual.operador || "—"}
+                </p>
+                <p>
+                  <strong>Aberto em:</strong> {formatDateTimeBR(caixaAtual.aberto_em)}
+                </p>
+                <p>
+                  <strong>Valor abertura:</strong> R$ {fmt(caixaAtual.valor_abertura || 0)}
+                </p>
+                <p>
+                  <strong>ID sessão:</strong> {String(caixaAtual.id).slice(0, 8)}
+                </p>
+              </div>
+
+              {caixaAtual.observacoes && (
+                <div className="mt-3 text-sm text-gray-700">
+                  <strong>Obs.:</strong> {caixaAtual.observacoes}
+                </div>
+              )}
+            </div>
+
+            <div className="grid md:grid-cols-3 gap-3">
+              <input
+                type="number"
+                placeholder="Valor de fechamento (opcional)"
+                value={valorFechamentoCaixa}
+                onChange={(e) => setValorFechamentoCaixa(e.target.value)}
+                className="border p-2 rounded"
+              />
+              <input
+                type="text"
+                placeholder="Observação de fechamento"
+                value={obsFechamentoCaixa}
+                onChange={(e) => setObsFechamentoCaixa(e.target.value)}
+                className="border p-2 rounded md:col-span-2"
+              />
+            </div>
+
+            <button
+              onClick={fecharCaixaSessao}
+              disabled={fechandoCaixa}
+              className="bg-red-600 hover:bg-red-700 text-white px-5 py-2 rounded font-semibold disabled:opacity-60"
+            >
+              {fechandoCaixa ? "Fechando..." : "Fechar Caixa"}
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-4">
+            <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 text-sm text-amber-700">
+              Nenhum caixa aberto no momento.
+            </div>
+
+            <div className="grid md:grid-cols-4 gap-3">
+              <input
+                type="text"
+                placeholder="Operador"
+                value={operadorCaixa}
+                onChange={(e) => setOperadorCaixa(e.target.value)}
+                className="border p-2 rounded"
+              />
+
+              <select
+                value={turnoCaixa}
+                onChange={(e) => setTurnoCaixa(e.target.value)}
+                className="border p-2 rounded"
+              >
+                <option value="caixa_1">Caixa 1</option>
+                <option value="caixa_2">Caixa 2</option>
+                <option value="caixa_unico">Caixa Único</option>
+              </select>
+
+              <input
+                type="number"
+                placeholder="Valor abertura"
+                value={valorAberturaCaixa}
+                onChange={(e) => setValorAberturaCaixa(e.target.value)}
+                className="border p-2 rounded"
+              />
+
+              <input
+                type="text"
+                placeholder="Observação"
+                value={obsAberturaCaixa}
+                onChange={(e) => setObsAberturaCaixa(e.target.value)}
+                className="border p-2 rounded"
+              />
+            </div>
+
+            <button
+              onClick={abrirCaixaSessao}
+              disabled={abrindoCaixa}
+              className="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-2 rounded font-semibold disabled:opacity-60"
+            >
+              {abrindoCaixa ? "Abrindo..." : "Abrir Caixa"}
+            </button>
+          </div>
+        )}
+
+        {historicoCaixa.length > 0 && (
+          <div className="mt-5">
+            <h3 className="font-semibold text-sm text-gray-700 mb-2">Últimas sessões</h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm border">
+                <thead className="bg-gray-100 text-gray-700">
+                  <tr>
+                    <th className="p-2 border">Turno</th>
+                    <th className="p-2 border">Operador</th>
+                    <th className="p-2 border">Status</th>
+                    <th className="p-2 border">Abertura</th>
+                    <th className="p-2 border">Fechamento</th>
+                    <th className="p-2 border">Aberto em</th>
+                    <th className="p-2 border">Fechado em</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {historicoCaixa.map((cx) => (
+                    <tr key={cx.id} className="border hover:bg-gray-50">
+                      <td className="p-2 border text-center">{cx.turno || "—"}</td>
+                      <td className="p-2 border text-center">{cx.operador || "—"}</td>
+                      <td className="p-2 border text-center">{cx.status}</td>
+                      <td className="p-2 border text-right">R$ {fmt(cx.valor_abertura || 0)}</td>
+                      <td className="p-2 border text-right">R$ {fmt(cx.valor_fechamento || 0)}</td>
+                      <td className="p-2 border text-center">{formatDateTimeBR(cx.aberto_em)}</td>
+                      <td className="p-2 border text-center">{formatDateTimeBR(cx.fechado_em)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </div>
 
       <button
@@ -1094,7 +1426,7 @@ export default function CaixaPage() {
       </div>
 
       {/* ===================================================== */}
-      {/* 🟦 TABELA DE FECHAMENTOS DIÁRIOS (ÚLTIMOS 30 DIAS) */}
+      {/* 🟦 TABELA DE FECHAMENTOS DIÁRIOS */}
       {/* ===================================================== */}
       <div className="bg-white rounded-lg shadow p-4 mb-6">
         <h2 className="font-bold text-lg text-blue-700 mb-3">📘 Fechamentos Diários (Últimos 30 dias)</h2>
@@ -1206,6 +1538,12 @@ export default function CaixaPage() {
       <div className="bg-white rounded-lg shadow p-4 mb-6">
         <h2 className="font-semibold text-lg mb-3 text-blue-700">➕ Nova Movimentação</h2>
 
+        {!caixaAtual && (
+          <div className="mb-3 rounded border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-700">
+            Sem caixa aberto no momento. A movimentação será salva sem vínculo de sessão.
+          </div>
+        )}
+
         <div className="grid sm:grid-cols-2 md:grid-cols-4 gap-3">
           <select value={tipo} onChange={(e) => setTipo(e.target.value as any)} className="border p-2 rounded">
             <option>Entrada</option>
@@ -1259,13 +1597,12 @@ export default function CaixaPage() {
       </div>
 
       {/* ========================================================== */}
-      {/* CONSULTA BOLETOS POR PERÍODO (COM TOTAL) */}
+      {/* CONSULTA BOLETOS POR PERÍODO */}
       {/* ========================================================== */}
       <div className="bg-white rounded-lg shadow p-4 mb-6">
         <h2 className="text-lg font-bold text-blue-700 mb-3">🔎 Consultar Boletos por Período</h2>
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* PAGOS */}
           <div className="border rounded p-4 bg-gray-50">
             <h3 className="font-bold text-green-700 mb-3">✅ Boletos Pagos (por data de pagamento)</h3>
 
@@ -1314,7 +1651,6 @@ export default function CaixaPage() {
             )}
           </div>
 
-          {/* A VENCER */}
           <div className="border rounded p-4 bg-gray-50">
             <h3 className="font-bold text-blue-700 mb-3">📌 Boletos a Vencer (por vencimento)</h3>
 
@@ -1368,7 +1704,7 @@ export default function CaixaPage() {
       </div>
 
       {/* ========================================================== */}
-      {/* TABELA DE BOLETOS (JANELA -7 A +7 DIAS) */}
+      {/* TABELA DE BOLETOS */}
       {/* ========================================================== */}
       <div className="bg-white rounded-lg shadow p-4">
         <h2 className="text-lg font-bold text-blue-700 mb-1">📑 Boletos a Vencer</h2>
@@ -1413,7 +1749,6 @@ export default function CaixaPage() {
                     )}
                   </td>
 
-                  {/* ✅ NOVO: coluna comprovante */}
                   <td className="p-2 border text-center">
                     {b.comprovante_path ? (
                       <div className="flex items-center justify-center gap-2">
