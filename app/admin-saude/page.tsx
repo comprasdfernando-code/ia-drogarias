@@ -1,54 +1,27 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { useRouter, usePathname } from "next/navigation";
+import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 
-export default function AdminGate({ children }: { children: React.ReactNode }) {
-  const router = useRouter();
-  const pathname = usePathname();
-  const [ready, setReady] = useState(false);
+export default function AdminHome() {
+  async function sair() {
+    await supabase.auth.signOut();
+  }
 
-  useEffect(() => {
-    let mounted = true;
+  return (
+    <div className="mx-auto max-w-md p-4">
+      <div className="rounded-2xl bg-white p-4 shadow-sm">
+        <div className="flex items-center justify-between">
+          <h1 className="text-xl font-semibold">Painel da Drogaria</h1>
+          <button onClick={sair} className="rounded-xl border px-3 py-2 text-sm">Sair</button>
+        </div>
 
-    async function boot() {
-      const { data } = await supabase.auth.getSession();
-      const uid = data.session?.user?.id;
-
-      if (!uid && pathname !== "/admin-saude/login") {
-        router.replace("/admin-saude/login");
-        return;
-      }
-      if (!uid) { if (mounted) setReady(true); return; }
-
-      const { data: prof } = await supabase
-        .from("saude_profiles")
-        .select("role, drogaria_id")
-        .eq("user_id", uid)
-        .maybeSingle();
-
-      if (prof?.role !== "drogaria_admin") {
-        router.replace("/saude");
-        return;
-      }
-
-      if (mounted) setReady(true);
-    }
-
-    boot();
-
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
-      const has = !!session;
-      if (!has && pathname !== "/admin-saude/login") router.replace("/admin-saude/login");
-    });
-
-    return () => {
-      mounted = false;
-      sub.subscription.unsubscribe();
-    };
-  }, [router, pathname]);
-
-  if (!ready) return <div className="p-6 text-sm text-slate-600">Carregando…</div>;
-  return <>{children}</>;
+        <div className="mt-3 grid grid-cols-1 gap-2">
+          <Link className="rounded-xl bg-slate-900 px-4 py-3 text-center text-sm text-white" href="/admin-saude/pacientes">
+            Pacientes vinculados
+          </Link>
+        </div>
+      </div>
+    </div>
+  );
 }
