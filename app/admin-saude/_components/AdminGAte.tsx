@@ -20,7 +20,11 @@ export default function AdminGate({ children }: { children: React.ReactNode }) {
         router.replace("/admin-saude/login");
         return;
       }
-      if (!uid) { if (mounted) setReady(true); return; }
+
+      if (!uid) {
+        if (mounted) setReady(true);
+        return;
+      }
 
       const { data: prof } = await supabase
         .from("saude_profiles")
@@ -40,7 +44,9 @@ export default function AdminGate({ children }: { children: React.ReactNode }) {
 
     const { data: sub } = supabase.auth.onAuthStateChange((_event, session) => {
       const has = !!session;
-      if (!has && pathname !== "/admin-saude/login") router.replace("/admin-saude/login");
+      if (!has && pathname !== "/admin-saude/login") {
+        router.replace("/admin-saude/login");
+      }
     });
 
     return () => {
@@ -49,6 +55,9 @@ export default function AdminGate({ children }: { children: React.ReactNode }) {
     };
   }, [router, pathname]);
 
-  if (!ready) return <div className="p-6 text-sm text-slate-600">Carregando…</div>;
+  if (!ready) {
+    return <div className="p-6 text-sm text-slate-600">Carregando…</div>;
+  }
+
   return <>{children}</>;
 }
