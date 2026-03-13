@@ -1,4 +1,4 @@
-import AdminGate from "./_components/AdminGate";
+import AdminGate from "./AdminGate";
 
 export default function AdminSaudeLayout({
   children,
