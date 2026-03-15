@@ -1,0 +1,337 @@
+"use client";
+
+import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
+import { useParams } from "next/navigation";
+import { createClient } from "@supabase/supabase-js";
+
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
+
+const LOJA = "Droga Leste 30";
+const WHATSAPP_LOJA = "11953996537";
+
+type Pedido = {
+  id: string;
+  loja: string;
+  cliente_nome: string;
+  cliente_telefone: string | null;
+  formula: string;
+  apresentacao: string;
+  observacoes: string | null;
+  observacao_interna: string | null;
+  valor: number | null;
+  pago: boolean;
+  status: string;
+  solicitado_por: string | null;
+  recebido_por: string | null;
+  dispensado_por: string | null;
+  receita_url: string | null;
+  data_solicitacao: string | null;
+  data_recebimento: string | null;
+  data_disponivel_retirada: string | null;
+  data_dispensa: string | null;
+};
+
+function limparTelefone(telefone?: string | null) {
+  return (telefone || "").replace(/\D/g, "");
+}
+
+function telefoneCom55(telefone?: string | null) {
+  const limpo = limparTelefone(telefone);
+  if (!limpo) return "";
+  return limpo.startsWith("55") ? limpo : `55${limpo}`;
+}
+
+function statusLabel(status: string) {
+  switch (status) {
+    case "solicitado_manipulacao":
+      return "Solicitado";
+    case "em_producao":
+      return "Em produção";
+    case "chegou_loja":
+      return "Chegou na loja";
+    case "disponivel_retirada":
+      return "Disponível para retirada";
+    case "retirado":
+      return "Retirado";
+    case "cancelado":
+      return "Cancelado";
+    default:
+      return status;
+  }
+}
+
+export default function DetalheManipuladoPage() {
+  const params = useParams<{ id: string }>();
+  const id = params?.id as string;
+
+  const [pedido, setPedido] = useState<Pedido | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [acaoLoading, setAcaoLoading] = useState(false);
+
+  async function carregarPedido() {
+    setLoading(true);
+
+    const { data, error } = await supabase
+      .from("manipulados_pedidos")
+      .select("*")
+      .eq("id", id)
+      .single();
+
+    if (error) {
+      console.error(error);
+      alert("Erro ao carregar pedido.");
+    } else {
+      setPedido(data);
+    }
+
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    if (id) carregarPedido();
+  }, [id]);
+
+  async function atualizarCampos(campos: Partial<Pedido>) {
+    if (!pedido) return;
+
+    setAcaoLoading(true);
+
+    const { error } = await supabase
+      .from("manipulados_pedidos")
+      .update(campos)
+      .eq("id", pedido.id);
+
+    if (error) {
+      console.error(error);
+      alert("Erro ao atualizar pedido.");
+    } else {
+      await carregarPedido();
+    }
+
+    setAcaoLoading(false);
+  }
+
+  async function marcarEmProducao() {
+    await atualizarCampos({
+      status: "em_producao",
+    });
+  }
+
+  async function marcarChegouLoja() {
+    const recebidoPor = window.prompt("Quem recebeu a fórmula na loja?") || "";
+    if (!recebidoPor.trim()) return;
+
+    await atualizarCampos({
+      status: "chegou_loja",
+      recebido_por: recebidoPor,
+      data_recebimento: new Date().toISOString(),
+    });
+  }
+
+  async function marcarDisponivel() {
+    await atualizarCampos({
+      status: "disponivel_retirada",
+      data_disponivel_retirada: new Date().toISOString(),
+    });
+  }
+
+  async function marcarRetirado() {
+    const dispensadoPor = window.prompt("Quem dispensou para o cliente?") || "";
+    if (!dispensadoPor.trim()) return;
+
+    await atualizarCampos({
+      status: "retirado",
+      dispensado_por: dispensadoPor,
+      data_dispensa: new Date().toISOString(),
+    });
+  }
+
+  async function alternarPago() {
+    if (!pedido) return;
+
+    await atualizarCampos({
+      pago: !pedido.pago,
+    });
+  }
+
+  const receitaUrl = useMemo(() => {
+    if (!pedido?.receita_url) return null;
+
+    const { data } = supabase.storage
+      .from("receitas-manipulados")
+      .getPublicUrl(pedido.receita_url);
+
+    return data?.publicUrl || null;
+  }, [pedido?.receita_url]);
+
+  const whatsappClienteLink = useMemo(() => {
+    if (!pedido?.cliente_telefone) return null;
+
+    const telefone = telefoneCom55(pedido.cliente_telefone);
+    if (!telefone) return null;
+
+    const mensagem = encodeURIComponent(
+      `Olá ${pedido.cliente_nome}, seu manipulado está pronto para retirada na ${LOJA}.\n\nFórmula: ${pedido.formula}\nApresentação: ${pedido.apresentacao}\n\nWhatsApp da loja: ${WHATSAPP_LOJA}`
+    );
+
+    return `https://wa.me/${telefone}?text=${mensagem}`;
+  }, [pedido]);
+
+  if (loading) {
+    return <div className="p-6">Carregando...</div>;
+  }
+
+  if (!pedido) {
+    return <div className="p-6">Pedido não encontrado.</div>;
+  }
+
+  return (
+    <div className="mx-auto max-w-5xl p-6">
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Pedido manipulado</h1>
+          <p className="text-sm text-gray-500">{LOJA}</p>
+        </div>
+
+        <Link
+          href="/manipulados/drogaleste30/admin/manipulados"
+          className="rounded-xl border px-4 py-2"
+        >
+          Voltar
+        </Link>
+      </div>
+
+      <div className="grid gap-6 md:grid-cols-2">
+        <div className="rounded-2xl border bg-white p-5">
+          <h2 className="mb-4 text-lg font-semibold">Dados do cliente</h2>
+          <div className="space-y-2 text-sm">
+            <p><strong>Cliente:</strong> {pedido.cliente_nome}</p>
+            <p><strong>Telefone:</strong> {pedido.cliente_telefone || "-"}</p>
+            <p><strong>Loja:</strong> {pedido.loja}</p>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border bg-white p-5">
+          <h2 className="mb-4 text-lg font-semibold">Dados da fórmula</h2>
+          <div className="space-y-2 text-sm">
+            <p><strong>Fórmula:</strong> {pedido.formula}</p>
+            <p><strong>Apresentação:</strong> {pedido.apresentacao}</p>
+            <p><strong>Valor:</strong> R$ {Number(pedido.valor || 0).toFixed(2)}</p>
+            <p><strong>Pago:</strong> {pedido.pago ? "Sim" : "Não"}</p>
+            <p><strong>Status:</strong> {statusLabel(pedido.status)}</p>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border bg-white p-5">
+          <h2 className="mb-4 text-lg font-semibold">Responsáveis</h2>
+          <div className="space-y-2 text-sm">
+            <p><strong>Solicitado por:</strong> {pedido.solicitado_por || "-"}</p>
+            <p><strong>Recebido por:</strong> {pedido.recebido_por || "-"}</p>
+            <p><strong>Dispensado por:</strong> {pedido.dispensado_por || "-"}</p>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border bg-white p-5">
+          <h2 className="mb-4 text-lg font-semibold">Datas</h2>
+          <div className="space-y-2 text-sm">
+            <p><strong>Solicitação:</strong> {pedido.data_solicitacao || "-"}</p>
+            <p><strong>Recebimento:</strong> {pedido.data_recebimento || "-"}</p>
+            <p><strong>Disponível:</strong> {pedido.data_disponivel_retirada || "-"}</p>
+            <p><strong>Dispensa:</strong> {pedido.data_dispensa || "-"}</p>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border bg-white p-5 md:col-span-2">
+          <h2 className="mb-4 text-lg font-semibold">Observações</h2>
+          <div className="space-y-3 text-sm">
+            <p><strong>Observações:</strong> {pedido.observacoes || "-"}</p>
+            <p><strong>Observação interna:</strong> {pedido.observacao_interna || "-"}</p>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border bg-white p-5 md:col-span-2">
+          <h2 className="mb-4 text-lg font-semibold">Receita</h2>
+          {receitaUrl ? (
+            <div className="space-y-4">
+              <a
+                href={receitaUrl}
+                target="_blank"
+                className="inline-block rounded-xl border px-4 py-2 text-blue-600"
+              >
+                Abrir receita
+              </a>
+
+              <img
+                src={receitaUrl}
+                alt="Receita"
+                className="max-h-[420px] rounded-xl border object-contain"
+              />
+            </div>
+          ) : (
+            <p className="text-sm text-gray-500">Nenhuma receita anexada.</p>
+          )}
+        </div>
+      </div>
+
+      <div className="mt-6 rounded-2xl border bg-white p-5">
+        <h2 className="mb-4 text-lg font-semibold">Ações</h2>
+
+        <div className="flex flex-wrap gap-3">
+          <button
+            onClick={marcarEmProducao}
+            disabled={acaoLoading}
+            className="rounded-xl bg-yellow-500 px-4 py-2 text-white"
+          >
+            Em produção
+          </button>
+
+          <button
+            onClick={marcarChegouLoja}
+            disabled={acaoLoading}
+            className="rounded-xl bg-blue-600 px-4 py-2 text-white"
+          >
+            Chegou na loja
+          </button>
+
+          <button
+            onClick={marcarDisponivel}
+            disabled={acaoLoading}
+            className="rounded-xl bg-green-600 px-4 py-2 text-white"
+          >
+            Disponível para retirada
+          </button>
+
+          {whatsappClienteLink && (
+            <a
+              href={whatsappClienteLink}
+              target="_blank"
+              className="rounded-xl bg-emerald-700 px-4 py-2 text-white"
+            >
+              Avisar cliente no WhatsApp
+            </a>
+          )}
+
+          <button
+            onClick={marcarRetirado}
+            disabled={acaoLoading}
+            className="rounded-xl bg-purple-600 px-4 py-2 text-white"
+          >
+            Cliente retirou
+          </button>
+
+          <button
+            onClick={alternarPago}
+            disabled={acaoLoading}
+            className="rounded-xl bg-gray-800 px-4 py-2 text-white"
+          >
+            {pedido.pago ? "Marcar como não pago" : "Marcar como pago"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
