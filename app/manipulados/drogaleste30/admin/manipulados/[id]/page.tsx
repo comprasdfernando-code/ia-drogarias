@@ -12,7 +12,7 @@ const supabase = createClient(
 
 const LOJA = "Droga Leste 30";
 const WHATSAPP_LOJA = "11953996537";
-const WHATSAPP_MANIPULACAO = "5511999999999";
+const WHATSAPP_MANIPULACAO = "5511999999999"; // TROCAR PELO NÚMERO REAL
 
 type Pedido = {
   id: string;
@@ -32,6 +32,7 @@ type Pedido = {
   recebido_por: string | null;
   dispensado_por: string | null;
   receita_url: string | null;
+  comprovante_url: string | null;
   data_solicitacao: string | null;
   data_recebimento: string | null;
   data_disponivel_retirada: string | null;
@@ -67,6 +68,10 @@ function statusLabel(status: string) {
   }
 }
 
+function isPdf(url?: string | null) {
+  return !!url && url.toLowerCase().includes(".pdf");
+}
+
 export default function DetalheManipuladoPage() {
   const params = useParams<{ id: string }>();
   const id = params?.id as string;
@@ -74,8 +79,12 @@ export default function DetalheManipuladoPage() {
   const [pedido, setPedido] = useState<Pedido | null>(null);
   const [loading, setLoading] = useState(true);
   const [acaoLoading, setAcaoLoading] = useState(false);
+
   const [novaReceita, setNovaReceita] = useState<File | null>(null);
   const [uploadingReceita, setUploadingReceita] = useState(false);
+
+  const [novoComprovante, setNovoComprovante] = useState<File | null>(null);
+  const [uploadingComprovante, setUploadingComprovante] = useState(false);
 
   async function carregarPedido() {
     setLoading(true);
@@ -118,6 +127,22 @@ export default function DetalheManipuladoPage() {
     }
 
     setAcaoLoading(false);
+  }
+
+  async function uploadArquivo(bucket: string, file: File): Promise<string> {
+    const ext = file.name.split(".").pop() || "jpg";
+    const nomeArquivo = `drogaleste30/${Date.now()}-${Math.random()
+      .toString(36)
+      .slice(2)}.${ext}`;
+
+    const { data, error } = await supabase.storage
+      .from(bucket)
+      .upload(nomeArquivo, file, {
+        upsert: false,
+      });
+
+    if (error) throw error;
+    return data.path;
   }
 
   async function marcarEmProducao() {
@@ -169,27 +194,14 @@ export default function DetalheManipuladoPage() {
     try {
       setUploadingReceita(true);
 
-      const ext = novaReceita.name.split(".").pop() || "jpg";
-      const nomeArquivo = `drogaleste30/${Date.now()}-${Math.random()
-        .toString(36)
-        .slice(2)}.${ext}`;
+      const path = await uploadArquivo("receitas-manipulados", novaReceita);
 
-      const { data: uploadData, error: uploadError } = await supabase.storage
-        .from("receitas-manipulados")
-        .upload(nomeArquivo, novaReceita, {
-          upsert: false,
-        });
-
-      if (uploadError) throw uploadError;
-
-      const { error: updateError } = await supabase
+      const { error } = await supabase
         .from("manipulados_pedidos")
-        .update({
-          receita_url: uploadData.path,
-        })
+        .update({ receita_url: path })
         .eq("id", pedido.id);
 
-      if (updateError) throw updateError;
+      if (error) throw error;
 
       setNovaReceita(null);
       await carregarPedido();
@@ -202,6 +214,35 @@ export default function DetalheManipuladoPage() {
     }
   }
 
+  async function anexarComprovante() {
+    if (!pedido || !novoComprovante) return;
+
+    try {
+      setUploadingComprovante(true);
+
+      const path = await uploadArquivo(
+        "comprovantes-manipulados",
+        novoComprovante
+      );
+
+      const { error } = await supabase
+        .from("manipulados_pedidos")
+        .update({ comprovante_url: path })
+        .eq("id", pedido.id);
+
+      if (error) throw error;
+
+      setNovoComprovante(null);
+      await carregarPedido();
+      alert("Comprovante anexado com sucesso.");
+    } catch (err: any) {
+      console.error(err);
+      alert(err?.message || "Erro ao anexar comprovante.");
+    } finally {
+      setUploadingComprovante(false);
+    }
+  }
+
   const receitaUrl = useMemo(() => {
     if (!pedido?.receita_url) return null;
 
@@ -211,6 +252,16 @@ export default function DetalheManipuladoPage() {
 
     return data?.publicUrl || null;
   }, [pedido?.receita_url]);
+
+  const comprovanteUrl = useMemo(() => {
+    if (!pedido?.comprovante_url) return null;
+
+    const { data } = supabase.storage
+      .from("comprovantes-manipulados")
+      .getPublicUrl(pedido.comprovante_url);
+
+    return data?.publicUrl || null;
+  }, [pedido?.comprovante_url]);
 
   const whatsappClienteLink = useMemo(() => {
     if (!pedido?.cliente_telefone) return null;
@@ -317,16 +368,23 @@ export default function DetalheManipuladoPage() {
               <a
                 href={receitaUrl}
                 target="_blank"
+                rel="noreferrer"
                 className="inline-block rounded-xl border px-4 py-2 text-blue-600"
               >
                 Abrir receita
               </a>
 
-              <img
-                src={receitaUrl}
-                alt="Receita"
-                className="max-h-[420px] rounded-xl border object-contain"
-              />
+              {isPdf(receitaUrl) ? (
+                <div className="rounded-xl border p-4 text-sm text-gray-600">
+                  Arquivo em PDF. Clique em “Abrir receita”.
+                </div>
+              ) : (
+                <img
+                  src={receitaUrl}
+                  alt="Receita"
+                  className="max-h-[420px] rounded-xl border object-contain"
+                />
+              )}
             </div>
           ) : (
             <p className="mb-4 text-sm text-gray-500">Nenhuma receita anexada.</p>
@@ -336,16 +394,66 @@ export default function DetalheManipuladoPage() {
             <input
               className="w-full rounded-xl border p-3"
               type="file"
-              accept="image/*"
+              accept="image/*,application/pdf"
               onChange={(e) => setNovaReceita(e.target.files?.[0] || null)}
             />
 
             <button
               onClick={anexarReceita}
               disabled={!novaReceita || uploadingReceita}
-              className="rounded-xl bg-gray-800 px-4 py-2 text-white"
+              className="rounded-xl bg-gray-800 px-4 py-2 text-white disabled:opacity-50"
             >
               {uploadingReceita ? "Enviando..." : "Anexar receita"}
+            </button>
+          </div>
+        </div>
+
+        <div className="rounded-2xl border bg-white p-5 md:col-span-2">
+          <h2 className="mb-4 text-lg font-semibold">Comprovante de pagamento</h2>
+
+          {comprovanteUrl ? (
+            <div className="space-y-4">
+              <a
+                href={comprovanteUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-block rounded-xl border px-4 py-2 text-blue-600"
+              >
+                Abrir comprovante
+              </a>
+
+              {isPdf(comprovanteUrl) ? (
+                <div className="rounded-xl border p-4 text-sm text-gray-600">
+                  Arquivo em PDF. Clique em “Abrir comprovante”.
+                </div>
+              ) : (
+                <img
+                  src={comprovanteUrl}
+                  alt="Comprovante"
+                  className="max-h-[420px] rounded-xl border object-contain"
+                />
+              )}
+            </div>
+          ) : (
+            <p className="mb-4 text-sm text-gray-500">
+              Nenhum comprovante anexado.
+            </p>
+          )}
+
+          <div className="mt-4 space-y-3">
+            <input
+              className="w-full rounded-xl border p-3"
+              type="file"
+              accept="image/*,application/pdf"
+              onChange={(e) => setNovoComprovante(e.target.files?.[0] || null)}
+            />
+
+            <button
+              onClick={anexarComprovante}
+              disabled={!novoComprovante || uploadingComprovante}
+              className="rounded-xl bg-gray-800 px-4 py-2 text-white disabled:opacity-50"
+            >
+              {uploadingComprovante ? "Enviando..." : "Anexar comprovante"}
             </button>
           </div>
         </div>
@@ -358,7 +466,7 @@ export default function DetalheManipuladoPage() {
           <button
             onClick={marcarEmProducao}
             disabled={acaoLoading}
-            className="rounded-xl bg-yellow-500 px-4 py-2 text-white"
+            className="rounded-xl bg-yellow-500 px-4 py-2 text-white disabled:opacity-50"
           >
             Em produção
           </button>
@@ -366,7 +474,7 @@ export default function DetalheManipuladoPage() {
           <button
             onClick={marcarChegouLoja}
             disabled={acaoLoading}
-            className="rounded-xl bg-blue-600 px-4 py-2 text-white"
+            className="rounded-xl bg-blue-600 px-4 py-2 text-white disabled:opacity-50"
           >
             Chegou na loja
           </button>
@@ -374,7 +482,7 @@ export default function DetalheManipuladoPage() {
           <button
             onClick={marcarDisponivel}
             disabled={acaoLoading}
-            className="rounded-xl bg-green-600 px-4 py-2 text-white"
+            className="rounded-xl bg-green-600 px-4 py-2 text-white disabled:opacity-50"
           >
             Disponível para retirada
           </button>
@@ -383,6 +491,7 @@ export default function DetalheManipuladoPage() {
             <a
               href={whatsappClienteLink}
               target="_blank"
+              rel="noreferrer"
               className="rounded-xl bg-emerald-700 px-4 py-2 text-white"
             >
               Avisar cliente no WhatsApp
@@ -393,6 +502,7 @@ export default function DetalheManipuladoPage() {
             <a
               href={whatsappManipulacaoLink}
               target="_blank"
+              rel="noreferrer"
               className="rounded-xl bg-orange-600 px-4 py-2 text-white"
             >
               Enviar confirmação p/ manipulação
@@ -402,7 +512,7 @@ export default function DetalheManipuladoPage() {
           <button
             onClick={marcarRetirado}
             disabled={acaoLoading}
-            className="rounded-xl bg-purple-600 px-4 py-2 text-white"
+            className="rounded-xl bg-purple-600 px-4 py-2 text-white disabled:opacity-50"
           >
             Cliente retirou
           </button>
@@ -410,7 +520,7 @@ export default function DetalheManipuladoPage() {
           <button
             onClick={alternarPago}
             disabled={acaoLoading}
-            className="rounded-xl bg-gray-800 px-4 py-2 text-white"
+            className="rounded-xl bg-gray-800 px-4 py-2 text-white disabled:opacity-50"
           >
             {pedido.pago ? "Marcar como não pago" : "Marcar como pago"}
           </button>

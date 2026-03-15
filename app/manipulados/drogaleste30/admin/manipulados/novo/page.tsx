@@ -24,7 +24,26 @@ export default function NovoManipuladoPage() {
   const [pago, setPago] = useState(false);
   const [solicitadoPor, setSolicitadoPor] = useState("");
   const [receita, setReceita] = useState<File | null>(null);
+  const [comprovante, setComprovante] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
+
+  async function uploadArquivo(
+    bucket: string,
+    pasta: string,
+    file: File
+  ): Promise<string> {
+    const ext = file.name.split(".").pop() || "jpg";
+    const nomeArquivo = `${pasta}/${Date.now()}-${Math.random()
+      .toString(36)
+      .slice(2)}.${ext}`;
+
+    const { data, error } = await supabase.storage
+      .from(bucket)
+      .upload(nomeArquivo, file, { upsert: false });
+
+    if (error) throw error;
+    return data.path;
+  }
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -32,22 +51,22 @@ export default function NovoManipuladoPage() {
 
     try {
       let receitaUrl: string | null = null;
+      let comprovanteUrl: string | null = null;
 
       if (receita) {
-        const ext = receita.name.split(".").pop() || "jpg";
-        const nomeArquivo = `drogaleste30/${Date.now()}-${Math.random()
-          .toString(36)
-          .slice(2)}.${ext}`;
+        receitaUrl = await uploadArquivo(
+          "receitas-manipulados",
+          "drogaleste30",
+          receita
+        );
+      }
 
-        const { data: uploadData, error: uploadError } = await supabase.storage
-          .from("receitas-manipulados")
-          .upload(nomeArquivo, receita, {
-            upsert: false,
-          });
-
-        if (uploadError) throw uploadError;
-
-        receitaUrl = uploadData.path;
+      if (comprovante) {
+        comprovanteUrl = await uploadArquivo(
+          "comprovantes-manipulados",
+          "drogaleste30",
+          comprovante
+        );
       }
 
       const { error } = await supabase.from("manipulados_pedidos").insert({
@@ -65,6 +84,7 @@ export default function NovoManipuladoPage() {
         status: "solicitado_manipulacao",
         solicitado_por: solicitadoPor,
         receita_url: receitaUrl,
+        comprovante_url: comprovanteUrl,
       });
 
       if (error) throw error;
@@ -192,8 +212,20 @@ export default function NovoManipuladoPage() {
           <input
             className="w-full rounded-xl border p-3"
             type="file"
-            accept="image/*"
+            accept="image/*,application/pdf"
             onChange={(e) => setReceita(e.target.files?.[0] || null)}
+          />
+        </div>
+
+        <div>
+          <label className="mb-2 block text-sm font-medium">
+            Comprovante de pagamento
+          </label>
+          <input
+            className="w-full rounded-xl border p-3"
+            type="file"
+            accept="image/*,application/pdf"
+            onChange={(e) => setComprovante(e.target.files?.[0] || null)}
           />
         </div>
 
