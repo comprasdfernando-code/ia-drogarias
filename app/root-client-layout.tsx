@@ -14,6 +14,13 @@ export default function RootClientLayout({ children }: { children: React.ReactNo
   if (typeof window !== "undefined" && window.location.pathname.startsWith("/dayfestas")) {
     return <>{children}</>;
   }
+  if (typeof window !== "undefined" && window.location.pathname.startsWith("/saude")) {
+    return <>{children}</>;
+  }
+  if (typeof window !== "undefined" && window.location.pathname.startsWith("/manipulados/drogaleste30/admin/manipulados")) {
+    return <>{children}</>;
+  }
+  
   if (typeof window !== "undefined" && window.location.pathname.startsWith("/clinicas/dradudarodrigues")) {
     return <>{children}</>;
   }
