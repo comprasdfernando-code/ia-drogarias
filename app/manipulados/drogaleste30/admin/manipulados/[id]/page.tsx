@@ -12,12 +12,15 @@ const supabase = createClient(
 
 const LOJA = "Droga Leste 30";
 const WHATSAPP_LOJA = "11953996537";
+const WHATSAPP_MANIPULACAO = "5511999999999";
 
 type Pedido = {
   id: string;
   loja: string;
+  req: string | null;
   cliente_nome: string;
   cliente_telefone: string | null;
+  cliente_endereco: string | null;
   formula: string;
   apresentacao: string;
   observacoes: string | null;
@@ -71,6 +74,8 @@ export default function DetalheManipuladoPage() {
   const [pedido, setPedido] = useState<Pedido | null>(null);
   const [loading, setLoading] = useState(true);
   const [acaoLoading, setAcaoLoading] = useState(false);
+  const [novaReceita, setNovaReceita] = useState<File | null>(null);
+  const [uploadingReceita, setUploadingReceita] = useState(false);
 
   async function carregarPedido() {
     setLoading(true);
@@ -158,6 +163,45 @@ export default function DetalheManipuladoPage() {
     });
   }
 
+  async function anexarReceita() {
+    if (!pedido || !novaReceita) return;
+
+    try {
+      setUploadingReceita(true);
+
+      const ext = novaReceita.name.split(".").pop() || "jpg";
+      const nomeArquivo = `drogaleste30/${Date.now()}-${Math.random()
+        .toString(36)
+        .slice(2)}.${ext}`;
+
+      const { data: uploadData, error: uploadError } = await supabase.storage
+        .from("receitas-manipulados")
+        .upload(nomeArquivo, novaReceita, {
+          upsert: false,
+        });
+
+      if (uploadError) throw uploadError;
+
+      const { error: updateError } = await supabase
+        .from("manipulados_pedidos")
+        .update({
+          receita_url: uploadData.path,
+        })
+        .eq("id", pedido.id);
+
+      if (updateError) throw updateError;
+
+      setNovaReceita(null);
+      await carregarPedido();
+      alert("Receita anexada com sucesso.");
+    } catch (err: any) {
+      console.error(err);
+      alert(err?.message || "Erro ao anexar receita.");
+    } finally {
+      setUploadingReceita(false);
+    }
+  }
+
   const receitaUrl = useMemo(() => {
     if (!pedido?.receita_url) return null;
 
@@ -175,10 +219,20 @@ export default function DetalheManipuladoPage() {
     if (!telefone) return null;
 
     const mensagem = encodeURIComponent(
-      `Olá ${pedido.cliente_nome}, seu manipulado está pronto para retirada na ${LOJA}.\n\nFórmula: ${pedido.formula}\nApresentação: ${pedido.apresentacao}\n\nWhatsApp da loja: ${WHATSAPP_LOJA}`
+      `Olá ${pedido.cliente_nome}, seu manipulado está pronto para retirada na ${LOJA}.\n\nREQ: ${pedido.req || "-"}\nFórmula: ${pedido.formula}\nApresentação: ${pedido.apresentacao}\n\nWhatsApp da loja: ${WHATSAPP_LOJA}`
     );
 
     return `https://wa.me/${telefone}?text=${mensagem}`;
+  }, [pedido]);
+
+  const whatsappManipulacaoLink = useMemo(() => {
+    if (!pedido) return null;
+
+    const mensagem = encodeURIComponent(
+      `CONFIRMAÇÃO DE PEDIDO MANIPULADO\n\nREQ: ${pedido.req || "-"}\nCliente: ${pedido.cliente_nome}\nWhats: ${pedido.cliente_telefone || "-"}\nEndereço: ${pedido.cliente_endereco || "-"}\n\nFórmula: ${pedido.formula}\nApresentação: ${pedido.apresentacao}\n\nSolicitado pela loja: ${pedido.loja}`
+    );
+
+    return `https://wa.me/${WHATSAPP_MANIPULACAO}?text=${mensagem}`;
   }, [pedido]);
 
   if (loading) {
@@ -207,10 +261,12 @@ export default function DetalheManipuladoPage() {
 
       <div className="grid gap-6 md:grid-cols-2">
         <div className="rounded-2xl border bg-white p-5">
-          <h2 className="mb-4 text-lg font-semibold">Dados do cliente</h2>
+          <h2 className="mb-4 text-lg font-semibold">Dados do paciente</h2>
           <div className="space-y-2 text-sm">
+            <p><strong>REQ:</strong> {pedido.req || "-"}</p>
             <p><strong>Cliente:</strong> {pedido.cliente_nome}</p>
             <p><strong>Telefone:</strong> {pedido.cliente_telefone || "-"}</p>
+            <p><strong>Endereço:</strong> {pedido.cliente_endereco || "-"}</p>
             <p><strong>Loja:</strong> {pedido.loja}</p>
           </div>
         </div>
@@ -255,6 +311,7 @@ export default function DetalheManipuladoPage() {
 
         <div className="rounded-2xl border bg-white p-5 md:col-span-2">
           <h2 className="mb-4 text-lg font-semibold">Receita</h2>
+
           {receitaUrl ? (
             <div className="space-y-4">
               <a
@@ -272,8 +329,25 @@ export default function DetalheManipuladoPage() {
               />
             </div>
           ) : (
-            <p className="text-sm text-gray-500">Nenhuma receita anexada.</p>
+            <p className="mb-4 text-sm text-gray-500">Nenhuma receita anexada.</p>
           )}
+
+          <div className="mt-4 space-y-3">
+            <input
+              className="w-full rounded-xl border p-3"
+              type="file"
+              accept="image/*"
+              onChange={(e) => setNovaReceita(e.target.files?.[0] || null)}
+            />
+
+            <button
+              onClick={anexarReceita}
+              disabled={!novaReceita || uploadingReceita}
+              className="rounded-xl bg-gray-800 px-4 py-2 text-white"
+            >
+              {uploadingReceita ? "Enviando..." : "Anexar receita"}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -312,6 +386,16 @@ export default function DetalheManipuladoPage() {
               className="rounded-xl bg-emerald-700 px-4 py-2 text-white"
             >
               Avisar cliente no WhatsApp
+            </a>
+          )}
+
+          {whatsappManipulacaoLink && (
+            <a
+              href={whatsappManipulacaoLink}
+              target="_blank"
+              className="rounded-xl bg-orange-600 px-4 py-2 text-white"
+            >
+              Enviar confirmação p/ manipulação
             </a>
           )}
 

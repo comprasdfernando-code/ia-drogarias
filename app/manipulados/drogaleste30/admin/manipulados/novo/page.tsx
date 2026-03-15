@@ -12,8 +12,10 @@ const supabase = createClient(
 const LOJA = "Droga Leste 30";
 
 export default function NovoManipuladoPage() {
+  const [req, setReq] = useState("");
   const [clienteNome, setClienteNome] = useState("");
   const [clienteTelefone, setClienteTelefone] = useState("");
+  const [clienteEndereco, setClienteEndereco] = useState("");
   const [formula, setFormula] = useState("");
   const [apresentacao, setApresentacao] = useState("");
   const [observacoes, setObservacoes] = useState("");
@@ -50,8 +52,10 @@ export default function NovoManipuladoPage() {
 
       const { error } = await supabase.from("manipulados_pedidos").insert({
         loja: LOJA,
+        req,
         cliente_nome: clienteNome,
         cliente_telefone: clienteTelefone,
+        cliente_endereco: clienteEndereco,
         formula,
         apresentacao,
         observacoes,
@@ -91,7 +95,17 @@ export default function NovoManipuladoPage() {
         </Link>
       </div>
 
-      <form onSubmit={handleSubmit} className="space-y-4 rounded-2xl border p-6 bg-white">
+      <form
+        onSubmit={handleSubmit}
+        className="space-y-4 rounded-2xl border bg-white p-6"
+      >
+        <input
+          className="w-full rounded-xl border p-3"
+          placeholder="REQ / número do requerimento"
+          value={req}
+          onChange={(e) => setReq(e.target.value)}
+        />
+
         <input
           className="w-full rounded-xl border p-3"
           placeholder="Nome do cliente"
@@ -105,6 +119,13 @@ export default function NovoManipuladoPage() {
           placeholder="Telefone do cliente"
           value={clienteTelefone}
           onChange={(e) => setClienteTelefone(e.target.value)}
+        />
+
+        <input
+          className="w-full rounded-xl border p-3"
+          placeholder="Endereço do cliente"
+          value={clienteEndereco}
+          onChange={(e) => setClienteEndereco(e.target.value)}
         />
 
         <input
@@ -165,7 +186,9 @@ export default function NovoManipuladoPage() {
         </label>
 
         <div>
-          <label className="mb-2 block text-sm font-medium">Foto da receita</label>
+          <label className="mb-2 block text-sm font-medium">
+            Foto da receita
+          </label>
           <input
             className="w-full rounded-xl border p-3"
             type="file"
