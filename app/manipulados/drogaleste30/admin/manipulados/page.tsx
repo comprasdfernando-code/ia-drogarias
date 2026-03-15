@@ -160,6 +160,10 @@ export default function ManipuladosPage() {
     };
   }, [pedidosFiltrados]);
 
+  const dataEmissao = useMemo(() => {
+    return new Date().toLocaleString("pt-BR");
+  }, []);
+
   function limparFiltros() {
     setBusca("");
     setFiltroStatus("");
@@ -199,40 +203,59 @@ export default function ManipuladosPage() {
         </div>
       </div>
 
-      <div className="mb-6 grid gap-4 md:grid-cols-3 xl:grid-cols-6">
-        <div className="rounded-2xl border bg-white p-4">
-          <p className="text-sm text-gray-500">Total</p>
-          <p className="text-2xl font-bold">{relatorio.total}</p>
+      <div className="print-report-header hidden print:block">
+        <div className="print-report-title">Relatório de Manipulados</div>
+        <div className="print-report-subtitle">{LOJA}</div>
+        <div className="print-report-meta">Emitido em: {dataEmissao}</div>
+        <div className="print-report-meta">
+          Filtros aplicados:
+          {" "}
+          Status: {filtroStatus ? statusLabel(filtroStatus) : "Todos"} |
+          {" "}Pagamento:{" "}
+          {filtroPago === "sim"
+            ? "Somente pagos"
+            : filtroPago === "nao"
+            ? "Somente não pagos"
+            : "Todos"}
+          {" "}|
+          {" "}Período: {dataInicio || "Início"} até {dataFim || "Hoje"}
+        </div>
+      </div>
+
+      <div className="mb-6 grid gap-4 md:grid-cols-3 xl:grid-cols-6 print:grid-cols-3 print:gap-2">
+        <div className="rounded-2xl border bg-white p-4 print:rounded-lg print:p-3">
+          <p className="text-sm text-gray-500 print:text-[11px]">Total</p>
+          <p className="text-2xl font-bold print:text-lg">{relatorio.total}</p>
         </div>
 
-        <div className="rounded-2xl border bg-white p-4">
-          <p className="text-sm text-gray-500">Pagos</p>
-          <p className="text-2xl font-bold">{relatorio.totalPago}</p>
+        <div className="rounded-2xl border bg-white p-4 print:rounded-lg print:p-3">
+          <p className="text-sm text-gray-500 print:text-[11px]">Pagos</p>
+          <p className="text-2xl font-bold print:text-lg">{relatorio.totalPago}</p>
         </div>
 
-        <div className="rounded-2xl border bg-white p-4">
-          <p className="text-sm text-gray-500">Não pagos</p>
-          <p className="text-2xl font-bold">{relatorio.totalNaoPago}</p>
+        <div className="rounded-2xl border bg-white p-4 print:rounded-lg print:p-3">
+          <p className="text-sm text-gray-500 print:text-[11px]">Não pagos</p>
+          <p className="text-2xl font-bold print:text-lg">{relatorio.totalNaoPago}</p>
         </div>
 
-        <div className="rounded-2xl border bg-white p-4">
-          <p className="text-sm text-gray-500">Disponíveis</p>
-          <p className="text-2xl font-bold">{relatorio.totalDisponivel}</p>
+        <div className="rounded-2xl border bg-white p-4 print:rounded-lg print:p-3">
+          <p className="text-sm text-gray-500 print:text-[11px]">Disponíveis</p>
+          <p className="text-2xl font-bold print:text-lg">{relatorio.totalDisponivel}</p>
         </div>
 
-        <div className="rounded-2xl border bg-white p-4">
-          <p className="text-sm text-gray-500">Retirados</p>
-          <p className="text-2xl font-bold">{relatorio.totalRetirado}</p>
+        <div className="rounded-2xl border bg-white p-4 print:rounded-lg print:p-3">
+          <p className="text-sm text-gray-500 print:text-[11px]">Retirados</p>
+          <p className="text-2xl font-bold print:text-lg">{relatorio.totalRetirado}</p>
         </div>
 
-        <div className="rounded-2xl border bg-white p-4">
-          <p className="text-sm text-gray-500">Com comprovante</p>
-          <p className="text-2xl font-bold">{relatorio.totalComprovante}</p>
+        <div className="rounded-2xl border bg-white p-4 print:rounded-lg print:p-3">
+          <p className="text-sm text-gray-500 print:text-[11px]">Com comprovante</p>
+          <p className="text-2xl font-bold print:text-lg">{relatorio.totalComprovante}</p>
         </div>
 
-        <div className="rounded-2xl border bg-white p-4 md:col-span-3 xl:col-span-6">
-          <p className="text-sm text-gray-500">Valor total filtrado</p>
-          <p className="text-2xl font-bold">
+        <div className="rounded-2xl border bg-white p-4 md:col-span-3 xl:col-span-6 print:col-span-3 print:rounded-lg print:p-3">
+          <p className="text-sm text-gray-500 print:text-[11px]">Valor total filtrado</p>
+          <p className="text-2xl font-bold print:text-lg">
             R$ {relatorio.valorTotal.toFixed(2)}
           </p>
         </div>
@@ -294,20 +317,20 @@ export default function ManipuladosPage() {
       {loading ? (
         <div className="rounded-2xl border p-6">Carregando...</div>
       ) : (
-        <div className="overflow-auto rounded-2xl border bg-white">
-          <table className="w-full min-w-[1250px] text-sm">
-            <thead className="bg-gray-100">
+        <div className="overflow-auto rounded-2xl border bg-white print:overflow-visible print:rounded-none print:border print:border-gray-300">
+          <table className="w-full min-w-[1250px] text-sm print:min-w-0 print:text-[10px]">
+            <thead className="bg-gray-100 print:bg-gray-200">
               <tr>
-                <th className="p-3 text-left">REQ</th>
-                <th className="p-3 text-left">Cliente</th>
-                <th className="p-3 text-left">Telefone</th>
-                <th className="p-3 text-left">Fórmula</th>
-                <th className="p-3 text-left">Apresentação</th>
-                <th className="p-3 text-left">Valor</th>
-                <th className="p-3 text-left">Pago</th>
-                <th className="p-3 text-left">Status</th>
-                <th className="p-3 text-left">Solicitado por</th>
-                <th className="p-3 text-left">Comprovante</th>
+                <th className="p-3 text-left print:px-2 print:py-2">REQ</th>
+                <th className="p-3 text-left print:px-2 print:py-2">Cliente</th>
+                <th className="p-3 text-left print:px-2 print:py-2">Telefone</th>
+                <th className="p-3 text-left print:px-2 print:py-2">Fórmula</th>
+                <th className="p-3 text-left print:px-2 print:py-2">Apresentação</th>
+                <th className="p-3 text-left print:px-2 print:py-2">Valor</th>
+                <th className="p-3 text-left print:px-2 print:py-2">Pago</th>
+                <th className="p-3 text-left print:px-2 print:py-2">Status</th>
+                <th className="p-3 text-left print:px-2 print:py-2">Solicitado por</th>
+                <th className="p-3 text-left print:px-2 print:py-2">Comprovante</th>
                 <th className="p-3 text-left print:hidden">Ações</th>
               </tr>
             </thead>
@@ -321,27 +344,39 @@ export default function ManipuladosPage() {
                 </tr>
               ) : (
                 pedidosFiltrados.map((item) => (
-                  <tr key={item.id} className="border-t">
-                    <td className="p-3">{item.req || "-"}</td>
-                    <td className="p-3">{item.cliente_nome}</td>
-                    <td className="p-3">{item.cliente_telefone || "-"}</td>
-                    <td className="p-3">{item.formula}</td>
-                    <td className="p-3">{item.apresentacao}</td>
-                    <td className="p-3">
+                  <tr key={item.id} className="border-t print:break-inside-avoid">
+                    <td className="p-3 align-top print:px-2 print:py-2">{item.req || "-"}</td>
+                    <td className="p-3 align-top print:px-2 print:py-2 font-medium">
+                      {item.cliente_nome}
+                    </td>
+                    <td className="p-3 align-top print:px-2 print:py-2">
+                      {item.cliente_telefone || "-"}
+                    </td>
+                    <td className="p-3 align-top print:px-2 print:py-2">
+                      {item.formula}
+                    </td>
+                    <td className="p-3 align-top print:px-2 print:py-2">
+                      {item.apresentacao}
+                    </td>
+                    <td className="p-3 align-top print:px-2 print:py-2 whitespace-nowrap">
                       R$ {Number(item.valor || 0).toFixed(2)}
                     </td>
-                    <td className="p-3">{item.pago ? "Sim" : "Não"}</td>
-                    <td className="p-3">
+                    <td className="p-3 align-top print:px-2 print:py-2">
+                      {item.pago ? "Sim" : "Não"}
+                    </td>
+                    <td className="p-3 align-top print:px-2 print:py-2">
                       <span
-                        className={`rounded-full px-3 py-1 text-xs font-medium ${statusBadgeClass(
+                        className={`rounded-full px-3 py-1 text-xs font-medium print:rounded-none print:px-0 print:py-0 print:text-[10px] ${statusBadgeClass(
                           item.status
                         )}`}
                       >
                         {statusLabel(item.status)}
                       </span>
                     </td>
-                    <td className="p-3">{item.solicitado_por || "-"}</td>
-                    <td className="p-3">
+                    <td className="p-3 align-top print:px-2 print:py-2">
+                      {item.solicitado_por || "-"}
+                    </td>
+                    <td className="p-3 align-top print:px-2 print:py-2">
                       {item.comprovante_url ? "Sim" : "Não"}
                     </td>
                     <td className="p-3 print:hidden">
@@ -361,14 +396,70 @@ export default function ManipuladosPage() {
       )}
 
       <style jsx global>{`
+        @page {
+          size: A4 landscape;
+          margin: 10mm;
+        }
+
         @media print {
+          html,
           body {
-            background: white !important;
+            background: #ffffff !important;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
+          }
+
+          body {
+            margin: 0 !important;
+            padding: 0 !important;
+            font-size: 11px;
+            color: #000;
           }
 
           a {
             text-decoration: none !important;
             color: inherit !important;
+          }
+
+          table {
+            border-collapse: collapse !important;
+            width: 100% !important;
+          }
+
+          thead {
+            display: table-header-group;
+          }
+
+          tr,
+          td,
+          th {
+            break-inside: avoid !important;
+            page-break-inside: avoid !important;
+          }
+
+          .print-report-header {
+            margin-bottom: 10px;
+            border-bottom: 1px solid #d1d5db;
+            padding-bottom: 8px;
+          }
+
+          .print-report-title {
+            font-size: 18px;
+            font-weight: 700;
+            color: #111827;
+          }
+
+          .print-report-subtitle {
+            font-size: 12px;
+            font-weight: 600;
+            color: #374151;
+            margin-top: 2px;
+          }
+
+          .print-report-meta {
+            font-size: 10px;
+            color: #4b5563;
+            margin-top: 2px;
           }
         }
       `}</style>
