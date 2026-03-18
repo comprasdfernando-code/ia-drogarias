@@ -207,7 +207,7 @@ export default function NovoManipuladoPage() {
 
         <div>
           <label className="mb-2 block text-sm font-medium">
-            Foto da receita
+            Receita
           </label>
           <input
             className="w-full rounded-xl border p-3"
@@ -232,7 +232,7 @@ export default function NovoManipuladoPage() {
         <button
           type="submit"
           disabled={loading}
-          className="rounded-xl bg-blue-600 px-5 py-3 text-white"
+          className="rounded-xl bg-blue-600 px-5 py-3 text-white disabled:opacity-50"
         >
           {loading ? "Salvando..." : "Salvar pedido"}
         </button>
