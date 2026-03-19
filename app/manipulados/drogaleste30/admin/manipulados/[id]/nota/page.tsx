@@ -14,7 +14,6 @@ const LOJA = "Droga Leste 30";
 
 type Pedido = {
   id: string;
-  loja: string;
   req: string | null;
   cliente_nome: string;
   cliente_telefone: string | null;
@@ -25,28 +24,18 @@ type Pedido = {
   observacoes: string | null;
   valor: number | null;
   pago: boolean;
-  solicitado_por: string | null;
   data_solicitacao: string | null;
 };
 
 function tipoRecebimentoLabel(tipo?: string | null) {
-  switch (tipo) {
-    case "entrega":
-      return "Entrega";
-    case "retirada":
-      return "Retirada na loja";
-    default:
-      return "-";
-  }
+  if (tipo === "entrega") return "Entrega";
+  if (tipo === "retirada") return "Retirada na loja";
+  return "-";
 }
 
 function formatarData(data?: string | null) {
   if (!data) return "-";
-
-  const dt = new Date(data);
-  if (Number.isNaN(dt.getTime())) return data;
-
-  return dt.toLocaleString("pt-BR");
+  return new Date(data).toLocaleString("pt-BR");
 }
 
 export default function NotaEntregaPage() {
@@ -56,135 +45,146 @@ export default function NotaEntregaPage() {
   const [pedido, setPedido] = useState<Pedido | null>(null);
   const [loading, setLoading] = useState(true);
 
-  async function carregarPedido() {
-    setLoading(true);
+  useEffect(() => {
+    async function carregar() {
+      const { data } = await supabase
+        .from("manipulados_pedidos")
+        .select("*")
+        .eq("id", id)
+        .single();
 
-    const { data, error } = await supabase
-      .from("manipulados_pedidos")
-      .select("*")
-      .eq("id", id)
-      .single();
-
-    if (error) {
-      console.error(error);
-      alert("Erro ao carregar nota.");
-    } else {
-      setPedido(data);
+      if (data) setPedido(data);
+      setLoading(false);
     }
 
-    setLoading(false);
-  }
-
-  useEffect(() => {
-    if (id) carregarPedido();
+    if (id) carregar();
   }, [id]);
 
-  const dataEmissao = useMemo(() => {
+  const dataAgora = useMemo(() => {
     return new Date().toLocaleString("pt-BR");
   }, []);
 
-  if (loading) {
-    return <div className="p-6">Carregando...</div>;
-  }
-
-  if (!pedido) {
-    return <div className="p-6">Pedido não encontrado.</div>;
-  }
+  if (loading) return <div className="p-6">Carregando...</div>;
+  if (!pedido) return <div className="p-6">Pedido não encontrado.</div>;
 
   return (
-    <div className="mx-auto max-w-4xl p-6 print:p-0">
-      <div className="mb-6 flex items-center justify-between print:hidden">
-        <div>
-          <h1 className="text-2xl font-bold">Nota de entrega</h1>
-          <p className="text-sm text-gray-500">{LOJA}</p>
-        </div>
+    <div className="mx-auto max-w-md p-4 print:p-0">
+      
+      {/* BOTÕES */}
+      <div className="mb-4 flex justify-between print:hidden">
+        <button
+          onClick={() => window.print()}
+          className="rounded-lg bg-blue-600 px-3 py-2 text-white"
+        >
+          Imprimir / PDF
+        </button>
 
-        <div className="flex gap-3">
-          <button
-            onClick={() => window.print()}
-            className="rounded-xl bg-blue-600 px-4 py-2 text-white"
-          >
-            Imprimir / Salvar PDF
-          </button>
-
-          <Link
-            href={`/manipulados/drogaleste30/admin/manipulados/${pedido.id}`}
-            className="rounded-xl border px-4 py-2"
-          >
-            Voltar ao pedido
-          </Link>
-        </div>
+        <Link
+          href={`/manipulados/drogaleste30/admin/manipulados/${pedido.id}`}
+          className="rounded-lg border px-3 py-2"
+        >
+          Voltar
+        </Link>
       </div>
 
-      <div className="rounded-2xl border bg-white p-8 text-black print:rounded-none print:border-0 print:p-0">
-        <div className="mb-8 border-b pb-4">
-          <h1 className="text-2xl font-bold tracking-wide">{LOJA}</h1>
-          <h2 className="mt-1 text-lg font-semibold">
-            NOTA SIMPLES DE ENTREGA / RETIRADA
-          </h2>
-          <p className="mt-2 text-sm text-gray-600">
-            Emitido em: {dataEmissao}
+      {/* NOTA */}
+      <div className="rounded-xl border bg-white p-5 text-black text-sm">
+
+        {/* HEADER */}
+        <div className="mb-4 text-center">
+          <h1 className="text-lg font-bold">{LOJA}</h1>
+          <p className="text-xs text-gray-500">
+            NOTA DE ENTREGA DE MANIPULADO
           </p>
         </div>
 
-        <div className="grid gap-6 md:grid-cols-2">
-          <div className="space-y-2 text-sm">
-            <h3 className="mb-2 text-base font-semibold">Dados do cliente</h3>
-            <p><strong>REQ:</strong> {pedido.req || "-"}</p>
-            <p><strong>Cliente:</strong> {pedido.cliente_nome}</p>
-            <p><strong>Telefone:</strong> {pedido.cliente_telefone || "-"}</p>
-            <p><strong>Forma de recebimento:</strong> {tipoRecebimentoLabel(pedido.tipo_recebimento)}</p>
-            <p><strong>Endereço:</strong> {pedido.cliente_endereco || "-"}</p>
-          </div>
+        <hr className="my-3" />
 
-          <div className="space-y-2 text-sm">
-            <h3 className="mb-2 text-base font-semibold">Dados da fórmula</h3>
-            <p><strong>Fórmula:</strong> {pedido.formula}</p>
-            <p><strong>Apresentação:</strong> {pedido.apresentacao}</p>
-            <p><strong>Valor:</strong> R$ {Number(pedido.valor || 0).toFixed(2)}</p>
-            <p><strong>Pago:</strong> {pedido.pago ? "Sim" : "Não"}</p>
-            <p><strong>Solicitado por:</strong> {pedido.solicitado_por || "-"}</p>
-            <p><strong>Data da solicitação:</strong> {formatarData(pedido.data_solicitacao)}</p>
-          </div>
+        {/* PEDIDO */}
+        <div className="space-y-1">
+          <p><strong>REQ:</strong> {pedido.req || "-"}</p>
+          <p><strong>Data:</strong> {formatarData(pedido.data_solicitacao)}</p>
+          <p><strong>Emissão:</strong> {dataAgora}</p>
         </div>
 
-        <div className="mt-8">
-          <h3 className="mb-2 text-base font-semibold">Observações</h3>
-          <div className="min-h-[100px] rounded-xl border p-4 text-sm">
-            {pedido.observacoes || "Sem observações."}
-          </div>
+        <hr className="my-3" />
+
+        {/* CLIENTE */}
+        <div className="space-y-1">
+          <p className="font-semibold">Cliente</p>
+          <p>{pedido.cliente_nome}</p>
+          <p>{pedido.cliente_telefone || "-"}</p>
         </div>
 
-        <div className="mt-12 grid gap-10 md:grid-cols-2">
+        <hr className="my-3" />
+
+        {/* ENTREGA */}
+        <div className="space-y-1">
+          <p className="font-semibold">Recebimento</p>
+          <p>{tipoRecebimentoLabel(pedido.tipo_recebimento)}</p>
+          <p>{pedido.cliente_endereco || "-"}</p>
+        </div>
+
+        <hr className="my-3" />
+
+        {/* PRODUTO */}
+        <div className="space-y-1">
+          <p className="font-semibold">Pedido</p>
+          <p>1x {pedido.formula}</p>
+          <p className="text-gray-600">
+            Apresentação: {pedido.apresentacao}
+          </p>
+        </div>
+
+        <hr className="my-3" />
+
+        {/* PAGAMENTO */}
+        <div className="space-y-1">
+          <p className="font-semibold">Pagamento</p>
+          <p>Valor: R$ {Number(pedido.valor || 0).toFixed(2)}</p>
+          <p>
+            Status:{" "}
+            <span className={pedido.pago ? "text-green-600" : "text-red-600"}>
+              {pedido.pago ? "Pago" : "Pendente"}
+            </span>
+          </p>
+        </div>
+
+        <hr className="my-3" />
+
+        {/* OBS */}
+        <div className="space-y-1">
+          <p className="font-semibold">Observações</p>
+          <p>{pedido.observacoes || "Sem observações"}</p>
+        </div>
+
+        <hr className="my-4" />
+
+        {/* ASSINATURA */}
+        <div className="mt-6 space-y-6">
           <div>
-            <div className="mb-2 text-sm font-medium">Assinatura do responsável pela entrega</div>
-            <div className="h-16 border-b" />
+            <p className="text-xs text-gray-500">Responsável pela entrega</p>
+            <div className="h-10 border-b" />
           </div>
 
           <div>
-            <div className="mb-2 text-sm font-medium">Assinatura do cliente / recebedor</div>
-            <div className="h-16 border-b" />
+            <p className="text-xs text-gray-500">Cliente / Recebedor</p>
+            <div className="h-10 border-b" />
           </div>
         </div>
+
       </div>
 
+      {/* PRINT */}
       <style jsx global>{`
         @page {
           size: A4;
-          margin: 12mm;
+          margin: 10mm;
         }
 
         @media print {
-          html,
           body {
             background: white !important;
-            -webkit-print-color-adjust: exact;
-            print-color-adjust: exact;
-          }
-
-          body {
-            margin: 0 !important;
-            padding: 0 !important;
           }
         }
       `}</style>
