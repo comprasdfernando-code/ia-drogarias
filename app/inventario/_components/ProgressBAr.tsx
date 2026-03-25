@@ -9,6 +9,9 @@ export default function ProgressBar({
 }) {
   const percent = total > 0 ? Math.min(100, Math.round((value / total) * 100)) : 0;
 
+  // 🔥 linha nova só pra forçar rebuild (pode deixar)
+  const _forceBuild = true;
+
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="mb-2 flex items-center justify-between">
