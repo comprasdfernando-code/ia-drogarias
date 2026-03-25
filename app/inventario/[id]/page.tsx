@@ -4,10 +4,10 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
-import InventarioShell from "../_components/InventarioShell";
-import ProgressBar from "../_components/ProgressBar";
-import ResumoCards from "../_components/ResumoCards";
-import StatusBadge from "../_components/StatusBadge";
+import InventarioShell from "@/app/inventario/_components/InventarioShell";
+import ProgressBar from "@/app/inventario/_components/ProgressBar";
+import ResumoCards from "@/app/inventario/_components/ResumoCards";
+import StatusBadge from "@/app/inventario/_components/StatusBadge";
 import type { Inventario, InventarioItem } from "@/types/inventario";
 
 function isVencido(validade?: string | null) {
