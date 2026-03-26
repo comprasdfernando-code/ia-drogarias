@@ -5,7 +5,6 @@ import { useParams } from "next/navigation";
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import InventarioShell from "@/app/inventario/_components/InventarioShell";
-import ProgressBar from "@/app/inventario/_components/ProgressBar";
 import ResumoCards from "@/app/inventario/_components/ResumoCards";
 import StatusBadge from "@/app/inventario/_components/StatusBadge";
 import type { Inventario, InventarioItem } from "@/types/inventario";
@@ -17,6 +16,7 @@ function isVencido(validade?: string | null) {
 
 function isVencendo(validade?: string | null) {
   if (!validade) return false;
+
   const hoje = new Date();
   hoje.setHours(0, 0, 0, 0);
 
@@ -72,13 +72,17 @@ export default function InventarioDetalhePage() {
       console.error(itensError);
     }
 
-    setInventario(inv);
+    setInventario(inv as Inventario);
     setItens((itensData || []) as InventarioItem[]);
     setLoading(false);
 
     if (inv?.status === "aberto") {
-      await supabase.from("inventarios").update({ status: "em_contagem" }).eq("id", id);
-      setInventario({ ...inv, status: "em_contagem" });
+      await supabase
+        .from("inventarios")
+        .update({ status: "em_contagem" })
+        .eq("id", id);
+
+      setInventario({ ...(inv as Inventario), status: "em_contagem" });
     }
   }
 
@@ -100,9 +104,14 @@ export default function InventarioDetalhePage() {
 
     if (quantidadeContada === null || Number.isNaN(quantidadeContada)) {
       status = "pendente";
-    } else if (quantidadeContada === 0 && itemAtual.quantidade_sistema > 0) {
+    } else if (
+      quantidadeContada === 0 &&
+      Number(itemAtual.quantidade_sistema) > 0
+    ) {
       status = "nao_encontrado";
-    } else if (Number(quantidadeContada) === Number(itemAtual.quantidade_sistema)) {
+    } else if (
+      Number(quantidadeContada) === Number(itemAtual.quantidade_sistema)
+    ) {
       status = "contado";
     } else {
       status = "divergente";
@@ -130,7 +139,11 @@ export default function InventarioDetalhePage() {
     }
 
     setItens((prev) =>
-      prev.map((item) => (item.id === itemId ? ({ ...item, ...payload } as InventarioItem) : item))
+      prev.map((item) =>
+        item.id === itemId
+          ? ({ ...item, ...payload } as InventarioItem)
+          : item
+      )
     );
   }
 
@@ -173,7 +186,10 @@ export default function InventarioDetalhePage() {
     const ok = window.confirm("Deseja remover este item do inventário?");
     if (!ok) return;
 
-    const { error } = await supabase.from("inventario_itens").delete().eq("id", itemId);
+    const { error } = await supabase
+      .from("inventario_itens")
+      .delete()
+      .eq("id", itemId);
 
     if (error) {
       console.error(error);
@@ -191,9 +207,13 @@ export default function InventarioDetalhePage() {
         item.produto_nome.toLowerCase().includes(busca.toLowerCase()) ||
         (item.lote || "").toLowerCase().includes(busca.toLowerCase());
 
-      const okStatus = filtroStatus === "todos" ? true : item.status === filtroStatus;
+      const okStatus =
+        filtroStatus === "todos" ? true : item.status === filtroStatus;
+
       const okCategoria =
-        filtroCategoria === "todos" ? true : item.categoria === filtroCategoria;
+        filtroCategoria === "todos"
+          ? true
+          : item.categoria === filtroCategoria;
 
       return okBusca && okStatus && okCategoria;
     });
@@ -203,7 +223,9 @@ export default function InventarioDetalhePage() {
     const total = itens.length;
     const contados = itens.filter((i) => i.status !== "pendente").length;
     const divergentes = itens.filter((i) => i.status === "divergente").length;
-    const naoEncontrados = itens.filter((i) => i.status === "nao_encontrado").length;
+    const naoEncontrados = itens.filter(
+      (i) => i.status === "nao_encontrado"
+    ).length;
     const vencidos = itens.filter((i) => isVencido(i.validade)).length;
 
     return { total, contados, divergentes, naoEncontrados, vencidos };
@@ -295,7 +317,9 @@ export default function InventarioDetalhePage() {
       </div>
 
       <div className="rounded-3xl border border-slate-200 bg-white p-5 shadow-sm">
-        <h2 className="text-lg font-bold text-slate-900">Adicionar item avulso</h2>
+        <h2 className="text-lg font-bold text-slate-900">
+          Adicionar item avulso
+        </h2>
 
         <div className="mt-4 grid gap-3 md:grid-cols-2 xl:grid-cols-3">
           <input
@@ -358,7 +382,9 @@ export default function InventarioDetalhePage() {
 
       <div className="rounded-3xl border border-slate-200 bg-white shadow-sm">
         <div className="border-b border-slate-200 p-4 md:p-5">
-          <h2 className="text-lg font-bold text-slate-900">Itens do inventário</h2>
+          <h2 className="text-lg font-bold text-slate-900">
+            Itens do inventário
+          </h2>
           <p className="text-sm text-slate-500">
             Preencha quantidade contada, lote, validade e observações
           </p>
@@ -422,7 +448,9 @@ function ItemCard({
   }
 
   const diferenca =
-    quantidade === "" ? "-" : Number(quantidade || 0) - Number(item.quantidade_sistema || 0);
+    quantidade === ""
+      ? "-"
+      : Number(quantidade || 0) - Number(item.quantidade_sistema || 0);
 
   return (
     <div
@@ -436,7 +464,9 @@ function ItemCard({
     >
       <div className="mb-4 flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
-          <h3 className="text-base font-bold text-slate-900">{item.produto_nome}</h3>
+          <h3 className="text-base font-bold text-slate-900">
+            {item.produto_nome}
+          </h3>
           <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-500">
             <span>{item.apresentacao || "Sem apresentação"}</span>
             <span>•</span>
@@ -523,12 +553,16 @@ function ItemCard({
       <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
         <div className="text-xs text-slate-500">
           Última conferência:{" "}
-          {item.contado_em ? new Date(item.contado_em).toLocaleString("pt-BR") : "—"}
+          {item.contado_em
+            ? new Date(item.contado_em).toLocaleString("pt-BR")
+            : "—"}
         </div>
 
         <div className="flex flex-wrap gap-2">
           <button
-            onClick={() => onSalvar(item.id, 0, observacao, lote || null, validade || null)}
+            onClick={() =>
+              onSalvar(item.id, 0, observacao, lote || null, validade || null)
+            }
             className="rounded-2xl border border-orange-200 bg-orange-50 px-4 py-2 text-sm font-semibold text-orange-700"
           >
             Não encontrado
@@ -549,6 +583,39 @@ function ItemCard({
             {salvando ? "Salvando..." : "Salvar contagem"}
           </button>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function ProgressBar({
+  value,
+  total,
+}: {
+  value: number;
+  total: number;
+}) {
+  const percent =
+    total > 0 ? Math.min(100, Math.round((value / total) * 100)) : 0;
+
+  return (
+    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+      <div className="mb-2 flex items-center justify-between">
+        <span className="text-sm font-medium text-slate-600">
+          Progresso da contagem
+        </span>
+        <span className="text-sm font-bold text-slate-900">{percent}%</span>
+      </div>
+
+      <div className="h-3 w-full overflow-hidden rounded-full bg-slate-200">
+        <div
+          className="h-full rounded-full bg-emerald-500 transition-all"
+          style={{ width: `${percent}%` }}
+        />
+      </div>
+
+      <div className="mt-2 text-xs text-slate-500">
+        {value} de {total} itens conferidos
       </div>
     </div>
   );
