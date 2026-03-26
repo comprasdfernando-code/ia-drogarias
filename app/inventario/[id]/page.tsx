@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import InventarioShell from "@/app/inventario/_components/InventarioShell";
 import ResumoCards from "@/app/inventario/_components/ResumoCards";
@@ -47,47 +47,80 @@ export default function InventarioDetalhePage() {
   const [novaValidade, setNovaValidade] = useState("");
   const [novaQuantidadeSistema, setNovaQuantidadeSistema] = useState("0");
 
-  async function carregar() {
-    setLoading(true);
+  const carregandoRef = useRef(false);
 
-    const { data: inv, error: invError } = await supabase
-      .from("inventarios")
-      .select("*")
-      .eq("id", id)
-      .single();
+  async function carregar(showLoading = true) {
+    if (!id) return;
+    if (carregandoRef.current) return;
 
-    if (invError) {
-      console.error(invError);
-      setLoading(false);
-      return;
-    }
+    try {
+      carregandoRef.current = true;
+      if (showLoading) setLoading(true);
 
-    const { data: itensData, error: itensError } = await supabase
-      .from("inventario_itens")
-      .select("*")
-      .eq("inventario_id", id)
-      .order("produto_nome", { ascending: true });
-
-    if (itensError) {
-      console.error(itensError);
-    }
-
-    setInventario(inv as Inventario);
-    setItens((itensData || []) as InventarioItem[]);
-    setLoading(false);
-
-    if (inv?.status === "aberto") {
-      await supabase
+      const { data: inv, error: invError } = await supabase
         .from("inventarios")
-        .update({ status: "em_contagem" })
-        .eq("id", id);
+        .select("*")
+        .eq("id", id)
+        .single();
 
-      setInventario({ ...(inv as Inventario), status: "em_contagem" });
+      if (invError) {
+        console.error(invError);
+        if (showLoading) setLoading(false);
+        return;
+      }
+
+      const { data: itensData, error: itensError } = await supabase
+        .from("inventario_itens")
+        .select("*")
+        .eq("inventario_id", id)
+        .order("produto_nome", { ascending: true });
+
+      if (itensError) {
+        console.error(itensError);
+      }
+
+      if (inv) {
+        setInventario(inv as Inventario);
+      }
+
+      setItens((itensData || []) as InventarioItem[]);
+
+      if (inv?.status === "aberto") {
+        await supabase
+          .from("inventarios")
+          .update({ status: "em_contagem" })
+          .eq("id", id);
+
+        setInventario({ ...(inv as Inventario), status: "em_contagem" });
+      }
+    } finally {
+      carregandoRef.current = false;
+      if (showLoading) setLoading(false);
     }
   }
 
   useEffect(() => {
-    if (id) carregar();
+    if (id) carregar(true);
+  }, [id]);
+
+  useEffect(() => {
+    function handleFocus() {
+      carregar(false);
+    }
+
+    function handleVisibilityChange() {
+      if (document.visibilityState === "visible") {
+        carregar(false);
+      }
+    }
+
+    window.addEventListener("focus", handleFocus);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener("focus", handleFocus);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
   }, [id]);
 
   async function salvarContagem(
@@ -258,8 +291,16 @@ export default function InventarioDetalhePage() {
         inventario.responsavel_nome || "Sem responsável"
       }`}
       right={
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <StatusBadge status={inventario.status} />
+
+          <Link
+            href={`/inventario/${inventario.id}/importar`}
+            className="rounded-2xl bg-blue-600 px-4 py-2.5 text-sm font-semibold text-white"
+          >
+            Importar planilha
+          </Link>
+
           <Link
             href={`/inventario/${inventario.id}/fechamento`}
             className="rounded-2xl bg-emerald-600 px-4 py-2.5 text-sm font-semibold text-white"

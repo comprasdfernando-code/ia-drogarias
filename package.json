@@ -17,6 +17,7 @@
     "eslint": "8.56.0",
     "eslint-config-next": "14.2.5",
     "framer-motion": "^12.28.1",
+    "html5-qrcode": "^2.3.8",
     "jsbarcode": "^3.12.3",
     "jspdf": "^3.0.3",
     "leaflet": "^1.9.4",
