@@ -35,6 +35,13 @@ function safeJsonParse(text: string) {
   }
 }
 
+function formatCurrency(value: number) {
+  return new Intl.NumberFormat("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  }).format(Number.isFinite(value) ? value : 0);
+}
+
 const ClienteSchema = z.object({
   nome_cliente: z.string().optional().default(""),
   saudacao_detectada: z.string().optional().default(""),
@@ -68,6 +75,7 @@ const OrcamentoSchema = z.object({
     .default([]),
   total: z.number().default(0),
   desconto_total: z.number().optional().default(0),
+  total_liquido: z.number().optional().default(0),
 });
 
 export type ClienteExtraido = z.infer<typeof ClienteSchema>;
@@ -89,8 +97,9 @@ export async function extrairClienteDeImagem(
             text:
               "Você extrai dados de prints de WhatsApp e fotos de receita. " +
               "Retorne apenas JSON válido. " +
-              "Identifique nomes de medicamentos, dúvidas do cliente e o texto principal. " +
-              "Não invente medicamento que não apareça.",
+              "Não invente medicamentos. " +
+              "Se o cliente disser que já possui um item, precisa desse item apenas como contexto/dúvida, e não como medicamento principal a ser orçado. " +
+              "Diferencie claramente: medicamentos da receita, dúvidas do cliente e observações adicionais.",
           },
         ],
       },
@@ -102,10 +111,14 @@ export async function extrairClienteDeImagem(
             text:
               "Leia esta imagem. Extraia:\n" +
               "- nome do cliente, se visível\n" +
-              "- texto enviado pelo cliente\n" +
-              "- medicamentos solicitados\n" +
+              "- saudação detectada, se houver\n" +
+              "- texto principal do cliente\n" +
+              "- medicamentos efetivamente solicitados ou presentes na receita\n" +
               "- dúvidas do cliente\n" +
-              "Retorne JSON estrito.",
+              "\nRegras importantes:\n" +
+              "- Se o cliente disser que já tem um medicamento e que não precisa dele no orçamento, não trate esse item como medicamento principal solicitado.\n" +
+              "- Esse item pode aparecer apenas como contexto em duvidas_cliente ou observacao.\n" +
+              "- Retorne JSON estrito.",
           },
           makeInputImage(dataUrl),
         ],
@@ -179,8 +192,9 @@ export async function extrairOrcamentoDeImagem(
             text:
               "Você extrai dados de prints de orçamento de sistemas de farmácia. " +
               "Retorne apenas JSON válido. " +
-              "Leia nomes, quantidades, preços líquidos, total por item e total geral. " +
-              "Não invente linhas que não existam.",
+              "Leia itens, quantidades, preço líquido, total por item, desconto total, total bruto e total líquido. " +
+              "Quando houver 'Total Líquido', ele deve ser priorizado como valor final do orçamento. " +
+              "Não invente linhas nem valores que não existam.",
           },
         ],
       },
@@ -194,9 +208,14 @@ export async function extrairOrcamentoDeImagem(
               "- nome do atendente, se aparecer\n" +
               "- nome do cliente, se aparecer\n" +
               "- itens com quantidade, preço líquido e total do item\n" +
-              "- total geral\n" +
+              "- total bruto, se aparecer\n" +
               "- desconto total, se aparecer\n" +
-              "Retorne JSON estrito.",
+              "- total líquido, se aparecer\n" +
+              "\nRegras importantes:\n" +
+              "- Se o sistema mostrar 'Total' e também 'Total Líquido', use os dois campos separadamente.\n" +
+              "- O campo total_liquido deve receber o valor final a pagar.\n" +
+              "- O campo total pode representar o total bruto antes do desconto.\n" +
+              "- Retorne JSON estrito.",
           },
           makeInputImage(dataUrl),
         ],
@@ -236,15 +255,46 @@ export async function extrairOrcamentoDeImagem(
             },
             total: { type: "number" },
             desconto_total: { type: "number" },
+            total_liquido: { type: "number" },
           },
-          required: ["atendente", "cliente", "itens", "total", "desconto_total"],
+          required: [
+            "atendente",
+            "cliente",
+            "itens",
+            "total",
+            "desconto_total",
+            "total_liquido",
+          ],
         },
       },
     },
   });
 
   const parsed = safeJsonParse(response.output_text);
-  return OrcamentoSchema.parse(parsed);
+
+  const orcamento = OrcamentoSchema.parse(parsed);
+
+  const itensSomados = orcamento.itens.reduce((acc, item) => {
+    return acc + (Number(item.total_item) || 0);
+  }, 0);
+
+  if (!orcamento.total_liquido || orcamento.total_liquido <= 0) {
+    if (itensSomados > 0) {
+      orcamento.total_liquido = itensSomados;
+    } else if (orcamento.total > 0 && orcamento.desconto_total > 0) {
+      orcamento.total_liquido = Number(
+        (orcamento.total - orcamento.desconto_total).toFixed(2)
+      );
+    } else {
+      orcamento.total_liquido = orcamento.total;
+    }
+  }
+
+  if ((!orcamento.total || orcamento.total <= 0) && orcamento.total_liquido > 0) {
+    orcamento.total = orcamento.total_liquido;
+  }
+
+  return orcamento;
 }
 
 export type RespostaFinalInput = {
@@ -259,6 +309,34 @@ export async function gerarRespostaWhatsApp(
 ): Promise<string> {
   const { lojaNome, atendenteNome, cliente, orcamento } = inputData;
 
+  const totalFinal =
+    orcamento.total_liquido && orcamento.total_liquido > 0
+      ? orcamento.total_liquido
+      : orcamento.total;
+
+  const itensResumo = orcamento.itens
+    .map((item) => {
+      const nome = item.nome?.trim() || item.descricao?.trim() || "Item";
+      const valor =
+        item.total_item && item.total_item > 0
+          ? item.total_item
+          : item.preco_liquido;
+
+      return `• ${nome} — ${formatCurrency(valor)}`;
+    })
+    .join("\n");
+
+  const medicamentosCliente = cliente.medicamentos_solicitados
+    .map((item) => {
+      const nome = item.nome?.trim();
+      const dosagem = item.dosagem?.trim();
+      return [nome, dosagem].filter(Boolean).join(" ");
+    })
+    .filter(Boolean)
+    .join(", ");
+
+  const duvidasCliente = cliente.duvidas_cliente.join(" | ");
+
   const response = await openai.responses.create({
     model: "gpt-5.4",
     input: [
@@ -271,7 +349,12 @@ export async function gerarRespostaWhatsApp(
               "Você escreve mensagens de WhatsApp para farmácia. " +
               "Tom profissional, humano, claro e vendedor sem exagero. " +
               "Nunca faça promessa médica. " +
-              "Se houver dúvida do cliente sobre necessidade de um item, responda com cautela e linguagem simples. " +
+              "Responda de forma acolhedora e natural, com cara de atendimento real de drogaria. " +
+              "A mensagem deve sair completa, sem começar cortada. " +
+              "Use português do Brasil. " +
+              "Evite texto excessivamente longo. " +
+              "Se houver dúvida sobre um item que o cliente já informou possuir, explique isso com cuidado e não o inclua no orçamento como item principal. " +
+              "Use o total líquido como valor final quando estiver disponível. " +
               "Retorne apenas o texto final da mensagem.",
           },
         ],
@@ -284,18 +367,27 @@ export async function gerarRespostaWhatsApp(
             text:
               `Monte uma mensagem pronta para WhatsApp.\n\n` +
               `Loja: ${lojaNome}\n` +
-              `Atendente: ${atendenteNome}\n\n` +
-              `Dados do cliente extraídos:\n${JSON.stringify(cliente, null, 2)}\n\n` +
-              `Dados do orçamento extraídos:\n${JSON.stringify(orcamento, null, 2)}\n\n` +
+              `Atendente: ${atendenteNome}\n` +
+              `Nome do cliente extraído: ${cliente.nome_cliente || ""}\n` +
+              `Texto do cliente: ${cliente.texto_cliente}\n` +
+              `Medicamentos da receita/pedido: ${medicamentosCliente || "não identificado com clareza"}\n` +
+              `Dúvidas do cliente: ${duvidasCliente || "nenhuma"}\n\n` +
+              `Itens do orçamento:\n${itensResumo || "Nenhum item encontrado"}\n\n` +
+              `Total bruto: ${formatCurrency(orcamento.total || 0)}\n` +
+              `Desconto total: ${formatCurrency(orcamento.desconto_total || 0)}\n` +
+              `Total líquido/final: ${formatCurrency(totalFinal || 0)}\n\n` +
               `Regras:\n` +
-              `- Comece com saudação amigável\n` +
-              `- Diga "Aqui é o ${atendenteNome} da ${lojaNome}"\n` +
-              `- Liste os itens disponíveis com bullets\n` +
-              `- Mostre valores por item\n` +
-              `- Mostre total\n` +
-              `- Se houver dúvida sobre item tipo Buscopan, responda com cautela e de forma informativa, sem substituir orientação médica\n` +
-              `- Termine oferecendo separar ou enviar por delivery\n` +
-              `- Assinatura final com nome e loja\n`,
+              `- Comece com uma saudação amigável, como "Boa noite, tudo bem? 😊"\n` +
+              `- Diga "Aqui é o ${atendenteNome} da ${lojaNome}."\n` +
+              `- Diga que você verificou os itens da receita ou do pedido.\n` +
+              `- Liste os itens disponíveis com bullets.\n` +
+              `- Mostre o valor de cada item.\n` +
+              `- Use como total final o valor ${formatCurrency(totalFinal || 0)}.\n` +
+              `- Se houver dúvida do cliente sobre um item como Buscopan e ele já informou que possui esse item, explique que ele não entrou no orçamento porque o cliente informou que já tem, e acrescente orientação cautelosa e simples.\n` +
+              `- Não trate esse item como item faltante nem como item principal do orçamento.\n` +
+              `- Termine oferecendo separar para retirada ou envio por delivery.\n` +
+              `- Finalize com assinatura: "Att, ${atendenteNome}" e na linha abaixo "${lojaNome}".\n` +
+              `- Retorne apenas a mensagem final, pronta para copiar e colar.\n`,
           },
         ],
       },
