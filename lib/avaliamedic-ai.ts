@@ -5,8 +5,8 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
 });
 
-function fileToDataUrl(file: File) {
-  return new Promise<string>(async (resolve, reject) => {
+function fileToDataUrl(file: File): Promise<string> {
+  return new Promise(async (resolve, reject) => {
     try {
       const arrayBuffer = await file.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
@@ -19,33 +19,53 @@ function fileToDataUrl(file: File) {
   });
 }
 
+function makeInputImage(dataUrl: string) {
+  return {
+    type: "input_image" as const,
+    image_url: dataUrl,
+    detail: "auto" as const,
+  };
+}
+
+function safeJsonParse(text: string) {
+  try {
+    return JSON.parse(text);
+  } catch {
+    throw new Error("A IA retornou um JSON inválido.");
+  }
+}
+
 const ClienteSchema = z.object({
   nome_cliente: z.string().optional().default(""),
   saudacao_detectada: z.string().optional().default(""),
   texto_cliente: z.string().default(""),
-  medicamentos_solicitados: z.array(
-    z.object({
-      nome: z.string(),
-      dosagem: z.string().optional().default(""),
-      quantidade: z.string().optional().default(""),
-      observacao: z.string().optional().default(""),
-    })
-  ).default([]),
+  medicamentos_solicitados: z
+    .array(
+      z.object({
+        nome: z.string(),
+        dosagem: z.string().optional().default(""),
+        quantidade: z.string().optional().default(""),
+        observacao: z.string().optional().default(""),
+      })
+    )
+    .default([]),
   duvidas_cliente: z.array(z.string()).default([]),
 });
 
 const OrcamentoSchema = z.object({
   atendente: z.string().optional().default(""),
   cliente: z.string().optional().default(""),
-  itens: z.array(
-    z.object({
-      nome: z.string(),
-      descricao: z.string().optional().default(""),
-      quantidade: z.number().default(1),
-      preco_liquido: z.number(),
-      total_item: z.number(),
-    })
-  ).default([]),
+  itens: z
+    .array(
+      z.object({
+        nome: z.string(),
+        descricao: z.string().optional().default(""),
+        quantidade: z.number().default(1),
+        preco_liquido: z.number(),
+        total_item: z.number(),
+      })
+    )
+    .default([]),
   total: z.number().default(0),
   desconto_total: z.number().optional().default(0),
 });
@@ -53,7 +73,9 @@ const OrcamentoSchema = z.object({
 export type ClienteExtraido = z.infer<typeof ClienteSchema>;
 export type OrcamentoExtraido = z.infer<typeof OrcamentoSchema>;
 
-export async function extrairClienteDeImagem(file: File): Promise<ClienteExtraido> {
+export async function extrairClienteDeImagem(
+  file: File
+): Promise<ClienteExtraido> {
   const dataUrl = await fileToDataUrl(file);
 
   const response = await openai.responses.create({
@@ -85,13 +107,10 @@ export async function extrairClienteDeImagem(file: File): Promise<ClienteExtraid
               "- dúvidas do cliente\n" +
               "Retorne JSON estrito.",
           },
-          {
-            type: "input_image",
-            image_url: dataUrl,
-          },
+          makeInputImage(dataUrl),
         ],
       },
-    ],
+    ] as any,
     text: {
       format: {
         type: "json_schema",
@@ -115,7 +134,12 @@ export async function extrairClienteDeImagem(file: File): Promise<ClienteExtraid
                   quantidade: { type: "string" },
                   observacao: { type: "string" },
                 },
-                required: ["nome", "dosagem", "quantidade", "observacao"],
+                required: [
+                  "nome",
+                  "dosagem",
+                  "quantidade",
+                  "observacao",
+                ],
               },
             },
             duvidas_cliente: {
@@ -135,11 +159,13 @@ export async function extrairClienteDeImagem(file: File): Promise<ClienteExtraid
     },
   });
 
-  const parsed = JSON.parse(response.output_text);
+  const parsed = safeJsonParse(response.output_text);
   return ClienteSchema.parse(parsed);
 }
 
-export async function extrairOrcamentoDeImagem(file: File): Promise<OrcamentoExtraido> {
+export async function extrairOrcamentoDeImagem(
+  file: File
+): Promise<OrcamentoExtraido> {
   const dataUrl = await fileToDataUrl(file);
 
   const response = await openai.responses.create({
@@ -172,13 +198,10 @@ export async function extrairOrcamentoDeImagem(file: File): Promise<OrcamentoExt
               "- desconto total, se aparecer\n" +
               "Retorne JSON estrito.",
           },
-          {
-            type: "input_image",
-            image_url: dataUrl,
-          },
+          makeInputImage(dataUrl),
         ],
       },
-    ],
+    ] as any,
     text: {
       format: {
         type: "json_schema",
@@ -202,7 +225,13 @@ export async function extrairOrcamentoDeImagem(file: File): Promise<OrcamentoExt
                   preco_liquido: { type: "number" },
                   total_item: { type: "number" },
                 },
-                required: ["nome", "descricao", "quantidade", "preco_liquido", "total_item"],
+                required: [
+                  "nome",
+                  "descricao",
+                  "quantidade",
+                  "preco_liquido",
+                  "total_item",
+                ],
               },
             },
             total: { type: "number" },
@@ -214,7 +243,7 @@ export async function extrairOrcamentoDeImagem(file: File): Promise<OrcamentoExt
     },
   });
 
-  const parsed = JSON.parse(response.output_text);
+  const parsed = safeJsonParse(response.output_text);
   return OrcamentoSchema.parse(parsed);
 }
 
@@ -225,7 +254,9 @@ export type RespostaFinalInput = {
   orcamento: OrcamentoExtraido;
 };
 
-export async function gerarRespostaWhatsApp(inputData: RespostaFinalInput) {
+export async function gerarRespostaWhatsApp(
+  inputData: RespostaFinalInput
+): Promise<string> {
   const { lojaNome, atendenteNome, cliente, orcamento } = inputData;
 
   const response = await openai.responses.create({
@@ -268,7 +299,7 @@ export async function gerarRespostaWhatsApp(inputData: RespostaFinalInput) {
           },
         ],
       },
-    ],
+    ] as any,
   });
 
   return response.output_text.trim();
