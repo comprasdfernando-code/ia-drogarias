@@ -13,9 +13,14 @@ type ApiResponse = {
 export default function ProcessarPrintPage() {
   const [clienteImage, setClienteImage] = useState<File | null>(null);
   const [orcamentoImage, setOrcamentoImage] = useState<File | null>(null);
+
+  const [conversaTexto, setConversaTexto] = useState("");
+  const [orcamentoTexto, setOrcamentoTexto] = useState("");
+
   const [lojaNome, setLojaNome] = useState("Drogaria Leste");
   const [atendenteNome, setAtendenteNome] = useState("Fernando");
   const [telefoneCliente, setTelefoneCliente] = useState("");
+
   const [loading, setLoading] = useState(false);
   const [sendingWhats, setSendingWhats] = useState(false);
   const [result, setResult] = useState<ApiResponse | null>(null);
@@ -31,8 +36,12 @@ export default function ProcessarPrintPage() {
 
     try {
       const fd = new FormData();
+
       if (clienteImage) fd.append("clienteImage", clienteImage);
       if (orcamentoImage) fd.append("orcamentoImage", orcamentoImage);
+
+      fd.append("conversaTexto", conversaTexto);
+      fd.append("orcamentoTexto", orcamentoTexto);
       fd.append("lojaNome", lojaNome);
       fd.append("atendenteNome", atendenteNome);
 
@@ -61,7 +70,7 @@ export default function ProcessarPrintPage() {
   }
 
   async function enviarWhatsApp() {
-    if (!result?.mensagem || !telefoneCliente) {
+    if (!result?.mensagem || !telefoneCliente.trim()) {
       setStatusEnvio("Informe o telefone do cliente.");
       return;
     }
@@ -96,14 +105,14 @@ export default function ProcessarPrintPage() {
   }
 
   return (
-    <main className="mx-auto max-w-6xl p-6">
+    <main className="mx-auto max-w-7xl p-6">
       <h1 className="text-2xl font-bold text-emerald-700">
         AvaliaMedic — Modo Comercial IA
       </h1>
 
       <p className="mt-2 text-sm text-neutral-600">
-        Envie print da conversa ou receita e o print do orçamento para gerar a
-        resposta pronta.
+        Você pode enviar imagens ou colar os textos. Se colar texto, o sistema
+        prioriza o texto ao invés do print.
       </p>
 
       <form
@@ -142,10 +151,24 @@ export default function ProcessarPrintPage() {
           </div>
         </div>
 
-        <div className="grid gap-4 md:grid-cols-2">
-          <div>
+        <div className="grid gap-6 md:grid-cols-2">
+          <div className="rounded-2xl border p-4">
+            <h2 className="mb-3 text-lg font-semibold text-emerald-700">
+              Cliente / Receita
+            </h2>
+
             <label className="mb-2 block text-sm font-medium">
-              Print do WhatsApp ou foto da receita
+              Colar conversa ou texto da receita
+            </label>
+            <textarea
+              value={conversaTexto}
+              onChange={(e) => setConversaTexto(e.target.value)}
+              placeholder="Cole aqui a conversa inteira do WhatsApp ou o texto da receita..."
+              className="min-h-[220px] w-full rounded-xl border p-3"
+            />
+
+            <label className="mb-2 mt-4 block text-sm font-medium">
+              Ou enviar print / foto
             </label>
             <input
               type="file"
@@ -153,11 +176,30 @@ export default function ProcessarPrintPage() {
               onChange={(e) => setClienteImage(e.target.files?.[0] || null)}
               className="w-full rounded-xl border px-3 py-2"
             />
+
+            <p className="mt-2 text-xs text-neutral-500">
+              Se você colar texto e também enviar imagem, o sistema vai priorizar
+              o texto e usar a imagem como apoio.
+            </p>
           </div>
 
-          <div>
+          <div className="rounded-2xl border p-4">
+            <h2 className="mb-3 text-lg font-semibold text-emerald-700">
+              Orçamento
+            </h2>
+
             <label className="mb-2 block text-sm font-medium">
-              Print do orçamento do sistema
+              Colar orçamento em texto
+            </label>
+            <textarea
+              value={orcamentoTexto}
+              onChange={(e) => setOrcamentoTexto(e.target.value)}
+              placeholder="Cole aqui o orçamento copiado do sistema..."
+              className="min-h-[220px] w-full rounded-xl border p-3"
+            />
+
+            <label className="mb-2 mt-4 block text-sm font-medium">
+              Ou enviar print do orçamento
             </label>
             <input
               type="file"
@@ -165,6 +207,11 @@ export default function ProcessarPrintPage() {
               onChange={(e) => setOrcamentoImage(e.target.files?.[0] || null)}
               className="w-full rounded-xl border px-3 py-2"
             />
+
+            <p className="mt-2 text-xs text-neutral-500">
+              Se você colar o orçamento em texto, ele será priorizado sobre a
+              imagem.
+            </p>
           </div>
         </div>
 
