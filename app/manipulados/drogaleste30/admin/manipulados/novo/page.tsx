@@ -2,7 +2,6 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import { useSearchParams } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
@@ -12,9 +11,24 @@ const supabase = createClient(
 
 const LOJA = "Droga Leste 30";
 
-export default function NovoManipuladoPage() {
-  const searchParams = useSearchParams();
-  const formulaId = searchParams.get("formula_id");
+type FormulaPadrao = {
+  id: string;
+  nome: string;
+  formula: string;
+  apresentacao: string;
+  valor_sugerido: number | null;
+  descricao: string | null;
+  ativo: boolean | null;
+};
+
+type PageProps = {
+  searchParams?: {
+    formula_id?: string;
+  };
+};
+
+export default function NovoManipuladoPage({ searchParams }: PageProps) {
+  const formulaId = searchParams?.formula_id || "";
 
   const [req, setReq] = useState("");
   const [clienteNome, setClienteNome] = useState("");
@@ -35,27 +49,39 @@ export default function NovoManipuladoPage() {
   const [comprovante, setComprovante] = useState<File | null>(null);
 
   const [loading, setLoading] = useState(false);
+  const [loadingFormula, setLoadingFormula] = useState(false);
 
-  // 🔥 AUTO PREENCHIMENTO DA FÓRMULA
   useEffect(() => {
     async function carregarFormula() {
       if (!formulaId) return;
 
-      const { data, error } = await supabase
-        .from("formulas_padrao")
-        .select("*")
-        .eq("id", formulaId)
-        .single();
+      try {
+        setLoadingFormula(true);
 
-      if (error) {
-        console.error(error);
-        return;
-      }
+        const { data, error } = await supabase
+          .from("formulas_padrao")
+          .select("*")
+          .eq("id", formulaId)
+          .single();
 
-      if (data) {
-        setFormula(data.formula || "");
-        setApresentacao(data.apresentacao || "");
-        setValor(String(data.valor_sugerido || ""));
+        if (error) throw error;
+
+        const formulaSelecionada = data as FormulaPadrao;
+
+        if (formulaSelecionada) {
+          setFormula(formulaSelecionada.formula || "");
+          setApresentacao(formulaSelecionada.apresentacao || "");
+          setValor(
+            formulaSelecionada.valor_sugerido !== null &&
+              formulaSelecionada.valor_sugerido !== undefined
+              ? String(formulaSelecionada.valor_sugerido)
+              : ""
+          );
+        }
+      } catch (err) {
+        console.error("Erro ao carregar fórmula padrão:", err);
+      } finally {
+        setLoadingFormula(false);
       }
     }
 
@@ -140,19 +166,32 @@ export default function NovoManipuladoPage() {
     <div className="mx-auto max-w-3xl p-6">
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">
-            Novo pedido manipulado
-          </h1>
+          <h1 className="text-2xl font-bold">Novo pedido manipulado</h1>
           <p className="text-sm text-gray-500">{LOJA}</p>
         </div>
 
-        <Link
-          href="/manipulados/formulas"
-          className="rounded-xl border px-4 py-2"
-        >
-          Buscar fórmula
-        </Link>
+        <div className="flex gap-3">
+          <Link
+            href="/manipulados/formulas"
+            className="rounded-xl border px-4 py-2"
+          >
+            Buscar fórmula
+          </Link>
+
+          <Link
+            href="/manipulados/drogaleste30/admin/manipulados"
+            className="rounded-xl border px-4 py-2"
+          >
+            Voltar
+          </Link>
+        </div>
       </div>
+
+      {loadingFormula && (
+        <div className="mb-4 rounded-xl border bg-blue-50 p-3 text-sm text-blue-700">
+          Carregando fórmula selecionada...
+        </div>
+      )}
 
       <form
         onSubmit={handleSubmit}
@@ -180,18 +219,27 @@ export default function NovoManipuladoPage() {
           onChange={(e) => setClienteTelefone(e.target.value)}
         />
 
-        <select
-          className="w-full rounded-xl border p-3"
-          value={tipoRecebimento}
-          onChange={(e) => setTipoRecebimento(e.target.value)}
-        >
-          <option value="retirada">Retirada na loja</option>
-          <option value="entrega">Entrega</option>
-        </select>
+        <div>
+          <label className="mb-2 block text-sm font-medium">
+            Forma de recebimento
+          </label>
+          <select
+            className="w-full rounded-xl border p-3"
+            value={tipoRecebimento}
+            onChange={(e) => setTipoRecebimento(e.target.value)}
+          >
+            <option value="retirada">Retirada na loja</option>
+            <option value="entrega">Entrega</option>
+          </select>
+        </div>
 
         <input
           className="w-full rounded-xl border p-3"
-          placeholder="Endereço"
+          placeholder={
+            tipoRecebimento === "entrega"
+              ? "Endereço de entrega"
+              : "Endereço do cliente"
+          }
           value={clienteEndereco}
           onChange={(e) => setClienteEndereco(e.target.value)}
         />
@@ -209,6 +257,7 @@ export default function NovoManipuladoPage() {
           placeholder="Apresentação"
           value={apresentacao}
           onChange={(e) => setApresentacao(e.target.value)}
+          required
         />
 
         <input
@@ -225,6 +274,7 @@ export default function NovoManipuladoPage() {
           placeholder="Observações"
           value={observacoes}
           onChange={(e) => setObservacoes(e.target.value)}
+          rows={3}
         />
 
         <textarea
@@ -232,6 +282,7 @@ export default function NovoManipuladoPage() {
           placeholder="Observação interna"
           value={observacaoInterna}
           onChange={(e) => setObservacaoInterna(e.target.value)}
+          rows={3}
         />
 
         <input
@@ -250,10 +301,34 @@ export default function NovoManipuladoPage() {
           Pago
         </label>
 
+        <div>
+          <label className="mb-2 block text-sm font-medium">
+            Foto da receita
+          </label>
+          <input
+            className="w-full rounded-xl border p-3"
+            type="file"
+            accept="image/*,application/pdf"
+            onChange={(e) => setReceita(e.target.files?.[0] || null)}
+          />
+        </div>
+
+        <div>
+          <label className="mb-2 block text-sm font-medium">
+            Comprovante de pagamento
+          </label>
+          <input
+            className="w-full rounded-xl border p-3"
+            type="file"
+            accept="image/*,application/pdf"
+            onChange={(e) => setComprovante(e.target.files?.[0] || null)}
+          />
+        </div>
+
         <button
           type="submit"
           disabled={loading}
-          className="rounded-xl bg-blue-600 px-5 py-3 text-white"
+          className="rounded-xl bg-blue-600 px-5 py-3 text-white disabled:opacity-50"
         >
           {loading ? "Salvando..." : "Salvar pedido"}
         </button>
