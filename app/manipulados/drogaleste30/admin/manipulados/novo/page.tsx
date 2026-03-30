@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
 
 const supabase = createClient(
@@ -12,20 +13,54 @@ const supabase = createClient(
 const LOJA = "Droga Leste 30";
 
 export default function NovoManipuladoPage() {
+  const searchParams = useSearchParams();
+  const formulaId = searchParams.get("formula_id");
+
   const [req, setReq] = useState("");
   const [clienteNome, setClienteNome] = useState("");
   const [clienteTelefone, setClienteTelefone] = useState("");
   const [clienteEndereco, setClienteEndereco] = useState("");
+  const [tipoRecebimento, setTipoRecebimento] = useState("retirada");
+
   const [formula, setFormula] = useState("");
   const [apresentacao, setApresentacao] = useState("");
   const [observacoes, setObservacoes] = useState("");
   const [observacaoInterna, setObservacaoInterna] = useState("");
   const [valor, setValor] = useState("");
+
   const [pago, setPago] = useState(false);
   const [solicitadoPor, setSolicitadoPor] = useState("");
+
   const [receita, setReceita] = useState<File | null>(null);
   const [comprovante, setComprovante] = useState<File | null>(null);
+
   const [loading, setLoading] = useState(false);
+
+  // 🔥 AUTO PREENCHIMENTO DA FÓRMULA
+  useEffect(() => {
+    async function carregarFormula() {
+      if (!formulaId) return;
+
+      const { data, error } = await supabase
+        .from("formulas_padrao")
+        .select("*")
+        .eq("id", formulaId)
+        .single();
+
+      if (error) {
+        console.error(error);
+        return;
+      }
+
+      if (data) {
+        setFormula(data.formula || "");
+        setApresentacao(data.apresentacao || "");
+        setValor(String(data.valor_sugerido || ""));
+      }
+    }
+
+    carregarFormula();
+  }, [formulaId]);
 
   async function uploadArquivo(
     bucket: string,
@@ -75,6 +110,7 @@ export default function NovoManipuladoPage() {
         cliente_nome: clienteNome,
         cliente_telefone: clienteTelefone,
         cliente_endereco: clienteEndereco,
+        tipo_recebimento: tipoRecebimento,
         formula,
         apresentacao,
         observacoes,
@@ -90,7 +126,8 @@ export default function NovoManipuladoPage() {
       if (error) throw error;
 
       alert("Pedido cadastrado com sucesso.");
-      window.location.href = "/manipulados/drogaleste30/admin/manipulados";
+      window.location.href =
+        "/manipulados/drogaleste30/admin/manipulados";
     } catch (err: any) {
       console.error(err);
       alert(err?.message || "Erro ao salvar pedido.");
@@ -103,15 +140,17 @@ export default function NovoManipuladoPage() {
     <div className="mx-auto max-w-3xl p-6">
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Novo pedido manipulado</h1>
+          <h1 className="text-2xl font-bold">
+            Novo pedido manipulado
+          </h1>
           <p className="text-sm text-gray-500">{LOJA}</p>
         </div>
 
         <Link
-          href="/manipulados/drogaleste30/admin/manipulados"
+          href="/manipulados/formulas"
           className="rounded-xl border px-4 py-2"
         >
-          Voltar
+          Buscar fórmula
         </Link>
       </div>
 
@@ -121,7 +160,7 @@ export default function NovoManipuladoPage() {
       >
         <input
           className="w-full rounded-xl border p-3"
-          placeholder="REQ / número do requerimento"
+          placeholder="REQ"
           value={req}
           onChange={(e) => setReq(e.target.value)}
         />
@@ -136,14 +175,23 @@ export default function NovoManipuladoPage() {
 
         <input
           className="w-full rounded-xl border p-3"
-          placeholder="Telefone do cliente"
+          placeholder="Telefone"
           value={clienteTelefone}
           onChange={(e) => setClienteTelefone(e.target.value)}
         />
 
+        <select
+          className="w-full rounded-xl border p-3"
+          value={tipoRecebimento}
+          onChange={(e) => setTipoRecebimento(e.target.value)}
+        >
+          <option value="retirada">Retirada na loja</option>
+          <option value="entrega">Entrega</option>
+        </select>
+
         <input
           className="w-full rounded-xl border p-3"
-          placeholder="Endereço do cliente"
+          placeholder="Endereço"
           value={clienteEndereco}
           onChange={(e) => setClienteEndereco(e.target.value)}
         />
@@ -161,23 +209,6 @@ export default function NovoManipuladoPage() {
           placeholder="Apresentação"
           value={apresentacao}
           onChange={(e) => setApresentacao(e.target.value)}
-          required
-        />
-
-        <textarea
-          className="w-full rounded-xl border p-3"
-          placeholder="Observações"
-          value={observacoes}
-          onChange={(e) => setObservacoes(e.target.value)}
-          rows={3}
-        />
-
-        <textarea
-          className="w-full rounded-xl border p-3"
-          placeholder="Observação interna"
-          value={observacaoInterna}
-          onChange={(e) => setObservacaoInterna(e.target.value)}
-          rows={3}
         />
 
         <input
@@ -187,6 +218,20 @@ export default function NovoManipuladoPage() {
           placeholder="Valor"
           value={valor}
           onChange={(e) => setValor(e.target.value)}
+        />
+
+        <textarea
+          className="w-full rounded-xl border p-3"
+          placeholder="Observações"
+          value={observacoes}
+          onChange={(e) => setObservacoes(e.target.value)}
+        />
+
+        <textarea
+          className="w-full rounded-xl border p-3"
+          placeholder="Observação interna"
+          value={observacaoInterna}
+          onChange={(e) => setObservacaoInterna(e.target.value)}
         />
 
         <input
@@ -204,30 +249,6 @@ export default function NovoManipuladoPage() {
           />
           Pago
         </label>
-
-        <div>
-          <label className="mb-2 block text-sm font-medium">
-            Foto da receita
-          </label>
-          <input
-            className="w-full rounded-xl border p-3"
-            type="file"
-            accept="image/*,application/pdf"
-            onChange={(e) => setReceita(e.target.files?.[0] || null)}
-          />
-        </div>
-
-        <div>
-          <label className="mb-2 block text-sm font-medium">
-            Comprovante de pagamento
-          </label>
-          <input
-            className="w-full rounded-xl border p-3"
-            type="file"
-            accept="image/*,application/pdf"
-            onChange={(e) => setComprovante(e.target.files?.[0] || null)}
-          />
-        </div>
 
         <button
           type="submit"
