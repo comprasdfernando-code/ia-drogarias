@@ -1,293 +1,150 @@
 "use client";
 
-import { useState } from "react";
+import Link from "next/link";
+import { useEffect, useMemo, useState } from "react";
+import { createClient } from "@supabase/supabase-js";
 
-type ApiResponse = {
-  ok: boolean;
-  mensagem?: string;
-  cliente?: any;
-  orcamento?: any;
-  error?: string;
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
+
+type FormulaPadrao = {
+  id: string;
+  nome: string;
+  formula: string;
+  apresentacao: string;
+  valor_sugerido: number | null;
+  descricao: string | null;
+  ativo: boolean | null;
+  created_at: string | null;
 };
 
-export default function ProcessarPrintPage() {
-  const [clienteImage, setClienteImage] = useState<File | null>(null);
-  const [orcamentoImage, setOrcamentoImage] = useState<File | null>(null);
+function brl(v: number) {
+  return v.toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+  });
+}
 
-  const [conversaTexto, setConversaTexto] = useState("");
-  const [orcamentoTexto, setOrcamentoTexto] = useState("");
+export default function FormulasPage() {
+  const [formulas, setFormulas] = useState<FormulaPadrao[]>([]);
+  const [busca, setBusca] = useState("");
+  const [loading, setLoading] = useState(true);
 
-  const [lojaNome, setLojaNome] = useState("Drogaria Leste");
-  const [atendenteNome, setAtendenteNome] = useState("Fernando");
-  const [telefoneCliente, setTelefoneCliente] = useState("");
-
-  const [loading, setLoading] = useState(false);
-  const [sendingWhats, setSendingWhats] = useState(false);
-  const [result, setResult] = useState<ApiResponse | null>(null);
-  const [copiado, setCopiado] = useState(false);
-  const [statusEnvio, setStatusEnvio] = useState("");
-
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+  async function carregarFormulas() {
     setLoading(true);
-    setResult(null);
-    setStatusEnvio("");
-    setCopiado(false);
 
-    try {
-      const fd = new FormData();
+    const { data, error } = await supabase
+      .from("formulas_padrao")
+      .select("*")
+      .eq("ativo", true)
+      .order("nome", { ascending: true });
 
-      if (clienteImage) fd.append("clienteImage", clienteImage);
-      if (orcamentoImage) fd.append("orcamentoImage", orcamentoImage);
-
-      fd.append("conversaTexto", conversaTexto);
-      fd.append("orcamentoTexto", orcamentoTexto);
-      fd.append("lojaNome", lojaNome);
-      fd.append("atendenteNome", atendenteNome);
-
-      const res = await fetch("/avaliamedic/api/processar-print", {
-        method: "POST",
-        body: fd,
-      });
-
-      const json = await res.json();
-      setResult(json);
-    } catch (error: any) {
-      setResult({
-        ok: false,
-        error: error?.message || "Erro ao processar.",
-      });
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  async function copiarMensagem() {
-    if (!result?.mensagem) return;
-    await navigator.clipboard.writeText(result.mensagem);
-    setCopiado(true);
-    setTimeout(() => setCopiado(false), 1800);
-  }
-
-  async function enviarWhatsApp() {
-    if (!result?.mensagem || !telefoneCliente.trim()) {
-      setStatusEnvio("Informe o telefone do cliente.");
-      return;
+    if (error) {
+      console.error(error);
+      alert("Erro ao carregar fórmulas.");
+      setFormulas([]);
+    } else {
+      setFormulas(data || []);
     }
 
-    setSendingWhats(true);
-    setStatusEnvio("");
-
-    try {
-      const res = await fetch("/avaliamedic/api/send-whatsapp", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          to: telefoneCliente,
-          message: result.mensagem,
-        }),
-      });
-
-      const json = await res.json();
-
-      if (!res.ok || !json.ok) {
-        throw new Error(json.error || "Falha ao enviar no WhatsApp.");
-      }
-
-      setStatusEnvio("Mensagem enviada com sucesso.");
-    } catch (error: any) {
-      setStatusEnvio(error?.message || "Erro ao enviar mensagem.");
-    } finally {
-      setSendingWhats(false);
-    }
+    setLoading(false);
   }
+
+  useEffect(() => {
+    carregarFormulas();
+  }, []);
+
+  const formulasFiltradas = useMemo(() => {
+    const termo = busca.trim().toLowerCase();
+    if (!termo) return formulas;
+
+    return formulas.filter((item) => {
+      return (
+        (item.nome || "").toLowerCase().includes(termo) ||
+        (item.formula || "").toLowerCase().includes(termo) ||
+        (item.apresentacao || "").toLowerCase().includes(termo) ||
+        (item.descricao || "").toLowerCase().includes(termo)
+      );
+    });
+  }, [formulas, busca]);
 
   return (
-    <main className="mx-auto max-w-7xl p-6">
-      <h1 className="text-2xl font-bold text-emerald-700">
-        AvaliaMedic — Modo Comercial IA
-      </h1>
-
-      <p className="mt-2 text-sm text-neutral-600">
-        Você pode enviar imagens ou colar os textos. Se colar texto, o sistema
-        prioriza o texto ao invés do print.
-      </p>
-
-      <form
-        onSubmit={handleSubmit}
-        className="mt-6 grid gap-4 rounded-2xl border bg-white p-4 shadow-sm"
-      >
-        <div className="grid gap-4 md:grid-cols-3">
-          <div>
-            <label className="mb-2 block text-sm font-medium">Nome da loja</label>
-            <input
-              value={lojaNome}
-              onChange={(e) => setLojaNome(e.target.value)}
-              className="w-full rounded-xl border px-3 py-2"
-            />
-          </div>
-
-          <div>
-            <label className="mb-2 block text-sm font-medium">Atendente</label>
-            <input
-              value={atendenteNome}
-              onChange={(e) => setAtendenteNome(e.target.value)}
-              className="w-full rounded-xl border px-3 py-2"
-            />
-          </div>
-
-          <div>
-            <label className="mb-2 block text-sm font-medium">
-              Telefone do cliente
-            </label>
-            <input
-              value={telefoneCliente}
-              onChange={(e) => setTelefoneCliente(e.target.value)}
-              placeholder="5511999999999"
-              className="w-full rounded-xl border px-3 py-2"
-            />
-          </div>
+    <div className="mx-auto max-w-6xl p-6">
+      <div className="mb-6 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h1 className="text-2xl font-bold">Busca de fórmulas</h1>
+          <p className="text-sm text-gray-500">
+            Pesquise uma fórmula pronta e já crie um novo pedido preenchido.
+          </p>
         </div>
 
-        <div className="grid gap-6 md:grid-cols-2">
-          <div className="rounded-2xl border p-4">
-            <h2 className="mb-3 text-lg font-semibold text-emerald-700">
-              Cliente / Receita
-            </h2>
-
-            <label className="mb-2 block text-sm font-medium">
-              Colar conversa ou texto da receita
-            </label>
-            <textarea
-              value={conversaTexto}
-              onChange={(e) => setConversaTexto(e.target.value)}
-              placeholder="Cole aqui a conversa inteira do WhatsApp ou o texto da receita..."
-              className="min-h-[220px] w-full rounded-xl border p-3"
-            />
-
-            <label className="mb-2 mt-4 block text-sm font-medium">
-              Ou enviar print / foto
-            </label>
-            <input
-              type="file"
-              accept="image/*"
-              onChange={(e) => setClienteImage(e.target.files?.[0] || null)}
-              className="w-full rounded-xl border px-3 py-2"
-            />
-
-            <p className="mt-2 text-xs text-neutral-500">
-              Se você colar texto e também enviar imagem, o sistema vai priorizar
-              o texto e usar a imagem como apoio.
-            </p>
-          </div>
-
-          <div className="rounded-2xl border p-4">
-            <h2 className="mb-3 text-lg font-semibold text-emerald-700">
-              Orçamento
-            </h2>
-
-            <label className="mb-2 block text-sm font-medium">
-              Colar orçamento em texto
-            </label>
-            <textarea
-              value={orcamentoTexto}
-              onChange={(e) => setOrcamentoTexto(e.target.value)}
-              placeholder="Cole aqui o orçamento copiado do sistema..."
-              className="min-h-[220px] w-full rounded-xl border p-3"
-            />
-
-            <label className="mb-2 mt-4 block text-sm font-medium">
-              Ou enviar print do orçamento
-            </label>
-            <input
-              type="file"
-              accept="image/*"
-              onChange={(e) => setOrcamentoImage(e.target.files?.[0] || null)}
-              className="w-full rounded-xl border px-3 py-2"
-            />
-
-            <p className="mt-2 text-xs text-neutral-500">
-              Se você colar o orçamento em texto, ele será priorizado sobre a
-              imagem.
-            </p>
-          </div>
-        </div>
-
-        <button
-          type="submit"
-          disabled={loading}
-          className="rounded-2xl bg-emerald-700 px-4 py-3 text-white disabled:opacity-50"
+        <Link
+          href="/manipulados/drogaleste30/admin/manipulados"
+          className="inline-flex items-center justify-center rounded-xl border px-4 py-2"
         >
-          {loading ? "Processando..." : "Gerar resposta automática"}
-        </button>
-      </form>
+          Voltar para manipulados
+        </Link>
+      </div>
 
-      {result && !result.ok && (
-        <div className="mt-6 rounded-2xl border border-red-300 bg-red-50 p-4 text-red-700">
-          {result.error || "Erro ao processar."}
+      <div className="mb-6">
+        <input
+          value={busca}
+          onChange={(e) => setBusca(e.target.value)}
+          placeholder="Buscar por nome, fórmula, apresentação..."
+          className="w-full rounded-2xl border p-4"
+        />
+      </div>
+
+      {loading ? (
+        <div className="rounded-2xl border bg-white p-6">Carregando...</div>
+      ) : formulasFiltradas.length === 0 ? (
+        <div className="rounded-2xl border bg-white p-6 text-center text-gray-500">
+          Nenhuma fórmula encontrada.
         </div>
-      )}
+      ) : (
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {formulasFiltradas.map((item) => (
+            <div
+              key={item.id}
+              className="rounded-2xl border bg-white p-5 shadow-sm"
+            >
+              <div className="mb-3">
+                <h2 className="text-lg font-bold">{item.nome}</h2>
+                <p className="mt-1 text-sm text-gray-700">{item.formula}</p>
+              </div>
 
-      {result?.ok && (
-        <section className="mt-6 grid gap-4">
-          <div className="rounded-2xl border bg-white p-4 shadow-sm">
-            <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-              <h2 className="text-lg font-semibold">Mensagem pronta</h2>
+              <div className="space-y-2 text-sm">
+                <p>
+                  <strong>Apresentação:</strong> {item.apresentacao}
+                </p>
 
-              <div className="flex flex-wrap gap-2">
-                <button
-                  onClick={copiarMensagem}
-                  className="rounded-xl border px-3 py-2 text-sm"
-                  type="button"
+                <p>
+                  <strong>Valor sugerido:</strong>{" "}
+                  {item.valor_sugerido !== null &&
+                  item.valor_sugerido !== undefined
+                    ? brl(Number(item.valor_sugerido))
+                    : "-"}
+                </p>
+
+                <p>
+                  <strong>Descrição:</strong> {item.descricao || "-"}
+                </p>
+              </div>
+
+              <div className="mt-5 flex gap-3">
+                <Link
+                  href={`/manipulados/drogaleste30/admin/manipulados/novo?formula_id=${item.id}`}
+                  className="rounded-xl bg-blue-600 px-4 py-2 text-white"
                 >
-                  {copiado ? "Copiado!" : "Copiar resposta"}
-                </button>
-
-                <button
-                  onClick={enviarWhatsApp}
-                  disabled={sendingWhats}
-                  className="rounded-xl bg-emerald-700 px-3 py-2 text-sm text-white disabled:opacity-50"
-                  type="button"
-                >
-                  {sendingWhats ? "Enviando..." : "Enviar no WhatsApp"}
-                </button>
+                  Criar pedido
+                </Link>
               </div>
             </div>
-
-            <textarea
-              value={result.mensagem || ""}
-              readOnly
-              className="min-h-[320px] w-full rounded-xl border p-3"
-            />
-
-            {statusEnvio ? (
-              <p className="mt-3 text-sm text-neutral-600">{statusEnvio}</p>
-            ) : null}
-          </div>
-
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="rounded-2xl border bg-white p-4 shadow-sm">
-              <h3 className="mb-2 font-semibold text-emerald-700">
-                Extração do cliente
-              </h3>
-              <pre className="overflow-auto text-xs">
-                {JSON.stringify(result.cliente, null, 2)}
-              </pre>
-            </div>
-
-            <div className="rounded-2xl border bg-white p-4 shadow-sm">
-              <h3 className="mb-2 font-semibold text-emerald-700">
-                Extração do orçamento
-              </h3>
-              <pre className="overflow-auto text-xs">
-                {JSON.stringify(result.orcamento, null, 2)}
-              </pre>
-            </div>
-          </div>
-        </section>
+          ))}
+        </div>
       )}
-    </main>
+    </div>
   );
 }
