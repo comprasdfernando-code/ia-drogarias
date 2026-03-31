@@ -110,18 +110,16 @@ export default function NovoManipuladoClient({ formulaId }: Props) {
   }
 
   const podeGerarTextoManipulacao = useMemo(() => {
-    return (
-      req.trim() &&
+    return Boolean(
       clienteNome.trim() &&
-      clienteTelefone.trim() &&
-      formula.trim() &&
-      apresentacao.trim() &&
-      valor.trim() &&
-      solicitadoPor.trim() &&
-      (tipoRecebimento === "retirada" || clienteEndereco.trim())
+        clienteTelefone.trim() &&
+        formula.trim() &&
+        apresentacao.trim() &&
+        valor.trim() &&
+        solicitadoPor.trim() &&
+        (tipoRecebimento === "retirada" || clienteEndereco.trim())
     );
   }, [
-    req,
     clienteNome,
     clienteTelefone,
     formula,
@@ -137,7 +135,7 @@ export default function NovoManipuladoClient({ formulaId }: Props) {
 
     return `CONFIRMAÇÃO DE PEDIDO MANIPULADO
 
-REQ: ${req}
+REQ: ${req || "-"}
 Cliente: ${clienteNome}
 Whats: ${clienteTelefone}
 Forma de recebimento: ${
@@ -403,8 +401,11 @@ Observações: ${observacoes || "-"}`;
             />
           ) : (
             <div className="rounded-xl border bg-white p-3 text-sm text-gray-600">
-              Preencha REQ, cliente, Whats, fórmula, apresentação, valor e quem solicitou.
-              {tipoRecebimento === "entrega" ? " Para entrega, preencha também o endereço." : ""}
+              Preencha cliente, Whats, fórmula, apresentação, valor e quem
+              solicitou.
+              {tipoRecebimento === "entrega"
+                ? " Para entrega, preencha também o endereço."
+                : ""}
             </div>
           )}
         </div>
