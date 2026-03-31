@@ -1,13 +1,14 @@
 import NovoManipuladoClient from "./NovoManipuladoClient";
 
 type PageProps = {
-  searchParams?: {
+  searchParams?: Promise<{
     formula_id?: string;
-  };
+  }>;
 };
 
-export default function Page({ searchParams }: PageProps) {
-  return (
-    <NovoManipuladoClient formulaId={searchParams?.formula_id || ""} />
-  );
+export default async function Page({ searchParams }: PageProps) {
+  const params = (await searchParams) || {};
+  const formulaId = params.formula_id || "";
+
+  return <NovoManipuladoClient formulaId={formulaId} />;
 }

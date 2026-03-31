@@ -25,6 +25,12 @@ type Props = {
   formulaId: string;
 };
 
+function formatBrlInput(v: string) {
+  const n = Number(v || 0);
+  if (!Number.isFinite(n)) return "";
+  return n.toFixed(2);
+}
+
 export default function NovoManipuladoClient({ formulaId }: Props) {
   const [req, setReq] = useState("");
   const [clienteNome, setClienteNome] = useState("");
@@ -76,6 +82,7 @@ export default function NovoManipuladoClient({ formulaId }: Props) {
         }
       } catch (err) {
         console.error("Erro ao carregar fórmula padrão:", err);
+        alert("Não foi possível carregar a fórmula selecionada.");
       } finally {
         setLoadingFormula(false);
       }
@@ -102,25 +109,51 @@ export default function NovoManipuladoClient({ formulaId }: Props) {
     return data.path;
   }
 
+  const podeGerarTextoManipulacao = useMemo(() => {
+    return (
+      req.trim() &&
+      clienteNome.trim() &&
+      clienteTelefone.trim() &&
+      formula.trim() &&
+      apresentacao.trim() &&
+      valor.trim() &&
+      solicitadoPor.trim() &&
+      (tipoRecebimento === "retirada" || clienteEndereco.trim())
+    );
+  }, [
+    req,
+    clienteNome,
+    clienteTelefone,
+    formula,
+    apresentacao,
+    valor,
+    solicitadoPor,
+    tipoRecebimento,
+    clienteEndereco,
+  ]);
+
   const textoManipulacao = useMemo(() => {
+    if (!podeGerarTextoManipulacao) return "";
+
     return `CONFIRMAÇÃO DE PEDIDO MANIPULADO
 
-REQ: ${req || "-"}
-Cliente: ${clienteNome || "-"}
-Whats: ${clienteTelefone || "-"}
+REQ: ${req}
+Cliente: ${clienteNome}
+Whats: ${clienteTelefone}
 Forma de recebimento: ${
       tipoRecebimento === "entrega" ? "Entrega" : "Retirada na loja"
     }
 Endereço: ${clienteEndereco || "-"}
 
-Fórmula: ${formula || "-"}
-Apresentação: ${apresentacao || "-"}
-Valor: ${valor ? `R$ ${Number(valor).toFixed(2)}` : "-"}
+Fórmula: ${formula}
+Apresentação: ${apresentacao}
+Valor: R$ ${formatBrlInput(valor)}
 
 Loja: ${LOJA}
-Solicitado por: ${solicitadoPor || "-"}
+Solicitado por: ${solicitadoPor}
 Observações: ${observacoes || "-"}`;
   }, [
+    podeGerarTextoManipulacao,
     req,
     clienteNome,
     clienteTelefone,
@@ -134,6 +167,11 @@ Observações: ${observacoes || "-"}`;
   ]);
 
   async function copiarTextoManipulacao() {
+    if (!textoManipulacao) {
+      alert("Preencha os dados obrigatórios antes de copiar a confirmação.");
+      return;
+    }
+
     try {
       setCopiando(true);
       await navigator.clipboard.writeText(textoManipulacao);
@@ -344,24 +382,31 @@ Observações: ${observacoes || "-"}`;
         <div className="rounded-2xl border bg-slate-50 p-4">
           <div className="mb-2 flex items-center justify-between gap-3">
             <h2 className="text-sm font-semibold">
-              Texto pronto para confirmação da manipulação
+              Confirmação para a manipulação
             </h2>
 
             <button
               type="button"
               onClick={copiarTextoManipulacao}
-              disabled={copiando}
+              disabled={!podeGerarTextoManipulacao || copiando}
               className="rounded-xl bg-emerald-700 px-4 py-2 text-white disabled:opacity-50"
             >
               {copiando ? "Copiando..." : "Copiar texto"}
             </button>
           </div>
 
-          <textarea
-            readOnly
-            value={textoManipulacao}
-            className="min-h-[220px] w-full rounded-xl border bg-white p-3 text-sm"
-          />
+          {podeGerarTextoManipulacao ? (
+            <textarea
+              readOnly
+              value={textoManipulacao}
+              className="min-h-[220px] w-full rounded-xl border bg-white p-3 text-sm"
+            />
+          ) : (
+            <div className="rounded-xl border bg-white p-3 text-sm text-gray-600">
+              Preencha REQ, cliente, Whats, fórmula, apresentação, valor e quem solicitou.
+              {tipoRecebimento === "entrega" ? " Para entrega, preencha também o endereço." : ""}
+            </div>
+          )}
         </div>
 
         <div>

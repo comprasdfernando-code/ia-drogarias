@@ -135,11 +135,11 @@ export default function FormulasPage() {
 
               <div className="mt-5 flex gap-3">
                 <Link
-                  href={`/manipulados/drogaleste30/admin/manipulados/novo?formula_id=${item.id}`}
-                  className="rounded-xl bg-blue-600 px-4 py-2 text-white"
-                >
-                  Criar pedido
-                </Link>
+  href={`/manipulados/drogaleste30/admin/manipulados/novo?formula_id=${item.id}`}
+  className="rounded-xl bg-blue-600 px-4 py-2 text-white"
+>
+  Criar pedido
+</Link>
               </div>
             </div>
           ))}
