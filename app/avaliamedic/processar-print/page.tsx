@@ -33,6 +33,13 @@ export default function ProcessarPrintPage() {
   const [respostaContinuacao, setRespostaContinuacao] = useState("");
   const [copiadoContinuacao, setCopiadoContinuacao] = useState(false);
   const [statusEnvioContinuacao, setStatusEnvioContinuacao] = useState("");
+    const [itemAdicionalNome, setItemAdicionalNome] = useState("");
+  const [itemAdicionalValor, setItemAdicionalValor] = useState("");
+  const [itemAdicionalQuantidade, setItemAdicionalQuantidade] = useState("1");
+  const [respostaContinuacaoComItem, setRespostaContinuacaoComItem] = useState("");
+  const [copiadoContinuacaoComItem, setCopiadoContinuacaoComItem] = useState(false);
+  const [statusEnvioContinuacaoComItem, setStatusEnvioContinuacaoComItem] = useState("");
+  const [loadingContinuacaoComItem, setLoadingContinuacaoComItem] = useState(false);
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -205,6 +212,111 @@ export default function ProcessarPrintPage() {
       setLoadingContinuacao(false);
     }
   }
+    async function copiarContinuacaoComItem() {
+    if (!respostaContinuacaoComItem) return;
+    await navigator.clipboard.writeText(respostaContinuacaoComItem);
+    setCopiadoContinuacaoComItem(true);
+    setTimeout(() => setCopiadoContinuacaoComItem(false), 1800);
+  }
+
+  async function enviarContinuacaoComItemWhatsApp() {
+    if (!respostaContinuacaoComItem || !telefoneCliente.trim()) {
+      setStatusEnvioContinuacaoComItem("Informe o telefone do cliente.");
+      return;
+    }
+
+    setSendingWhats(true);
+    setStatusEnvioContinuacaoComItem("");
+
+    try {
+      const res = await fetch("/avaliamedic/api/send-whatsapp", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          to: telefoneCliente,
+          message: respostaContinuacaoComItem,
+        }),
+      });
+
+      const json = await res.json();
+
+      if (!res.ok || !json.ok) {
+        throw new Error(json.error || "Falha ao enviar continuação com item.");
+      }
+
+      setStatusEnvioContinuacaoComItem("Continuação com item enviada com sucesso.");
+    } catch (error: any) {
+      setStatusEnvioContinuacaoComItem(
+        error?.message || "Erro ao enviar continuação com item."
+      );
+    } finally {
+      setSendingWhats(false);
+    }
+  }
+
+  async function gerarContinuacaoComItem() {
+    if (!result?.mensagem || !result?.cliente || !result?.orcamento) {
+      setStatusEnvioContinuacaoComItem("Gere primeiro a resposta principal.");
+      return;
+    }
+
+    if (!novaMensagemCliente.trim()) {
+      setStatusEnvioContinuacaoComItem("Cole a nova mensagem do cliente.");
+      return;
+    }
+
+    if (!itemAdicionalNome.trim()) {
+      setStatusEnvioContinuacaoComItem("Informe o nome do item adicional.");
+      return;
+    }
+
+    const valor = Number(String(itemAdicionalValor).replace(",", "."));
+    if (!Number.isFinite(valor) || valor <= 0) {
+      setStatusEnvioContinuacaoComItem("Informe um valor válido para o item adicional.");
+      return;
+    }
+
+    setLoadingContinuacaoComItem(true);
+    setRespostaContinuacaoComItem("");
+    setStatusEnvioContinuacaoComItem("");
+    setCopiadoContinuacaoComItem(false);
+
+    try {
+      const res = await fetch("/avaliamedic/api/processar-print/continuar-com-item", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          lojaNome,
+          atendenteNome,
+          cliente: result.cliente,
+          orcamento: result.orcamento,
+          mensagemAnterior: result.mensagem,
+          novaMensagemCliente,
+          itemAdicionalNome,
+          itemAdicionalValor: valor,
+          itemAdicionalQuantidade: Number(itemAdicionalQuantidade || 1),
+        }),
+      });
+
+      const json = await res.json();
+
+      if (!res.ok || !json.ok) {
+        throw new Error(json.error || "Erro ao gerar continuação com item.");
+      }
+
+      setRespostaContinuacaoComItem(json.mensagem || "");
+    } catch (error: any) {
+      setStatusEnvioContinuacaoComItem(
+        error?.message || "Erro ao gerar continuação com item."
+      );
+    } finally {
+      setLoadingContinuacaoComItem(false);
+    }
+  }
 
   return (
     <main className="mx-auto max-w-7xl p-6">
@@ -363,6 +475,96 @@ export default function ProcessarPrintPage() {
             <h2 className="mb-3 text-lg font-semibold text-emerald-700">
               Modo Conversa
             </h2>
+                      <div className="rounded-2xl border bg-white p-4 shadow-sm">
+            <h2 className="mb-3 text-lg font-semibold text-emerald-700">
+              Modo Conversa 2.0 — Adicionar item
+            </h2>
+
+            <p className="mb-4 text-sm text-neutral-600">
+              Use quando o cliente pedir mais um item no meio da conversa e você já souber o valor.
+            </p>
+
+            <div className="grid gap-4 md:grid-cols-3">
+              <div>
+                <label className="mb-2 block text-sm font-medium">
+                  Item adicional
+                </label>
+                <input
+                  value={itemAdicionalNome}
+                  onChange={(e) => setItemAdicionalNome(e.target.value)}
+                  placeholder="Ex.: Dipirona gotas"
+                  className="w-full rounded-xl border px-3 py-2"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-medium">
+                  Valor do item
+                </label>
+                <input
+                  value={itemAdicionalValor}
+                  onChange={(e) => setItemAdicionalValor(e.target.value)}
+                  placeholder="Ex.: 12,90"
+                  className="w-full rounded-xl border px-3 py-2"
+                />
+              </div>
+
+              <div>
+                <label className="mb-2 block text-sm font-medium">
+                  Quantidade
+                </label>
+                <input
+                  value={itemAdicionalQuantidade}
+                  onChange={(e) => setItemAdicionalQuantidade(e.target.value)}
+                  placeholder="1"
+                  className="w-full rounded-xl border px-3 py-2"
+                />
+              </div>
+            </div>
+
+            <div className="mt-4 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={gerarContinuacaoComItem}
+                disabled={loadingContinuacaoComItem}
+                className="rounded-xl bg-emerald-700 px-4 py-2 text-sm text-white disabled:opacity-50"
+              >
+                {loadingContinuacaoComItem
+                  ? "Gerando continuação com item..."
+                  : "Gerar continuação com novo total"}
+              </button>
+
+              <button
+                type="button"
+                onClick={copiarContinuacaoComItem}
+                className="rounded-xl border px-4 py-2 text-sm"
+              >
+                {copiadoContinuacaoComItem ? "Copiado!" : "Copiar continuação 2.0"}
+              </button>
+
+              <button
+                type="button"
+                onClick={enviarContinuacaoComItemWhatsApp}
+                disabled={sendingWhats || !respostaContinuacaoComItem}
+                className="rounded-xl bg-emerald-700 px-4 py-2 text-sm text-white disabled:opacity-50"
+              >
+                {sendingWhats ? "Enviando..." : "Enviar continuação 2.0"}
+              </button>
+            </div>
+
+            <textarea
+              value={respostaContinuacaoComItem}
+              readOnly
+              className="mt-4 min-h-[240px] w-full rounded-xl border p-3"
+              placeholder="A continuação com item adicional e total atualizado vai aparecer aqui..."
+            />
+
+            {statusEnvioContinuacaoComItem ? (
+              <p className="mt-3 text-sm text-neutral-600">
+                {statusEnvioContinuacaoComItem}
+              </p>
+            ) : null}
+          </div>
 
             <label className="mb-2 block text-sm font-medium">
               Nova mensagem do cliente

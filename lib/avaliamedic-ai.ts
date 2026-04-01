@@ -486,3 +486,108 @@ export async function gerarRespostaContinuacaoWhatsApp(
 
   return response.output_text.trim();
 }
+export type RespostaContinuacaoComItemInput = {
+  lojaNome: string;
+  atendenteNome: string;
+  cliente: ClienteExtraido;
+  orcamento: OrcamentoExtraido;
+  mensagemAnterior: string;
+  novaMensagemCliente: string;
+  itemAdicionalNome: string;
+  itemAdicionalValor: number;
+  itemAdicionalQuantidade?: number;
+};
+
+export async function gerarRespostaContinuacaoComItemWhatsApp(
+  inputData: RespostaContinuacaoComItemInput
+): Promise<string> {
+  const {
+    lojaNome,
+    atendenteNome,
+    cliente,
+    orcamento,
+    mensagemAnterior,
+    novaMensagemCliente,
+    itemAdicionalNome,
+    itemAdicionalValor,
+    itemAdicionalQuantidade = 1,
+  } = inputData;
+
+  const totalBase =
+    orcamento.total_liquido && orcamento.total_liquido > 0
+      ? orcamento.total_liquido
+      : orcamento.total;
+
+  const valorItemTotal = Number(itemAdicionalValor || 0) * Number(itemAdicionalQuantidade || 1);
+  const novoTotal = Number((totalBase + valorItemTotal).toFixed(2));
+
+  const itensAtuais = orcamento.itens
+    .map((item) => {
+      const nome = item.nome?.trim() || item.descricao?.trim() || "Item";
+      const valor =
+        item.total_item && item.total_item > 0
+          ? item.total_item
+          : item.preco_liquido;
+
+      return `• ${nome} — ${formatCurrency(valor)}`;
+    })
+    .join("\n");
+
+  const itemNovoLinha =
+    itemAdicionalQuantidade > 1
+      ? `• ${itemAdicionalNome} (${itemAdicionalQuantidade}x) — ${formatCurrency(valorItemTotal)}`
+      : `• ${itemAdicionalNome} — ${formatCurrency(valorItemTotal)}`;
+
+  const response = await openai.responses.create({
+    model: "gpt-5.4",
+    input: [
+      {
+        role: "system",
+        content: [
+          {
+            type: "input_text",
+            text:
+              "Você continua atendimentos de farmácia no WhatsApp. " +
+              "Tom humano, profissional, claro e vendedor sem exagero. " +
+              "Nunca faça promessa médica. " +
+              "Retorne apenas a mensagem final pronta para enviar. " +
+              "Quando houver item adicional confirmado, gere resposta com orçamento atualizado e total novo.",
+          },
+        ],
+      },
+      {
+        role: "user",
+        content: [
+          {
+            type: "input_text",
+            text:
+              `Continue este atendimento com atualização de orçamento.\n\n` +
+              `Loja: ${lojaNome}\n` +
+              `Atendente: ${atendenteNome}\n` +
+              `Cliente extraído:\n${JSON.stringify(cliente, null, 2)}\n\n` +
+              `Mensagem anterior enviada:\n${mensagemAnterior}\n\n` +
+              `Nova mensagem do cliente:\n${novaMensagemCliente}\n\n` +
+              `Itens atuais do orçamento:\n${itensAtuais || "Nenhum item"}\n\n` +
+              `Total atual: ${formatCurrency(totalBase)}\n` +
+              `Item adicional confirmado: ${itemAdicionalNome}\n` +
+              `Quantidade adicional: ${itemAdicionalQuantidade}\n` +
+              `Valor do item adicional: ${formatCurrency(itemAdicionalValor)}\n` +
+              `Valor total do item adicional: ${formatCurrency(valorItemTotal)}\n` +
+              `Novo total final: ${formatCurrency(novoTotal)}\n\n` +
+              `Regras:\n` +
+              `- Responda como continuação natural da conversa.\n` +
+              `- Confirme que esse item também tem disponível.\n` +
+              `- Mostre o orçamento atualizado completo.\n` +
+              `- Liste os itens anteriores e o item adicional.\n` +
+              `- Mostre o total atualizado.\n` +
+              `- Termine oferecendo separar para retirada ou envio por delivery.\n` +
+              `- Retorne somente a mensagem pronta.\n\n` +
+              `Linha do item novo:\n${itemNovoLinha}`,
+          },
+        ],
+      },
+    ] as any,
+  });
+
+  return response.output_text.trim();
+}
