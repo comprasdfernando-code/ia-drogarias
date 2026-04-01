@@ -23,9 +23,16 @@ export default function ProcessarPrintPage() {
 
   const [loading, setLoading] = useState(false);
   const [sendingWhats, setSendingWhats] = useState(false);
+  const [loadingContinuacao, setLoadingContinuacao] = useState(false);
+
   const [result, setResult] = useState<ApiResponse | null>(null);
   const [copiado, setCopiado] = useState(false);
   const [statusEnvio, setStatusEnvio] = useState("");
+
+  const [novaMensagemCliente, setNovaMensagemCliente] = useState("");
+  const [respostaContinuacao, setRespostaContinuacao] = useState("");
+  const [copiadoContinuacao, setCopiadoContinuacao] = useState(false);
+  const [statusEnvioContinuacao, setStatusEnvioContinuacao] = useState("");
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -33,6 +40,9 @@ export default function ProcessarPrintPage() {
     setResult(null);
     setStatusEnvio("");
     setCopiado(false);
+    setRespostaContinuacao("");
+    setStatusEnvioContinuacao("");
+    setCopiadoContinuacao(false);
 
     try {
       const fd = new FormData();
@@ -69,6 +79,13 @@ export default function ProcessarPrintPage() {
     setTimeout(() => setCopiado(false), 1800);
   }
 
+  async function copiarContinuacao() {
+    if (!respostaContinuacao) return;
+    await navigator.clipboard.writeText(respostaContinuacao);
+    setCopiadoContinuacao(true);
+    setTimeout(() => setCopiadoContinuacao(false), 1800);
+  }
+
   async function enviarWhatsApp() {
     if (!result?.mensagem || !telefoneCliente.trim()) {
       setStatusEnvio("Informe o telefone do cliente.");
@@ -101,6 +118,91 @@ export default function ProcessarPrintPage() {
       setStatusEnvio(error?.message || "Erro ao enviar mensagem.");
     } finally {
       setSendingWhats(false);
+    }
+  }
+
+  async function enviarContinuacaoWhatsApp() {
+    if (!respostaContinuacao || !telefoneCliente.trim()) {
+      setStatusEnvioContinuacao("Informe o telefone do cliente.");
+      return;
+    }
+
+    setSendingWhats(true);
+    setStatusEnvioContinuacao("");
+
+    try {
+      const res = await fetch("/avaliamedic/api/send-whatsapp", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          to: telefoneCliente,
+          message: respostaContinuacao,
+        }),
+      });
+
+      const json = await res.json();
+
+      if (!res.ok || !json.ok) {
+        throw new Error(json.error || "Falha ao enviar no WhatsApp.");
+      }
+
+      setStatusEnvioContinuacao("Continuação enviada com sucesso.");
+    } catch (error: any) {
+      setStatusEnvioContinuacao(
+        error?.message || "Erro ao enviar continuação."
+      );
+    } finally {
+      setSendingWhats(false);
+    }
+  }
+
+  async function gerarContinuacao() {
+    if (!result?.mensagem || !result?.cliente || !result?.orcamento) {
+      setStatusEnvioContinuacao("Gere primeiro a resposta principal.");
+      return;
+    }
+
+    if (!novaMensagemCliente.trim()) {
+      setStatusEnvioContinuacao("Cole a nova mensagem do cliente.");
+      return;
+    }
+
+    setLoadingContinuacao(true);
+    setRespostaContinuacao("");
+    setStatusEnvioContinuacao("");
+    setCopiadoContinuacao(false);
+
+    try {
+      const res = await fetch("/avaliamedic/api/processar-print/continuar", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          lojaNome,
+          atendenteNome,
+          cliente: result.cliente,
+          orcamento: result.orcamento,
+          mensagemAnterior: result.mensagem,
+          novaMensagemCliente,
+        }),
+      });
+
+      const json = await res.json();
+
+      if (!res.ok || !json.ok) {
+        throw new Error(json.error || "Erro ao gerar continuação.");
+      }
+
+      setRespostaContinuacao(json.mensagem || "");
+    } catch (error: any) {
+      setStatusEnvioContinuacao(
+        error?.message || "Erro ao gerar continuação."
+      );
+    } finally {
+      setLoadingContinuacao(false);
     }
   }
 
@@ -176,11 +278,6 @@ export default function ProcessarPrintPage() {
               onChange={(e) => setClienteImage(e.target.files?.[0] || null)}
               className="w-full rounded-xl border px-3 py-2"
             />
-
-            <p className="mt-2 text-xs text-neutral-500">
-              Se você colar texto e também enviar imagem, o sistema vai priorizar
-              o texto e usar a imagem como apoio.
-            </p>
           </div>
 
           <div className="rounded-2xl border p-4">
@@ -207,11 +304,6 @@ export default function ProcessarPrintPage() {
               onChange={(e) => setOrcamentoImage(e.target.files?.[0] || null)}
               className="w-full rounded-xl border px-3 py-2"
             />
-
-            <p className="mt-2 text-xs text-neutral-500">
-              Se você colar o orçamento em texto, ele será priorizado sobre a
-              imagem.
-            </p>
           </div>
         </div>
 
@@ -264,6 +356,65 @@ export default function ProcessarPrintPage() {
 
             {statusEnvio ? (
               <p className="mt-3 text-sm text-neutral-600">{statusEnvio}</p>
+            ) : null}
+          </div>
+
+          <div className="rounded-2xl border bg-white p-4 shadow-sm">
+            <h2 className="mb-3 text-lg font-semibold text-emerald-700">
+              Modo Conversa
+            </h2>
+
+            <label className="mb-2 block text-sm font-medium">
+              Nova mensagem do cliente
+            </label>
+            <textarea
+              value={novaMensagemCliente}
+              onChange={(e) => setNovaMensagemCliente(e.target.value)}
+              placeholder='Ex.: "Tem mais barato?", "Tem entrega?", "Precisa mesmo desse?", "Posso retirar mais tarde?"'
+              className="min-h-[140px] w-full rounded-xl border p-3"
+            />
+
+            <div className="mt-3 flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={gerarContinuacao}
+                disabled={loadingContinuacao}
+                className="rounded-xl bg-emerald-700 px-4 py-2 text-sm text-white disabled:opacity-50"
+              >
+                {loadingContinuacao
+                  ? "Gerando continuação..."
+                  : "Gerar resposta da continuação"}
+              </button>
+
+              <button
+                type="button"
+                onClick={copiarContinuacao}
+                className="rounded-xl border px-4 py-2 text-sm"
+              >
+                {copiadoContinuacao ? "Copiado!" : "Copiar continuação"}
+              </button>
+
+              <button
+                type="button"
+                onClick={enviarContinuacaoWhatsApp}
+                disabled={sendingWhats || !respostaContinuacao}
+                className="rounded-xl bg-emerald-700 px-4 py-2 text-sm text-white disabled:opacity-50"
+              >
+                {sendingWhats ? "Enviando..." : "Enviar continuação"}
+              </button>
+            </div>
+
+            <textarea
+              value={respostaContinuacao}
+              readOnly
+              className="mt-4 min-h-[220px] w-full rounded-xl border p-3"
+              placeholder="A continuação da conversa vai aparecer aqui..."
+            />
+
+            {statusEnvioContinuacao ? (
+              <p className="mt-3 text-sm text-neutral-600">
+                {statusEnvioContinuacao}
+              </p>
             ) : null}
           </div>
 
