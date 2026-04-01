@@ -396,3 +396,93 @@ export async function gerarRespostaWhatsApp(
 
   return response.output_text.trim();
 }
+export type RespostaContinuacaoInput = {
+  lojaNome: string;
+  atendenteNome: string;
+  cliente: ClienteExtraido;
+  orcamento: OrcamentoExtraido;
+  mensagemAnterior: string;
+  novaMensagemCliente: string;
+};
+
+export async function gerarRespostaContinuacaoWhatsApp(
+  inputData: RespostaContinuacaoInput
+): Promise<string> {
+  const {
+    lojaNome,
+    atendenteNome,
+    cliente,
+    orcamento,
+    mensagemAnterior,
+    novaMensagemCliente,
+  } = inputData;
+
+  const totalFinal =
+    orcamento.total_liquido && orcamento.total_liquido > 0
+      ? orcamento.total_liquido
+      : orcamento.total;
+
+  const itensResumo = orcamento.itens
+    .map((item) => {
+      const nome = item.nome?.trim() || item.descricao?.trim() || "Item";
+      const valor =
+        item.total_item && item.total_item > 0
+          ? item.total_item
+          : item.preco_liquido;
+
+      return `- ${nome}: ${formatCurrency(valor)}`;
+    })
+    .join("\n");
+
+  const response = await openai.responses.create({
+    model: "gpt-5.4",
+    input: [
+      {
+        role: "system",
+        content: [
+          {
+            type: "input_text",
+            text:
+              "Você continua atendimentos de farmácia no WhatsApp. " +
+              "Tom humano, profissional, claro e vendedor sem exagero. " +
+              "Nunca faça promessa médica. " +
+              "Nunca afirme conduta clínica definitiva. " +
+              "Se houver dúvida sobre uso, necessidade, troca, genérico ou preço, responda com cautela e linguagem simples. " +
+              "O objetivo é responder a dúvida e manter a conversa evoluindo para fechamento quando fizer sentido. " +
+              "Evite textos longos. " +
+              "Retorne apenas a mensagem final pronta para enviar no WhatsApp.",
+          },
+        ],
+      },
+      {
+        role: "user",
+        content: [
+          {
+            type: "input_text",
+            text:
+              `Continue este atendimento.\n\n` +
+              `Loja: ${lojaNome}\n` +
+              `Atendente: ${atendenteNome}\n` +
+              `Cliente extraído:\n${JSON.stringify(cliente, null, 2)}\n\n` +
+              `Orçamento atual:\n${JSON.stringify(orcamento, null, 2)}\n\n` +
+              `Itens resumidos:\n${itensResumo || "Nenhum item"}\n` +
+              `Total final: ${formatCurrency(totalFinal || 0)}\n\n` +
+              `Mensagem anterior enviada ao cliente:\n${mensagemAnterior}\n\n` +
+              `Nova mensagem do cliente:\n${novaMensagemCliente}\n\n` +
+              `Regras:\n` +
+              `- Responda especificamente a nova dúvida do cliente.\n` +
+              `- Se a dúvida for sobre preço, confirme o valor de forma objetiva.\n` +
+              `- Se a dúvida for sobre opção mais barata, diga que pode verificar alternativa/genérico, sem inventar item que não foi confirmado.\n` +
+              `- Se a dúvida for sobre entrega, responda de forma comercial e puxe para fechamento.\n` +
+              `- Se a dúvida for sobre necessidade de medicamento, responda com cautela e sem substituir orientação profissional.\n` +
+              `- Sempre que fizer sentido, finalize com uma chamada leve para ação, como separar, reservar ou enviar por delivery.\n` +
+              `- Não repita toda a mensagem anterior; apenas continue a conversa.\n` +
+              `- Retorne somente a mensagem pronta.\n`,
+          },
+        ],
+      },
+    ] as any,
+  });
+
+  return response.output_text.trim();
+}
