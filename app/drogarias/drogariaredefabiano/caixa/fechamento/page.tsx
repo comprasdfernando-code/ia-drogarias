@@ -595,6 +595,52 @@ export default function CaixaFechamentoPage() {
     };
   }, [diasFiltrados]);
 
+  const resumoSaidasDestino = useMemo(() => {
+    const saidas = movimentacoesFiltradas.filter((m) => m.tipo === "Saída");
+
+    const saidaDinheiro = saidas
+      .filter((m) => (m.destino_financeiro || "") === "CAIXA_DINHEIRO")
+      .reduce((t, m) => t + Number(m.valor || 0), 0);
+
+    const saidaBradesco = saidas
+      .filter((m) => (m.destino_financeiro || "") === "CONTA_BRADESCO")
+      .reduce((t, m) => t + Number(m.valor || 0), 0);
+
+    const porTipo = {
+      sangriasDinheiro: saidas
+        .filter((m) => (m.destino_financeiro || "") === "CAIXA_DINHEIRO" && (m.descricao || "").toLowerCase().includes("sangria"))
+        .reduce((t, m) => t + Number(m.valor || 0), 0),
+      despesasDinheiro: saidas
+        .filter((m) => (m.destino_financeiro || "") === "CAIXA_DINHEIRO" && (m.descricao || "").toLowerCase().includes("desp"))
+        .reduce((t, m) => t + Number(m.valor || 0), 0),
+      boletosDinheiro: saidas
+        .filter((m) => (m.destino_financeiro || "") === "CAIXA_DINHEIRO" && (m.descricao || "").toLowerCase().includes("boleto"))
+        .reduce((t, m) => t + Number(m.valor || 0), 0),
+      comprasDinheiro: saidas
+        .filter((m) => (m.destino_financeiro || "") === "CAIXA_DINHEIRO" && (m.descricao || "").toLowerCase().includes("compra"))
+        .reduce((t, m) => t + Number(m.valor || 0), 0),
+      sangriasBradesco: saidas
+        .filter((m) => (m.destino_financeiro || "") === "CONTA_BRADESCO" && (m.descricao || "").toLowerCase().includes("sangria"))
+        .reduce((t, m) => t + Number(m.valor || 0), 0),
+      despesasBradesco: saidas
+        .filter((m) => (m.destino_financeiro || "") === "CONTA_BRADESCO" && (m.descricao || "").toLowerCase().includes("desp"))
+        .reduce((t, m) => t + Number(m.valor || 0), 0),
+      boletosBradesco: saidas
+        .filter((m) => (m.destino_financeiro || "") === "CONTA_BRADESCO" && (m.descricao || "").toLowerCase().includes("boleto"))
+        .reduce((t, m) => t + Number(m.valor || 0), 0),
+      comprasBradesco: saidas
+        .filter((m) => (m.destino_financeiro || "") === "CONTA_BRADESCO" && (m.descricao || "").toLowerCase().includes("compra"))
+        .reduce((t, m) => t + Number(m.valor || 0), 0),
+    };
+
+    return {
+      totalSaidas: saidas.reduce((t, m) => t + Number(m.valor || 0), 0),
+      saidaDinheiro,
+      saidaBradesco,
+      ...porTipo,
+    };
+  }, [movimentacoesFiltradas]);
+
   function exportarFechamentosCSV() {
     const linhas = [
       [
@@ -824,6 +870,64 @@ export default function CaixaFechamentoPage() {
           <CardResumo titulo="Venda Fiado" valor={resumoGeral.vendaFiado} cor="orange" />
           <CardResumo titulo="Saldo Final" valor={resumoGeral.saldo} cor={resumoGeral.saldo >= 0 ? "blue" : "red"} />
           <CardResumo titulo="Fechamentos" valor={diasFiltrados.length} subtitulo="Quantidade listada" />
+        </div>
+
+        <div className="bg-white rounded-xl shadow p-4 mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-bold text-lg text-blue-700">🏦 Relatório de Saídas por Origem do Dinheiro</h2>
+            <span className="text-xs text-gray-500">Todos os caixas somados no filtro atual</span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+            <CardResumo titulo="Saídas Totais" valor={resumoSaidasDestino.totalSaidas} cor="red" />
+            <CardResumo titulo="Subtraído do Caixa Dinheiro" valor={resumoSaidasDestino.saidaDinheiro} cor="red" />
+            <CardResumo titulo="Subtraído da Conta Bradesco" valor={resumoSaidasDestino.saidaBradesco} cor="red" />
+          </div>
+
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm border mb-2">
+              <thead className="bg-slate-100 text-slate-700">
+                <tr>
+                  <th className="p-2 border text-left">Tipo de saída</th>
+                  <th className="p-2 border text-right">Caixa Dinheiro</th>
+                  <th className="p-2 border text-right">Conta Bradesco</th>
+                  <th className="p-2 border text-right">Total</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td className="p-2 border">Sangrias</td>
+                  <td className="p-2 border text-right">R$ {fmt(resumoSaidasDestino.sangriasDinheiro)}</td>
+                  <td className="p-2 border text-right">R$ {fmt(resumoSaidasDestino.sangriasBradesco)}</td>
+                  <td className="p-2 border text-right font-semibold">R$ {fmt(resumoSaidasDestino.sangriasDinheiro + resumoSaidasDestino.sangriasBradesco)}</td>
+                </tr>
+                <tr>
+                  <td className="p-2 border">Despesas</td>
+                  <td className="p-2 border text-right">R$ {fmt(resumoSaidasDestino.despesasDinheiro)}</td>
+                  <td className="p-2 border text-right">R$ {fmt(resumoSaidasDestino.despesasBradesco)}</td>
+                  <td className="p-2 border text-right font-semibold">R$ {fmt(resumoSaidasDestino.despesasDinheiro + resumoSaidasDestino.despesasBradesco)}</td>
+                </tr>
+                <tr>
+                  <td className="p-2 border">Boletos</td>
+                  <td className="p-2 border text-right">R$ {fmt(resumoSaidasDestino.boletosDinheiro)}</td>
+                  <td className="p-2 border text-right">R$ {fmt(resumoSaidasDestino.boletosBradesco)}</td>
+                  <td className="p-2 border text-right font-semibold">R$ {fmt(resumoSaidasDestino.boletosDinheiro + resumoSaidasDestino.boletosBradesco)}</td>
+                </tr>
+                <tr>
+                  <td className="p-2 border">Compras</td>
+                  <td className="p-2 border text-right">R$ {fmt(resumoSaidasDestino.comprasDinheiro)}</td>
+                  <td className="p-2 border text-right">R$ {fmt(resumoSaidasDestino.comprasBradesco)}</td>
+                  <td className="p-2 border text-right font-semibold">R$ {fmt(resumoSaidasDestino.comprasDinheiro + resumoSaidasDestino.comprasBradesco)}</td>
+                </tr>
+                <tr className="bg-slate-50 font-semibold">
+                  <td className="p-2 border">Total Geral</td>
+                  <td className="p-2 border text-right">R$ {fmt(resumoSaidasDestino.saidaDinheiro)}</td>
+                  <td className="p-2 border text-right">R$ {fmt(resumoSaidasDestino.saidaBradesco)}</td>
+                  <td className="p-2 border text-right">R$ {fmt(resumoSaidasDestino.totalSaidas)}</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
         </div>
 
         <div className="bg-white rounded-xl shadow p-4 mb-6">
