@@ -247,81 +247,62 @@ export default function CaixaFechamentoPage() {
   }, [movimentacoes, tipoMov, formaMov, destinoMov, busca, diaSelecionado]);
 
   const resumoPorDia = useMemo(() => {
-    const mapa = new Map<
-      string,
-      {
-        dia: string;
-        fechamento: Fechamento;
-        entradasFechamento: number;
-        saidasFechamento: number;
-        saldoFechamento: number;
-        movs: Movimentacao[];
-        dinheiroMov: number;
-        cartaoMov: number;
-        pixMov: number;
-        entradasMov: number;
-        saidasMov: number;
-      }
-    >();
+    return fechamentos
+      .map((f) => {
+        const dia = getFechamentoDiaKey(f.data);
+        const movsDoDia = movimentacoes.filter((m) => getFechamentoDiaKey(m.data) === dia);
 
-    for (const f of fechamentos) {
-      const dia = getFechamentoDiaKey(f.data);
-      if (!dia) continue;
+        const dinheiroMov = movsDoDia
+          .filter((m) => (m.forma_pagamento || "").toLowerCase().includes("dinheiro"))
+          .reduce((t, m) => t + Number(m.valor || 0), 0);
 
-      mapa.set(dia, {
-        dia,
-        fechamento: f,
-        entradasFechamento: calcEntradas(f),
-        saidasFechamento: calcSaidas(f),
-        saldoFechamento: calcSaldo(f),
-        movs: [],
-        dinheiroMov: 0,
-        cartaoMov: 0,
-        pixMov: 0,
-        entradasMov: 0,
-        saidasMov: 0,
-      });
-    }
+        const cartaoMov = movsDoDia
+          .filter((m) => {
+            const forma = (m.forma_pagamento || "").toLowerCase();
+            return forma.includes("cart") || forma.includes("cartão");
+          })
+          .reduce((t, m) => t + Number(m.valor || 0), 0);
 
-    for (const m of movimentacoes) {
-      const dia = getFechamentoDiaKey(m.data);
-      const item = mapa.get(dia);
-      if (!item) continue;
+        const pixMov = movsDoDia
+          .filter((m) => (m.forma_pagamento || "").toLowerCase().includes("pix"))
+          .reduce((t, m) => t + Number(m.valor || 0), 0);
 
-      item.movs.push(m);
+        const entradasMov = movsDoDia
+          .filter((m) => m.tipo === "Entrada")
+          .reduce((t, m) => t + Number(m.valor || 0), 0);
 
-      const valor = Number(m.valor || 0);
-      const forma = (m.forma_pagamento || "").toLowerCase();
-      const tipo = m.tipo;
+        const saidasMov = movsDoDia
+          .filter((m) => m.tipo === "Saída")
+          .reduce((t, m) => t + Number(m.valor || 0), 0);
 
-      if (tipo === "Entrada") item.entradasMov += valor;
-      if (tipo === "Saída") item.saidasMov += valor;
-
-      if (forma.includes("dinheiro")) item.dinheiroMov += valor;
-      if (forma.includes("cart") || forma.includes("cartão")) item.cartaoMov += valor;
-      if (forma.includes("pix")) item.pixMov += valor;
-    }
-
-    return Array.from(mapa.values())
-      .map((item) => {
-        const divergenciaCartao = Math.abs(Number(item.fechamento.cartoes || 0) - item.cartaoMov);
-        const divergenciaPix = Math.abs(
-          Number(item.fechamento.pix_cnpj || 0) + Number(item.fechamento.pix_qr || 0) - item.pixMov
-        );
-        const divergenciaDinheiro = Math.abs(Number(item.fechamento.dinheiro || 0) - item.dinheiroMov);
+        const divergenciaCartao = Math.abs(Number(f.cartoes || 0) - cartaoMov);
+        const divergenciaPix = Math.abs(Number(f.pix_cnpj || 0) + Number(f.pix_qr || 0) - pixMov);
+        const divergenciaDinheiro = Math.abs(Number(f.dinheiro || 0) - dinheiroMov);
 
         return {
-          ...item,
+          key: `${dia}-${f.id}`,
+          dia,
+          fechamento: f,
+          entradasFechamento: calcEntradas(f),
+          saidasFechamento: calcSaidas(f),
+          saldoFechamento: calcSaldo(f),
+          movs: movsDoDia,
+          dinheiroMov,
+          cartaoMov,
+          pixMov,
+          entradasMov,
+          saidasMov,
           divergenciaCartao,
           divergenciaPix,
           divergenciaDinheiro,
-          temDivergencia: divergenciaCartao > 0.009 || divergenciaPix > 0.009 || divergenciaDinheiro > 0.009,
+          temDivergencia:
+            divergenciaCartao > 0.009 || divergenciaPix > 0.009 || divergenciaDinheiro > 0.009,
         };
       })
-      .sort((a, b) => b.dia.localeCompare(a.dia));
+      .sort((a, b) => String(b.fechamento.data || "").localeCompare(String(a.fechamento.data || "")));
   }, [fechamentos, movimentacoes]);
 
-  const diasDisponiveis = useMemo(() => resumoPorDia.map((d) => d.dia), [resumoPorDia]);
+  const diasDisponiveis = useMemo(() => Array.from(new Set(resumoPorDia.map((d) => d.dia))), [resumoPorDia]);
 
   const diasFiltrados = useMemo(() => {
     return resumoPorDia.filter((item) => {
@@ -500,6 +481,8 @@ export default function CaixaFechamentoPage() {
               <thead className="bg-blue-100 text-blue-800">
                 <tr>
                   <th className="p-2 border">Data</th>
+                  <th className="p-2 border">ID</th>
+                  <th className="p-2 border">Hora</th>
                   <th className="p-2 border">Venda Total</th>
                   <th className="p-2 border">Dinheiro</th>
                   <th className="p-2 border">Cartões</th>
@@ -517,8 +500,10 @@ export default function CaixaFechamentoPage() {
                 {diasFiltrados.map((item) => {
                   const pixDia = Number(item.fechamento.pix_cnpj || 0) + Number(item.fechamento.pix_qr || 0);
                   return (
-                    <tr key={item.dia} className="hover:bg-gray-50">
+                    <tr key={item.key} className="hover:bg-gray-50">
                       <td className="p-2 border text-center">{formatDateBR(item.dia)}</td>
+                      <td className="p-2 border text-center font-mono text-xs">{String(item.fechamento.id).slice(0, 8)}</td>
+                      <td className="p-2 border text-center">{formatDateTimeBR(item.fechamento.data).split(', ')[1] || '—'}</td>
                       <td className="p-2 border text-right">R$ {fmt(item.fechamento.venda_total)}</td>
                       <td className="p-2 border text-right">R$ {fmt(item.fechamento.dinheiro)}</td>
                       <td className="p-2 border text-right text-green-700 font-semibold">R$ {fmt(item.fechamento.cartoes)}</td>
@@ -551,7 +536,7 @@ export default function CaixaFechamentoPage() {
 
                 {diasFiltrados.length === 0 && (
                   <tr>
-                    <td className="p-4 text-center text-gray-500" colSpan={12}>
+                    <td className="p-4 text-center text-gray-500" colSpan={14}>
                       Nenhum fechamento encontrado.
                     </td>
                   </tr>

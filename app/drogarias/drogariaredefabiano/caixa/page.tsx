@@ -1102,15 +1102,15 @@ export default function CaixaPage() {
         >
           📊 Posição do Caixa
         </Link>
-      </div>
+      
 
-      <Link
-  href="/drogarias/drogariaredefabiano/caixa/fechamento"
-  className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-semibold"
->
-  📄 Fechamentos
-</Link>
-
+        <Link
+          href="/drogarias/drogariaredefabiano/caixa/fechamento"
+          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded font-semibold"
+        >
+          📄 Fechamentos
+        </Link>
+        </div>
       {/* ====================================================== */}
       {/* 🟢 SESSÃO DE CAIXA (NOVO) */}
       {/* ====================================================== */}
