@@ -724,7 +724,7 @@ export default function CaixaFechamentoPage() {
             <CardResumo titulo="Cielo Bruto" valor={resumoGeral.cieloBruto} cor="green" subtitulo={nomeArquivoCielo || "Sem arquivo importado"} />
             <CardResumo titulo="Cielo Líquido" valor={resumoGeral.cieloLiquido} cor="green" />
             <CardResumo titulo="Cartões Sistema" valor={resumoGeral.cartoes} cor="blue" />
-            <CardResumo titulo="Dif. Cartão x Cielo Líq" value={0 as any} cor="red" subtitulo={`R$ ${fmt(Math.abs(resumoGeral.cartoes - resumoGeral.cieloLiquido))}`} />
+            <CardResumo titulo="Dif. Cartão x Cielo Líq" valor={Math.abs(resumoGeral.cartoes - resumoGeral.cieloLiquido)} cor="red" />
           </div>
         </div>
 
