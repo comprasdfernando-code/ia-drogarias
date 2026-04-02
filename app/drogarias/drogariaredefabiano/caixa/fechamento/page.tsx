@@ -596,7 +596,31 @@ export default function CaixaFechamentoPage() {
   }, [diasFiltrados]);
 
   const resumoSaidasDestino = useMemo(() => {
+    const entradas = movimentacoesFiltradas.filter((m) => m.tipo === "Entrada");
     const saidas = movimentacoesFiltradas.filter((m) => m.tipo === "Saída");
+
+    const entradaDinheiro = entradas
+      .filter((m) => (m.destino_financeiro || "") === "CAIXA_DINHEIRO" || (m.forma_pagamento || "") === "Dinheiro")
+      .reduce((t, m) => t + Number(m.valor || 0), 0);
+
+    const entradaBradesco = entradas
+      .filter((m) => (m.destino_financeiro || "") === "CONTA_BRADESCO")
+      .reduce((t, m) => t + Number(m.valor || 0), 0);
+
+    const entradaCartao = entradas
+      .filter((m) => {
+        const forma = (m.forma_pagamento || "").toLowerCase();
+        return forma.includes("cart") || forma.includes("cartão");
+      })
+      .reduce((t, m) => t + Number(m.valor || 0), 0);
+
+    const entradaPix = entradas
+      .filter((m) => (m.forma_pagamento || "").toLowerCase().includes("pix"))
+      .reduce((t, m) => t + Number(m.valor || 0), 0);
+
+    const entradaFiado = entradas
+      .filter((m) => (m.forma_pagamento || "").toLowerCase().includes("fiado"))
+      .reduce((t, m) => t + Number(m.valor || 0), 0);
 
     const saidaDinheiro = saidas
       .filter((m) => (m.destino_financeiro || "") === "CAIXA_DINHEIRO")
@@ -634,9 +658,18 @@ export default function CaixaFechamentoPage() {
     };
 
     return {
+      totalEntradas: entradas.reduce((t, m) => t + Number(m.valor || 0), 0),
       totalSaidas: saidas.reduce((t, m) => t + Number(m.valor || 0), 0),
+      entradaDinheiro,
+      entradaBradesco,
+      entradaCartao,
+      entradaPix,
+      entradaFiado,
       saidaDinheiro,
       saidaBradesco,
+      saldoDinheiro: entradaDinheiro - saidaDinheiro,
+      saldoBradesco: entradaBradesco - saidaBradesco,
+      saldoConsolidado: entradas.reduce((t, m) => t + Number(m.valor || 0), 0) - saidas.reduce((t, m) => t + Number(m.valor || 0), 0),
       ...porTipo,
     };
   }, [movimentacoesFiltradas]);
@@ -878,55 +911,101 @@ export default function CaixaFechamentoPage() {
             <span className="text-xs text-gray-500">Todos os caixas somados no filtro atual</span>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-4">
+          <div className="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-6 gap-4 mb-4">
+            <CardResumo titulo="Entradas Totais" valor={resumoSaidasDestino.totalEntradas} cor="green" />
             <CardResumo titulo="Saídas Totais" valor={resumoSaidasDestino.totalSaidas} cor="red" />
-            <CardResumo titulo="Subtraído do Caixa Dinheiro" valor={resumoSaidasDestino.saidaDinheiro} cor="red" />
-            <CardResumo titulo="Subtraído da Conta Bradesco" valor={resumoSaidasDestino.saidaBradesco} cor="red" />
+            <CardResumo titulo="Saldo Caixa Dinheiro" valor={resumoSaidasDestino.saldoDinheiro} cor={resumoSaidasDestino.saldoDinheiro >= 0 ? "green" : "red"} />
+            <CardResumo titulo="Saldo Conta Bradesco" valor={resumoSaidasDestino.saldoBradesco} cor={resumoSaidasDestino.saldoBradesco >= 0 ? "green" : "red"} />
+            <CardResumo titulo="Saldo Consolidado" valor={resumoSaidasDestino.saldoConsolidado} cor={resumoSaidasDestino.saldoConsolidado >= 0 ? "blue" : "red"} />
+            <CardResumo titulo="Entradas em Dinheiro" valor={resumoSaidasDestino.entradaDinheiro} cor="green" />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-4 mb-4">
+            <CardResumo titulo="Entradas Pix" valor={resumoSaidasDestino.entradaPix} cor="green" />
+            <CardResumo titulo="Entradas Cartão" valor={resumoSaidasDestino.entradaCartao} cor="green" />
+            <CardResumo titulo="Entradas Bradesco" valor={resumoSaidasDestino.entradaBradesco} cor="green" />
+            <CardResumo titulo="Entradas Fiado" valor={resumoSaidasDestino.entradaFiado} cor="orange" />
+            <CardResumo titulo="Saídas Bradesco" valor={resumoSaidasDestino.saidaBradesco} cor="red" />
           </div>
 
           <div className="overflow-x-auto">
-            <table className="w-full text-sm border mb-2">
-              <thead className="bg-slate-100 text-slate-700">
-                <tr>
-                  <th className="p-2 border text-left">Tipo de saída</th>
-                  <th className="p-2 border text-right">Caixa Dinheiro</th>
-                  <th className="p-2 border text-right">Conta Bradesco</th>
-                  <th className="p-2 border text-right">Total</th>
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  <td className="p-2 border">Sangrias</td>
-                  <td className="p-2 border text-right">R$ {fmt(resumoSaidasDestino.sangriasDinheiro)}</td>
-                  <td className="p-2 border text-right">R$ {fmt(resumoSaidasDestino.sangriasBradesco)}</td>
-                  <td className="p-2 border text-right font-semibold">R$ {fmt(resumoSaidasDestino.sangriasDinheiro + resumoSaidasDestino.sangriasBradesco)}</td>
-                </tr>
-                <tr>
-                  <td className="p-2 border">Despesas</td>
-                  <td className="p-2 border text-right">R$ {fmt(resumoSaidasDestino.despesasDinheiro)}</td>
-                  <td className="p-2 border text-right">R$ {fmt(resumoSaidasDestino.despesasBradesco)}</td>
-                  <td className="p-2 border text-right font-semibold">R$ {fmt(resumoSaidasDestino.despesasDinheiro + resumoSaidasDestino.despesasBradesco)}</td>
-                </tr>
-                <tr>
-                  <td className="p-2 border">Boletos</td>
-                  <td className="p-2 border text-right">R$ {fmt(resumoSaidasDestino.boletosDinheiro)}</td>
-                  <td className="p-2 border text-right">R$ {fmt(resumoSaidasDestino.boletosBradesco)}</td>
-                  <td className="p-2 border text-right font-semibold">R$ {fmt(resumoSaidasDestino.boletosDinheiro + resumoSaidasDestino.boletosBradesco)}</td>
-                </tr>
-                <tr>
-                  <td className="p-2 border">Compras</td>
-                  <td className="p-2 border text-right">R$ {fmt(resumoSaidasDestino.comprasDinheiro)}</td>
-                  <td className="p-2 border text-right">R$ {fmt(resumoSaidasDestino.comprasBradesco)}</td>
-                  <td className="p-2 border text-right font-semibold">R$ {fmt(resumoSaidasDestino.comprasDinheiro + resumoSaidasDestino.comprasBradesco)}</td>
-                </tr>
-                <tr className="bg-slate-50 font-semibold">
-                  <td className="p-2 border">Total Geral</td>
-                  <td className="p-2 border text-right">R$ {fmt(resumoSaidasDestino.saidaDinheiro)}</td>
-                  <td className="p-2 border text-right">R$ {fmt(resumoSaidasDestino.saidaBradesco)}</td>
-                  <td className="p-2 border text-right">R$ {fmt(resumoSaidasDestino.totalSaidas)}</td>
-                </tr>
-              </tbody>
-            </table>
+            <table className="w-full text-sm border mb-4">
+            <thead className="bg-emerald-100 text-emerald-800">
+              <tr>
+                <th className="p-2 border text-left">Entradas por forma / origem</th>
+                <th className="p-2 border text-right">Valor</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td className="p-2 border">Dinheiro</td>
+                <td className="p-2 border text-right">R$ {fmt(resumoSaidasDestino.entradaDinheiro)}</td>
+              </tr>
+              <tr>
+                <td className="p-2 border">Pix</td>
+                <td className="p-2 border text-right">R$ {fmt(resumoSaidasDestino.entradaPix)}</td>
+              </tr>
+              <tr>
+                <td className="p-2 border">Cartão</td>
+                <td className="p-2 border text-right">R$ {fmt(resumoSaidasDestino.entradaCartao)}</td>
+              </tr>
+              <tr>
+                <td className="p-2 border">Conta Bradesco</td>
+                <td className="p-2 border text-right">R$ {fmt(resumoSaidasDestino.entradaBradesco)}</td>
+              </tr>
+              <tr>
+                <td className="p-2 border">Receb./Fiado</td>
+                <td className="p-2 border text-right">R$ {fmt(resumoSaidasDestino.entradaFiado)}</td>
+              </tr>
+              <tr className="bg-emerald-50 font-semibold">
+                <td className="p-2 border">Total Entradas</td>
+                <td className="p-2 border text-right">R$ {fmt(resumoSaidasDestino.totalEntradas)}</td>
+              </tr>
+            </tbody>
+          </table>
+
+          <table className="w-full text-sm border mb-2">
+            <thead className="bg-slate-100 text-slate-700">
+              <tr>
+                <th className="p-2 border text-left">Tipo de saída</th>
+                <th className="p-2 border text-right">Caixa Dinheiro</th>
+                <th className="p-2 border text-right">Conta Bradesco</th>
+                <th className="p-2 border text-right">Total</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td className="p-2 border">Sangrias</td>
+                <td className="p-2 border text-right">R$ {fmt(resumoSaidasDestino.sangriasDinheiro)}</td>
+                <td className="p-2 border text-right">R$ {fmt(resumoSaidasDestino.sangriasBradesco)}</td>
+                <td className="p-2 border text-right font-semibold">R$ {fmt(resumoSaidasDestino.sangriasDinheiro + resumoSaidasDestino.sangriasBradesco)}</td>
+              </tr>
+              <tr>
+                <td className="p-2 border">Despesas</td>
+                <td className="p-2 border text-right">R$ {fmt(resumoSaidasDestino.despesasDinheiro)}</td>
+                <td className="p-2 border text-right">R$ {fmt(resumoSaidasDestino.despesasBradesco)}</td>
+                <td className="p-2 border text-right font-semibold">R$ {fmt(resumoSaidasDestino.despesasDinheiro + resumoSaidasDestino.despesasBradesco)}</td>
+              </tr>
+              <tr>
+                <td className="p-2 border">Boletos</td>
+                <td className="p-2 border text-right">R$ {fmt(resumoSaidasDestino.boletosDinheiro)}</td>
+                <td className="p-2 border text-right">R$ {fmt(resumoSaidasDestino.boletosBradesco)}</td>
+                <td className="p-2 border text-right font-semibold">R$ {fmt(resumoSaidasDestino.boletosDinheiro + resumoSaidasDestino.boletosBradesco)}</td>
+              </tr>
+              <tr>
+                <td className="p-2 border">Compras</td>
+                <td className="p-2 border text-right">R$ {fmt(resumoSaidasDestino.comprasDinheiro)}</td>
+                <td className="p-2 border text-right">R$ {fmt(resumoSaidasDestino.comprasBradesco)}</td>
+                <td className="p-2 border text-right font-semibold">R$ {fmt(resumoSaidasDestino.comprasDinheiro + resumoSaidasDestino.comprasBradesco)}</td>
+              </tr>
+              <tr className="bg-slate-50 font-semibold">
+                <td className="p-2 border">Total Geral</td>
+                <td className="p-2 border text-right">R$ {fmt(resumoSaidasDestino.saidaDinheiro)}</td>
+                <td className="p-2 border text-right">R$ {fmt(resumoSaidasDestino.saidaBradesco)}</td>
+                <td className="p-2 border text-right">R$ {fmt(resumoSaidasDestino.totalSaidas)}</td>
+              </tr>
+            </tbody>
+          </table>
           </div>
         </div>
 
