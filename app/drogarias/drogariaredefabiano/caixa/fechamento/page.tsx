@@ -729,8 +729,10 @@ export default function CaixaFechamentoPage() {
 
   function exportarMovimentacoesCSV() {
     const linhas = [
-      ["Data/Hora", "Tipo", "Descrição", "Valor", "Forma", "Destino", "Sessão", "Linha digitável"],
-      ...movimentacoesDia.map((m) => [
+      ["Data", "Hora", "Data/Hora", "Tipo", "Descrição", "Valor", "Forma", "Destino", "Sessão", "Linha digitável"],
+      ...movimentacoesFiltradas.map((m) => [
+        formatDateBR(getDiaKey(m.data)),
+        formatDateTimeBR(m.data).split(", ")[1] || "",
         formatDateTimeBR(m.data),
         m.tipo,
         m.descricao || "",
@@ -741,8 +743,14 @@ export default function CaixaFechamentoPage() {
         m.linha_digitavel || "",
       ]),
     ];
-    baixarCSV(`movimentacoes_${detalheDia?.dia || dataIni}.csv`, linhas);
+    baixarCSV(`movimentacoes_${dataIni}_${dataFim}.csv`, linhas);
   }
+
+  const saidasPeriodo = useMemo(() => {
+    return movimentacoesFiltradas
+      .filter((m) => m.tipo === "Saída")
+      .sort((a, b) => String(a.data).localeCompare(String(b.data)));
+  }, [movimentacoesFiltradas]);
 
   return (
     <main className="min-h-screen bg-gray-100 p-6">
@@ -1147,6 +1155,44 @@ export default function CaixaFechamentoPage() {
                   <tr>
                     <td className="p-4 text-center text-gray-500" colSpan={16}>
                       Nenhum fechamento encontrado.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="bg-white rounded-xl shadow p-4 mb-6">
+          <div className="flex items-center justify-between mb-4">
+            <h2 className="font-bold text-lg text-blue-700">🧾 Saídas do Período</h2>
+            <span className="text-xs text-gray-500">{saidasPeriodo.length} saída(s) entre {formatDateBR(dataIni)} e {formatDateBR(dataFim)}</span>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm border">
+              <thead className="bg-red-50 text-red-800">
+                <tr>
+                  <th className="p-2 border">Data</th>
+                  <th className="p-2 border">Hora</th>
+                  <th className="p-2 border">Descrição</th>
+                  <th className="p-2 border">Destino</th>
+                  <th className="p-2 border">Valor</th>
+                </tr>
+              </thead>
+              <tbody>
+                {saidasPeriodo.map((m) => (
+                  <tr key={m.id} className="hover:bg-gray-50">
+                    <td className="p-2 border text-center">{formatDateBR(getDiaKey(m.data))}</td>
+                    <td className="p-2 border text-center">{formatDateTimeBR(m.data).split(", ")[1] || "—"}</td>
+                    <td className="p-2 border">{m.descricao || "—"}</td>
+                    <td className="p-2 border text-center">{m.destino_financeiro || "—"}</td>
+                    <td className="p-2 border text-right text-red-700 font-semibold">R$ {fmt(m.valor)}</td>
+                  </tr>
+                ))}
+                {saidasPeriodo.length === 0 && (
+                  <tr>
+                    <td className="p-4 text-center text-gray-500" colSpan={5}>
+                      Nenhuma saída encontrada no período selecionado.
                     </td>
                   </tr>
                 )}
