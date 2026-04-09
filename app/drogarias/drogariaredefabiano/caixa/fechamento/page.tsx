@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import jsPDF from "jspdf";
+import autoTable from "jspdf-autotable";
 import Link from "next/link";
 import { createClient } from "@supabase/supabase-js";
 
@@ -224,6 +226,12 @@ function baixarCSV(nome: string, linhas: string[][]) {
   a.download = nome;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+function removerAcentos(s: string) {
+  return String(s || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "");
 }
 
 function detectarSeparadorCSV(texto: string) {
@@ -746,6 +754,75 @@ export default function CaixaFechamentoPage() {
     baixarCSV(`movimentacoes_${dataIni}_${dataFim}.csv`, linhas);
   }
 
+  function gerarPDFSaidasPeriodo() {
+    const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
+
+    const totalGeral = saidasPeriodo.reduce((t, m) => t + Number(m.valor || 0), 0);
+    const totalCaixaDinheiro = saidasPeriodo
+      .filter((m) => (m.destino_financeiro || "") === "CAIXA_DINHEIRO")
+      .reduce((t, m) => t + Number(m.valor || 0), 0);
+    const totalBradesco = saidasPeriodo
+      .filter((m) => (m.destino_financeiro || "") === "CONTA_BRADESCO")
+      .reduce((t, m) => t + Number(m.valor || 0), 0);
+    const totalSemDestino = saidasPeriodo
+      .filter((m) => !(m.destino_financeiro || "").trim())
+      .reduce((t, m) => t + Number(m.valor || 0), 0);
+
+    const titulo = "Saidas do Periodo";
+    const periodo = `${formatDateBR(dataIni)} a ${formatDateBR(dataFim)}`;
+
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(16);
+    doc.text(titulo, 14, 15);
+
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(10);
+    doc.text(`Loja: ${LOJA}`, 14, 22);
+    doc.text(`Periodo: ${periodo}`, 14, 27);
+    doc.text(`Quantidade de saidas: ${saidasPeriodo.length}`, 14, 32);
+
+    doc.setFont("helvetica", "bold");
+    doc.text(`Total Geral: R$ ${fmt(totalGeral)}`, 14, 39);
+    doc.text(`Caixa Dinheiro: R$ ${fmt(totalCaixaDinheiro)}`, 14, 45);
+    doc.text(`Conta Bradesco: R$ ${fmt(totalBradesco)}`, 80, 45);
+    doc.text(`Sem destino: R$ ${fmt(totalSemDestino)}`, 150, 45);
+
+    autoTable(doc, {
+      startY: 52,
+      head: [["Data", "Hora", "Descricao", "Destino", "Valor"]],
+      body: saidasPeriodo.map((m) => [
+        removerAcentos(formatDateBR(getDiaKey(m.data))),
+        removerAcentos(formatDateTimeBR(m.data).split(", ")[1] || "—"),
+        removerAcentos(m.descricao || "—"),
+        removerAcentos(m.destino_financeiro || "—"),
+        `R$ ${fmt(m.valor)}`,
+      ]),
+      styles: { fontSize: 8, cellPadding: 1.8 },
+      headStyles: { fillColor: [220, 38, 38] },
+      columnStyles: {
+        0: { cellWidth: 22 },
+        1: { cellWidth: 20 },
+        2: { cellWidth: 86 },
+        3: { cellWidth: 38 },
+        4: { cellWidth: 24, halign: "right" },
+      },
+      margin: { left: 10, right: 10 },
+      didDrawPage: () => {
+        const pageSize = doc.internal.pageSize;
+        const pageHeight = pageSize.height ? pageSize.height : pageSize.getHeight();
+        doc.setFontSize(8);
+        doc.text(
+          `Emitido em ${new Date().toLocaleString("pt-BR")}`,
+          14,
+          pageHeight - 6
+        );
+      },
+    });
+
+    const nome = `saidas_periodo_${dataIni}_${dataFim}.pdf`;
+    doc.save(nome);
+  }
+
   const saidasPeriodo = useMemo(() => {
     return movimentacoesFiltradas
       .filter((m) => m.tipo === "Saída")
@@ -880,6 +957,12 @@ export default function CaixaFechamentoPage() {
                 className="bg-emerald-600 hover:bg-emerald-700 text-white px-4 py-2 rounded-lg font-semibold"
               >
                 Exportar fechamentos CSV
+              </button>
+              <button
+                onClick={gerarPDFSaidasPeriodo}
+                className="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded-lg font-semibold"
+              >
+                Gerar PDF saídas
               </button>
               <button
                 onClick={exportarMovimentacoesCSV}
