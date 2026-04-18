@@ -14,6 +14,9 @@ export default function RootClientLayout({ children }: { children: React.ReactNo
   if (typeof window !== "undefined" && window.location.pathname.startsWith("/dayfestas")) {
     return <>{children}</>;
   }
+  if (typeof window !== "undefined" && window.location.pathname.startsWith("/salao/studioiasminsouzanails")) {
+    return <>{children}</>;
+  }
   if (typeof window !== "undefined" && window.location.pathname.startsWith("/formulas")) {
     return <>{children}</>;
   }
