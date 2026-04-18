@@ -4,7 +4,7 @@ import CTAWhats from "./_components/CTAWhats";
 
 export default function Page() {
   return (
-    <main>
+    <main className="relative">
       <Hero />
       <Servicos />
       <CTAWhats />

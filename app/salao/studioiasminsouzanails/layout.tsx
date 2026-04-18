@@ -4,7 +4,7 @@ export default function StudioLayout({
   children: React.ReactNode;
 }) {
   return (
-    <div className="bg-black text-white min-h-screen">
+    <div className="min-h-screen overflow-x-hidden bg-[#050505] text-white">
       {children}
     </div>
   );
