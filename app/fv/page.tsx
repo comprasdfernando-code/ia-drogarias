@@ -186,6 +186,129 @@ export default function FarmaciaVirtualHomePage() {
   );
 }
 
+
+/* =========================
+   CONVERSÃO / MARKETING
+========================= */
+function HeroConversao() {
+  const whatsappHref =
+    "https://wa.me/5511948343725?text=" +
+    encodeURIComponent("Olá! Vim pela Farmácia Virtual da IA Drogarias e quero fazer um pedido.");
+
+  return (
+    <section className="max-w-6xl mx-auto px-4 mt-5">
+      <div className="relative overflow-hidden rounded-[28px] bg-gradient-to-br from-blue-950 via-blue-800 to-cyan-700 text-white shadow-xl">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_right,rgba(255,255,255,0.18),transparent_28%),radial-gradient(circle_at_bottom_left,rgba(255,255,255,0.12),transparent_24%)]" />
+        <div className="relative grid lg:grid-cols-[1.35fr,0.95fr] gap-6 p-5 sm:p-7 lg:p-9">
+          <div>
+            <div className="inline-flex items-center gap-2 rounded-full bg-white/12 px-3 py-1.5 text-[11px] sm:text-xs font-extrabold tracking-wide uppercase">
+              <span>💊</span>
+              Farmácia online com atendimento real
+            </div>
+
+            <h1 className="mt-4 text-2xl sm:text-4xl font-black leading-tight">
+              Peça seus medicamentos com <span className="text-green-300">mais praticidade</span> e receba em até 24h.
+            </h1>
+
+            <p className="mt-3 text-sm sm:text-base text-white/90 max-w-2xl">
+              Você compra pelo site, fala com a farmácia quando precisar e acompanha tudo com mais segurança.
+              Ideal para pedidos programados, reposição de uso contínuo e encomendas.
+            </p>
+
+            <div className="mt-5 flex flex-wrap gap-2.5 text-xs sm:text-sm">
+              <span className="rounded-full bg-white/12 px-3 py-2 font-bold">✅ Atendimento farmacêutico</span>
+              <span className="rounded-full bg-white/12 px-3 py-2 font-bold">🚚 Entrega em até 24h</span>
+              <span className="rounded-full bg-white/12 px-3 py-2 font-bold">💳 PIX fácil no checkout</span>
+            </div>
+
+            <div className="mt-6 flex flex-col sm:flex-row gap-3">
+              <Link
+                href="#produtos-fv"
+                className="inline-flex items-center justify-center rounded-2xl bg-green-400 px-5 py-3 text-sm sm:text-base font-black text-blue-950 hover:bg-green-300 transition"
+              >
+                Ver produtos em destaque
+              </Link>
+
+              <a
+                href={whatsappHref}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center justify-center rounded-2xl border border-white/20 bg-white/10 px-5 py-3 text-sm sm:text-base font-black hover:bg-white/15 transition"
+              >
+                Falar com a farmácia no WhatsApp
+              </a>
+            </div>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-1">
+            <div className="rounded-2xl bg-white/10 border border-white/10 p-4 backdrop-blur-sm">
+              <div className="text-sm font-black">Como funciona</div>
+              <div className="mt-2 text-sm text-white/90">
+                Escolha os itens, finalize o pedido e nossa equipe organiza tudo para a entrega.
+              </div>
+            </div>
+
+            <div className="rounded-2xl bg-white/10 border border-white/10 p-4 backdrop-blur-sm">
+              <div className="text-sm font-black">Prazo inicial</div>
+              <div className="mt-2 text-sm text-white/90">
+                Entrega em até 24h, conforme disponibilidade dos produtos e região atendida.
+              </div>
+            </div>
+
+            <div className="rounded-2xl bg-white/10 border border-white/10 p-4 backdrop-blur-sm">
+              <div className="text-sm font-black">Pedido programado</div>
+              <div className="mt-2 text-sm text-white/90">
+                Perfeito para reposição de medicamentos, itens de uso contínuo e compras sem correria.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function TrustMiniBar() {
+  return (
+    <section className="max-w-6xl mx-auto px-4 mt-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <div className="rounded-2xl bg-white border border-blue-100 shadow-sm px-4 py-3">
+          <div className="text-xs text-gray-500 font-bold uppercase tracking-wide">Entrega</div>
+          <div className="mt-1 text-sm font-extrabold text-gray-900">Prazo inicial de até 24h</div>
+        </div>
+        <div className="rounded-2xl bg-white border border-blue-100 shadow-sm px-4 py-3">
+          <div className="text-xs text-gray-500 font-bold uppercase tracking-wide">Atendimento</div>
+          <div className="mt-1 text-sm font-extrabold text-gray-900">Suporte humano e farmacêutico</div>
+        </div>
+        <div className="rounded-2xl bg-white border border-blue-100 shadow-sm px-4 py-3">
+          <div className="text-xs text-gray-500 font-bold uppercase tracking-wide">Compra</div>
+          <div className="mt-1 text-sm font-extrabold text-gray-900">Site + carrinho + checkout</div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function FloatingWhatsAppButton() {
+  const href =
+    "https://wa.me/5511948343725?text=" +
+    encodeURIComponent("Olá! Vim pela Farmácia Virtual da IA Drogarias e preciso de ajuda com meu pedido.");
+
+  return (
+    <a
+      href={href}
+      target="_blank"
+      rel="noreferrer"
+      className="fixed bottom-24 right-4 z-[65] inline-flex items-center gap-2 rounded-full bg-green-500 px-4 py-3 text-white font-extrabold shadow-2xl hover:bg-green-600 transition"
+      aria-label="Falar com a farmácia no WhatsApp"
+      title="Falar com a farmácia no WhatsApp"
+    >
+      <span className="text-lg leading-none">💬</span>
+      <span className="hidden sm:inline">WhatsApp</span>
+    </a>
+  );
+}
+
 /* ✅ sem React.FC */
 function GridSkeleton() {
   return (
@@ -452,7 +575,10 @@ function FarmaciaVirtualHome() {
         <FVBanners />
       </div>
 
-      <section className="max-w-6xl mx-auto px-4 mt-6">
+      <HeroConversao />
+      <TrustMiniBar />
+
+      <section id="produtos-fv" className="max-w-6xl mx-auto px-4 mt-6">
         <ServiceQuickAds />
 
         {isSearching ? (
@@ -466,7 +592,7 @@ function FarmaciaVirtualHome() {
             {loadingBusca ? (
               <GridSkeleton />
             ) : resultado.length === 0 ? (
-              <div className="bg-white border rounded-2xl p-6 text-gray-600">Nenhum produto encontrado.</div>
+              <div className="bg-white border rounded-2xl p-6 text-gray-600">Nenhum produto encontrado. Tente outro nome, apresentação ou EAN.</div>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-5">
                 {resultado.map((p) => (
@@ -478,7 +604,10 @@ function FarmaciaVirtualHome() {
         ) : (
           <>
             <div className="flex items-end justify-between gap-3 mb-3">
-              <h2 className="text-lg font-extrabold text-gray-900">Produtos em destaque</h2>
+              <div>
+                <h2 className="text-lg font-extrabold text-gray-900">Medicamentos e produtos em destaque</h2>
+                <p className="text-xs text-gray-500 mt-1">Seleção inicial da Farmácia Virtual para pedidos online.</p>
+              </div>
               <div className="text-xs text-gray-500">{homeProdutos.length}+ itens</div>
             </div>
 
@@ -510,6 +639,7 @@ function FarmaciaVirtualHome() {
         )}
       </section>
 
+      <FloatingWhatsAppButton />
       <CartModalPDV open={cartOpen} onClose={closeCart} />
     </main>
   );
@@ -1180,9 +1310,9 @@ function ProdutoCardUltra({ p, onComprar }: { p: FVProduto; onComprar: () => voi
           className={`absolute top-3 left-3 text-[11px] font-extrabold px-2 py-1 rounded-full shadow-sm ${
             disponivel ? "bg-green-600 text-white" : "bg-gray-200 text-gray-700"
           }`}
-          title={disponivel ? "Disponível" : "Sem estoque nas parceiras"}
+          title={disponivel ? "Disponível" : "Produto sob encomenda"}
         >
-          {disponivel ? `Estoque: ${estoque}` : "Sem estoque"}
+          {disponivel ? `Estoque: ${estoque}` : "Sob encomenda"}
         </span>
       </div>
 
@@ -1206,6 +1336,10 @@ function ProdutoCardUltra({ p, onComprar }: { p: FVProduto; onComprar: () => voi
           ) : (
             <div className="text-base font-extrabold text-blue-900">{brl(pr.final)}</div>
           )}
+
+          <div className="mt-1 text-[11px] font-bold text-gray-500">
+            {disponivel ? "Pedido online com retirada ou entrega conforme regra da loja." : "Produto sob encomenda com prazo inicial de até 24h."}
+          </div>
         </div>
 
         <div className="mt-3 flex items-center gap-2">
@@ -1236,7 +1370,7 @@ function ProdutoCardUltra({ p, onComprar }: { p: FVProduto; onComprar: () => voi
               disponivel ? "bg-blue-700 hover:bg-blue-800 text-white" : "bg-green-600 hover:bg-green-700 text-white"
             }`}
           >
-            {disponivel ? "Comprar" : "Encomendar"}
+            {disponivel ? "Comprar" : "Encomendar 24h"}
           </button>
         </div>
       </div>
@@ -1259,7 +1393,10 @@ function ServiceQuickAds() {
   return (
     <div className="xl:hidden mt-4">
       <div className="flex items-center justify-between mb-2">
-        <div className="font-extrabold text-sm text-gray-900">Serviços</div>
+        <div>
+          <div className="font-extrabold text-sm text-gray-900">Serviços farmacêuticos</div>
+          <div className="text-[11px] text-gray-500">Agende diretamente pela plataforma</div>
+        </div>
         <div className="text-[11px] text-gray-500">Arraste →</div>
       </div>
 
