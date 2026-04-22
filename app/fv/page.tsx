@@ -73,13 +73,13 @@ function ServiceSideAds() {
     <>
       <div className="hidden xl:flex fixed top-28 left-3 z-40">
         <Link href={left.href} className="group" title={left.title}>
-          <div className="relative w-[160px] h-[520px] rounded-xl overflow-hidden shadow-lg">
+          <div className="relative w-[120px] 2xl:w-[132px] h-[360px] 2xl:h-[400px] rounded-xl overflow-hidden shadow-lg">
             <Image
               src={left.img}
               alt={left.title}
               fill
               className="object-cover group-hover:scale-[1.03] transition"
-              sizes="160px"
+              sizes="132px"
             />
           </div>
         </Link>
@@ -87,13 +87,13 @@ function ServiceSideAds() {
 
       <div className="hidden xl:flex fixed top-28 right-3 z-40">
         <Link href={right.href} className="group" title={right.title}>
-          <div className="relative w-[160px] h-[520px] rounded-xl overflow-hidden shadow-lg">
+          <div className="relative w-[120px] 2xl:w-[132px] h-[360px] 2xl:h-[400px] rounded-xl overflow-hidden shadow-lg">
             <Image
               src={right.img}
               alt={right.title}
               fill
               className="object-cover group-hover:scale-[1.03] transition"
-              sizes="160px"
+              sizes="132px"
             />
           </div>
         </Link>
@@ -192,7 +192,7 @@ export default function FarmaciaVirtualHomePage() {
 ========================= */
 function HeroConversao() {
   const whatsappHref =
-    "https://wa.me/5511948343725?text=" +
+    "https://wa.me/5511952068432?text=" +
     encodeURIComponent("Olá! Vim pela Farmácia Virtual da IA Drogarias e quero fazer um pedido.");
 
   return (
@@ -291,7 +291,7 @@ function TrustMiniBar() {
 
 function FloatingWhatsAppButton() {
   const href =
-    "https://wa.me/5511948343725?text=" +
+    "https://wa.me/5511952068432?text=" +
     encodeURIComponent("Olá! Vim pela Farmácia Virtual da IA Drogarias e preciso de ajuda com meu pedido.");
 
   return (
@@ -571,9 +571,11 @@ function FarmaciaVirtualHome() {
         </div>
       </header>
 
-      <div className="mt-4">
-        <FVBanners />
-      </div>
+      <section className="mt-4 max-w-6xl mx-auto px-4">
+        <div className="overflow-hidden rounded-3xl shadow-sm xl:max-h-[260px] 2xl:max-h-[300px] bg-white">
+          <FVBanners />
+        </div>
+      </section>
 
       <HeroConversao />
       <TrustMiniBar />
