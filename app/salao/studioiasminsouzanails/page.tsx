@@ -1,6 +1,7 @@
 import Hero from "./_components/Hero";
 import CarrosselServicos from "./_components/CarrosselServicos";
 import GaleriaReal from "./_components/GaleriaReal";
+import ReelsIasmin from "./_components/ReelsIasmin";
 import Servicos from "./_components/Servicos";
 import CTAWhats from "./_components/CTAWhats";
 import FloatingIA from "./_components/FloatingIA";
@@ -13,6 +14,8 @@ export default function Page() {
       <CarrosselServicos />
 
       <GaleriaReal />
+
+      <ReelsIasmin />
 
       <Servicos />
 
