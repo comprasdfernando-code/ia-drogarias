@@ -8,30 +8,30 @@ type Slide = {
   descricao: string;
 };
 
-const slides: Slide[] = [
+const slides = [
   {
-    titulo: "Alongamento em Gel",
-    subtitulo: "Elegância e durabilidade",
+    titulo: "Alongamento Molde F1",
+    subtitulo: "Estrutura elegante e acabamento marcante",
     descricao:
-      "Ideal para quem deseja unhas sofisticadas, resistentes e com acabamento impecável.",
+      "Ideal para quem deseja unhas sofisticadas, resistentes e com visual impecável no dia a dia.",
   },
   {
-    titulo: "Fibra de Vidro",
-    subtitulo: "Leveza com naturalidade",
+    titulo: "Banho de Gel",
+    subtitulo: "Brilho, proteção e naturalidade",
     descricao:
-      "Perfeito para quem busca alongamento com aparência delicada, moderna e extremamente refinada.",
+      "Perfeito para fortalecer as unhas naturais, aumentar a durabilidade e manter um acabamento delicado e refinado.",
   },
   {
-    titulo: "Blindagem",
-    subtitulo: "Proteção e brilho",
+    titulo: "Esmaltação em Gel",
+    subtitulo: "Durabilidade com beleza premium",
     descricao:
-      "Fortalece as unhas naturais, aumenta a durabilidade do esmalte e mantém um visual luxuoso.",
+      "Mais brilho, mais resistência e unhas lindas por muito mais tempo, com acabamento elegante.",
   },
   {
-    titulo: "Manutenção",
-    subtitulo: "Sempre impecável",
+    titulo: "Decoração Personalizada",
+    subtitulo: "Simples, média ou avançada",
     descricao:
-      "Cuidados essenciais para manter o alongamento bonito, alinhado e com aparência de recém-feito.",
+      "Detalhes que valorizam ainda mais o resultado final, deixando o atendimento com a sua identidade.",
   },
 ];
 
