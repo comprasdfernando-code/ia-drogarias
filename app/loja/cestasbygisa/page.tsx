@@ -1,154 +1,338 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 
-function buildWhatsAppLink(number: string, msg: string) {
-  const clean = number.replace(/\D/g, "");
-  return `https://wa.me/${clean}?text=${encodeURIComponent(msg)}`;
+const WHATS = "5511983273348";
+
+function zap(msg: string) {
+  return `https://wa.me/${WHATS}?text=${encodeURIComponent(msg)}`;
 }
 
-const WHATS = "11983273348";
-const WA_LINK = buildWhatsAppLink(
-  WHATS,
-  "Olá! Quero pedir uma cesta da Cestas by Gisa 🧺✨"
-);
+const categorias = [
+  "Café da Manhã",
+  "Românticas",
+  "Aniversário",
+  "Infantil",
+  "Premium",
+  "Personalizadas",
+];
+
+const produtos = [
+  {
+    nome: "Cesta Café da Manhã",
+    preco: "A partir de R$ 89,90",
+    img: "https://images.unsplash.com/photo-1484723091739-30a097e8f929?q=80&w=900&auto=format&fit=crop",
+  },
+  {
+    nome: "Cesta Romântica",
+    preco: "A partir de R$ 119,90",
+    img: "https://images.unsplash.com/photo-1518199266791-5375a83190b7?q=80&w=900&auto=format&fit=crop",
+  },
+  {
+    nome: "Cesta Premium",
+    preco: "A partir de R$ 159,90",
+    img: "https://images.unsplash.com/photo-1543163521-1bf539c55dd2?q=80&w=900&auto=format&fit=crop",
+  },
+  {
+    nome: "Cesta Infantil",
+    preco: "A partir de R$ 99,90",
+    img: "https://images.unsplash.com/photo-1607083206968-13611e3d76db?q=80&w=900&auto=format&fit=crop",
+  },
+];
 
 export default function Page() {
   return (
-    <main className="bg-[#fff7f5] text-[#3b2f2f]">
+    <main className="min-h-screen bg-[#fff8f4] text-[#3a2020]">
+      <header className="sticky top-0 z-40 border-b border-rose-100 bg-white/90 backdrop-blur">
+        <div className="mx-auto flex max-w-7xl items-center justify-between px-4 py-4">
+          <div className="leading-none">
+            <p className="font-serif text-3xl font-bold text-[#9b2f45]">
+              Cestas ♡
+            </p>
+            <p className="-mt-1 font-serif text-xl italic text-[#b85b6a]">
+              by Gisa
+            </p>
+          </div>
 
-      {/* HERO */}
-      <section className="text-center py-16 px-4 bg-gradient-to-b from-[#ffe4e1] to-[#fff7f5]">
-        <h1 className="text-4xl md:text-5xl font-bold mb-4">
-          Surpreenda com uma Cesta Especial 💖
-        </h1>
-        <p className="text-lg mb-6">
-          Café da manhã, presentes e momentos inesquecíveis
-        </p>
+          <nav className="hidden gap-6 text-sm font-medium md:flex">
+            <a href="#cestas">Cestas</a>
+            <a href="#como-funciona">Como funciona</a>
+            <a href="#depoimentos">Depoimentos</a>
+            <a href="#contato">Contato</a>
+          </nav>
 
-        <a
-          href={WA_LINK}
-          target="_blank"
-          className="bg-green-500 hover:bg-green-600 text-white px-6 py-3 rounded-full text-lg font-semibold shadow-lg"
-        >
-          Pedir no WhatsApp 🚀
-        </a>
-      </section>
+          <a
+            href={zap("Olá! Quero fazer um pedido na Cestas by Gisa 🧺")}
+            target="_blank"
+            className="rounded-full bg-[#c9475f] px-5 py-3 text-sm font-bold text-white shadow-lg transition hover:scale-105"
+          >
+            Pedir no WhatsApp
+          </a>
+        </div>
+      </header>
 
-      {/* CATEGORIAS */}
-      <section className="py-12 px-4 max-w-6xl mx-auto">
-        <h2 className="text-2xl font-bold text-center mb-8">
-          Nossas Cestas
-        </h2>
+      <section className="relative overflow-hidden bg-gradient-to-r from-[#fff1ec] to-[#ffd8dd]">
+        <div className="mx-auto grid max-w-7xl items-center gap-8 px-4 py-12 md:grid-cols-2 md:py-20">
+          <div>
+            <span className="rounded-full bg-white px-4 py-2 text-sm font-semibold text-[#c9475f] shadow">
+              Presentes que encantam 💝
+            </span>
 
-        <div className="grid md:grid-cols-3 gap-6">
-          {[
-            {
-              titulo: "Café da Manhã ☕",
-              img: "https://images.unsplash.com/photo-1504754524776-8f4f37790ca0",
-            },
-            {
-              titulo: "Romântica 💖",
-              img: "https://images.unsplash.com/photo-1519681393784-d120267933ba",
-            },
-            {
-              titulo: "Premium 🎁",
-              img: "https://images.unsplash.com/photo-1543163521-1bf539c55dd2",
-            },
-          ].map((item, i) => (
-            <div
-              key={i}
-              className="bg-white rounded-2xl shadow-lg overflow-hidden hover:scale-105 transition"
-            >
-              <Image
-                src={item.img}
-                alt={item.titulo}
-                width={400}
-                height={300}
-                className="w-full h-56 object-cover"
-              />
-              <div className="p-4 text-center">
-                <h3 className="font-semibold text-lg">{item.titulo}</h3>
+            <h1 className="mt-6 font-serif text-4xl font-bold leading-tight text-[#8f2438] md:text-6xl">
+              Surpreenda quem você ama com uma cesta especial
+            </h1>
+
+            <p className="mt-5 max-w-xl text-lg text-[#5f4444]">
+              Cestas de café da manhã, românticas, infantis e personalizadas
+              com muito carinho em cada detalhe.
+            </p>
+
+            <div className="mt-8 flex flex-col gap-3 sm:flex-row">
+              <a
+                href={zap("Olá! Quero ver os modelos de cestas disponíveis 🧺✨")}
+                target="_blank"
+                className="rounded-full bg-[#c9475f] px-7 py-4 text-center font-bold text-white shadow-xl"
+              >
+                Ver modelos no WhatsApp
+              </a>
+
+              <a
+                href="#cestas"
+                className="rounded-full border border-[#c9475f] px-7 py-4 text-center font-bold text-[#c9475f]"
+              >
+                Ver cestas
+              </a>
+            </div>
+
+            <div className="mt-8 grid max-w-lg grid-cols-3 gap-3 text-center text-xs">
+              <div className="rounded-2xl bg-white p-4 shadow-sm">
+                🚚 <br /> Entrega combinada
+              </div>
+              <div className="rounded-2xl bg-white p-4 shadow-sm">
+                🎁 <br /> Personalizada
+              </div>
+              <div className="rounded-2xl bg-white p-4 shadow-sm">
+                💖 <br /> Feita com amor
               </div>
             </div>
+          </div>
+
+          <div className="relative">
+            <div className="rounded-[2rem] bg-white p-3 shadow-2xl">
+              <Image
+                src="https://images.unsplash.com/photo-1490645935967-10de6ba17061?q=80&w=1200&auto=format&fit=crop"
+                alt="Cesta de café da manhã"
+                width={900}
+                height={700}
+                className="h-[420px] w-full rounded-[1.5rem] object-cover"
+                priority
+              />
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-7xl px-4 py-10">
+        <div className="grid gap-3 md:grid-cols-6">
+          {categorias.map((cat) => (
+            <a
+              key={cat}
+              href={zap(`Olá! Quero opções de cestas: ${cat}`)}
+              target="_blank"
+              className="rounded-2xl border border-rose-100 bg-white px-4 py-4 text-center text-sm font-bold shadow-sm transition hover:-translate-y-1 hover:shadow-md"
+            >
+              {cat}
+            </a>
           ))}
         </div>
       </section>
 
-      {/* COMO FUNCIONA */}
-      <section className="bg-[#fff] py-12 px-4">
-        <h2 className="text-2xl font-bold text-center mb-8">
-          Como Funciona
-        </h2>
+      <section id="cestas" className="mx-auto max-w-7xl px-4 py-10">
+        <div className="text-center">
+          <h2 className="font-serif text-4xl font-bold text-[#8f2438]">
+            Cestas mais pedidas
+          </h2>
+          <p className="mt-2 text-[#6b5252]">
+            Escolha um modelo e personalize pelo WhatsApp.
+          </p>
+        </div>
 
-        <div className="grid md:grid-cols-3 gap-6 max-w-5xl mx-auto text-center">
-          <div>
-            <h3 className="font-bold text-lg mb-2">1️⃣ Escolha</h3>
-            <p>Escolha a cesta ideal para o momento</p>
-          </div>
+        <div className="mt-10 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">
+          {produtos.map((p) => (
+            <article
+              key={p.nome}
+              className="overflow-hidden rounded-3xl border border-rose-100 bg-white shadow-lg"
+            >
+              <Image
+                src={p.img}
+                alt={p.nome}
+                width={600}
+                height={450}
+                className="h-56 w-full object-cover"
+              />
 
-          <div>
-            <h3 className="font-bold text-lg mb-2">2️⃣ Personalize</h3>
-            <p>Chame no WhatsApp e personalize seu pedido</p>
-          </div>
+              <div className="p-5">
+                <h3 className="text-lg font-bold">{p.nome}</h3>
+                <p className="mt-1 text-sm font-semibold text-[#c9475f]">
+                  {p.preco}
+                </p>
 
-          <div>
-            <h3 className="font-bold text-lg mb-2">3️⃣ Receba</h3>
-            <p>Entrega rápida direto na casa de quem você ama</p>
+                <a
+                  href={zap(`Olá! Quero saber mais sobre: ${p.nome}`)}
+                  target="_blank"
+                  className="mt-4 block rounded-full bg-[#c9475f] px-5 py-3 text-center text-sm font-bold text-white"
+                >
+                  Pedir esta cesta
+                </a>
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+
+      <section
+        id="como-funciona"
+        className="bg-white px-4 py-14"
+      >
+        <div className="mx-auto max-w-6xl">
+          <h2 className="text-center font-serif text-4xl font-bold text-[#8f2438]">
+            Como funciona
+          </h2>
+
+          <div className="mt-10 grid gap-5 md:grid-cols-4">
+            {[
+              ["1", "Escolha a cesta", "Veja os modelos disponíveis."],
+              ["2", "Chame no WhatsApp", "Personalize do seu jeito."],
+              ["3", "Preparamos", "Tudo montado com carinho."],
+              ["4", "Entregamos", "Surpresa pronta para emocionar."],
+            ].map(([n, t, d]) => (
+              <div key={n} className="rounded-3xl bg-[#fff8f4] p-6 text-center">
+                <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#c9475f] text-xl font-bold text-white">
+                  {n}
+                </div>
+                <h3 className="font-bold">{t}</h3>
+                <p className="mt-2 text-sm text-[#6b5252]">{d}</p>
+              </div>
+            ))}
           </div>
         </div>
       </section>
 
-      {/* PROVA SOCIAL */}
-      <section className="py-12 px-4 max-w-5xl mx-auto">
-        <h2 className="text-2xl font-bold text-center mb-8">
-          Clientes Satisfeitos ❤️
+      <section id="depoimentos" className="mx-auto max-w-6xl px-4 py-14">
+        <h2 className="text-center font-serif text-4xl font-bold text-[#8f2438]">
+          Clientes encantados
         </h2>
 
-        <div className="grid md:grid-cols-3 gap-6 text-center">
+        <div className="mt-10 grid gap-5 md:grid-cols-3">
           {[
-            "Amei! Muito capricho 😍",
-            "Entrega perfeita e rápida!",
-            "Minha esposa ficou encantada ❤️",
-          ].map((texto, i) => (
-            <div
-              key={i}
-              className="bg-white p-6 rounded-xl shadow"
-            >
-              <p>"{texto}"</p>
+            "A cesta veio perfeita, muito capricho!",
+            "Entrega combinada certinho e tudo lindo.",
+            "Foi uma surpresa maravilhosa, recomendo!",
+          ].map((d, i) => (
+            <div key={i} className="rounded-3xl bg-white p-6 shadow-md">
+              <p className="text-yellow-500">★★★★★</p>
+              <p className="mt-3 text-sm">“{d}”</p>
             </div>
           ))}
         </div>
       </section>
 
-      {/* CTA FINAL */}
-      <section className="text-center py-16 bg-[#ffe4e1] px-4">
-        <h2 className="text-3xl font-bold mb-4">
-          Faça sua surpresa hoje 🎁
-        </h2>
+      <section className="bg-[#c9475f] px-4 py-12 text-white">
+        <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-6 md:flex-row">
+          <div>
+            <p className="text-sm font-semibold">Instagram</p>
+            <h2 className="text-3xl font-bold">@cestas_by_gisa</h2>
+            <p className="mt-1 text-white/80">
+              Acompanhe novidades, modelos e entregas.
+            </p>
+          </div>
 
-        <a
-          href={WA_LINK}
-          target="_blank"
-          className="bg-green-500 hover:bg-green-600 text-white px-8 py-4 rounded-full text-xl font-bold shadow-lg"
-        >
-          Pedir Agora no WhatsApp
-        </a>
+          <a
+            href="https://www.instagram.com/cestas_by_gisa"
+            target="_blank"
+            className="rounded-full bg-white px-7 py-4 font-bold text-[#c9475f]"
+          >
+            Ver no Instagram
+          </a>
+        </div>
       </section>
 
-      {/* RODAPÉ */}
-      <footer className="bg-[#3b2f2f] text-white text-center py-6 px-4">
-        <p className="mb-2">Cestas by Gisa 💖</p>
-        <p className="mb-4">@cestas_by_gisa</p>
+      <section id="contato" className="px-4 py-14">
+        <div className="mx-auto max-w-4xl rounded-[2rem] bg-gradient-to-r from-[#8f2438] to-[#c9475f] p-8 text-center text-white shadow-xl">
+          <h2 className="font-serif text-4xl font-bold">
+            Faça sua surpresa hoje
+          </h2>
+          <p className="mt-3">
+            Chame no WhatsApp e monte uma cesta especial.
+          </p>
 
-        <a
-          href="https://www.iadrogarias.com.br/fv"
-          target="_blank"
-          className="text-green-300 underline"
-        >
-          💊 Conheça também nossa Farmácia Online
-        </a>
+          <a
+            href={zap("Olá! Quero montar uma cesta especial com a Cestas by Gisa 💝")}
+            target="_blank"
+            className="mt-6 inline-block rounded-full bg-white px-8 py-4 font-bold text-[#c9475f]"
+          >
+            Pedir agora no WhatsApp
+          </a>
+        </div>
+      </section>
+
+      <footer className="border-t border-rose-100 bg-[#fff1ec] px-4 py-10">
+        <div className="mx-auto grid max-w-7xl gap-8 md:grid-cols-4">
+          <div>
+            <p className="font-serif text-3xl font-bold text-[#9b2f45]">
+              Cestas ♡
+            </p>
+            <p className="font-serif text-xl italic text-[#b85b6a]">
+              by Gisa
+            </p>
+            <p className="mt-4 text-sm text-[#6b5252]">
+              Presentes que encantam, momentos que ficam.
+            </p>
+          </div>
+
+          <div>
+            <h3 className="font-bold">Links rápidos</h3>
+            <div className="mt-3 flex flex-col gap-2 text-sm">
+              <a href="#cestas">Cestas</a>
+              <a href="#como-funciona">Como funciona</a>
+              <a href="#depoimentos">Depoimentos</a>
+              <a href="#contato">Contato</a>
+            </div>
+          </div>
+
+          <div>
+            <h3 className="font-bold">Atendimento</h3>
+            <p className="mt-3 text-sm">WhatsApp: (11) 98327-3348</p>
+            <p className="mt-2 text-sm">Segunda a sábado</p>
+          </div>
+
+          <div>
+            <h3 className="font-bold">IA Drogarias</h3>
+            <p className="mt-3 text-sm text-[#6b5252]">
+              Conheça também nossa farmácia online.
+            </p>
+            <Link
+              href="/fv"
+              className="mt-3 inline-block rounded-full bg-[#111] px-5 py-3 text-sm font-bold text-white"
+            >
+              Farmácia Online 💊
+            </Link>
+          </div>
+        </div>
+
+        <p className="mx-auto mt-8 max-w-7xl text-xs text-[#6b5252]">
+          © 2026 Cestas by Gisa. Desenvolvido com carinho.
+        </p>
       </footer>
+
+      {/* BOTÃO FLUTUANTE PADRÃO - FARMÁCIA ONLINE */}
+      <Link
+        href="/fv"
+        className="fixed bottom-5 right-5 z-50 flex items-center gap-3 rounded-full border border-[#c9a227] bg-black px-6 py-4 text-sm font-bold text-white shadow-[0_0_18px_rgba(201,162,39,0.45)] transition hover:scale-105"
+      >
+        Farmácia Online <span>💊</span>
+      </Link>
     </main>
   );
 }
