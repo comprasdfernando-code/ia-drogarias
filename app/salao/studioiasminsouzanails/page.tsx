@@ -1,38 +1,49 @@
 import Hero from "./_components/Hero";
 import CarrosselServicos from "./_components/CarrosselServicos";
+import GaleriaReal from "./_components/GaleriaReal";
 import Servicos from "./_components/Servicos";
 import CTAWhats from "./_components/CTAWhats";
 import FloatingIA from "./_components/FloatingIA";
-import BannerIA from "./_components/BannerIA";
 
 export default function Page() {
   return (
     <main className="relative">
       <Hero />
+
       <CarrosselServicos />
 
-      {/* BANNER IA (MEIO DO SITE) */}
-      <BannerIA />
+      <GaleriaReal />
 
       <Servicos />
+
       <CTAWhats />
 
-      {/* BOTÃO FLUTUANTE */}
       <FloatingIA />
 
-      {/* RODAPÉ */}
       <section className="px-6 pb-10 pt-4">
-        <div className="mx-auto max-w-5xl border-t border-white/10 pt-6 text-center">
-          <p className="text-xs text-zinc-500">
-            Desenvolvido por{" "}
+        <div className="mx-auto max-w-5xl border-t border-white/10 pt-6">
+          <div className="flex flex-col items-center justify-center gap-2 text-center">
+            <p className="text-[11px] uppercase tracking-[0.25em] text-zinc-500">
+              Desenvolvido por
+            </p>
+
             <a
               href="https://iadrogarias.com.br/fv"
               target="_blank"
-              className="hover:text-[#d4af37]"
+              rel="noreferrer"
+              className="group inline-flex items-center gap-2 text-sm text-zinc-400 transition hover:text-[#d4af37]"
             >
-              IA Drogarias
+              <span className="font-medium uppercase tracking-[0.18em]">
+                IA Drogarias
+              </span>
+
+              <span className="h-px w-6 bg-white/20 transition group-hover:bg-[#d4af37]/50" />
+
+              <span className="text-xs text-zinc-500 transition group-hover:text-[#d4af37]">
+                e-commerce
+              </span>
             </a>
-          </p>
+          </div>
         </div>
       </section>
     </main>
