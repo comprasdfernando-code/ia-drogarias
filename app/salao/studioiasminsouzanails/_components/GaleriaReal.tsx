@@ -14,15 +14,15 @@ const fotos = [
 const videos = [
   {
     titulo: "Alongamento em Gel",
-    link: "https://www.instagram.com/reel/SEU_LINK_1/",
+    link: "https://www.instagram.com/reel/DMY6AAWsGej/?utm_source=ig_web_copy_link&igsh=MzRlODBiNWFlZA==",
   },
   {
     titulo: "Decoração Avançada",
-    link: "https://www.instagram.com/reel/SEU_LINK_2/",
+    link: "https://www.instagram.com/reel/DRifzfCgAuT/?utm_source=ig_web_copy_link&igsh=MzRlODBiNWFlZA==",
   },
   {
     titulo: "Esmaltação em Gel",
-    link: "https://www.instagram.com/reel/SEU_LINK_3/",
+    link: "https://www.instagram.com/reel/DGeYWwJJ33I/?utm_source=ig_web_copy_link&igsh=MzRlODBiNWFlZA==",
   },
 ];
 
