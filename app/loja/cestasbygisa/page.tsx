@@ -22,22 +22,22 @@ const produtos = [
   {
     nome: "Cesta Café da Manhã",
     preco: "A partir de R$ 89,90",
-    img: "https://images.unsplash.com/photo-1484723091739-30a097e8f929?q=80&w=900&auto=format&fit=crop",
+    img: "https://cestascompany.com.br/cdn/shop/files/background-editor_output_6a624b7f-400e-4a11-81d3-2fbab87f904a.png?v=1745497334&width=493",
   },
   {
     nome: "Cesta Romântica",
     preco: "A partir de R$ 119,90",
-    img: "https://images.unsplash.com/photo-1518199266791-5375a83190b7?q=80&w=900&auto=format&fit=crop",
+    img: "https://down-br.img.susercontent.com/file/br-11134207-7r98o-mafvabjz9c6x51@resize_w900_nl.webp",
   },
   {
     nome: "Cesta Premium",
     preco: "A partir de R$ 159,90",
-    img: "https://images.unsplash.com/photo-1543163521-1bf539c55dd2?q=80&w=900&auto=format&fit=crop",
+    img: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcRHGbjt7PRoC3p2cHG8x09RfdKSoa7h9HUOEQ&s",
   },
   {
     nome: "Cesta Infantil",
     preco: "A partir de R$ 99,90",
-    img: "https://images.unsplash.com/photo-1607083206968-13611e3d76db?q=80&w=900&auto=format&fit=crop",
+    img: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSr9YLgUKCuINxuhVxckZnJYhADi1xzQfoREQ&s",
   },
 ];
 
@@ -121,7 +121,7 @@ export default function Page() {
           <div className="relative">
             <div className="rounded-[2rem] bg-white p-3 shadow-2xl">
               <Image
-                src="https://images.unsplash.com/photo-1490645935967-10de6ba17061?q=80&w=1200&auto=format&fit=crop"
+                src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQYOSvywUMKHATeAvkD0UBCz9ZJ02fD8sZ_lQ&s"
                 alt="Cesta de café da manhã"
                 width={900}
                 height={700}
