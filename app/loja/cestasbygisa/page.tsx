@@ -121,7 +121,7 @@ export default function Page() {
           <div className="relative">
             <div className="rounded-[2rem] bg-white p-3 shadow-2xl">
               <Image
-                src="https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcQYOSvywUMKHATeAvkD0UBCz9ZJ02fD8sZ_lQ&s"
+                src="https://acdn-us.mitiendanube.com/stores/005/505/138/products/lembranca-ursinho-carinhoso-2-18f26dcc3bd94d389f17614143186430-1024-1024.webp"
                 alt="Cesta de café da manhã"
                 width={900}
                 height={700}
