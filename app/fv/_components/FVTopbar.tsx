@@ -5,6 +5,7 @@ import { useMemo } from "react";
 import CartDrawer from "./CartDrawer";
 import { useCart } from "./cart";
 import { useCartUI } from "./cart-ui";
+import { useCustomer } from "./useCustomer";
 
 const TAXA_ENTREGA = 10;
 
@@ -15,6 +16,7 @@ function brl(v: number) {
 export default function FVTopbar() {
   const { countItems, subtotal } = useCart();
   const { openCart } = useCartUI();
+  const { user } = useCustomer();
 
   const totalTopo = useMemo(
     () => (countItems ? subtotal + TAXA_ENTREGA : 0),
@@ -25,17 +27,40 @@ export default function FVTopbar() {
     <>
       <div className="sticky top-0 z-[70] bg-gradient-to-b from-blue-800 to-blue-700 text-white border-b border-white/10">
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center gap-3">
+          
+          {/* LOGO */}
           <Link href="/fv" className="font-extrabold tracking-tight">
             IA Drogarias <span className="text-white/80">• FV</span>
           </Link>
 
+          {/* DIREITA */}
           <div className="ml-auto flex items-center gap-2">
+
+            {/* 👤 CONTA */}
+            {user ? (
+              <Link
+                href="/fv/minha-conta"
+                className="bg-white/15 hover:bg-white/20 border border-white/20 rounded-xl px-3 py-2 text-sm font-bold"
+              >
+                👤 Minha conta
+              </Link>
+            ) : (
+              <Link
+                href="/login"
+                className="bg-white/15 hover:bg-white/20 border border-white/20 rounded-xl px-3 py-2 text-sm font-bold"
+              >
+                Entrar
+              </Link>
+            )}
+
+            {/* 🛒 CARRINHO */}
             <button
               onClick={openCart}
               className="relative bg-white/15 hover:bg-white/20 border border-white/20 rounded-xl px-3 py-2 font-extrabold text-sm flex items-center gap-2"
             >
               <span>🛒</span>
               <span className="hidden sm:inline">Carrinho</span>
+
               <span className="text-white/90 hidden md:inline">
                 • {brl(totalTopo)}
               </span>
@@ -50,8 +75,10 @@ export default function FVTopbar() {
         </div>
       </div>
 
+      {/* MOBILE */}
       <MobileCartBar onOpen={openCart} />
 
+      {/* DRAWER */}
       <CartDrawer />
     </>
   );
