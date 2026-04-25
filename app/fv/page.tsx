@@ -125,6 +125,21 @@ type FVProduto = {
   disponivel: boolean;
 };
 
+type ClienteEndereco = {
+  id: string;
+  cliente_id: string;
+  nome: string | null;
+  cep: string | null;
+  endereco: string | null;
+  numero: string | null;
+  bairro: string | null;
+  cidade: string | null;
+  estado: string | null;
+  complemento: string | null;
+  referencia: string | null;
+  principal: boolean | null;
+};
+
 const VIEW_HOME = "fv_home_com_estoque";
 const PAGE_SIZE = 60;
 
@@ -671,6 +686,13 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
   const [endereco, setEndereco] = useState("");
   const [numero, setNumero] = useState("");
   const [bairro, setBairro] = useState("");
+  const [cep, setCep] = useState("");
+  const [cidade, setCidade] = useState("");
+  const [estado, setEstado] = useState("");
+  const [complemento, setComplemento] = useState("");
+  const [referencia, setReferencia] = useState("");
+  const [enderecoPrincipal, setEnderecoPrincipal] = useState<ClienteEndereco | null>(null);
+  const [loadingEnderecoPrincipal, setLoadingEnderecoPrincipal] = useState(false);
 
   const [pagamento, setPagamento] = useState<"PIX" | "CARTAO" | "DINHEIRO" | "COMBINAR">("PIX");
 
@@ -705,6 +727,52 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
     setClienteCpf((prev) => prev || profile.cpf || "");
     setClienteEmail((prev) => prev || profile.email || "");
   }, [open, user, profile]);
+
+  // ✅ busca o endereço principal salvo em Minha Conta > Endereços
+  useEffect(() => {
+    async function loadEnderecoPrincipal() {
+      if (!open) return;
+      if (!user?.id) {
+        setEnderecoPrincipal(null);
+        return;
+      }
+
+      setLoadingEnderecoPrincipal(true);
+      try {
+        const { data, error } = await supabase
+          .from("cliente_enderecos")
+          .select("id,cliente_id,nome,cep,endereco,numero,bairro,cidade,estado,complemento,referencia,principal")
+          .eq("cliente_id", user.id)
+          .eq("principal", true)
+          .maybeSingle();
+
+        if (error) throw error;
+
+        const end = (data || null) as ClienteEndereco | null;
+        setEnderecoPrincipal(end);
+
+        // Só preenche automático se o cliente ainda não digitou endereço no carrinho
+        if (end) {
+          setTipoEntrega("ENTREGA");
+          setEndereco((prev) => prev || end.endereco || "");
+          setNumero((prev) => prev || end.numero || "");
+          setBairro((prev) => prev || end.bairro || "");
+          setCep((prev) => prev || end.cep || "");
+          setCidade((prev) => prev || end.cidade || "");
+          setEstado((prev) => prev || end.estado || "");
+          setComplemento((prev) => prev || end.complemento || "");
+          setReferencia((prev) => prev || end.referencia || "");
+        }
+      } catch (e) {
+        console.error("Erro ao buscar endereço principal:", e);
+        setEnderecoPrincipal(null);
+      } finally {
+        setLoadingEnderecoPrincipal(false);
+      }
+    }
+
+    loadEnderecoPrincipal();
+  }, [open, user?.id]);
 
   useEffect(() => {
     if (!open) return;
@@ -774,9 +842,15 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
       taxa_entrega_centavos: taxaCentavos,
       entrega: {
         tipo_entrega: tipoEntrega,
+        endereco_id: tipoEntrega === "ENTREGA" ? enderecoPrincipal?.id || null : null,
         endereco: tipoEntrega === "ENTREGA" ? endereco.trim() : null,
         numero: tipoEntrega === "ENTREGA" ? numero.trim() : null,
         bairro: tipoEntrega === "ENTREGA" ? bairro.trim() : null,
+        cep: tipoEntrega === "ENTREGA" ? cep.trim() || null : null,
+        cidade: tipoEntrega === "ENTREGA" ? cidade.trim() || null : null,
+        estado: tipoEntrega === "ENTREGA" ? estado.trim() || null : null,
+        complemento: tipoEntrega === "ENTREGA" ? complemento.trim() || null : null,
+        referencia: tipoEntrega === "ENTREGA" ? referencia.trim() || null : null,
       },
       pagamento,
       total_centavos: items.reduce((acc, it) => acc + it.unit_amount * it.quantity, 0),
@@ -878,9 +952,15 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
         cliente_whatsapp: onlyDigits(clienteTelefone),
 
         tipo_entrega: tipoEntrega,
+        endereco_id: tipoEntrega === "ENTREGA" ? enderecoPrincipal?.id || null : null,
         endereco: tipoEntrega === "ENTREGA" ? endereco.trim() : null,
         numero: tipoEntrega === "ENTREGA" ? numero.trim() : null,
         bairro: tipoEntrega === "ENTREGA" ? bairro.trim() : null,
+        cep: tipoEntrega === "ENTREGA" ? cep.trim() || null : null,
+        cidade: tipoEntrega === "ENTREGA" ? cidade.trim() || null : null,
+        estado: tipoEntrega === "ENTREGA" ? estado.trim() || null : null,
+        complemento: tipoEntrega === "ENTREGA" ? complemento.trim() || null : null,
+        referencia: tipoEntrega === "ENTREGA" ? referencia.trim() || null : null,
 
         pagamento,
         canal: "SITE",
@@ -1144,6 +1224,41 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
 
             {tipoEntrega === "ENTREGA" ? (
               <div className="mt-3 space-y-2">
+                {loadingEnderecoPrincipal ? (
+                  <div className="rounded-xl border bg-blue-50 px-3 py-2 text-xs font-bold text-blue-800">
+                    Buscando endereço salvo...
+                  </div>
+                ) : enderecoPrincipal ? (
+                  <div className="rounded-2xl border border-blue-100 bg-blue-50 p-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <div className="text-xs font-black text-blue-900">Endereço principal da sua conta ✅</div>
+                        <div className="mt-1 text-sm font-extrabold text-gray-900">
+                          {enderecoPrincipal.endereco}, {enderecoPrincipal.numero} — {enderecoPrincipal.bairro}
+                        </div>
+                        <div className="mt-0.5 text-xs text-gray-600">
+                          {[enderecoPrincipal.complemento, enderecoPrincipal.referencia, enderecoPrincipal.cidade, enderecoPrincipal.estado]
+                            .filter(Boolean)
+                            .join(" • ")}
+                        </div>
+                      </div>
+                      <Link
+                        href="/fv/minha-conta/enderecos"
+                        className="shrink-0 rounded-xl bg-white border px-3 py-2 text-xs font-extrabold text-blue-700 hover:bg-blue-50"
+                      >
+                        Trocar
+                      </Link>
+                    </div>
+                  </div>
+                ) : locked ? (
+                  <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
+                    Você está logado, mas ainda não tem endereço principal salvo.
+                    <Link href="/fv/minha-conta/enderecos" className="ml-1 font-black underline">
+                      Cadastrar endereço
+                    </Link>
+                  </div>
+                ) : null}
+
                 <input
                   placeholder="Endereço"
                   value={endereco}
@@ -1167,6 +1282,46 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
                     disabled={saving || !!pedidoCriado}
                   />
                 </div>
+
+                <div className="grid grid-cols-3 gap-2">
+                  <input
+                    placeholder="CEP"
+                    value={cep}
+                    onChange={(e) => setCep(e.target.value)}
+                    className="w-full border bg-white px-3 py-2.5 rounded-xl outline-none focus:ring-4 focus:ring-blue-100"
+                    disabled={saving || !!pedidoCriado}
+                  />
+                  <input
+                    placeholder="Cidade"
+                    value={cidade}
+                    onChange={(e) => setCidade(e.target.value)}
+                    className="col-span-1 w-full border bg-white px-3 py-2.5 rounded-xl outline-none focus:ring-4 focus:ring-blue-100"
+                    disabled={saving || !!pedidoCriado}
+                  />
+                  <input
+                    placeholder="UF"
+                    value={estado}
+                    onChange={(e) => setEstado(e.target.value.toUpperCase().slice(0, 2))}
+                    className="w-full border bg-white px-3 py-2.5 rounded-xl outline-none focus:ring-4 focus:ring-blue-100"
+                    disabled={saving || !!pedidoCriado}
+                  />
+                </div>
+
+                <input
+                  placeholder="Complemento (apto, bloco, casa, fundos...)"
+                  value={complemento}
+                  onChange={(e) => setComplemento(e.target.value)}
+                  className="w-full border bg-white px-3 py-2.5 rounded-xl outline-none focus:ring-4 focus:ring-blue-100"
+                  disabled={saving || !!pedidoCriado}
+                />
+
+                <input
+                  placeholder="Referência para entrega (opcional)"
+                  value={referencia}
+                  onChange={(e) => setReferencia(e.target.value)}
+                  className="w-full border bg-white px-3 py-2.5 rounded-xl outline-none focus:ring-4 focus:ring-blue-100"
+                  disabled={saving || !!pedidoCriado}
+                />
 
                 <div className="text-sm font-extrabold text-blue-900">Taxa fixa: {brl(taxaEntrega)}</div>
               </div>

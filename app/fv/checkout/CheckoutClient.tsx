@@ -4,8 +4,20 @@ import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import PagbankPayment from "../_components/PagbankPayment";
 import { useCustomer } from "../_components/useCustomer"; // ✅ ADICIONADO
+import { useCart } from "../_components/cart";
 
 type Metodo = "pix" | "cartao";
+
+type EnderecoEntrega = {
+  cep: string;
+  endereco: string;
+  numero: string;
+  bairro: string;
+  cidade: string;
+  estado: string;
+  complemento: string;
+  referencia: string;
+};
 
 type VendaLike = {
   id?: string;
@@ -195,6 +207,38 @@ export default function CheckoutClient() {
 
   const { user, profile } = useCustomer(); // ✅ ADICIONADO (somente leitura do logado)
 
+  const { endereco: enderecoCart } = useCart();
+
+  const [enderecoEntrega, setEnderecoEntrega] = useState<EnderecoEntrega>({
+    cep: "",
+    endereco: "",
+    numero: "",
+    bairro: "",
+    cidade: "São Paulo",
+    estado: "SP",
+    complemento: "",
+    referencia: "",
+  });
+
+  useEffect(() => {
+    if (!enderecoCart) return;
+
+    setEnderecoEntrega({
+      cep: enderecoCart.cep || "",
+      endereco: enderecoCart.endereco || "",
+      numero: enderecoCart.numero || "",
+      bairro: enderecoCart.bairro || "",
+      cidade: enderecoCart.cidade || "São Paulo",
+      estado: enderecoCart.estado || "SP",
+      complemento: enderecoCart.complemento || "",
+      referencia: enderecoCart.referencia || "",
+    });
+  }, [enderecoCart]);
+
+  function updateEnderecoEntrega(campo: keyof EnderecoEntrega, valor: string) {
+    setEnderecoEntrega((prev) => ({ ...prev, [campo]: valor }));
+  }
+
   const orderId = sp.get("order_id") || "";
   const pedidoIdQS = sp.get("pedido_id") || "";
   const vendaId = sp.get("venda_id") || "";
@@ -370,6 +414,16 @@ export default function CheckoutClient() {
     return cents > 0 ? cents : 0;
   }, [venda]);
 
+  const tipoEntrega = String(
+    pickFirst((venda as any)?.entrega?.tipo_entrega, (venda as any)?.tipo_entrega, "entrega") || "entrega"
+  ).toLowerCase();
+
+  const precisaEndereco = !tipoEntrega.includes("retirada") && taxaEntregaCents > 0;
+
+  const enderecoCompleto =
+    !precisaEndereco ||
+    (enderecoEntrega.endereco.trim() && enderecoEntrega.numero.trim() && enderecoEntrega.bairro.trim());
+
   const items = useMemo(() => {
     const arr = [...itemsBase];
     if (taxaEntregaCents > 0) {
@@ -432,6 +486,7 @@ export default function CheckoutClient() {
           pedido_id: pedidoId || null,
           grupo_id: grupoId || null,
           status: "PAID",
+          endereco_entrega: precisaEndereco ? enderecoEntrega : null,
         }),
       });
     } catch {}
@@ -535,17 +590,111 @@ export default function CheckoutClient() {
         </div>
       )}
 
+      {precisaEndereco && (
+        <div className="mb-4 rounded-2xl border p-4">
+          <div className="mb-3 flex items-start justify-between gap-3">
+            <div>
+              <div className="text-sm font-semibold">Endereço de entrega</div>
+              <div className="mt-1 text-xs text-slate-500">
+                Conferimos o endereço salvo na sua conta. Você pode ajustar antes de pagar.
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => router.push("/fv/minha-conta/enderecos")}
+              className="rounded-lg border px-3 py-2 text-xs font-semibold hover:bg-slate-50"
+            >
+              Trocar
+            </button>
+          </div>
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <input
+              value={enderecoEntrega.cep}
+              onChange={(e) => updateEnderecoEntrega("cep", e.target.value)}
+              placeholder="CEP"
+              className="rounded-xl border px-3 py-3 text-sm outline-none focus:ring-4 focus:ring-blue-200"
+            />
+
+            <input
+              value={enderecoEntrega.endereco}
+              onChange={(e) => updateEnderecoEntrega("endereco", e.target.value)}
+              placeholder="Endereço / Rua / Avenida"
+              className="rounded-xl border px-3 py-3 text-sm outline-none focus:ring-4 focus:ring-blue-200 sm:col-span-2"
+            />
+
+            <input
+              value={enderecoEntrega.numero}
+              onChange={(e) => updateEnderecoEntrega("numero", e.target.value)}
+              placeholder="Número"
+              className="rounded-xl border px-3 py-3 text-sm outline-none focus:ring-4 focus:ring-blue-200"
+            />
+
+            <input
+              value={enderecoEntrega.bairro}
+              onChange={(e) => updateEnderecoEntrega("bairro", e.target.value)}
+              placeholder="Bairro"
+              className="rounded-xl border px-3 py-3 text-sm outline-none focus:ring-4 focus:ring-blue-200"
+            />
+
+            <input
+              value={enderecoEntrega.cidade}
+              onChange={(e) => updateEnderecoEntrega("cidade", e.target.value)}
+              placeholder="Cidade"
+              className="rounded-xl border px-3 py-3 text-sm outline-none focus:ring-4 focus:ring-blue-200"
+            />
+
+            <input
+              value={enderecoEntrega.estado}
+              onChange={(e) => updateEnderecoEntrega("estado", e.target.value.toUpperCase().slice(0, 2))}
+              placeholder="UF"
+              className="rounded-xl border px-3 py-3 text-sm outline-none focus:ring-4 focus:ring-blue-200"
+            />
+
+            <input
+              value={enderecoEntrega.complemento}
+              onChange={(e) => updateEnderecoEntrega("complemento", e.target.value)}
+              placeholder="Complemento"
+              className="rounded-xl border px-3 py-3 text-sm outline-none focus:ring-4 focus:ring-blue-200"
+            />
+
+            <input
+              value={enderecoEntrega.referencia}
+              onChange={(e) => updateEnderecoEntrega("referencia", e.target.value)}
+              placeholder="Referência"
+              className="rounded-xl border px-3 py-3 text-sm outline-none focus:ring-4 focus:ring-blue-200"
+            />
+          </div>
+
+          {!enderecoCompleto && (
+            <div className="mt-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs font-semibold text-amber-800">
+              Preencha endereço, número e bairro para liberar o pagamento.
+            </div>
+          )}
+        </div>
+      )}
+
       {/* ✅ Conteúdo por método (CORRIGIDO: um componente único) */}
-      <PagbankPayment
-        metodo={metodo}
-        orderId={orderId}
-        cliente={{
-          ...cliente,
-          tax_id: metodo === "pix" ? cpf : cliente.tax_id,
-        }}
-        items={items}
-        onPaid={onPaid}
-      />
+      {enderecoCompleto ? (
+        <PagbankPayment
+          metodo={metodo}
+          orderId={orderId}
+          cliente={{
+            ...cliente,
+            tax_id: metodo === "pix" ? cpf : cliente.tax_id,
+          }}
+          items={items}
+          onPaid={onPaid}
+        />
+      ) : (
+        <button
+          type="button"
+          disabled
+          className="w-full rounded-2xl bg-slate-200 px-4 py-4 text-sm font-bold text-slate-500"
+        >
+          Complete o endereço para continuar
+        </button>
+      )}
     </div>
   );
 }

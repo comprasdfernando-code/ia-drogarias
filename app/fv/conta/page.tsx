@@ -15,17 +15,17 @@ type Profile = {
 
 type Address = {
   id: string;
-  user_id: string;
-  label: string | null;
+  cliente_id: string;
+  nome: string | null;
   cep: string | null;
-  rua: string | null;
+  endereco: string | null;
   numero: string | null;
   complemento: string | null;
   bairro: string | null;
   cidade: string | null;
-  uf: string | null;
+  estado: string | null;
   referencia: string | null;
-  is_default: boolean | null;
+  principal: boolean | null;
   created_at?: string;
 };
 
@@ -46,16 +46,16 @@ export default function ContaPage() {
   const [err, setErr] = useState<string | null>(null);
 
   const [addrForm, setAddrForm] = useState<Partial<Address>>({
-    label: "Casa",
+    nome: "Casa",
     cep: "",
-    rua: "",
+    endereco: "",
     numero: "",
     complemento: "",
     bairro: "",
     cidade: "",
-    uf: "",
+    estado: "SP",
     referencia: "",
-    is_default: true,
+    principal: true,
   });
 
   useEffect(() => {
@@ -95,10 +95,10 @@ export default function ContaPage() {
 
         // addresses
         const { data: addrs } = await supabase
-          .from("customer_addresses")
+          .from("cliente_enderecos")
           .select("*")
-          .eq("user_id", u.id)
-          .order("is_default", { ascending: false })
+          .eq("cliente_id", u.id)
+          .order("principal", { ascending: false })
           .order("created_at", { ascending: false });
 
         if (!cancelled) setAddresses((addrs as any) || []);
@@ -114,7 +114,7 @@ export default function ContaPage() {
     };
   }, [router]);
 
-  const defaultAddr = useMemo(() => addresses.find((a) => a.is_default) || addresses[0] || null, [addresses]);
+  const defaultAddr = useMemo(() => addresses.find((a) => a.principal) || addresses[0] || null, [addresses]);
 
   async function salvarPerfil() {
     setErr(null);
@@ -146,35 +146,35 @@ export default function ContaPage() {
       if (!userId) return;
 
       // se for default, zera os outros
-      if (addrForm.is_default) {
+      if (addrForm.principal) {
         await supabase
-          .from("customer_addresses")
-          .update({ is_default: false })
-          .eq("user_id", userId);
+          .from("cliente_enderecos")
+          .update({ principal: false })
+          .eq("cliente_id", userId);
       }
 
       const payload = {
-        user_id: userId,
-        label: addrForm.label || "Endereço",
+        cliente_id: userId,
+        nome: addrForm.nome || "Endereço",
         cep: addrForm.cep || null,
-        rua: addrForm.rua || null,
+        endereco: addrForm.endereco || null,
         numero: addrForm.numero || null,
         complemento: addrForm.complemento || null,
         bairro: addrForm.bairro || null,
         cidade: addrForm.cidade || null,
-        uf: addrForm.uf || null,
+        estado: addrForm.estado || null,
         referencia: addrForm.referencia || null,
-        is_default: !!addrForm.is_default,
+        principal: !!addrForm.principal,
       };
 
-      const { error } = await supabase.from("customer_addresses").insert(payload);
+      const { error } = await supabase.from("cliente_enderecos").insert(payload);
       if (error) throw error;
 
       const { data: addrs } = await supabase
-        .from("customer_addresses")
+        .from("cliente_enderecos")
         .select("*")
-        .eq("user_id", userId)
-        .order("is_default", { ascending: false })
+        .eq("cliente_id", userId)
+        .order("principal", { ascending: false })
         .order("created_at", { ascending: false });
 
       setAddresses((addrs as any) || []);
@@ -190,14 +190,14 @@ export default function ContaPage() {
     try {
       if (!userId) return;
 
-      await supabase.from("customer_addresses").update({ is_default: false }).eq("user_id", userId);
-      await supabase.from("customer_addresses").update({ is_default: true }).eq("id", id);
+      await supabase.from("cliente_enderecos").update({ principal: false }).eq("cliente_id", userId);
+      await supabase.from("cliente_enderecos").update({ principal: true }).eq("id", id);
 
       const { data: addrs } = await supabase
-        .from("customer_addresses")
+        .from("cliente_enderecos")
         .select("*")
-        .eq("user_id", userId)
-        .order("is_default", { ascending: false })
+        .eq("cliente_id", userId)
+        .order("principal", { ascending: false })
         .order("created_at", { ascending: false });
 
       setAddresses((addrs as any) || []);
@@ -213,13 +213,13 @@ export default function ContaPage() {
     try {
       if (!userId) return;
 
-      await supabase.from("customer_addresses").delete().eq("id", id);
+      await supabase.from("cliente_enderecos").delete().eq("id", id);
 
       const { data: addrs } = await supabase
-        .from("customer_addresses")
+        .from("cliente_enderecos")
         .select("*")
-        .eq("user_id", userId)
-        .order("is_default", { ascending: false })
+        .eq("cliente_id", userId)
+        .order("principal", { ascending: false })
         .order("created_at", { ascending: false });
 
       setAddresses((addrs as any) || []);
@@ -331,12 +331,12 @@ export default function ContaPage() {
 
           {defaultAddr ? (
             <div className="mt-3 rounded-xl border p-3 text-sm">
-              <div className="font-semibold">{defaultAddr.label || "Endereço"}</div>
+              <div className="font-semibold">{defaultAddr.nome || "Endereço"}</div>
               <div className="mt-1 text-slate-700">
-                {defaultAddr.rua}, {defaultAddr.numero} {defaultAddr.complemento ? `- ${defaultAddr.complemento}` : ""}
+                {defaultAddr.endereco}, {defaultAddr.numero} {defaultAddr.complemento ? `- ${defaultAddr.complemento}` : ""}
               </div>
               <div className="text-slate-700">
-                {defaultAddr.bairro} - {defaultAddr.cidade}/{defaultAddr.uf} • CEP {defaultAddr.cep}
+                {defaultAddr.bairro} - {defaultAddr.cidade}/{defaultAddr.estado} • CEP {defaultAddr.cep}
               </div>
               {defaultAddr.referencia ? <div className="text-slate-600">Ref: {defaultAddr.referencia}</div> : null}
             </div>
@@ -348,10 +348,10 @@ export default function ContaPage() {
 
           <div className="mt-3 grid grid-cols-1 gap-3 md:grid-cols-2">
             <div>
-              <div className="mb-1 text-xs font-bold opacity-70">Label</div>
+              <div className="mb-1 text-xs font-bold opacity-70">Nome do endereço</div>
               <input
-                value={addrForm.label || ""}
-                onChange={(e) => setAddrForm((s) => ({ ...s, label: e.target.value }))}
+                value={addrForm.nome || ""}
+                onChange={(e) => setAddrForm((s) => ({ ...s, nome: e.target.value }))}
                 className="w-full rounded-xl border px-3 py-3 text-sm outline-none focus:ring-4 focus:ring-blue-200"
                 placeholder="Casa / Trabalho"
               />
@@ -371,8 +371,8 @@ export default function ContaPage() {
             <div className="md:col-span-2">
               <div className="mb-1 text-xs font-bold opacity-70">Rua</div>
               <input
-                value={addrForm.rua || ""}
-                onChange={(e) => setAddrForm((s) => ({ ...s, rua: e.target.value }))}
+                value={addrForm.endereco || ""}
+                onChange={(e) => setAddrForm((s) => ({ ...s, endereco: e.target.value }))}
                 className="w-full rounded-xl border px-3 py-3 text-sm outline-none focus:ring-4 focus:ring-blue-200"
               />
             </div>
@@ -414,10 +414,10 @@ export default function ContaPage() {
             </div>
 
             <div>
-              <div className="mb-1 text-xs font-bold opacity-70">UF</div>
+              <div className="mb-1 text-xs font-bold opacity-70">Estado</div>
               <input
-                value={addrForm.uf || ""}
-                onChange={(e) => setAddrForm((s) => ({ ...s, uf: e.target.value.toUpperCase().slice(0, 2) }))}
+                value={addrForm.estado || ""}
+                onChange={(e) => setAddrForm((s) => ({ ...s, estado: e.target.value.toUpperCase().slice(0, 2) }))}
                 className="w-full rounded-xl border px-3 py-3 text-sm outline-none focus:ring-4 focus:ring-blue-200"
                 placeholder="SP"
               />
@@ -435,8 +435,8 @@ export default function ContaPage() {
             <label className="flex items-center gap-2 text-sm">
               <input
                 type="checkbox"
-                checked={!!addrForm.is_default}
-                onChange={(e) => setAddrForm((s) => ({ ...s, is_default: e.target.checked }))}
+                checked={!!addrForm.principal}
+                onChange={(e) => setAddrForm((s) => ({ ...s, principal: e.target.checked }))}
               />
               Definir como padrão
             </label>
@@ -463,11 +463,11 @@ export default function ContaPage() {
                 <div key={a.id} className="rounded-xl border p-3 text-sm">
                   <div className="flex items-center justify-between gap-2">
                     <div className="font-semibold">
-                      {a.label || "Endereço"}{" "}
-                      {a.is_default ? <span className="ml-2 rounded-full bg-slate-100 px-2 py-1 text-xs">Padrão</span> : null}
+                      {a.nome || "Endereço"}{" "}
+                      {a.principal ? <span className="ml-2 rounded-full bg-slate-100 px-2 py-1 text-xs">Padrão</span> : null}
                     </div>
                     <div className="flex gap-2">
-                      {!a.is_default ? (
+                      {!a.principal ? (
                         <button className="rounded-lg border px-3 py-1 text-xs font-semibold hover:bg-slate-50" onClick={() => setDefaultAddress(a.id)}>
                           Tornar padrão
                         </button>
@@ -478,10 +478,10 @@ export default function ContaPage() {
                     </div>
                   </div>
                   <div className="mt-1 text-slate-700">
-                    {a.rua}, {a.numero} {a.complemento ? `- ${a.complemento}` : ""}
+                    {a.endereco}, {a.numero} {a.complemento ? `- ${a.complemento}` : ""}
                   </div>
                   <div className="text-slate-700">
-                    {a.bairro} - {a.cidade}/{a.uf} • CEP {a.cep}
+                    {a.bairro} - {a.cidade}/{a.estado} • CEP {a.cep}
                   </div>
                   {a.referencia ? <div className="text-slate-600">Ref: {a.referencia}</div> : null}
                 </div>
