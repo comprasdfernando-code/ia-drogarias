@@ -1,11 +1,11 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import CartDrawer from "./CartDrawer";
 import { useCart } from "./cart";
+import { useCartUI } from "./cart-ui";
 
-const WHATSAPP = "5511952068432";
 const TAXA_ENTREGA = 10;
 
 function brl(v: number) {
@@ -13,10 +13,13 @@ function brl(v: number) {
 }
 
 export default function FVTopbar() {
-  const [open, setOpen] = useState(false);
   const { countItems, subtotal } = useCart();
+  const { openCart } = useCartUI();
 
-  const totalTopo = useMemo(() => (countItems ? subtotal + TAXA_ENTREGA : 0), [subtotal, countItems]);
+  const totalTopo = useMemo(
+    () => (countItems ? subtotal + TAXA_ENTREGA : 0),
+    [subtotal, countItems]
+  );
 
   return (
     <>
@@ -28,12 +31,14 @@ export default function FVTopbar() {
 
           <div className="ml-auto flex items-center gap-2">
             <button
-              onClick={() => setOpen(true)}
+              onClick={openCart}
               className="relative bg-white/15 hover:bg-white/20 border border-white/20 rounded-xl px-3 py-2 font-extrabold text-sm flex items-center gap-2"
             >
               <span>🛒</span>
               <span className="hidden sm:inline">Carrinho</span>
-              <span className="text-white/90 hidden md:inline">• {brl(totalTopo)}</span>
+              <span className="text-white/90 hidden md:inline">
+                • {brl(totalTopo)}
+              </span>
 
               {countItems > 0 && (
                 <span className="absolute -top-2 -right-2 bg-green-400 text-blue-950 text-xs font-extrabold w-6 h-6 rounded-full flex items-center justify-center shadow">
@@ -45,22 +50,20 @@ export default function FVTopbar() {
         </div>
       </div>
 
-      {/* barra fixa mobile “Ultrafarma” */}
-      <MobileCartBar onOpen={() => setOpen(true)} />
+      <MobileCartBar onOpen={openCart} />
 
-      <CartDrawer
-        open={open}
-        onClose={() => setOpen(false)}
-        whatsapp={WHATSAPP}
-        taxaEntrega={TAXA_ENTREGA}
-      />
+      <CartDrawer />
     </>
   );
 }
 
 function MobileCartBar({ onOpen }: { onOpen: () => void }) {
   const { countItems, subtotal } = useCart();
-  const total = useMemo(() => (countItems ? subtotal + TAXA_ENTREGA : 0), [countItems, subtotal]);
+
+  const total = useMemo(
+    () => (countItems ? subtotal + TAXA_ENTREGA : 0),
+    [countItems, subtotal]
+  );
 
   if (!countItems) return null;
 
