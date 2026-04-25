@@ -41,7 +41,7 @@ export default function FVTopbar() {
               <div className="flex items-center gap-2 bg-white/10 border border-white/20 px-3 py-2 rounded-xl">
 
                 <span className="text-sm font-bold">
-                  Olá, {user?.user_metadata?.nome || "Cliente"}
+                  Oie!!, {user?.user_metadata?.nome || "Cliente"}
                 </span>
 
                 <Link
