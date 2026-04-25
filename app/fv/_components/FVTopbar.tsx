@@ -16,7 +16,7 @@ function brl(v: number) {
 export default function FVTopbar() {
   const { countItems, subtotal } = useCart();
   const { openCart } = useCartUI();
-  const { user } = useCustomer();
+  const { user, signOut } = useCustomer();
 
   const totalTopo = useMemo(
     () => (countItems ? subtotal + TAXA_ENTREGA : 0),
@@ -27,23 +27,37 @@ export default function FVTopbar() {
     <>
       <div className="sticky top-0 z-[70] bg-gradient-to-b from-blue-800 to-blue-700 text-white border-b border-white/10">
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center gap-3">
-          
+
           {/* LOGO */}
           <Link href="/fv" className="font-extrabold tracking-tight">
             IA Drogarias <span className="text-white/80">• FV</span>
           </Link>
 
           {/* DIREITA */}
-          <div className="ml-auto flex items-center gap-2">
+          <div className="ml-auto flex items-center gap-3">
 
-            {/* 👤 CONTA */}
+            {/* 👤 USUÁRIO */}
             {user ? (
-              <Link
-                href="/fv/minha-conta"
-                className="bg-white/15 hover:bg-white/20 border border-white/20 rounded-xl px-3 py-2 text-sm font-bold"
-              >
-                👤 Minha conta
-              </Link>
+              <div className="flex items-center gap-2 bg-white/10 border border-white/20 px-3 py-2 rounded-xl">
+
+                <span className="text-sm font-bold">
+                  Olá, {user?.user_metadata?.nome || "Cliente"}
+                </span>
+
+                <Link
+                  href="/fv/conta"
+                  className="text-xs bg-white/20 hover:bg-white/30 px-2 py-1 rounded-lg font-bold"
+                >
+                  Minha conta
+                </Link>
+
+                <button
+                  onClick={signOut}
+                  className="text-xs bg-red-500/80 hover:bg-red-600 px-2 py-1 rounded-lg font-bold"
+                >
+                  Sair
+                </button>
+              </div>
             ) : (
               <Link
                 href="/login"
@@ -71,6 +85,7 @@ export default function FVTopbar() {
                 </span>
               )}
             </button>
+
           </div>
         </div>
       </div>

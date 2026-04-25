@@ -56,7 +56,7 @@ export default function IdentificacaoEntregaPage() {
                 </div>
               )}
 
-              <Link href="/fv/minha-conta" className="mt-3 inline-block text-sm font-bold text-blue-700">
+              <Link href="/fv/conta" className="mt-3 inline-block text-sm font-bold text-blue-700">
                 Trocar ou cadastrar endereço
               </Link>
             </div>
