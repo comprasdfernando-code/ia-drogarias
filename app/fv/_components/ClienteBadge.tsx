@@ -1,44 +1,97 @@
 "use client";
 
 import Link from "next/link";
+import { useMemo, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { useCustomer } from "./useCustomer";
 
+function firstName(full?: string | null) {
+  const s = (full || "").trim();
+  if (!s) return "";
+  return s.split(/\s+/)[0] || s;
+}
+
 export default function ClienteBadge() {
-  const { user, signOut } = useCustomer();
+  const router = useRouter();
+  const pathname = usePathname();
+  const { loading, user, profile, signOut } = useCustomer();
+  const [busy, setBusy] = useState(false);
 
-  // 🔒 Se não estiver logado, não mostra nada
-  if (!user) return null;
+  // 🔥 prioridade: nome do perfil → metadata → email
+  const nome = useMemo(() => {
+    const n =
+      profile?.nome ||
+      user?.user_metadata?.nome ||
+      user?.user_metadata?.name ||
+      user?.email ||
+      "";
+    return firstName(n);
+  }, [
+    profile?.nome,
+    user?.user_metadata?.nome,
+    user?.user_metadata?.name,
+    user?.email,
+  ]);
 
-  // 👤 Nome do cliente (fallback seguro)
-  const nome =
-    user?.user_metadata?.nome ||
-    user?.email?.split("@")[0] ||
-    "Cliente";
+  async function onEntrar() {
+    const next = encodeURIComponent(pathname || "/fv");
+    router.push(`/fv/entrar?next=${next}`);
+  }
+
+  async function onSair() {
+    setBusy(true);
+    try {
+      await signOut();
+      router.refresh?.();
+      router.push("/fv");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
     <div className="flex items-center gap-2">
+      {loading ? (
+        <div className="hidden sm:flex items-center gap-2">
+          <div className="h-9 w-28 rounded-full bg-white/15 animate-pulse" />
+        </div>
+      ) : user ? (
+        <>
+          {/* 👋 NOME */}
+          <div className="hidden sm:block text-white font-extrabold text-sm whitespace-nowrap">
+            Olá, {nome || "cliente"}
+          </div>
 
-      {/* 👋 SAUDAÇÃO */}
-      <span className="text-sm font-bold text-white">
-        Olá, {nome}
-      </span>
+          {/* 👤 CONTA */}
+          <Link
+            href="/fv/conta"
+            className="rounded-full bg-white/10 hover:bg-white/15 text-white font-extrabold text-sm px-3 py-2"
+            title="Minha conta"
+          >
+            Conta
+          </Link>
 
-      {/* 👤 BOTÃO CONTA */}
-      <Link
-        href="/fv/conta"
-        className="text-xs text-white/80 hover:text-white underline"
-      >
-        Conta
-      </Link>
-
-      {/* 🚪 BOTÃO SAIR */}
-      <button
-        onClick={signOut}
-        className="text-xs text-white/80 hover:text-white underline"
-      >
-        Sair
-      </button>
-
+          {/* 🚪 SAIR */}
+          <button
+            type="button"
+            onClick={onSair}
+            disabled={busy}
+            className="rounded-full bg-white/10 hover:bg-white/15 text-white font-extrabold text-sm px-3 py-2 disabled:opacity-60"
+            title="Sair"
+          >
+            {busy ? "Saindo…" : "Sair"}
+          </button>
+        </>
+      ) : (
+        <button
+          type="button"
+          onClick={onEntrar}
+          className="rounded-full bg-white text-blue-900 font-extrabold text-sm px-3 py-2 hover:opacity-95"
+          title="Entrar"
+        >
+          Entrar
+        </button>
+      )}
     </div>
   );
 }
