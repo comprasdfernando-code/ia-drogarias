@@ -8,13 +8,9 @@ function brl(v: number) {
   return v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 }
 
-const TAXA_ENTREGA = 10;
-
 export default function CartDrawer() {
   const { cartOpen, closeCart } = useCartUI();
   const { items, subtotal, countItems, inc, dec, remove, clear } = useCart();
-
-  const total = countItems ? subtotal + TAXA_ENTREGA : 0;
 
   if (!cartOpen) return null;
 
@@ -25,9 +21,10 @@ export default function CartDrawer() {
       <aside className="absolute right-0 top-0 h-full w-full max-w-[390px] bg-white shadow-2xl flex flex-col">
         <div className="p-4 border-b flex items-center justify-between">
           <h2 className="font-black text-lg">🛒 Carrinho</h2>
+
           <button
             onClick={closeCart}
-            className="px-3 py-2 rounded-xl bg-slate-100 font-bold"
+            className="rounded-xl bg-slate-100 px-3 py-2 font-bold"
           >
             Fechar
           </button>
@@ -37,36 +34,46 @@ export default function CartDrawer() {
           {items.length === 0 ? (
             <div className="text-center py-10">
               <p className="font-bold text-slate-700">Seu carrinho está vazio</p>
+
               <button
                 onClick={closeCart}
-                className="mt-4 bg-blue-700 text-white px-5 py-3 rounded-xl font-black"
+                className="mt-4 rounded-xl bg-blue-700 px-5 py-3 font-black text-white"
               >
                 Continuar comprando
               </button>
             </div>
           ) : (
             items.map((item) => (
-              <div key={item.ean} className="border rounded-2xl p-3">
-                <p className="font-black text-sm">{item.nome}</p>
+              <div key={item.ean} className="rounded-2xl border p-3">
+                <p className="text-sm font-black">{item.nome}</p>
                 <p className="text-xs text-slate-500">EAN: {item.ean}</p>
-                <p className="font-black text-blue-800 mt-1">
+
+                <p className="mt-1 font-black text-blue-800">
                   {brl(item.preco)}
                 </p>
 
                 <div className="mt-3 flex items-center justify-between">
-                  <div className="flex items-center border rounded-xl overflow-hidden">
-                    <button onClick={() => dec(item.ean)} className="px-3 py-2 bg-slate-100">
+                  <div className="flex items-center overflow-hidden rounded-xl border">
+                    <button
+                      onClick={() => dec(item.ean)}
+                      className="bg-slate-100 px-3 py-2 font-black"
+                    >
                       −
                     </button>
+
                     <span className="px-4 font-black">{item.qtd}</span>
-                    <button onClick={() => inc(item.ean)} className="px-3 py-2 bg-slate-100">
+
+                    <button
+                      onClick={() => inc(item.ean)}
+                      className="bg-slate-100 px-3 py-2 font-black"
+                    >
                       +
                     </button>
                   </div>
 
                   <button
                     onClick={() => remove(item.ean)}
-                    className="text-red-600 font-bold text-sm"
+                    className="text-sm font-bold text-red-600"
                   >
                     Excluir
                   </button>
@@ -76,26 +83,21 @@ export default function CartDrawer() {
           )}
         </div>
 
-        <div className="border-t p-4 bg-white">
-          <div className="space-y-2 text-sm">
-            <div className="flex justify-between">
-              <span>Subtotal</span>
-              <b>{brl(subtotal)}</b>
-            </div>
-            <div className="flex justify-between">
-              <span>Taxa</span>
-              <b>{countItems ? brl(TAXA_ENTREGA) : brl(0)}</b>
-            </div>
-            <div className="flex justify-between text-lg border-t pt-2">
-              <span className="font-black">Total</span>
-              <b className="text-green-700">{brl(total)}</b>
-            </div>
+        <div className="border-t bg-white p-4">
+          <div className="flex justify-between text-sm">
+            <span>Itens</span>
+            <b>{countItems}</b>
           </div>
 
-          <div className="grid grid-cols-2 gap-2 mt-4">
+          <div className="mt-1 flex justify-between text-lg">
+            <span className="font-black">Subtotal</span>
+            <b className="text-blue-800">{brl(subtotal)}</b>
+          </div>
+
+          <div className="mt-4 grid grid-cols-2 gap-2">
             <button
               onClick={clear}
-              className="rounded-xl py-3 bg-slate-100 font-black"
+              className="rounded-xl bg-slate-100 py-3 font-black"
             >
               Limpar
             </button>
@@ -103,9 +105,9 @@ export default function CartDrawer() {
             <Link
               href="/fv/carrinho"
               onClick={closeCart}
-              className="rounded-xl py-3 bg-green-600 text-white font-black text-center"
+              className="rounded-xl bg-green-600 py-3 text-center font-black text-white"
             >
-              Finalizar pedido
+              Finalizar
             </Link>
           </div>
         </div>
