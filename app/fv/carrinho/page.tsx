@@ -1,7 +1,10 @@
 "use client";
 
+import { useEffect } from "react";
 import Link from "next/link";
+import { supabase } from "@/lib/supabaseClient";
 import { useCart } from "@/app/fv/_components/cart";
+import { useCustomer } from "@/app/fv/_components/useCustomer";
 
 const TAXA_ENTREGA = 10;
 
@@ -10,10 +13,54 @@ function brl(v: number) {
 }
 
 export default function CarrinhoPage() {
-  const { items, inc, dec, remove, clear, subtotal, countItems, endereco } =
-    useCart();
+  const {
+    items,
+    inc,
+    dec,
+    remove,
+    clear,
+    subtotal,
+    countItems,
+    endereco,
+    setEndereco,
+  } = useCart();
+
+  const { user } = useCustomer();
 
   const total = countItems ? subtotal + TAXA_ENTREGA : 0;
+
+  useEffect(() => {
+    async function carregarEnderecoPrincipal() {
+      if (!user?.id || endereco) return;
+
+      const { data, error } = await supabase
+        .from("cliente_enderecos")
+        .select("*")
+        .eq("cliente_id", user.id)
+        .eq("principal", true)
+        .maybeSingle();
+
+      if (error) {
+        console.error("Erro ao buscar endereço principal:", error);
+        return;
+      }
+
+      if (data) {
+        setEndereco({
+          cep: data.cep || "",
+          endereco: data.endereco || "",
+          numero: data.numero || "",
+          bairro: data.bairro || "",
+          cidade: data.cidade || "São Paulo",
+          estado: data.estado || "SP",
+          complemento: data.complemento || "",
+          referencia: data.referencia || "",
+        });
+      }
+    }
+
+    carregarEnderecoPrincipal();
+  }, [user?.id, endereco, setEndereco]);
 
   return (
     <main className="min-h-screen bg-slate-100 p-4">
@@ -53,7 +100,9 @@ export default function CarrinhoPage() {
                         <p className="text-sm font-bold">{item.nome}</p>
 
                         <p className="text-xs text-slate-500">
-                          {item.laboratorio || item.apresentacao || `EAN: ${item.ean}`}
+                          {item.laboratorio ||
+                            item.apresentacao ||
+                            `EAN: ${item.ean}`}
                         </p>
 
                         <p className="mt-1 font-black text-blue-800">
@@ -115,7 +164,9 @@ export default function CarrinhoPage() {
                   </p>
 
                   {endereco.cep && (
-                    <p className="text-sm text-slate-600">CEP: {endereco.cep}</p>
+                    <p className="text-sm text-slate-600">
+                      CEP: {endereco.cep}
+                    </p>
                   )}
 
                   {endereco.complemento && (
@@ -152,6 +203,18 @@ export default function CarrinhoPage() {
                 <p className="text-xs text-slate-600">
                   Forma de pagamento padrão para finalizar agora.
                 </p>
+              </div>
+
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <div className="rounded-xl border bg-slate-50 p-3 opacity-70">
+                  <p className="font-bold text-slate-700">Cartão</p>
+                  <p className="text-xs text-slate-500">Em breve</p>
+                </div>
+
+                <div className="rounded-xl border bg-slate-50 p-3 opacity-70">
+                  <p className="font-bold text-slate-700">Dinheiro</p>
+                  <p className="text-xs text-slate-500">Na entrega</p>
+                </div>
               </div>
             </div>
           </section>
