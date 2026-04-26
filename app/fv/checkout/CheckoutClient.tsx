@@ -31,11 +31,13 @@ type VendaLike = {
   total_centavos?: number | null;
   total?: number | null;
   subtotal?: number | null;
-  entrega?: { taxa?: number | null; tipo_entrega?: string | null } | null;
+  entrega?: any | null;
   pedido_id?: string | null;
   grupo_id?: string | null;
   pagbank_id?: string | null;
 };
+
+const TAXA_ENTREGA_PADRAO_CENTS = 1000;
 
 function onlyDigits(s: string) {
   return (s || "").replace(/\D/g, "");
@@ -54,11 +56,14 @@ function centsFromMaybe(v: any): number {
     if (Number.isInteger(v) && v >= 1000) return Math.round(v);
     return Math.round(v * 100);
   }
+
   const str = String(v).trim();
   if (!str) return 0;
+
   const norm = str.replace(/\./g, "").replace(",", ".");
   const n = Number(norm);
   if (!Number.isFinite(n)) return 0;
+
   if (/^\d+$/.test(str) && n >= 1000) return Math.round(n);
   return Math.round(n * 100);
 }
@@ -96,10 +101,41 @@ function extractVenda(payload: any): VendaLike | null {
     id: pickFirst(v?.id, v?.pedido_id, v?.venda_id, v?.order_id) as any,
     status: pickFirst(v?.status, v?.situacao, v?.state) as any,
 
-    cliente_nome: pickFirst(v?.cliente_nome, v?.nome, v?.customer_name) as any,
-    cliente_email: pickFirst(v?.cliente_email, v?.email, v?.customer_email) as any,
-    cliente_tax_id: pickFirst(v?.cliente_tax_id, v?.cpf, v?.tax_id, v?.customer_tax_id) as any,
-    cliente_phone: pickFirst(v?.cliente_phone, v?.telefone, v?.phone, v?.customer_phone) as any,
+    cliente_nome: pickFirst(
+      v?.cliente_nome,
+      v?.nome,
+      v?.customer_name,
+      v?.cliente?.nome,
+      v?.customer?.name
+    ) as any,
+
+    cliente_email: pickFirst(
+      v?.cliente_email,
+      v?.email,
+      v?.customer_email,
+      v?.cliente?.email,
+      v?.customer?.email
+    ) as any,
+
+    cliente_tax_id: pickFirst(
+      v?.cliente_tax_id,
+      v?.cpf,
+      v?.tax_id,
+      v?.customer_tax_id,
+      v?.cliente?.cpf,
+      v?.cliente?.tax_id,
+      v?.customer?.tax_id
+    ) as any,
+
+    cliente_phone: pickFirst(
+      v?.cliente_phone,
+      v?.telefone,
+      v?.phone,
+      v?.customer_phone,
+      v?.cliente?.telefone,
+      v?.cliente?.whatsapp,
+      v?.customer?.phone
+    ) as any,
 
     itens: (Array.isArray(v?.itens) ? v?.itens : null) as any,
     items: (Array.isArray(v?.items) ? v?.items : null) as any,
@@ -108,7 +144,7 @@ function extractVenda(payload: any): VendaLike | null {
     total: (v?.total ?? v?.valor_total ?? v?.amount ?? null) as any,
     subtotal: (v?.subtotal ?? null) as any,
 
-    entrega: (v?.entrega ?? v?.delivery ?? null) as any,
+    entrega: (v?.entrega ?? v?.delivery ?? v?.endereco_entrega ?? null) as any,
 
     pedido_id: (v?.pedido_id ?? null) as any,
     grupo_id: (v?.grupo_id ?? null) as any,
@@ -139,7 +175,10 @@ function extractItems(v: VendaLike | null) {
       )
     );
 
-    const ref = String(pickFirst(i?.reference_id, i?.ean, i?.id, i?.sku, `item-${idx + 1}`));
+    const ref = String(
+      pickFirst(i?.reference_id, i?.ean, i?.id, i?.sku, `item-${idx + 1}`)
+    );
+
     const name = String(pickFirst(i?.name, i?.nome, i?.titulo, "Item"));
 
     return {
@@ -153,7 +192,8 @@ function extractItems(v: VendaLike | null) {
 
 function sumTotal(items: { unit_amount: number; quantity: number }[]) {
   return items.reduce(
-    (acc, it) => acc + (Number(it.unit_amount) || 0) * (Number(it.quantity) || 0),
+    (acc, it) =>
+      acc + (Number(it.unit_amount) || 0) * (Number(it.quantity) || 0),
     0
   );
 }
@@ -176,6 +216,7 @@ function readSessionCheckout(orderId?: string) {
       }
     }
   } catch {}
+
   return null;
 }
 
@@ -192,12 +233,17 @@ function clearPossibleCarts() {
   } catch {}
 }
 
+function hasEndereco(e: EnderecoEntrega) {
+  return !!(e.endereco.trim() && e.numero.trim() && e.bairro.trim());
+}
+
 export default function CheckoutClient() {
   const sp = useSearchParams();
   const router = useRouter();
 
   const { user, profile } = useCustomer();
   const cart = useCart();
+
   const enderecoCart = cart?.endereco;
 
   const [enderecoEntrega, setEnderecoEntrega] = useState<EnderecoEntrega>({
@@ -210,6 +256,28 @@ export default function CheckoutClient() {
     complemento: "",
     referencia: "",
   });
+
+  const orderId = sp.get("order_id") || "";
+  const pedidoIdQS = sp.get("pedido_id") || "";
+  const vendaId = sp.get("venda_id") || "";
+  const grupoIdQS = sp.get("grupo_id") || "";
+  const cpfQS = onlyDigits(sp.get("cpf") || "");
+
+  const metodoQS = (sp.get("metodo") || "pix").toLowerCase();
+  const metodoInitial: Metodo = metodoQS === "cartao" ? "cartao" : "pix";
+
+  const [metodo, setMetodo] = useState<Metodo>(metodoInitial);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState<string | null>(null);
+  const [debugFonte, setDebugFonte] = useState<string | null>(null);
+  const [venda, setVenda] = useState<VendaLike | null>(null);
+  const [cpf, setCpf] = useState<string>(cpfQS);
+  const [status, setStatus] = useState<string | null>(null);
+
+  useEffect(() => {
+    const m = (sp.get("metodo") || "pix").toLowerCase();
+    setMetodo(m === "cartao" ? "cartao" : "pix");
+  }, [sp]);
 
   useEffect(() => {
     if (!enderecoCart) return;
@@ -226,32 +294,32 @@ export default function CheckoutClient() {
     });
   }, [enderecoCart]);
 
+  useEffect(() => {
+    const e = (venda as any)?.entrega || {};
+    const rua = pickFirst(e?.endereco, e?.rua, e?.logradouro, e?.address);
+    const numero = pickFirst(e?.numero, e?.number);
+    const bairro = pickFirst(e?.bairro, e?.district);
+    const cep = pickFirst(e?.cep, e?.zipcode, e?.zip_code);
+    const cidade = pickFirst(e?.cidade, e?.city);
+    const estado = pickFirst(e?.estado, e?.uf, e?.state);
+
+    if (!rua && !numero && !bairro) return;
+
+    setEnderecoEntrega((prev) => ({
+      cep: String(pickFirst(cep, prev.cep, "") || ""),
+      endereco: String(pickFirst(rua, prev.endereco, "") || ""),
+      numero: String(pickFirst(numero, prev.numero, "") || ""),
+      bairro: String(pickFirst(bairro, prev.bairro, "") || ""),
+      cidade: String(pickFirst(cidade, prev.cidade, "São Paulo") || "São Paulo"),
+      estado: String(pickFirst(estado, prev.estado, "SP") || "SP"),
+      complemento: String(pickFirst(e?.complemento, prev.complemento, "") || ""),
+      referencia: String(pickFirst(e?.referencia, prev.referencia, "") || ""),
+    }));
+  }, [venda]);
+
   function updateEnderecoEntrega(campo: keyof EnderecoEntrega, valor: string) {
     setEnderecoEntrega((prev) => ({ ...prev, [campo]: valor }));
   }
-
-  const orderId = sp.get("order_id") || "";
-  const pedidoIdQS = sp.get("pedido_id") || "";
-  const vendaId = sp.get("venda_id") || "";
-  const grupoIdQS = sp.get("grupo_id") || "";
-  const cpfQS = onlyDigits(sp.get("cpf") || "");
-
-  const metodoQS = (sp.get("metodo") || "pix").toLowerCase();
-  const metodoInitial: Metodo = metodoQS === "cartao" ? "cartao" : "pix";
-  const [metodo, setMetodo] = useState<Metodo>(metodoInitial);
-
-  useEffect(() => {
-    const m = (sp.get("metodo") || "pix").toLowerCase();
-    setMetodo(m === "cartao" ? "cartao" : "pix");
-  }, [sp]);
-
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState<string | null>(null);
-  const [debugFonte, setDebugFonte] = useState<string | null>(null);
-
-  const [venda, setVenda] = useState<VendaLike | null>(null);
-  const [cpf, setCpf] = useState<string>(cpfQS);
-  const [status, setStatus] = useState<string | null>(null);
 
   useEffect(() => {
     if (cpfQS) return;
@@ -297,16 +365,22 @@ export default function CheckoutClient() {
             });
 
             const parsed = await safeJson(r1);
+
             if (r1.ok && parsed.ok && parsed.json?.ok) {
               const v = extractVenda(parsed.json);
+
               if (!cancelled) {
                 setVenda(v);
                 setDebugFonte("api:/api/pagbank/status (POST)");
-                setStatus(String(parsed.json?.status || v?.status || "").toUpperCase() || null);
+                setStatus(
+                  String(parsed.json?.status || v?.status || "").toUpperCase() ||
+                    null
+                );
               }
 
               const apiCpf = onlyDigits(v?.cliente_tax_id || "");
               if (!cancelled && apiCpf.length === 11 && !cpfQS) setCpf(apiCpf);
+
               return;
             }
           } catch {}
@@ -323,20 +397,27 @@ export default function CheckoutClient() {
 
             if (r2.ok && parsed2.ok && parsed2.json?.ok) {
               const v = extractVenda(parsed2.json);
+
               if (!cancelled) {
                 setVenda(v);
                 setDebugFonte(`api:${url} (GET)`);
-                setStatus(String(parsed2.json?.status || v?.status || "").toUpperCase() || null);
+                setStatus(
+                  String(parsed2.json?.status || v?.status || "").toUpperCase() ||
+                    null
+                );
               }
 
               const apiCpf = onlyDigits(v?.cliente_tax_id || "");
               if (!cancelled && apiCpf.length === 11 && !cpfQS) setCpf(apiCpf);
+
               return;
             }
 
             if (!r2.ok && !parsed2.ok) {
               const snippet = String(parsed2.raw || "").slice(0, 140);
-              throw new Error(`Falha ao buscar venda (HTTP ${r2.status}). Resposta: ${snippet}`);
+              throw new Error(
+                `Falha ao buscar venda (HTTP ${r2.status}). Resposta: ${snippet}`
+              );
             }
 
             if (parsed2.ok && parsed2.json && !parsed2.json?.ok) {
@@ -348,8 +429,10 @@ export default function CheckoutClient() {
         }
 
         const ss = readSessionCheckout(orderId);
+
         if (ss) {
           const v = extractVenda(ss) || (ss as VendaLike);
+
           if (!cancelled) {
             setVenda(v);
             setDebugFonte("sessionStorage:fallback");
@@ -367,7 +450,9 @@ export default function CheckoutClient() {
               ss?.customer?.cpf
             ) || ""
           );
+
           if (!cancelled && ssCpf.length === 11 && !cpfQS) setCpf(ssCpf);
+
           return;
         }
 
@@ -384,28 +469,38 @@ export default function CheckoutClient() {
     return () => {
       cancelled = true;
     };
-  }, [orderId, pedidoIdQS, vendaId, grupoIdQS]);
+  }, [orderId, pedidoIdQS, vendaId, grupoIdQS, cpfQS]);
 
   const itemsBase = useMemo(() => extractItems(venda), [venda]);
+
+  const temEnderecoCarrinho = hasEndereco(enderecoEntrega);
+
+  const tipoEntrega = String(
+    pickFirst(
+      (venda as any)?.entrega?.tipo_entrega,
+      (venda as any)?.tipo_entrega,
+      temEnderecoCarrinho ? "entrega" : "retirada"
+    ) || "retirada"
+  ).toLowerCase();
 
   const taxaEntregaCents = useMemo(() => {
     const t = pickFirst((venda as any)?.entrega?.taxa, (venda as any)?.taxa_entrega, null);
     const cents = centsFromMaybe(t);
-    return cents > 0 ? cents : 0;
-  }, [venda]);
 
-  const tipoEntrega = String(
-    pickFirst((venda as any)?.entrega?.tipo_entrega, (venda as any)?.tipo_entrega, "entrega") || "entrega"
-  ).toLowerCase();
+    if (cents > 0) return cents;
+    if (temEnderecoCarrinho && !tipoEntrega.includes("retirada")) {
+      return TAXA_ENTREGA_PADRAO_CENTS;
+    }
 
-  const precisaEndereco = !tipoEntrega.includes("retirada") && taxaEntregaCents > 0;
+    return 0;
+  }, [venda, temEnderecoCarrinho, tipoEntrega]);
 
-  const enderecoCompleto =
-    !precisaEndereco ||
-    (enderecoEntrega.endereco.trim() && enderecoEntrega.numero.trim() && enderecoEntrega.bairro.trim());
+  const precisaEndereco = !tipoEntrega.includes("retirada") || taxaEntregaCents > 0;
+  const enderecoCompleto = !precisaEndereco || hasEndereco(enderecoEntrega);
 
   const items = useMemo(() => {
     const arr = [...itemsBase];
+
     if (taxaEntregaCents > 0) {
       arr.push({
         reference_id: "FRETE",
@@ -414,6 +509,7 @@ export default function CheckoutClient() {
         unit_amount: taxaEntregaCents,
       });
     }
+
     return arr;
   }, [itemsBase, taxaEntregaCents]);
 
@@ -435,14 +531,51 @@ export default function CheckoutClient() {
   }, [totalFromItems, venda]);
 
   const cliente = useMemo(() => {
-    const baseCpf = onlyDigits(pickFirst(venda?.cliente_tax_id, cpfQS, cpf) || "");
+    const nomeReal = pickFirst(
+      venda?.cliente_nome,
+      (profile as any)?.nome,
+      (user as any)?.user_metadata?.nome,
+      (user as any)?.email?.split("@")?.[0],
+      "Cliente"
+    );
+
+    const emailReal = pickFirst(
+      venda?.cliente_email,
+      (profile as any)?.email,
+      (user as any)?.email,
+      "cliente@iadrogarias.com"
+    );
+
+    const cpfReal = onlyDigits(
+      pickFirst(
+        venda?.cliente_tax_id,
+        cpfQS,
+        cpf,
+        (profile as any)?.cpf,
+        (user as any)?.user_metadata?.cpf,
+        ""
+      ) || ""
+    );
+
+    const phoneReal = onlyDigits(
+      String(
+        pickFirst(
+          venda?.cliente_phone,
+          (profile as any)?.telefone,
+          (profile as any)?.whatsapp,
+          (user as any)?.user_metadata?.telefone,
+          ""
+        ) || ""
+      )
+    );
+
     return {
-      name: String(pickFirst(venda?.cliente_nome, "Cliente") || "Cliente"),
-      email: String(pickFirst(venda?.cliente_email, "cliente@iadrogarias.com") || "cliente@iadrogarias.com"),
-      tax_id: baseCpf,
-      phone: onlyDigits(String(pickFirst(venda?.cliente_phone, "") || "")),
+      name: String(nomeReal || "Cliente"),
+      email: String(emailReal || "cliente@iadrogarias.com"),
+      tax_id: cpfReal,
+      phone: phoneReal,
     };
-  }, [venda, cpf, cpfQS]);
+  }, [venda, cpf, cpfQS, profile, user]);
 
   const pedidoId = useMemo(
     () => String(pickFirst(venda?.pedido_id, pedidoIdQS, venda?.id, "") || ""),
@@ -492,6 +625,16 @@ export default function CheckoutClient() {
     router.replace(`/fv/checkout?${params.toString()}`);
   }
 
+  function goIdentificacaoEntrega() {
+    router.push(
+      `/fv/checkout/identificacao?return=${encodeURIComponent(
+        `/fv/checkout?${sp.toString()}`
+      )}`
+    );
+  }
+
+  const subtotalSemFrete = Math.max(0, totalCentavos - taxaEntregaCents);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-[#f3f4f6] px-4 py-10">
@@ -511,7 +654,6 @@ export default function CheckoutClient() {
       <div className="min-h-screen bg-[#f3f4f6] px-4 py-10">
         <div className="mx-auto max-w-2xl rounded-3xl bg-white p-6 shadow-sm">
           <h1 className="text-xl font-black text-slate-900">Finalizar pagamento</h1>
-          {debugFonte && <div className="mt-1 text-xs text-slate-400">Fonte: {debugFonte}</div>}
 
           <div className="mt-5 rounded-2xl border border-red-200 bg-red-50 p-4">
             <div className="font-black text-red-700">
@@ -524,16 +666,14 @@ export default function CheckoutClient() {
 
           <button
             className="mt-4 rounded-2xl bg-[#0D47A1] px-5 py-3 text-sm font-black text-white"
-            onClick={() => router.push("/fv")}
+            onClick={() => router.push("/fv/carrinho")}
           >
-            Voltar para a Farmácia
+            Voltar para o carrinho
           </button>
         </div>
       </div>
     );
   }
-
-  const subtotalSemFrete = Math.max(0, totalCentavos - taxaEntregaCents);
 
   return (
     <div className="min-h-screen bg-[#f3f4f6] px-4 py-6">
@@ -547,10 +687,10 @@ export default function CheckoutClient() {
           </div>
 
           <button
-            onClick={() => router.push("/fv")}
+            onClick={() => router.push("/fv/carrinho")}
             className="rounded-2xl border border-slate-200 bg-white px-4 py-2 text-sm font-black text-slate-700 hover:bg-slate-50"
           >
-            ← Voltar
+            ← Carrinho
           </button>
         </div>
 
@@ -560,23 +700,44 @@ export default function CheckoutClient() {
               <div className="mb-4 flex items-center justify-between">
                 <div>
                   <h2 className="font-black text-slate-900">Identificação</h2>
-                  <p className="text-xs text-slate-500">Dados do cliente para emissão do pedido</p>
+                  <p className="text-xs text-slate-500">
+                    Dados do cliente para emissão do pedido
+                  </p>
                 </div>
-                <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-black text-[#0D47A1]">
-                  Status: {status || "NOVO"}
-                </span>
+
+                <button
+                  onClick={goIdentificacaoEntrega}
+                  className="rounded-2xl border border-slate-200 px-4 py-2 text-xs font-black text-slate-700 hover:bg-slate-50"
+                >
+                  Alterar
+                </button>
               </div>
 
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="rounded-2xl border border-slate-100 bg-slate-50 p-3">
-                  <div className="text-[11px] font-black uppercase text-slate-400">Nome</div>
+                  <div className="text-[11px] font-black uppercase text-slate-400">
+                    Nome
+                  </div>
                   <div className="mt-1 font-bold text-slate-800">{cliente.name}</div>
                 </div>
 
                 <div className="rounded-2xl border border-slate-100 bg-slate-50 p-3">
-                  <div className="text-[11px] font-black uppercase text-slate-400">E-mail</div>
-                  <div className="mt-1 truncate font-bold text-slate-800">{cliente.email}</div>
+                  <div className="text-[11px] font-black uppercase text-slate-400">
+                    E-mail
+                  </div>
+                  <div className="mt-1 truncate font-bold text-slate-800">
+                    {cliente.email}
+                  </div>
                 </div>
+
+                {cliente.phone && (
+                  <div className="rounded-2xl border border-slate-100 bg-slate-50 p-3">
+                    <div className="text-[11px] font-black uppercase text-slate-400">
+                      WhatsApp
+                    </div>
+                    <div className="mt-1 font-bold text-slate-800">{cliente.phone}</div>
+                  </div>
+                )}
               </div>
 
               {metodo === "pix" && (
@@ -584,6 +745,7 @@ export default function CheckoutClient() {
                   <div className="mb-2 text-sm font-black text-slate-800">
                     CPF obrigatório para PIX
                   </div>
+
                   <input
                     value={cpf}
                     onChange={(e) => setCpf(onlyDigits(e.target.value).slice(0, 11))}
@@ -591,6 +753,7 @@ export default function CheckoutClient() {
                     inputMode="numeric"
                     className="w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-bold outline-none focus:ring-4 focus:ring-blue-100"
                   />
+
                   <div className="mt-1 text-xs text-slate-400">Somente números.</div>
                 </div>
               )}
@@ -607,73 +770,87 @@ export default function CheckoutClient() {
 
                 <button
                   type="button"
-                  onClick={() => router.push("/fv")}
+                  onClick={goIdentificacaoEntrega}
                   className="rounded-2xl border border-slate-200 px-4 py-2 text-xs font-black text-slate-700 hover:bg-slate-50"
                 >
-                  Voltar pro carrinho
+                  Alterar entrega
                 </button>
               </div>
 
               {precisaEndereco ? (
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <input
-                    value={enderecoEntrega.cep}
-                    onChange={(e) => updateEnderecoEntrega("cep", e.target.value)}
-                    placeholder="CEP"
-                    className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold outline-none focus:ring-4 focus:ring-blue-100"
-                  />
+                <>
+                  <div className="mb-3 rounded-2xl border border-blue-100 bg-blue-50 p-4">
+                    <div className="text-xs font-black text-[#0D47A1]">
+                      Endereço principal da sua conta ✅
+                    </div>
+                    <div className="mt-1 text-sm font-black text-slate-900">
+                      {enderecoEntrega.endereco}, {enderecoEntrega.numero} —{" "}
+                      {enderecoEntrega.bairro}
+                    </div>
+                    <div className="text-xs text-slate-500">
+                      {enderecoEntrega.cidade} - {enderecoEntrega.estado}
+                      {enderecoEntrega.cep ? ` • CEP: ${enderecoEntrega.cep}` : ""}
+                    </div>
+                  </div>
 
-                  <input
-                    value={enderecoEntrega.endereco}
-                    onChange={(e) => updateEnderecoEntrega("endereco", e.target.value)}
-                    placeholder="Endereço"
-                    className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold outline-none focus:ring-4 focus:ring-blue-100 sm:col-span-2"
-                  />
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <input
+                      value={enderecoEntrega.endereco}
+                      onChange={(e) => updateEnderecoEntrega("endereco", e.target.value)}
+                      placeholder="Endereço"
+                      className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold outline-none focus:ring-4 focus:ring-blue-100 sm:col-span-2"
+                    />
 
-                  <input
-                    value={enderecoEntrega.numero}
-                    onChange={(e) => updateEnderecoEntrega("numero", e.target.value)}
-                    placeholder="Número"
-                    className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold outline-none focus:ring-4 focus:ring-blue-100"
-                  />
+                    <input
+                      value={enderecoEntrega.numero}
+                      onChange={(e) => updateEnderecoEntrega("numero", e.target.value)}
+                      placeholder="Número"
+                      className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold outline-none focus:ring-4 focus:ring-blue-100"
+                    />
 
-                  <input
-                    value={enderecoEntrega.bairro}
-                    onChange={(e) => updateEnderecoEntrega("bairro", e.target.value)}
-                    placeholder="Bairro"
-                    className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold outline-none focus:ring-4 focus:ring-blue-100"
-                  />
+                    <input
+                      value={enderecoEntrega.bairro}
+                      onChange={(e) => updateEnderecoEntrega("bairro", e.target.value)}
+                      placeholder="Bairro"
+                      className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold outline-none focus:ring-4 focus:ring-blue-100"
+                    />
 
-                  <input
-                    value={enderecoEntrega.cidade}
-                    onChange={(e) => updateEnderecoEntrega("cidade", e.target.value)}
-                    placeholder="Cidade"
-                    className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold outline-none focus:ring-4 focus:ring-blue-100"
-                  />
+                    <input
+                      value={enderecoEntrega.cep}
+                      onChange={(e) => updateEnderecoEntrega("cep", e.target.value)}
+                      placeholder="CEP"
+                      className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold outline-none focus:ring-4 focus:ring-blue-100"
+                    />
 
-                  <input
-                    value={enderecoEntrega.estado}
-                    onChange={(e) =>
-                      updateEnderecoEntrega("estado", e.target.value.toUpperCase().slice(0, 2))
-                    }
-                    placeholder="UF"
-                    className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold outline-none focus:ring-4 focus:ring-blue-100"
-                  />
+                    <input
+                      value={enderecoEntrega.cidade}
+                      onChange={(e) => updateEnderecoEntrega("cidade", e.target.value)}
+                      placeholder="Cidade"
+                      className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold outline-none focus:ring-4 focus:ring-blue-100"
+                    />
 
-                  <input
-                    value={enderecoEntrega.complemento}
-                    onChange={(e) => updateEnderecoEntrega("complemento", e.target.value)}
-                    placeholder="Complemento"
-                    className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold outline-none focus:ring-4 focus:ring-blue-100"
-                  />
+                    <input
+                      value={enderecoEntrega.estado}
+                      onChange={(e) =>
+                        updateEnderecoEntrega(
+                          "estado",
+                          e.target.value.toUpperCase().slice(0, 2)
+                        )
+                      }
+                      placeholder="UF"
+                      className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold outline-none focus:ring-4 focus:ring-blue-100"
+                    />
 
-                  <input
-                    value={enderecoEntrega.referencia}
-                    onChange={(e) => updateEnderecoEntrega("referencia", e.target.value)}
-                    placeholder="Referência"
-                    className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold outline-none focus:ring-4 focus:ring-blue-100"
-                  />
-                </div>
+                    <input
+                      value={enderecoEntrega.complemento}
+                      onChange={(e) =>
+                        updateEnderecoEntrega("complemento", e.target.value)
+                      }
+                      placeholder="Complemento"
+                      className="rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold outline-none focus:ring-4 focus:ring-blue-100"
+                    />
+                  </div>
+                </>
               ) : (
                 <div className="rounded-2xl border border-slate-100 bg-slate-50 p-4 text-sm font-bold text-slate-700">
                   Retirada na loja ou entrega sem necessidade de endereço adicional.
@@ -748,7 +925,10 @@ export default function CheckoutClient() {
 
             <div className="mt-4 max-h-[320px] space-y-3 overflow-auto pr-1">
               {itemsBase.map((it) => (
-                <div key={it.reference_id} className="flex gap-3 rounded-2xl border border-slate-100 p-3">
+                <div
+                  key={it.reference_id}
+                  className="flex gap-3 rounded-2xl border border-slate-100 p-3"
+                >
                   <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-sm font-black text-[#0D47A1]">
                     {it.quantity}x
                   </div>
@@ -777,20 +957,33 @@ export default function CheckoutClient() {
 
               <div className="flex justify-between text-sm text-slate-600">
                 <span>Entrega</span>
-                <b>{taxaEntregaCents > 0 ? brlFromCents(taxaEntregaCents) : "Grátis/Retirada"}</b>
+                <b>
+                  {taxaEntregaCents > 0
+                    ? brlFromCents(taxaEntregaCents)
+                    : "Grátis/Retirada"}
+                </b>
               </div>
 
               <div className="flex justify-between border-t border-slate-100 pt-3 text-lg font-black text-slate-950">
                 <span>Total</span>
-                <span className="text-[#0D47A1]">{brlFromCents(totalCentavos)}</span>
+                <span className="text-[#0D47A1]">
+                  {brlFromCents(totalCentavos)}
+                </span>
               </div>
             </div>
 
             <button
-              onClick={() => router.push("/fv")}
+              onClick={() => router.push("/fv/carrinho")}
               className="mt-4 w-full rounded-2xl border border-slate-200 bg-white px-4 py-3 text-sm font-black text-slate-700 hover:bg-slate-50"
             >
               ← Voltar para o carrinho
+            </button>
+
+            <button
+              onClick={goIdentificacaoEntrega}
+              className="mt-2 w-full rounded-2xl bg-[#0D47A1] px-4 py-3 text-sm font-black text-white hover:brightness-95"
+            >
+              Alterar identificação e entrega
             </button>
 
             {err && (
