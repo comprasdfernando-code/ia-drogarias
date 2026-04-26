@@ -37,7 +37,7 @@ type VendaLike = {
   pagbank_id?: string | null;
 };
 
-const TAXA_ENTREGA_PADRAO_CENTS = 1000;
+
 
 function onlyDigits(s: string) {
   return (s || "").replace(/\D/g, "");
@@ -484,16 +484,15 @@ export default function CheckoutClient() {
   ).toLowerCase();
 
   const taxaEntregaCents = useMemo(() => {
-    const t = pickFirst((venda as any)?.entrega?.taxa, (venda as any)?.taxa_entrega, null);
-    const cents = centsFromMaybe(t);
+  const t = pickFirst(
+    (venda as any)?.entrega?.taxa,
+    (venda as any)?.taxa_entrega,
+    null
+  );
 
-    if (cents > 0) return cents;
-    if (temEnderecoCarrinho && !tipoEntrega.includes("retirada")) {
-      return TAXA_ENTREGA_PADRAO_CENTS;
-    }
-
-    return 0;
-  }, [venda, temEnderecoCarrinho, tipoEntrega]);
+  const cents = centsFromMaybe(t);
+  return cents > 0 ? cents : 0;
+}, [venda]);
 
   const precisaEndereco = !tipoEntrega.includes("retirada") || taxaEntregaCents > 0;
   const enderecoCompleto = !precisaEndereco || hasEndereco(enderecoEntrega);
