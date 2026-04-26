@@ -669,57 +669,90 @@ function ProdutoCardUltra({ p }: { p: FVProduto }) {
   }
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition overflow-hidden flex flex-col">
-      <div className="relative p-3">
-        <Link
-          href={`/fv/produtos/${encodeURIComponent(p.ean)}`}
-          className="bg-gray-50 rounded-xl p-2 flex items-center justify-center hover:opacity-95 transition"
-        >
-          <Image src={firstImg(p.imagens)} alt={p.nome || "Produto"} width={240} height={240} className="rounded object-contain h-24 sm:h-28" />
-        </Link>
-
+    <div className="group flex h-full flex-col overflow-hidden rounded-[22px] border border-blue-100 bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-xl">
+      <Link
+        href={`/fv/produtos/${encodeURIComponent(p.ean)}`}
+        className="relative flex h-36 items-center justify-center bg-gradient-to-b from-white to-blue-50 p-3 sm:h-40"
+      >
         {pr.emPromo && pr.off > 0 && (
-          <span className="absolute top-3 right-3 text-[11px] font-extrabold bg-red-600 text-white px-2 py-1 rounded-full shadow-sm">
+          <span className="absolute left-3 top-3 rounded-full bg-[#E30613] px-2.5 py-1 text-[11px] font-black text-white shadow">
             {pr.off}% OFF
           </span>
         )}
-      </div>
 
-      <div className="px-3 pb-3 flex-1 flex flex-col">
-        <div className="text-[11px] text-gray-500 line-clamp-1">{p.laboratorio || "—"}</div>
+        <Image
+          src={firstImg(p.imagens)}
+          alt={p.nome || "Produto"}
+          width={260}
+          height={260}
+          className="h-28 w-full object-contain transition duration-300 group-hover:scale-105 sm:h-32"
+        />
+      </Link>
 
-        <Link href={`/fv/produtos/${encodeURIComponent(p.ean)}`} className="mt-1 font-semibold text-blue-950 text-xs sm:text-sm line-clamp-2 hover:underline">
+      <div className="flex flex-1 flex-col p-3">
+        <div className="text-[10px] font-bold uppercase tracking-wide text-gray-400 line-clamp-1">
+          {p.laboratorio || "IA Drogarias"}
+        </div>
+
+        <Link
+          href={`/fv/produtos/${encodeURIComponent(p.ean)}`}
+          className="mt-1 min-h-[38px] text-sm font-black leading-tight text-blue-950 line-clamp-2 hover:underline"
+        >
           {p.nome}
         </Link>
 
-        {p.apresentacao && <div className="text-[11px] text-gray-600 mt-1 line-clamp-1">{p.apresentacao}</div>}
+        {p.apresentacao && (
+          <div className="mt-1 text-[11px] font-medium text-gray-500 line-clamp-1">
+            {p.apresentacao}
+          </div>
+        )}
 
-        <div className="mt-2">
+        <div className="mt-3 rounded-2xl bg-[#0D47A1] p-3 text-white">
           {pr.emPromo ? (
-            <>
-              <div className="text-xs text-gray-500">
-                De <span className="line-through">{brl(pr.pmc)}</span>
-              </div>
-              <div className="text-base font-extrabold text-blue-900">Por {brl(pr.final)}</div>
-            </>
+            <div className="text-[11px] font-bold text-white/80">
+              De <span className="line-through">{brl(pr.pmc)}</span>
+            </div>
           ) : (
-            <div className="text-base font-extrabold text-blue-900">{brl(pr.final)}</div>
+            <div className="text-[11px] font-bold text-white/80">
+              Preço especial
+            </div>
           )}
+
+          <div className="mt-0.5 text-[12px] font-black uppercase text-[#FFD400]">
+            Por apenas
+          </div>
+
+          <div className="text-2xl font-black leading-none text-[#FFD400]">
+            {brl(pr.final)}
+          </div>
         </div>
 
         <div className="mt-3 flex items-center gap-2">
-          <div className="flex items-center border rounded-xl overflow-hidden">
-            <button onClick={() => setQtd((x) => Math.max(1, x - 1))} className="w-9 h-9 bg-white hover:bg-gray-50 font-extrabold">
+          <div className="flex h-10 items-center overflow-hidden rounded-xl border border-gray-200 bg-white">
+            <button
+              onClick={() => setQtd((x) => Math.max(1, x - 1))}
+              className="h-10 w-9 font-black text-blue-900 hover:bg-gray-50"
+            >
               –
             </button>
-            <div className="w-10 text-center font-extrabold text-sm">{qtd}</div>
-            <button onClick={() => setQtd((x) => x + 1)} className="w-9 h-9 bg-white hover:bg-gray-50 font-extrabold">
+
+            <div className="w-8 text-center text-sm font-black text-blue-950">
+              {qtd}
+            </div>
+
+            <button
+              onClick={() => setQtd((x) => x + 1)}
+              className="h-10 w-9 font-black text-blue-900 hover:bg-gray-50"
+            >
               +
             </button>
           </div>
 
-          <button onClick={add} className="flex-1 bg-blue-700 hover:bg-blue-800 text-white py-2.5 rounded-xl text-xs sm:text-sm font-extrabold">
-            Adicionar
+          <button
+            onClick={add}
+            className="h-10 flex-1 rounded-xl bg-[#E30613] text-xs font-black text-white shadow transition hover:brightness-95 sm:text-sm"
+          >
+            Comprar
           </button>
         </div>
       </div>
