@@ -897,15 +897,20 @@ export default function CheckoutClient() {
               <div className="mt-4">
                 {enderecoCompleto ? (
                   <PagbankPayment
-                    metodo={metodo}
-                    orderId={orderId}
-                    cliente={{
-                      ...cliente,
-                      tax_id: metodo === "pix" ? cpf : cliente.tax_id,
-                    }}
-                    items={items}
-                    onPaid={onPaid}
-                  />
+  metodo={metodo}
+  orderId={orderId}
+  cliente={{
+    name: venda?.cliente_nome || cliente.name || "Cliente",
+    email: venda?.cliente_email || cliente.email || "cliente@iadrogarias.com",
+    tax_id:
+      metodo === "pix"
+        ? onlyDigits(cpf)
+        : onlyDigits(venda?.cliente_tax_id || cliente.tax_id || ""),
+    phone: onlyDigits(venda?.cliente_phone || cliente.phone || ""),
+  }}
+  items={itemsBase}
+  onPaid={onPaid}
+/>
                 ) : (
                   <button
                     type="button"
