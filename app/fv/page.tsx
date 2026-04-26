@@ -460,10 +460,10 @@ function FarmaciaVirtualHome() {
   }, [busca]);
 
   return (
-    <main className="min-h-screen bg-gray-50 pb-24">
+    <main className="min-h-screen bg-[#F5F7FA] pb-24 text-slate-950">
       <ServiceSideAds />
 
-      <header className="sticky top-0 z-40 bg-blue-700 shadow">
+      <header className="sticky top-0 z-40 bg-[#0D47A1] shadow-lg shadow-blue-950/10 border-b border-white/10">
         <div className="mx-auto max-w-6xl px-4 py-3">
           {/* MOBILE */}
           <div className="flex items-center justify-between gap-3 md:hidden">
@@ -476,7 +476,7 @@ function FarmaciaVirtualHome() {
               <button
                 type="button"
                 onClick={openCart}
-                className="relative text-white font-extrabold whitespace-nowrap bg-white/10 hover:bg-white/15 px-4 py-2 rounded-full"
+                className="relative text-white font-extrabold whitespace-nowrap bg-white/15 hover:bg-white/25 px-4 py-2.5 rounded-full shadow-sm"
                 title="Abrir carrinho"
               >
                 🛒 {brl(totalCarrinho)}
@@ -495,7 +495,7 @@ function FarmaciaVirtualHome() {
                 value={busca}
                 onChange={(e) => setBusca(e.target.value)}
                 placeholder="Digite o nome do medicamento ou EAN..."
-                className="w-full rounded-full bg-white/95 px-4 py-3 text-sm outline-none focus:ring-4 focus:ring-white/20"
+                className="w-full rounded-full bg-white px-5 py-3.5 text-sm font-semibold text-slate-800 placeholder:text-slate-400 outline-none focus:ring-4 focus:ring-white/25 shadow-inner"
               />
 
               <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
@@ -535,7 +535,7 @@ function FarmaciaVirtualHome() {
                   placeholder="Digite o nome do medicamento ou EAN..."
                   enterKeyHint="search"
                   aria-label="Buscar produto"
-                  className="w-full rounded-full bg-white/95 px-4 py-2.5 text-sm outline-none focus:ring-4 focus:ring-white/20"
+                  className="w-full rounded-full bg-white px-5 py-3 text-sm font-semibold text-slate-800 placeholder:text-slate-400 outline-none focus:ring-4 focus:ring-white/25 shadow-inner"
                 />
 
                 <div className="absolute right-2 top-1/2 -translate-y-1/2 flex items-center gap-1">
@@ -571,7 +571,7 @@ function FarmaciaVirtualHome() {
             <button
               type="button"
               onClick={openCart}
-              className="relative text-white font-extrabold whitespace-nowrap bg-white/10 hover:bg-white/15 px-4 py-2 rounded-full"
+              className="relative text-white font-extrabold whitespace-nowrap bg-white/15 hover:bg-white/25 px-4 py-2.5 rounded-full shadow-sm"
               title="Abrir carrinho"
             >
               🛒 <span className="hidden lg:inline">Carrinho • </span>
@@ -587,7 +587,7 @@ function FarmaciaVirtualHome() {
       </header>
 
       <section className="mt-4 max-w-6xl mx-auto px-4">
-        <div className="overflow-hidden rounded-3xl shadow-sm xl:max-h-[260px] 2xl:max-h-[300px] bg-white">
+        <div className="overflow-hidden rounded-[28px] shadow-sm xl:max-h-[230px] 2xl:max-h-[260px] bg-white border border-slate-100">
           <FVBanners />
         </div>
       </section>
@@ -1451,9 +1451,9 @@ function ProdutoCardUltra({ p, onComprar }: { p: FVProduto; onComprar: () => voi
   }
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition overflow-hidden flex flex-col">
+    <div className="bg-white rounded-[24px] border border-slate-100 shadow-sm hover:shadow-xl hover:shadow-blue-900/10 transition overflow-hidden flex flex-col">
       <div className="relative p-3">
-        <Link href={hrefProduto} className="bg-gray-50 rounded-xl p-2 flex items-center justify-center hover:opacity-95 transition">
+        <Link href={hrefProduto} className="bg-gradient-to-br from-slate-50 to-white rounded-[20px] p-3 flex items-center justify-center hover:opacity-95 transition border border-slate-100">
           <Image src={firstImg(p.imagens)} alt={p.nome || "Produto"} width={240} height={240} className="rounded object-contain h-24 sm:h-28" />
         </Link>
 
@@ -1476,7 +1476,7 @@ function ProdutoCardUltra({ p, onComprar }: { p: FVProduto; onComprar: () => voi
       <div className="px-3 pb-3 flex-1 flex flex-col">
         <div className="text-[11px] text-gray-500 line-clamp-1">{p.laboratorio || "—"}</div>
 
-        <Link href={hrefProduto} className="mt-1 font-semibold text-blue-950 text-xs sm:text-sm line-clamp-2 hover:underline">
+        <Link href={hrefProduto} className="mt-1 font-black text-slate-950 text-xs sm:text-sm line-clamp-2 hover:text-[#0D47A1] transition">
           {p.nome}
         </Link>
 

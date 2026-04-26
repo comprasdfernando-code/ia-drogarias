@@ -23,37 +23,45 @@ export default function FVTopbar() {
     [subtotal, countItems]
   );
 
+  const nomeCliente = user?.user_metadata?.nome || "Cliente";
+
   return (
     <>
-      <div className="sticky top-0 z-[70] bg-gradient-to-b from-blue-800 to-blue-700 text-white border-b border-white/10">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center gap-3">
+      <header className="sticky top-0 z-[70] border-b border-white/10 bg-[#0D47A1] text-white shadow-lg">
+        <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 py-3">
+          <Link href="/fv" className="flex items-center gap-2">
+            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-white shadow-sm">
+              <span className="text-2xl font-black text-[#E30613]">✚</span>
+            </div>
 
-          {/* LOGO */}
-          <Link href="/fv" className="font-extrabold tracking-tight">
-            IA Drogarias <span className="text-white/80">• FV</span>
+            <div className="leading-tight">
+              <div className="text-xl font-black tracking-tight">
+                <span className="text-[#E30613]">ia</span>
+                <span className="text-white">drogarias</span>
+              </div>
+              <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-white/80">
+                Farmácia Virtual
+              </div>
+            </div>
           </Link>
 
-          {/* DIREITA */}
-          <div className="ml-auto flex items-center gap-3">
-
-            {/* 👤 USUÁRIO */}
+          <div className="ml-auto flex items-center gap-2">
             {user ? (
-              <div className="flex items-center gap-2 bg-white/10 border border-white/20 px-3 py-2 rounded-xl">
-
-                <span className="text-sm font-bold">
-                  Oie!!, {user?.user_metadata?.nome || "Cliente"}
+              <div className="hidden items-center gap-2 rounded-2xl border border-white/15 bg-white/10 px-3 py-2 md:flex">
+                <span className="max-w-[170px] truncate text-sm font-bold">
+                  Oie, {nomeCliente}
                 </span>
 
                 <Link
                   href="/fv/conta"
-                  className="text-xs bg-white/20 hover:bg-white/30 px-2 py-1 rounded-lg font-bold"
+                  className="rounded-xl bg-white px-3 py-1.5 text-xs font-black text-[#0D47A1] transition hover:bg-white/90"
                 >
                   Minha conta
                 </Link>
 
                 <button
                   onClick={signOut}
-                  className="text-xs bg-red-500/80 hover:bg-red-600 px-2 py-1 rounded-lg font-bold"
+                  className="rounded-xl bg-[#E30613] px-3 py-1.5 text-xs font-black text-white transition hover:brightness-95"
                 >
                   Sair
                 </button>
@@ -61,39 +69,58 @@ export default function FVTopbar() {
             ) : (
               <Link
                 href="/login"
-                className="bg-white/15 hover:bg-white/20 border border-white/20 rounded-xl px-3 py-2 text-sm font-bold"
+                className="rounded-2xl border border-white/15 bg-white/10 px-4 py-2 text-sm font-black transition hover:bg-white/20"
               >
                 Entrar
               </Link>
             )}
 
-            {/* 🛒 CARRINHO */}
             <button
               onClick={openCart}
-              className="relative bg-white/15 hover:bg-white/20 border border-white/20 rounded-xl px-3 py-2 font-extrabold text-sm flex items-center gap-2"
+              className="relative flex items-center gap-2 rounded-2xl bg-white px-4 py-2 font-black text-[#0D47A1] shadow-md transition hover:scale-[1.02]"
             >
-              <span>🛒</span>
+              <span className="text-lg">🛒</span>
               <span className="hidden sm:inline">Carrinho</span>
-
-              <span className="text-white/90 hidden md:inline">
-                • {brl(totalTopo)}
-              </span>
+              <span className="hidden md:inline">• {brl(totalTopo)}</span>
 
               {countItems > 0 && (
-                <span className="absolute -top-2 -right-2 bg-green-400 text-blue-950 text-xs font-extrabold w-6 h-6 rounded-full flex items-center justify-center shadow">
+                <span className="absolute -right-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full bg-[#FFD400] text-xs font-black text-[#0D47A1] shadow">
                   {countItems}
                 </span>
               )}
             </button>
-
           </div>
         </div>
-      </div>
 
-      {/* MOBILE */}
+        {user && (
+          <div className="border-t border-white/10 bg-[#083B8F] px-4 py-2 md:hidden">
+            <div className="mx-auto flex max-w-6xl items-center justify-between gap-2">
+              <span className="truncate text-sm font-bold">
+                Oie, {nomeCliente}
+              </span>
+
+              <div className="flex gap-2">
+                <Link
+                  href="/fv/conta"
+                  className="rounded-xl bg-white/15 px-3 py-1.5 text-xs font-black"
+                >
+                  Conta
+                </Link>
+
+                <button
+                  onClick={signOut}
+                  className="rounded-xl bg-[#E30613] px-3 py-1.5 text-xs font-black"
+                >
+                  Sair
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </header>
+
       <MobileCartBar onOpen={openCart} />
 
-      {/* DRAWER */}
       <CartDrawer />
     </>
   );
@@ -112,9 +139,9 @@ function MobileCartBar({ onOpen }: { onOpen: () => void }) {
   return (
     <button
       onClick={onOpen}
-      className="fixed z-[75] bottom-4 left-4 right-4 sm:hidden bg-blue-700 text-white rounded-2xl shadow-2xl px-4 py-3 font-extrabold flex items-center justify-between"
+      className="fixed bottom-4 left-4 right-4 z-[75] flex items-center justify-between rounded-2xl bg-[#0D47A1] px-4 py-3 font-black text-white shadow-2xl sm:hidden"
     >
-      <span>Ver carrinho ({countItems})</span>
+      <span>🛒 Ver carrinho ({countItems})</span>
       <span>{brl(total)}</span>
     </button>
   );
