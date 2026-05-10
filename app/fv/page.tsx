@@ -668,12 +668,18 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
   const [saving, setSaving] = useState(false);
 
   const subtotal = useMemo(() => {
-    return cart.items.reduce((acc, it) => acc + Number(it.preco || 0) * Number(it.qtd || 0), 0);
+    return cart.items.reduce(
+      (acc, it) => acc + Number(it.preco || 0) * Number(it.qtd || 0),
+      0
+    );
   }, [cart.items]);
 
   function clearCartSafe() {
-    if (typeof (cart as any).clear === "function") (cart as any).clear();
-    else cart.items.forEach((it) => cart.remove(it.ean));
+    if (typeof (cart as any).clear === "function") {
+      (cart as any).clear();
+    } else {
+      cart.items.forEach((it) => cart.remove(it.ean));
+    }
   }
 
   function finalizarPedido() {
@@ -683,7 +689,9 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
 
     try {
       onClose();
-      router.push("/fv/carrinho");
+
+      // Próxima etapa: dados, entrega e pagamento
+      router.push("/fv/checkout");
     } finally {
       setTimeout(() => setSaving(false), 500);
     }
@@ -695,7 +703,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
     <div className="fixed inset-0 z-[70]">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
 
-      <div className="absolute right-0 top-0 h-full w-full sm:w-[460px] bg-white shadow-2xl flex flex-col">
+      <div className="absolute right-0 top-0 h-full w-full sm:w-[480px] bg-white shadow-2xl flex flex-col">
         {/* HEADER */}
         <div className="p-4 border-b flex items-center justify-between">
           <div className="font-extrabold text-lg">🛒 Carrinho</div>
@@ -719,12 +727,12 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
             <div className="space-y-3">
               {cart.items.map((it) => (
                 <div key={it.ean} className="border rounded-2xl p-3 flex gap-3">
-                  <div className="h-16 w-16 bg-gray-50 rounded-xl overflow-hidden flex items-center justify-center shrink-0">
+                  <div className="h-14 w-14 bg-gray-50 rounded-xl overflow-hidden flex items-center justify-center shrink-0">
                     <Image
                       src={it.imagem || "/produtos/caixa-padrao.png"}
                       alt={it.nome}
-                      width={72}
-                      height={72}
+                      width={64}
+                      height={64}
                       className="object-contain"
                     />
                   </div>
@@ -791,13 +799,14 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
         <div className="p-4 border-t bg-white">
           <div className="flex items-center justify-between">
             <div className="text-sm text-gray-600">Subtotal</div>
+
             <div className="text-xl font-extrabold text-blue-900">
               {brl(subtotal)}
             </div>
           </div>
 
           <div className="mt-1 text-xs text-gray-500">
-            Entrega, dados e pagamento serão definidos na próxima etapa.
+            Dados, entrega e pagamento serão definidos na próxima etapa.
           </div>
 
           <div className="mt-4 grid grid-cols-2 gap-2">
