@@ -665,355 +665,27 @@ function FarmaciaVirtualHome() {
 function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void }) {
   const router = useRouter();
   const cart = useCart();
-
-  // ✅ cliente logado
-  const { user, profile, updateProfile } = useCustomer();
-  const locked = !!user;
-
-  // ✅ taxa fixa (você pode trocar depois por regra por bairro/distância)
-  const TAXA_ENTREGA_FIXA = 10;
-  const PEDIDOS_TABLE = "fv_pedidos";
-
   const [saving, setSaving] = useState(false);
-  const [pedidoCriado, setPedidoCriado] = useState<{ pronto?: string; encomenda?: string; grupo?: string } | null>(null);
-
-  const [clienteNome, setClienteNome] = useState("");
-  const [clienteTelefone, setClienteTelefone] = useState("");
-  const [clienteCpf, setClienteCpf] = useState("");
-  const [clienteEmail, setClienteEmail] = useState("");
-
-  const [tipoEntrega, setTipoEntrega] = useState<"ENTREGA" | "RETIRADA">("ENTREGA");
-  const [endereco, setEndereco] = useState("");
-  const [numero, setNumero] = useState("");
-  const [bairro, setBairro] = useState("");
-  const [cep, setCep] = useState("");
-  const [cidade, setCidade] = useState("");
-  const [estado, setEstado] = useState("");
-  const [complemento, setComplemento] = useState("");
-  const [referencia, setReferencia] = useState("");
-  const [enderecoPrincipal, setEnderecoPrincipal] = useState<ClienteEndereco | null>(null);
-  const [loadingEnderecoPrincipal, setLoadingEnderecoPrincipal] = useState(false);
-
-  const [pagamento, setPagamento] = useState<"PIX" | "CARTAO" | "DINHEIRO" | "COMBINAR">("PIX");
-
-  const taxaEntrega = tipoEntrega === "ENTREGA" ? TAXA_ENTREGA_FIXA : 0;
 
   const subtotal = useMemo(() => {
     return cart.items.reduce((acc, it) => acc + Number(it.preco || 0) * Number(it.qtd || 0), 0);
   }, [cart.items]);
-
-  const total = subtotal + taxaEntrega;
-
-  const needsCpf = pagamento === "PIX" || pagamento === "CARTAO";
-  const canCheckout = useMemo(() => {
-    if (!cart.items.length) return false;
-    if (!clienteNome.trim()) return false;
-    if (onlyDigits(clienteTelefone).length < 10) return false;
-    if (needsCpf && onlyDigits(clienteCpf).length !== 11) return false;
-
-    if (tipoEntrega === "ENTREGA") {
-      if (!endereco.trim() || !numero.trim() || !bairro.trim()) return false;
-    }
-    return true;
-  }, [cart.items.length, clienteNome, clienteTelefone, needsCpf, clienteCpf, tipoEntrega, endereco, numero, bairro]);
-
-  // ✅ autopreenche quando abrir carrinho e estiver logado
-  useEffect(() => {
-    if (!open) return;
-    if (!user || !profile) return;
-
-    setClienteNome((prev) => prev || profile.nome || "");
-    setClienteTelefone((prev) => prev || profile.phone || "");
-    setClienteCpf((prev) => prev || profile.cpf || "");
-    setClienteEmail((prev) => prev || profile.email || "");
-  }, [open, user, profile]);
-
-  // ✅ busca o endereço principal salvo em Minha Conta > Endereços
-  useEffect(() => {
-    async function loadEnderecoPrincipal() {
-      if (!open) return;
-      if (!user?.id) {
-        setEnderecoPrincipal(null);
-        return;
-      }
-
-      setLoadingEnderecoPrincipal(true);
-      try {
-        const { data, error } = await supabase
-          .from("cliente_enderecos")
-          .select("id,cliente_id,nome,cep,endereco,numero,bairro,cidade,estado,complemento,referencia,principal")
-          .eq("cliente_id", user.id)
-          .eq("principal", true)
-          .maybeSingle();
-
-        if (error) throw error;
-
-        const end = (data || null) as ClienteEndereco | null;
-        setEnderecoPrincipal(end);
-
-        // Só preenche automático se o cliente ainda não digitou endereço no carrinho
-        if (end) {
-          setTipoEntrega("ENTREGA");
-          setEndereco((prev) => prev || end.endereco || "");
-          setNumero((prev) => prev || end.numero || "");
-          setBairro((prev) => prev || end.bairro || "");
-          setCep((prev) => prev || end.cep || "");
-          setCidade((prev) => prev || end.cidade || "");
-          setEstado((prev) => prev || end.estado || "");
-          setComplemento((prev) => prev || end.complemento || "");
-          setReferencia((prev) => prev || end.referencia || "");
-        }
-      } catch (e) {
-        console.error("Erro ao buscar endereço principal:", e);
-        setEnderecoPrincipal(null);
-      } finally {
-        setLoadingEnderecoPrincipal(false);
-      }
-    }
-
-    loadEnderecoPrincipal();
-  }, [open, user?.id]);
-
-  useEffect(() => {
-    if (!open) return;
-    setPedidoCriado(null);
-  }, [open]);
 
   function clearCartSafe() {
     if (typeof (cart as any).clear === "function") (cart as any).clear();
     else cart.items.forEach((it) => cart.remove(it.ean));
   }
 
-  // 🔎 estoque consolidado
-  async function getEstoqueByEan(eans: string[]) {
-    const clean = Array.from(new Set(eans.map((x) => (x || "").trim()).filter(Boolean)));
-    if (!clean.length) return new Map<string, number>();
-
-    const { data, error } = await supabase.from("fv_home_com_estoque").select("ean,estoque_total").in("ean", clean);
-    if (error) throw error;
-
-    const map = new Map<string, number>();
-    for (const row of (data || []) as any[]) {
-      map.set(String(row.ean), Number(row.estoque_total || 0));
-    }
-    return map;
-  }
-
-  async function criarPedido(payload: any) {
-    const { data, error } = await supabase.from(PEDIDOS_TABLE).insert(payload).select("id").single();
-    if (error) throw error;
-    return String((data as any).id || "");
-  }
-
-  function buildOrderId() {
-    // ✅ id único (PagBank aceita string)
-    return `FV_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`;
-  }
-
-  function snapshotCheckoutData() {
-    // ✅ snapshot do carrinho ANTES de limpar (evita ir pro checkout com 0,00)
-    const items = cart.items.map((i, idx) => ({
-      reference_id: String(i?.ean || `item-${idx + 1}`),
-      name: String(i?.nome || "Item"),
-      quantity: Number(i?.qtd || 1),
-      unit_amount: toCents(i?.preco || 0), // ✅ centavos certo
-    }));
-
-    const taxaCentavos = tipoEntrega === "ENTREGA" ? toCents(taxaEntrega) : 0;
-
-    // ✅ taxa automática entra como item no checkout (cliente não adiciona nada)
-    if (taxaCentavos > 0) {
-      items.push({
-        reference_id: "taxa-entrega",
-        name: "Taxa de entrega",
-        quantity: 1,
-        unit_amount: taxaCentavos,
-      });
-    }
-
-    return {
-      cliente: {
-        name: clienteNome.trim() || "Cliente",
-        email: (clienteEmail || "").trim() || "cliente@iadrogarias.com",
-        tax_id: onlyDigits(clienteCpf),
-        phone: onlyDigits(clienteTelefone),
-      },
-      items,
-      taxa_entrega_centavos: taxaCentavos,
-      entrega: {
-        tipo_entrega: tipoEntrega,
-        endereco_id: tipoEntrega === "ENTREGA" ? enderecoPrincipal?.id || null : null,
-        endereco: tipoEntrega === "ENTREGA" ? endereco.trim() : null,
-        numero: tipoEntrega === "ENTREGA" ? numero.trim() : null,
-        bairro: tipoEntrega === "ENTREGA" ? bairro.trim() : null,
-        cep: tipoEntrega === "ENTREGA" ? cep.trim() || null : null,
-        cidade: tipoEntrega === "ENTREGA" ? cidade.trim() || null : null,
-        estado: tipoEntrega === "ENTREGA" ? estado.trim() || null : null,
-        complemento: tipoEntrega === "ENTREGA" ? complemento.trim() || null : null,
-        referencia: tipoEntrega === "ENTREGA" ? referencia.trim() || null : null,
-      },
-      pagamento,
-      total_centavos: items.reduce((acc, it) => acc + it.unit_amount * it.quantity, 0),
-    };
-  }
-
-  function goToPayment(created: { pronto?: string; encomenda?: string; grupo?: string }) {
-    const pedidoId = created.pronto || created.encomenda || "";
-    if (!pedidoId) {
-      alert("Pedido não encontrado para pagamento.");
-      return;
-    }
-
-    const orderId = buildOrderId();
-    const snap = snapshotCheckoutData();
-
-    // ✅ salva fallback pro CheckoutClient não vir 0,00
-    try {
-      sessionStorage.setItem(
-        `fv_checkout_${orderId}`,
-        JSON.stringify({
-          ok: true,
-          pedido_id: pedidoId,
-          grupo_id: created.grupo || null,
-          order_id: orderId,
-          cliente_nome: snap.cliente.name,
-          cliente_email: snap.cliente.email,
-          cliente_tax_id: snap.cliente.tax_id,
-          cliente_phone: snap.cliente.phone,
-          itens: snap.items,
-          total_centavos: snap.total_centavos,
-          taxa_entrega_centavos: snap.taxa_entrega_centavos,
-          entrega: snap.entrega,
-          pagamento: snap.pagamento,
-        })
-      );
-    } catch {}
-
-    const url =
-      `/fv/checkout?order_id=${encodeURIComponent(orderId)}` +
-      `&pedido_id=${encodeURIComponent(pedidoId)}` +
-      (created.grupo ? `&grupo_id=${encodeURIComponent(created.grupo)}` : "") +
-      `&taxa_centavos=${encodeURIComponent(String(snap.taxa_entrega_centavos || 0))}`;
-
-    // ✅ redireciona direto (sem depender de estado)
-    window.location.href = url;
-  }
-
-  async function finalizarPedido() {
-    if (!canCheckout || saving) return;
+  function finalizarPedido() {
+    if (!cart.items.length || saving) return;
 
     setSaving(true);
+
     try {
-      const grupoId = (globalThis.crypto?.randomUUID ? globalThis.crypto.randomUUID() : undefined) || undefined;
-
-      const willPayOnline = pagamento === "PIX" || pagamento === "CARTAO";
-
-      // ✅ se estiver logado, salva o que foi usado no checkout no perfil
-      if (user) {
-        try {
-          await updateProfile({
-            nome: clienteNome.trim() || null,
-            phone: onlyDigits2(clienteTelefone) || null,
-            cpf: onlyDigits2(clienteCpf) || null,
-            email: (clienteEmail || "").trim().toLowerCase() || null,
-          });
-        } catch {}
-      }
-
-      // 1) estoque consolidado
-      const eans = cart.items.map((i) => i.ean);
-      const estoqueMap = await getEstoqueByEan(eans);
-
-      // 2) separa itens
-      const pronta: any[] = [];
-      const encomenda: any[] = [];
-
-      for (const i of cart.items) {
-        const est = Number(estoqueMap.get(i.ean) ?? 0);
-        const qtd = Number(i.qtd || 0);
-
-        const item = {
-          ean: i.ean,
-          nome: i.nome,
-          qtd,
-          preco: Number(i.preco || 0),
-          subtotal: Number(i.preco || 0) * qtd,
-          estoque_total: est,
-        };
-
-        if (est >= qtd && qtd > 0) pronta.push(item);
-        else encomenda.push(item);
-      }
-
-      // 3) base
-      const base = {
-        grupo_id: grupoId ?? null,
-        cliente_nome: clienteNome.trim(),
-        cliente_whatsapp: onlyDigits(clienteTelefone),
-
-        tipo_entrega: tipoEntrega,
-        endereco_id: tipoEntrega === "ENTREGA" ? enderecoPrincipal?.id || null : null,
-        endereco: tipoEntrega === "ENTREGA" ? endereco.trim() : null,
-        numero: tipoEntrega === "ENTREGA" ? numero.trim() : null,
-        bairro: tipoEntrega === "ENTREGA" ? bairro.trim() : null,
-        cep: tipoEntrega === "ENTREGA" ? cep.trim() || null : null,
-        cidade: tipoEntrega === "ENTREGA" ? cidade.trim() || null : null,
-        estado: tipoEntrega === "ENTREGA" ? estado.trim() || null : null,
-        complemento: tipoEntrega === "ENTREGA" ? complemento.trim() || null : null,
-        referencia: tipoEntrega === "ENTREGA" ? referencia.trim() || null : null,
-
-        pagamento,
-        canal: "SITE",
-        status: "NOVO",
-      };
-
-      const created: { pronto?: string; encomenda?: string; grupo?: string } = { grupo: grupoId };
-
-      // PRONTA
-      if (pronta.length) {
-        const subPronto = pronta.reduce((acc, it) => acc + Number(it.subtotal || 0), 0);
-        const totalPronto = subPronto + taxaEntrega;
-
-        created.pronto = await criarPedido({
-          ...base,
-          pedido_tipo: "PRONTA_ENTREGA",
-          taxa_entrega: taxaEntrega,
-          subtotal: subPronto,
-          total: totalPronto,
-          itens: pronta,
-        });
-      }
-
-      // ENCOMENDA
-      if (encomenda.length) {
-        const subEnc = encomenda.reduce((acc, it) => acc + Number(it.subtotal || 0), 0);
-        const totalEnc = subEnc + taxaEntrega;
-
-        created.encomenda = await criarPedido({
-          ...base,
-          pedido_tipo: "ENCOMENDA",
-          taxa_entrega: taxaEntrega,
-          subtotal: subEnc,
-          total: totalEnc,
-          itens: encomenda,
-        });
-      }
-
-      setPedidoCriado(created);
-
-      // ✅ Se pagamento online, vai direto pro checkout
-      if (willPayOnline) {
-        goToPayment(created);
-        return;
-      }
-
-      // Dinheiro/Combinar
-      clearCartSafe();
-    } catch (e: any) {
-      console.error(e);
-      alert("Não consegui finalizar o pedido. Tente novamente.");
+      onClose();
+      router.push("/fv/carrinho");
     } finally {
-      setSaving(false);
+      setTimeout(() => setSaving(false), 500);
     }
   }
 
@@ -1023,10 +695,11 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
     <div className="fixed inset-0 z-[70]">
       <div className="absolute inset-0 bg-black/40" onClick={onClose} />
 
-      <div className="absolute right-0 top-0 h-full w-full sm:w-[480px] bg-white shadow-2xl flex flex-col">
+      <div className="absolute right-0 top-0 h-full w-full sm:w-[460px] bg-white shadow-2xl flex flex-col">
         {/* HEADER */}
         <div className="p-4 border-b flex items-center justify-between">
           <div className="font-extrabold text-lg">🛒 Carrinho</div>
+
           <button
             type="button"
             onClick={onClose}
@@ -1038,55 +711,38 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
 
         {/* BODY */}
         <div className="p-4 flex-1 overflow-auto">
-          {pedidoCriado ? (
-            <div className="rounded-2xl border bg-green-50 p-4 mb-4">
-              <div className="text-lg font-extrabold text-green-700">Pedido finalizado com sucesso ✅</div>
-
-              <div className="text-sm text-gray-800 mt-2 space-y-1">
-                {pedidoCriado.pronto ? (
-                  <div>
-                    <b>Pronta entrega:</b> {pedidoCriado.pronto}
-                  </div>
-                ) : null}
-                {pedidoCriado.encomenda ? (
-                  <div>
-                    <b>Encomenda:</b> {pedidoCriado.encomenda}
-                  </div>
-                ) : null}
-              </div>
-
-              <div className="mt-4">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setPedidoCriado(null);
-                    onClose();
-                  }}
-                  className="w-full rounded-xl bg-blue-700 hover:bg-blue-800 text-white py-3 font-extrabold"
-                >
-                  Voltar para a loja
-                </button>
-              </div>
-            </div>
-          ) : null}
-
-          {/* ITENS */}
           {cart.items.length === 0 ? (
-            <div className="text-gray-600 bg-gray-50 border rounded-2xl p-4">Seu carrinho está vazio. Adicione itens 😊</div>
+            <div className="text-gray-600 bg-gray-50 border rounded-2xl p-4">
+              Seu carrinho está vazio. Adicione itens 😊
+            </div>
           ) : (
             <div className="space-y-3">
               {cart.items.map((it) => (
                 <div key={it.ean} className="border rounded-2xl p-3 flex gap-3">
-                  <div className="h-14 w-14 bg-gray-50 rounded-xl overflow-hidden flex items-center justify-center">
-                    <Image src={it.imagem || "/produtos/caixa-padrao.png"} alt={it.nome} width={64} height={64} className="object-contain" />
+                  <div className="h-16 w-16 bg-gray-50 rounded-xl overflow-hidden flex items-center justify-center shrink-0">
+                    <Image
+                      src={it.imagem || "/produtos/caixa-padrao.png"}
+                      alt={it.nome}
+                      width={72}
+                      height={72}
+                      className="object-contain"
+                    />
                   </div>
 
                   <div className="flex-1 min-w-0">
-                    <div className="font-extrabold text-sm line-clamp-2">{it.nome}</div>
-                    <div className="text-xs text-gray-500">EAN: {it.ean}</div>
+                    <div className="font-extrabold text-sm line-clamp-2">
+                      {it.nome}
+                    </div>
+
+                    <div className="text-xs text-gray-500">
+                      EAN: {it.ean}
+                    </div>
 
                     <div className="mt-1 flex items-center justify-between gap-2">
-                      <div className="font-extrabold text-blue-900">{brl(it.preco)}</div>
+                      <div className="font-extrabold text-blue-900">
+                        {brl(it.preco)}
+                      </div>
+
                       <div className="text-xs font-bold text-gray-600">
                         Item: {brl(Number(it.preco || 0) * Number(it.qtd || 0))}
                       </div>
@@ -1097,9 +753,9 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
                         type="button"
                         onClick={() => cart.dec(it.ean)}
                         className="w-10 h-10 rounded-xl border bg-white hover:bg-gray-50 font-extrabold"
-                        disabled={saving || !!pedidoCriado}
+                        disabled={saving}
                       >
-                        –{/* ok */}
+                        –
                       </button>
 
                       <div className="w-10 h-10 rounded-xl border bg-gray-50 flex items-center justify-center font-extrabold">
@@ -1110,7 +766,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
                         type="button"
                         onClick={() => cart.inc(it.ean)}
                         className="w-10 h-10 rounded-xl border bg-white hover:bg-gray-50 font-extrabold"
-                        disabled={saving || !!pedidoCriado}
+                        disabled={saving}
                       >
                         +
                       </button>
@@ -1119,7 +775,7 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
                         type="button"
                         onClick={() => cart.remove(it.ean)}
                         className="ml-auto px-3 py-2 rounded-xl border bg-white hover:bg-gray-50 text-sm font-extrabold text-red-600"
-                        disabled={saving || !!pedidoCriado}
+                        disabled={saving}
                       >
                         Excluir
                       </button>
@@ -1129,285 +785,44 @@ function CartModalPDV({ open, onClose }: { open: boolean; onClose: () => void })
               ))}
             </div>
           )}
-
-          {/* DADOS */}
-          <div className="mt-5 bg-gray-50 border rounded-2xl p-4">
-            <div className="font-extrabold text-gray-900 flex items-center justify-between">
-              <span>Dados</span>
-              {locked ? (
-                <span className="text-[11px] font-extrabold text-blue-700 bg-white border px-2 py-1 rounded-full">
-                  Logado ✅
-                </span>
-              ) : null}
-            </div>
-
-            <div className="mt-3 space-y-2">
-              <input
-                placeholder="Nome do cliente"
-                value={clienteNome}
-                onChange={(e) => setClienteNome(e.target.value)}
-                className={`w-full border px-3 py-2.5 rounded-xl outline-none focus:ring-4 focus:ring-blue-100 ${
-                  locked ? "bg-slate-100 cursor-not-allowed" : "bg-white"
-                }`}
-                disabled={saving || !!pedidoCriado || locked}
-              />
-              <input
-                placeholder="WhatsApp com DDD (ex: 11999999999)"
-                value={clienteTelefone}
-                onChange={(e) => setClienteTelefone(e.target.value)}
-                className={`w-full border px-3 py-2.5 rounded-xl outline-none focus:ring-4 focus:ring-blue-100 ${
-                  locked ? "bg-slate-100 cursor-not-allowed" : "bg-white"
-                }`}
-                disabled={saving || !!pedidoCriado || locked}
-              />
-
-              <input
-                placeholder={needsCpf ? "CPF (obrigatório para PIX/CARTÃO)" : "CPF (opcional)"}
-                value={clienteCpf}
-                onChange={(e) => setClienteCpf(e.target.value)}
-                className={`w-full border px-3 py-2.5 rounded-xl outline-none focus:ring-4 ${
-                  needsCpf ? "focus:ring-amber-100" : "focus:ring-blue-100"
-                } ${locked ? "bg-slate-100 cursor-not-allowed" : "bg-white"}`}
-                disabled={saving || !!pedidoCriado || locked}
-              />
-
-              <input
-                placeholder="Email (opcional)"
-                value={clienteEmail}
-                onChange={(e) => setClienteEmail(e.target.value)}
-                className={`w-full border px-3 py-2.5 rounded-xl outline-none focus:ring-4 focus:ring-blue-100 ${
-                  locked ? "bg-slate-100 cursor-not-allowed" : "bg-white"
-                }`}
-                disabled={saving || !!pedidoCriado || locked}
-              />
-
-              <div className="text-[11px] text-gray-500">Dica: WhatsApp com DDD. CPF só números (11 dígitos).</div>
-              {needsCpf && onlyDigits(clienteCpf).length !== 11 ? (
-                <div className="text-[11px] text-red-600 font-bold">Para {pagamento}, o CPF é obrigatório (11 dígitos).</div>
-              ) : null}
-
-              {!locked ? (
-                <div className="text-[11px] text-gray-500">
-                  Dica: fazendo login você não precisa preencher esses dados toda vez.
-                </div>
-              ) : null}
-            </div>
-          </div>
-
-          {/* ENTREGA */}
-          <div className="mt-4 bg-white border rounded-2xl p-4">
-            <div className="font-extrabold text-gray-900">Entrega</div>
-
-            <div className="mt-3 flex gap-2">
-              <button
-                type="button"
-                onClick={() => setTipoEntrega("ENTREGA")}
-                className={`flex-1 px-3 py-2.5 rounded-xl font-extrabold ${
-                  tipoEntrega === "ENTREGA" ? "bg-blue-700 text-white" : "bg-gray-100 hover:bg-gray-200"
-                }`}
-                disabled={saving || !!pedidoCriado}
-              >
-                Entrega
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setTipoEntrega("RETIRADA")}
-                className={`flex-1 px-3 py-2.5 rounded-xl font-extrabold ${
-                  tipoEntrega === "RETIRADA" ? "bg-blue-700 text-white" : "bg-gray-100 hover:bg-gray-200"
-                }`}
-                disabled={saving || !!pedidoCriado}
-              >
-                Retirada
-              </button>
-            </div>
-
-            {tipoEntrega === "ENTREGA" ? (
-              <div className="mt-3 space-y-2">
-                {loadingEnderecoPrincipal ? (
-                  <div className="rounded-xl border bg-blue-50 px-3 py-2 text-xs font-bold text-blue-800">
-                    Buscando endereço salvo...
-                  </div>
-                ) : enderecoPrincipal ? (
-                  <div className="rounded-2xl border border-blue-100 bg-blue-50 p-3">
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <div className="text-xs font-black text-blue-900">Endereço principal da sua conta ✅</div>
-                        <div className="mt-1 text-sm font-extrabold text-gray-900">
-                          {enderecoPrincipal.endereco}, {enderecoPrincipal.numero} — {enderecoPrincipal.bairro}
-                        </div>
-                        <div className="mt-0.5 text-xs text-gray-600">
-                          {[enderecoPrincipal.complemento, enderecoPrincipal.referencia, enderecoPrincipal.cidade, enderecoPrincipal.estado]
-                            .filter(Boolean)
-                            .join(" • ")}
-                        </div>
-                      </div>
-                      <Link
-                        href="/fv/minha-conta/enderecos"
-                        className="shrink-0 rounded-xl bg-white border px-3 py-2 text-xs font-extrabold text-blue-700 hover:bg-blue-50"
-                      >
-                        Trocar
-                      </Link>
-                    </div>
-                  </div>
-                ) : locked ? (
-                  <div className="rounded-2xl border border-amber-200 bg-amber-50 p-3 text-xs text-amber-800">
-                    Você está logado, mas ainda não tem endereço principal salvo.
-                    <Link href="/fv/minha-conta/enderecos" className="ml-1 font-black underline">
-                      Cadastrar endereço
-                    </Link>
-                  </div>
-                ) : null}
-
-                <input
-                  placeholder="Endereço"
-                  value={endereco}
-                  onChange={(e) => setEndereco(e.target.value)}
-                  className="w-full border bg-white px-3 py-2.5 rounded-xl outline-none focus:ring-4 focus:ring-blue-100"
-                  disabled={saving || !!pedidoCriado}
-                />
-                <div className="grid grid-cols-2 gap-2">
-                  <input
-                    placeholder="Número"
-                    value={numero}
-                    onChange={(e) => setNumero(e.target.value)}
-                    className="w-full border bg-white px-3 py-2.5 rounded-xl outline-none focus:ring-4 focus:ring-blue-100"
-                    disabled={saving || !!pedidoCriado}
-                  />
-                  <input
-                    placeholder="Bairro"
-                    value={bairro}
-                    onChange={(e) => setBairro(e.target.value)}
-                    className="w-full border bg-white px-3 py-2.5 rounded-xl outline-none focus:ring-4 focus:ring-blue-100"
-                    disabled={saving || !!pedidoCriado}
-                  />
-                </div>
-
-                <div className="grid grid-cols-3 gap-2">
-                  <input
-                    placeholder="CEP"
-                    value={cep}
-                    onChange={(e) => setCep(e.target.value)}
-                    className="w-full border bg-white px-3 py-2.5 rounded-xl outline-none focus:ring-4 focus:ring-blue-100"
-                    disabled={saving || !!pedidoCriado}
-                  />
-                  <input
-                    placeholder="Cidade"
-                    value={cidade}
-                    onChange={(e) => setCidade(e.target.value)}
-                    className="col-span-1 w-full border bg-white px-3 py-2.5 rounded-xl outline-none focus:ring-4 focus:ring-blue-100"
-                    disabled={saving || !!pedidoCriado}
-                  />
-                  <input
-                    placeholder="UF"
-                    value={estado}
-                    onChange={(e) => setEstado(e.target.value.toUpperCase().slice(0, 2))}
-                    className="w-full border bg-white px-3 py-2.5 rounded-xl outline-none focus:ring-4 focus:ring-blue-100"
-                    disabled={saving || !!pedidoCriado}
-                  />
-                </div>
-
-                <input
-                  placeholder="Complemento (apto, bloco, casa, fundos...)"
-                  value={complemento}
-                  onChange={(e) => setComplemento(e.target.value)}
-                  className="w-full border bg-white px-3 py-2.5 rounded-xl outline-none focus:ring-4 focus:ring-blue-100"
-                  disabled={saving || !!pedidoCriado}
-                />
-
-                <input
-                  placeholder="Referência para entrega (opcional)"
-                  value={referencia}
-                  onChange={(e) => setReferencia(e.target.value)}
-                  className="w-full border bg-white px-3 py-2.5 rounded-xl outline-none focus:ring-4 focus:ring-blue-100"
-                  disabled={saving || !!pedidoCriado}
-                />
-
-                <div className="text-sm font-extrabold text-blue-900">Taxa fixa: {brl(taxaEntrega)}</div>
-              </div>
-            ) : (
-              <div className="mt-3 text-sm text-gray-600">Você pode retirar na loja. Assim que confirmar, enviamos o endereço/horário.</div>
-            )}
-          </div>
-
-          {/* PAGAMENTO */}
-          <div className="mt-4 bg-white border rounded-2xl p-4">
-            <div className="font-extrabold text-gray-900">Pagamento</div>
-
-            <div className="mt-3 flex flex-wrap gap-2">
-              {(["PIX", "CARTAO", "DINHEIRO", "COMBINAR"] as const).map((p) => (
-                <button
-                  type="button"
-                  key={p}
-                  onClick={() => setPagamento(p)}
-                  className={`px-3 py-2 rounded-xl font-extrabold ${
-                    pagamento === p ? "bg-blue-700 text-white" : "bg-gray-100 hover:bg-gray-200"
-                  }`}
-                  disabled={saving || !!pedidoCriado}
-                >
-                  {p}
-                </button>
-              ))}
-            </div>
-
-            {(pagamento === "PIX" || pagamento === "CARTAO") && (
-              <div className="mt-2 text-[11px] text-gray-600">
-                * Para {pagamento}, precisamos do <b>CPF</b> para gerar o pagamento.
-              </div>
-            )}
-          </div>
         </div>
 
         {/* FOOTER */}
-        <div className="p-4 border-t">
+        <div className="p-4 border-t bg-white">
           <div className="flex items-center justify-between">
             <div className="text-sm text-gray-600">Subtotal</div>
-            <div className="text-lg font-extrabold text-blue-900">{brl(subtotal)}</div>
+            <div className="text-xl font-extrabold text-blue-900">
+              {brl(subtotal)}
+            </div>
           </div>
 
-          <div className="mt-1 flex items-center justify-between">
-            <div className="text-sm text-gray-600">Taxa</div>
-            <div className="text-sm font-extrabold">{brl(taxaEntrega)}</div>
+          <div className="mt-1 text-xs text-gray-500">
+            Entrega, dados e pagamento serão definidos na próxima etapa.
           </div>
 
-          <div className="mt-2 flex items-center justify-between">
-            <div className="text-base font-extrabold text-gray-900">Total</div>
-            <div className="text-xl font-extrabold text-green-700">{brl(total)}</div>
-          </div>
-
-          <div className="mt-3 grid grid-cols-2 gap-2">
+          <div className="mt-4 grid grid-cols-2 gap-2">
             <button
               type="button"
               onClick={clearCartSafe}
               className="px-4 py-3 rounded-2xl border bg-white hover:bg-gray-50 font-extrabold"
-              disabled={!cart.items.length || saving || !!pedidoCriado}
+              disabled={!cart.items.length || saving}
             >
               Limpar
             </button>
 
             <button
               type="button"
-              disabled={!canCheckout || saving || !!pedidoCriado}
+              disabled={!cart.items.length || saving}
               onClick={finalizarPedido}
               className={`px-4 py-3 rounded-2xl font-extrabold text-center ${
-                canCheckout ? "bg-green-600 hover:bg-green-700 text-white" : "bg-gray-200 text-gray-500"
+                cart.items.length
+                  ? "bg-green-600 hover:bg-green-700 text-white"
+                  : "bg-gray-200 text-gray-500"
               } ${saving ? "opacity-70 cursor-wait" : ""}`}
             >
-              {saving ? "Finalizando..." : "Finalizar pedido"}
+              {saving ? "Abrindo..." : "Finalizar pedido"}
             </button>
           </div>
-
-          {!canCheckout ? (
-            <div className="mt-2 text-xs text-gray-500">
-              Para liberar: informe <b>Nome</b>, <b>WhatsApp</b> e adicione itens.{" "}
-              {(pagamento === "PIX" || pagamento === "CARTAO") && (
-                <>
-                  Para <b>{pagamento}</b>, informe também <b>CPF</b>.
-                </>
-              )}{" "}
-              Se escolher <b>Entrega</b>, preencha <b>Endereço/Número/Bairro</b>.
-            </div>
-          ) : null}
         </div>
       </div>
     </div>
