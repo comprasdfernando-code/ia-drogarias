@@ -4,10 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import { createClient } from "@supabase/supabase-js";
 
-const supabase = createClient({
-  supabaseUrl: process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  supabaseKey: process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-});
+const supabase = createClient(
+  process.env.NEXT_PUBLIC_SUPABASE_URL!,
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+);
 
 type TipoFoto = "antes" | "depois";
 
@@ -30,13 +30,9 @@ export default function FotosPacientePage() {
   const [observacao, setObservacao] = useState("");
   const [fotos, setFotos] = useState<FotoPaciente[]>([]);
   const [loading, setLoading] = useState(false);
-  const [carregando, setCarregando] = useState(true);
-  const [mensagem, setMensagem] = useState("");
 
   async function carregarFotos() {
     if (!pacienteId) return;
-
-    setCarregando(true);
 
     const { data, error } = await supabase
       .from("clinic_patient_photos")
@@ -46,13 +42,11 @@ export default function FotosPacientePage() {
       .order("created_at", { ascending: false });
 
     if (error) {
-      setMensagem("Erro ao carregar fotos: " + error.message);
-      setCarregando(false);
+      alert("Erro ao carregar fotos: " + error.message);
       return;
     }
 
     setFotos((data || []) as FotoPaciente[]);
-    setCarregando(false);
   }
 
   useEffect(() => {
@@ -64,44 +58,38 @@ export default function FotosPacientePage() {
 
     try {
       setLoading(true);
-      setMensagem("");
 
       const ext = file.name.split(".").pop() || "jpg";
       const fileName = `${pacienteId}/${Date.now()}-${tipo}.${ext}`;
 
-      const { error: uploadError } = await supabase.storage
+      const upload = await supabase.storage
         .from("clinic-patient-photos")
         .upload(fileName, file, {
           cacheControl: "3600",
           upsert: false,
         });
 
-      if (uploadError) throw uploadError;
+      if (upload.error) throw upload.error;
 
-      const { data: publicData } = supabase.storage
+      const publicUrl = supabase.storage
         .from("clinic-patient-photos")
-        .getPublicUrl(fileName);
+        .getPublicUrl(fileName).data.publicUrl;
 
-      const publicUrl = publicData.publicUrl;
+      const insert = await supabase.from("clinic_patient_photos").insert({
+        clinica_slug: "dradudarodrigues",
+        paciente_id: pacienteId,
+        tipo,
+        sessao,
+        observacao,
+        image_url: publicUrl,
+      });
 
-      const { error: insertError } = await supabase
-        .from("clinic_patient_photos")
-        .insert({
-          clinica_slug: "dradudarodrigues",
-          paciente_id: pacienteId,
-          tipo,
-          sessao,
-          observacao,
-          image_url: publicUrl,
-        });
-
-      if (insertError) throw insertError;
+      if (insert.error) throw insert.error;
 
       setObservacao("");
-      setMensagem("Foto enviada com sucesso.");
       await carregarFotos();
     } catch (err: any) {
-      setMensagem("Erro ao enviar foto: " + err.message);
+      alert("Erro ao enviar foto: " + err.message);
     } finally {
       setLoading(false);
     }
@@ -117,7 +105,7 @@ export default function FotosPacientePage() {
       .eq("id", id);
 
     if (error) {
-      setMensagem("Erro ao excluir: " + error.message);
+      alert("Erro ao excluir: " + error.message);
       return;
     }
 
@@ -134,10 +122,10 @@ export default function FotosPacientePage() {
   }, [fotos]);
 
   return (
-    <div className="w-full space-y-6 pb-20 text-slate-100">
+    <div className="space-y-6">
       <div>
-        <p className="text-sm text-slate-300">Fotos antes/depois</p>
-        <h2 className="text-2xl font-bold text-slate-50">
+        <p className="text-sm text-slate-400">Fotos antes/depois</p>
+        <h2 className="text-2xl font-bold text-slate-100">
           Evolução do paciente
         </h2>
       </div>
@@ -151,7 +139,7 @@ export default function FotosPacientePage() {
             <select
               value={tipo}
               onChange={(e) => setTipo(e.target.value as TipoFoto)}
-              className="w-full rounded-lg bg-[#1f1a22] px-3 py-3 text-white"
+              className="w-full rounded-lg bg-[#1f1a22] px-3 py-2 text-white"
             >
               <option value="antes">Antes</option>
               <option value="depois">Depois</option>
@@ -165,7 +153,7 @@ export default function FotosPacientePage() {
             <input
               value={sessao}
               onChange={(e) => setSessao(e.target.value)}
-              className="w-full rounded-lg bg-[#1f1a22] px-3 py-3 text-white"
+              className="w-full rounded-lg bg-[#1f1a22] px-3 py-2 text-white"
             />
           </div>
 
@@ -177,103 +165,76 @@ export default function FotosPacientePage() {
               value={observacao}
               onChange={(e) => setObservacao(e.target.value)}
               placeholder="Ex: início do tratamento, retorno..."
-              className="w-full rounded-lg bg-[#1f1a22] px-3 py-3 text-white"
+              className="w-full rounded-lg bg-[#1f1a22] px-3 py-2 text-white"
             />
           </div>
         </div>
 
-        <label className="mt-5 inline-flex cursor-pointer rounded-xl bg-[#f0b978] px-5 py-3 text-sm font-bold text-[#241722]">
+        <label className="mt-5 inline-block cursor-pointer rounded-xl bg-[#f0b978] px-5 py-3 text-sm font-bold text-[#241722]">
           {loading ? "Enviando..." : "Tirar / enviar foto"}
           <input
             type="file"
             accept="image/*"
+            capture="environment"
             disabled={loading}
             className="hidden"
             onChange={(e) => enviarFoto(e.target.files?.[0])}
           />
         </label>
-
-        {mensagem && (
-          <div className="mt-4 rounded-xl bg-[#211b22] px-4 py-3 text-sm text-white">
-            {mensagem}
-          </div>
-        )}
       </div>
 
-      <div className="rounded-2xl bg-white p-5 text-slate-900">
-        <div className="mb-4 flex items-center justify-between">
-          <h3 className="text-lg font-bold">Galeria</h3>
-          <span className="text-xs text-slate-500">{fotos.length} foto(s)</span>
+      {fotos.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center text-sm text-slate-500">
+          Nenhuma foto cadastrada ainda.
         </div>
+      ) : (
+        <div className="space-y-6">
+          {Object.entries(agrupadas).map(([nomeSessao, lista]) => (
+            <div key={nomeSessao} className="rounded-2xl bg-white p-5">
+              <h3 className="mb-4 text-lg font-bold text-slate-900">
+                {nomeSessao}
+              </h3>
 
-        {carregando ? (
-          <div className="rounded-xl border border-dashed p-8 text-center text-sm text-slate-500">
-            Carregando fotos...
-          </div>
-        ) : fotos.length === 0 ? (
-          <div className="rounded-xl border border-dashed p-8 text-center text-sm text-slate-500">
-            Nenhuma foto cadastrada ainda.
-          </div>
-        ) : (
-          <div className="space-y-6">
-            {Object.entries(agrupadas).map(([nomeSessao, lista]) => (
-              <div key={nomeSessao}>
-                <h4 className="mb-3 font-bold">{nomeSessao}</h4>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+                {lista.map((foto) => (
+                  <div key={foto.id} className="overflow-hidden rounded-xl border">
+                    <img
+                      src={foto.image_url}
+                      alt={foto.tipo}
+                      className="h-56 w-full object-cover"
+                    />
 
-                <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-                  {lista.map((foto) => (
-                    <div
-                      key={foto.id}
-                      className="overflow-hidden rounded-xl border bg-slate-50"
-                    >
-                      <img
-                        src={foto.image_url}
-                        alt={foto.tipo}
-                        className="h-64 w-full object-cover"
-                      />
+                    <div className="p-3">
+                      <div className="flex items-center justify-between">
+                        <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700">
+                          {foto.tipo === "antes" ? "Antes" : "Depois"}
+                        </span>
 
-                      <div className="p-3">
-                        <div className="flex items-center justify-between">
-                          <span className="rounded-full bg-slate-200 px-3 py-1 text-xs font-bold text-slate-700">
-                            {foto.tipo === "antes" ? "Antes" : "Depois"}
-                          </span>
-
-                          <button
-                            onClick={() => excluirFoto(foto.id)}
-                            className="text-xs font-bold text-red-600"
-                          >
-                            Excluir
-                          </button>
-                        </div>
-
-                        {foto.observacao && (
-                          <p className="mt-2 text-sm text-slate-600">
-                            {foto.observacao}
-                          </p>
-                        )}
-
-                        <p className="mt-2 text-xs text-slate-400">
-                          {foto.created_at
-                            ? new Date(foto.created_at).toLocaleString("pt-BR")
-                            : ""}
-                        </p>
-
-                        <a
-                          href={foto.image_url}
-                          target="_blank"
-                          className="mt-2 block text-xs font-bold text-blue-600"
+                        <button
+                          onClick={() => excluirFoto(foto.id)}
+                          className="text-xs font-bold text-red-600"
                         >
-                          Abrir imagem
-                        </a>
+                          Excluir
+                        </button>
                       </div>
+
+                      {foto.observacao && (
+                        <p className="mt-2 text-sm text-slate-600">
+                          {foto.observacao}
+                        </p>
+                      )}
+
+                      <p className="mt-2 text-xs text-slate-400">
+                        {new Date(foto.created_at).toLocaleString("pt-BR")}
+                      </p>
                     </div>
-                  ))}
-                </div>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-        )}
-      </div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
