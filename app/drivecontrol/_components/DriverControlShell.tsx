@@ -18,9 +18,9 @@ export default function DriverControlShell({
 
           <nav className="flex gap-3 text-sm">
             <Link href="/drivercontrol">Dashboard</Link>
-            <Link href="/drivercontrol/veiculos">Veículos</Link>
-            <Link href="/drivercontrol/lancamentos">Lançamentos</Link>
-            <Link href="/drivercontrol/relatorios">Relatórios</Link>
+            <Link href="/drivecontrol/veiculos">Veículos</Link>
+            <Link href="/drivecontrol/lancamentos">Lançamentos</Link>
+            <Link href="/drivecontrol/relatorios">Relatórios</Link>
           </nav>
         </div>
       </div>
