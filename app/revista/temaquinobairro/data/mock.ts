@@ -22,3 +22,6 @@ export const promocoes = [
   { titulo: 'Rodízio completo', texto: 'R$ 39,90', cor: 'bg-orange-500' },
   { titulo: 'Troca de óleo', texto: 'R$ 99,90', cor: 'bg-blue-700' },
 ]
+
+/* COMPATIBILIDADE COM COMPONENTES ANTIGOS */
+export const categorias = categories
