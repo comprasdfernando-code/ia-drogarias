@@ -1,19 +1,46 @@
 import Header from '../../components/Header'
 import SearchBox from '../../components/SearchBox'
-import Categorias from '../../components/Categorias'
+import Categories from '../../components/Categories'
 import EmpresaCard from '../../components/EmpresaCard'
 import { empresas } from '../../data/mock'
 
-export default function BairroPage() {
-  return <main className="min-h-screen bg-slate-50 text-[#06122b]"><Header />
-    <section className="relative bg-[#06122b] text-white"><div className="absolute inset-0 bg-[linear-gradient(90deg,rgba(6,18,43,.95),rgba(6,18,43,.55)),radial-gradient(circle_at_70%_50%,rgba(255,255,255,.18),transparent_30%)]" />
-      <div className="relative mx-auto max-w-7xl px-5 py-16"><p className="text-sm text-white/70">Início › Bairros › Jd. Rodolfo Pirani</p><h1 className="mt-6 text-5xl font-black">📍 Jd. Rodolfo Pirani</h1><p className="mt-3 max-w-xl text-xl text-white/90">Encontre os melhores comércios e serviços no Jd. Rodolfo Pirani.</p>
-      <div className="mt-8 grid max-w-3xl gap-3 md:grid-cols-3"><div className="rounded-2xl bg-white p-4 text-[#06122b]"><b className="text-2xl">312</b><p className="text-sm">Empresas cadastradas</p></div><div className="rounded-2xl bg-white p-4 text-[#06122b]"><b className="text-2xl">25+</b><p className="text-sm">Categorias</p></div><div className="rounded-2xl bg-white p-4 text-[#06122b]"><b className="text-2xl">4.8</b><p className="text-sm">Avaliação média</p></div></div></div>
-    </section>
-    <SearchBox bairro="Jd. Rodolfo Pirani"/><Categorias />
-    <section className="mx-auto grid max-w-7xl gap-6 px-5 pb-14 lg:grid-cols-[260px_1fr_260px]"><aside className="space-y-4"><div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200"><h3 className="font-black">Sobre o bairro</h3><p className="mt-3 text-sm text-slate-600">Bairro tradicional da Zona Leste, com variedade de comércios, serviços e opções para o dia a dia.</p><a className="mt-3 block text-sm font-bold text-red-600">Saiba mais →</a></div><div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200"><h3 className="font-black">Categorias</h3>{['Todas as categorias','Saúde','Alimentação','Automóveis','Pet Shop','Mercado','Beleza','Serviços'].map(i => <p key={i} className="mt-2 text-sm text-slate-700">{i}</p>)}</div></aside>
-      <div><div className="mb-4 flex items-center justify-between rounded-xl bg-white p-4 ring-1 ring-slate-200"><p className="text-sm">Mostrando 1 - 12 de 58 resultados em Jd. Rodolfo Pirani</p><select className="rounded-lg border px-3 py-2 text-sm"><option>Mais relevantes</option></select></div><div className="space-y-4">{empresas.map(e => <EmpresaCard key={e.slug} empresa={e}/>)}</div></div>
-      <aside className="space-y-4"><div className="rounded-2xl bg-white p-5 shadow-sm ring-1 ring-slate-200"><h3 className="font-black">Mapa do bairro</h3><div className="mt-3 grid h-48 place-items-center rounded-xl bg-red-50 text-5xl">🗺️</div><a className="mt-3 block text-sm font-bold text-red-600">Ver no Google Maps →</a></div><div className="rounded-2xl bg-[#06122b] p-5 text-white shadow-sm"><h3 className="font-black">ANUNCIE SEU NEGÓCIO!</h3><p className="mt-2 text-sm text-white/75">Seja encontrado por mais clientes no Jd. Rodolfo Pirani.</p><a className="mt-4 block rounded-xl bg-yellow-400 px-4 py-3 text-center font-black text-slate-900" href="/revista/temaquinobairro/anuncie">Quero anunciar</a></div></aside>
-    </section>
-  </main>
+export default function Page() {
+  return (
+    <main className="min-h-screen bg-slate-50">
+      <Header />
+      <section className="relative overflow-hidden bg-[#06142d] text-white">
+        <div className="absolute inset-0 bg-[radial-gradient(circle_at_75%_20%,rgba(34,197,94,.42),transparent_28%),radial-gradient(circle_at_50%_55%,rgba(14,165,233,.36),transparent_28%),linear-gradient(90deg,#06142d_0%,rgba(6,20,45,.86)_40%,rgba(6,20,45,.15)_100%)]" />
+        <div className="absolute bottom-0 right-0 h-full w-[72%] opacity-90 [background:linear-gradient(135deg,transparent_10%,rgba(255,255,255,.16)_11%,transparent_12%),repeating-linear-gradient(90deg,rgba(255,255,255,.13)_0_10px,transparent_10px_72px)]" />
+        <div className="relative mx-auto max-w-[1500px] px-8 pb-24 pt-9">
+          <p className="mb-8 text-sm text-white/80">Início › Bairros › Jd. Rodolfo Pirani</p>
+          <div className="grid items-center gap-8 lg:grid-cols-[1fr_480px]">
+            <div>
+              <h1 className="flex items-center gap-5 text-5xl font-black lg:text-7xl"><span className="text-red-500">📍</span>Jd. Rodolfo Pirani</h1>
+              <p className="mt-5 max-w-xl text-2xl text-white/90">Encontre os melhores comércios e serviços no Jd. Rodolfo Pirani.</p>
+              <div className="mt-8 grid max-w-3xl gap-3 md:grid-cols-3">
+                <div className="rounded-xl bg-white p-5 text-slate-950"><b className="text-2xl">312</b><p className="text-sm">Empresas cadastradas</p></div>
+                <div className="rounded-xl bg-white p-5 text-slate-950"><b className="text-2xl">25+</b><p className="text-sm">Categorias</p></div>
+                <div className="rounded-xl bg-white p-5 text-slate-950"><b className="text-2xl">4.8</b><p className="text-sm">Avaliação média</p></div>
+              </div>
+            </div>
+            <div className="rounded-3xl bg-[#06142d]/90 p-8 shadow-2xl ring-1 ring-white/10">
+              <div className="flex gap-5"><div className="grid h-24 w-24 place-items-center rounded-2xl bg-white text-5xl">🗺️</div><div><h2 className="text-2xl font-black">Valorize o comércio local</h2><p className="mt-2 text-white/80">Comprando no bairro, você fortalece nossa comunidade e gera empregos!</p></div></div>
+            </div>
+          </div>
+        </div>
+      </section>
+      <SearchBox />
+      <Categories />
+      <section className="mx-auto mt-8 grid max-w-[1500px] gap-6 px-6 pb-16 lg:grid-cols-[1fr_300px]">
+        <div className="rounded-2xl border bg-white p-6 shadow-sm">
+          <div className="mb-5 flex items-center justify-between"><h2 className="text-2xl font-black text-slate-950">⭐ Destaques do bairro</h2><a className="font-bold text-blue-600">Ver todas as empresas →</a></div>
+          <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-5">{empresas.map(e => <EmpresaCard key={e.nome} empresa={e} />)}</div>
+        </div>
+        <aside className="space-y-5">
+          <div className="rounded-2xl border bg-white p-5 shadow-sm"><h3 className="text-xl font-black text-slate-950">Mapa do bairro</h3><div className="mt-4 grid h-48 place-items-center rounded-xl bg-red-50 text-center font-black text-red-600">📍<br/>Jd. Rodolfo Pirani</div><p className="mt-3 font-bold text-red-600">Ver no Google Maps ↗</p></div>
+          <div className="rounded-2xl bg-[#06142d] p-6 text-white shadow-xl"><h3 className="text-xl font-black">Anuncie seu negócio!</h3><p className="mt-2 text-white/80">Seja encontrado por mais clientes no Jd. Rodolfo Pirani.</p><a className="mt-5 inline-block rounded-lg bg-yellow-400 px-5 py-3 font-black text-slate-950" href="/revista/temaquinobairro/anuncie">Quero anunciar</a></div>
+        </aside>
+      </section>
+    </main>
+  )
 }
