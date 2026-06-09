@@ -94,7 +94,7 @@ export const empresas = [
     cidade: 'São Paulo',
     nota: '4,8',
     avaliacoes: 65,
-    telefone: '(11) 97777-7777',
+    telefone: '(11) 97784-4066',
     logo: 'DANI\nSOUND',
     logoImg: '/empresas/dani-sound.png',
     selo: 'PREMIUM',
