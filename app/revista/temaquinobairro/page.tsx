@@ -8,34 +8,142 @@ export default function Page() {
   return (
     <main className="min-h-screen bg-slate-50">
       <Header />
-      <section className="relative overflow-hidden bg-[#06142d] text-white">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_80%_20%,rgba(34,197,94,.35),transparent_28%),radial-gradient(circle_at_45%_50%,rgba(59,130,246,.4),transparent_25%),linear-gradient(90deg,#06142d_0%,rgba(6,20,45,.86)_44%,rgba(6,20,45,.25)_100%)]" />
-        <div className="absolute bottom-0 right-0 h-64 w-[70%] opacity-80 [background:linear-gradient(135deg,transparent_10%,rgba(255,255,255,.18)_11%,transparent_12%),repeating-linear-gradient(90deg,rgba(255,255,255,.12)_0_12px,transparent_12px_70px)]" />
-        <div className="relative mx-auto grid max-w-[1500px] items-center gap-8 px-8 py-20 lg:grid-cols-[1fr_560px]">
-          <div>
-            <h1 className="max-w-2xl text-5xl font-black leading-tight lg:text-7xl">Descubra o melhor <span className="text-yellow-400">do seu bairro!</span></h1>
-            <p className="mt-5 max-w-xl text-2xl text-white/90">Encontre comércios, serviços, promoções e eventos pertinho de você.</p>
-          </div>
-          <div className="rounded-3xl bg-white/10 p-8 backdrop-blur">
-            <h2 className="text-3xl font-black">📍 Valorize o que é do seu bairro!</h2>
-            <p className="mt-3 text-lg text-white/85">Compre local, fortaleça nossa comunidade.</p>
+
+      <section
+        className="relative min-h-[650px] overflow-hidden text-white"
+        style={{
+          backgroundImage:
+            "linear-gradient(90deg, rgba(6,18,43,.96) 0%, rgba(6,18,43,.82) 38%, rgba(6,18,43,.18) 100%), url('/bairros/jd-rodolfo-pirani.jpg')",
+          backgroundSize: 'cover',
+          backgroundPosition: 'center',
+        }}
+      >
+        <div className="mx-auto max-w-[1500px] px-8 pt-28">
+          <div className="max-w-4xl">
+            <div className="text-5xl">📍</div>
+
+            <p className="mt-5 text-4xl font-light tracking-wide">
+              JARDIM
+            </p>
+
+            <h1 className="mt-2 text-6xl font-black leading-none tracking-tight lg:text-8xl">
+              RODOLFO PIRANI
+            </h1>
+
+            <p className="mt-5 text-4xl font-light">
+              São Mateus - SP
+            </p>
+
+            <div className="mt-10 max-w-5xl rounded-3xl bg-white p-4 shadow-2xl">
+              <div className="grid gap-3 lg:grid-cols-[1fr_1fr_180px]">
+                <div className="flex items-center gap-4 rounded-2xl bg-white px-4 py-4 text-slate-700 ring-1 ring-slate-200">
+                  <span className="text-3xl">🔍</span>
+                  <div>
+                    <p className="text-lg font-semibold">Buscar comércio ou serviço</p>
+                    <p className="text-sm text-slate-400">
+                      Ex: Farmácia, Pizzaria, Mecânico...
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-4 rounded-2xl bg-white px-4 py-4 text-slate-700 ring-1 ring-slate-200">
+                  <span className="text-3xl">📍</span>
+                  <div>
+                    <p className="text-lg font-semibold">Buscar bairro</p>
+                    <p className="text-sm text-slate-400">
+                      Jd. Rodolfo Pirani
+                    </p>
+                  </div>
+                </div>
+
+                <a
+                  href="/revista/temaquinobairro/bairros/jd-rodolfo-pirani"
+                  className="grid place-items-center rounded-2xl bg-red-600 px-8 py-5 text-xl font-black text-white shadow-lg transition hover:bg-red-700"
+                >
+                  Buscar
+                </a>
+              </div>
+            </div>
+
+            <div className="mt-7 max-w-5xl rounded-3xl bg-slate-900/70 p-6 shadow-2xl backdrop-blur">
+              <div className="grid grid-cols-2 gap-5 md:grid-cols-3 lg:grid-cols-6">
+                {[
+                  ['🛍️', 'COMÉRCIO LOCAL'],
+                  ['🍴', 'ONDE COMER'],
+                  ['❤️', 'SAÚDE E BEM-ESTAR'],
+                  ['🚗', 'SERVIÇOS E AUTOMÓVEIS'],
+                  ['🐾', 'MUNDO PET'],
+                  ['🗓️', 'EVENTOS E NOVIDADES'],
+                ].map(([icon, label]) => (
+                  <div key={label} className="text-center">
+                    <div className="mx-auto grid h-20 w-20 place-items-center rounded-full bg-white/10 text-4xl">
+                      {icon}
+                    </div>
+                    <p className="mt-3 text-sm font-black leading-tight">
+                      {label}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       </section>
-      <SearchBox bairro="Selecione seu bairro" />
+
       <Categories />
+
       <section className="mx-auto mt-10 max-w-[1320px] px-6">
         <div className="rounded-2xl bg-[#06142d] p-7 text-white shadow-xl md:flex md:items-center md:justify-between">
-          <div className="flex items-center gap-5"><span className="text-6xl">📣</span><div><h2 className="text-3xl font-black text-yellow-400">DIVULGUE SEU NEGÓCIO</h2><p>Apareça para milhares de pessoas do seu bairro.</p></div></div>
-          <a className="mt-5 inline-block rounded-xl bg-yellow-400 px-8 py-4 font-black text-slate-950 md:mt-0" href="/revista/temaquinobairro/anuncie">Anuncie Agora!</a>
+          <div className="flex items-center gap-5">
+            <span className="text-6xl">📣</span>
+            <div>
+              <h2 className="text-3xl font-black text-yellow-400">
+                DIVULGUE SEU NEGÓCIO
+              </h2>
+              <p>Apareça para milhares de pessoas do seu bairro.</p>
+            </div>
+          </div>
+
+          <a
+            className="mt-5 inline-block rounded-xl bg-yellow-400 px-8 py-4 font-black text-slate-950 md:mt-0"
+            href="/revista/temaquinobairro/anuncie"
+          >
+            Anuncie Agora!
+          </a>
         </div>
       </section>
+
       <section className="mx-auto mt-10 max-w-[1320px] px-6">
-        <div className="mb-5 flex items-center justify-between"><h2 className="text-3xl font-black text-slate-950">Destaques do bairro</h2><a className="font-bold text-red-600" href="/revista/temaquinobairro/bairros/jd-rodolfo-pirani">Ver todos →</a></div>
-        <div className="grid gap-5 md:grid-cols-3 lg:grid-cols-5">{empresas.map(e => <EmpresaCard key={e.nome} empresa={e} />)}</div>
+        <div className="mb-5 flex items-center justify-between">
+          <h2 className="text-3xl font-black text-slate-950">
+            Destaques do bairro
+          </h2>
+
+          <a
+            className="font-bold text-red-600"
+            href="/revista/temaquinobairro/bairros/jd-rodolfo-pirani"
+          >
+            Ver todos →
+          </a>
+        </div>
+
+        <div className="grid gap-5 md:grid-cols-3 lg:grid-cols-5">
+          {empresas.map((e) => (
+            <EmpresaCard key={e.nome} empresa={e} />
+          ))}
+        </div>
       </section>
+
       <section className="mx-auto mt-10 grid max-w-[1320px] gap-5 px-6 pb-16 md:grid-cols-3">
-        {promocoes.map(p => <div key={p.titulo} className={`${p.cor} rounded-2xl p-8 text-white shadow-xl`}><p className="text-lg font-bold">{p.titulo}</p><h3 className="mt-2 text-4xl font-black">{p.texto}</h3></div>)}
+        {promocoes.map((p) => (
+          <div
+            key={p.titulo}
+            className={`${p.cor} rounded-2xl p-8 text-white shadow-xl`}
+          >
+            <p className="text-lg font-bold">{p.titulo}</p>
+            <h3 className="mt-2 text-4xl font-black">{p.texto}</h3>
+          </div>
+        ))}
       </section>
     </main>
   )
