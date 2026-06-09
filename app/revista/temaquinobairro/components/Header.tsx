@@ -20,8 +20,8 @@ export default function Header() {
           <Image
   src="/logo-tem-aqui-no-bairro.png"
   alt="Tem Aqui no Bairro"
-  width={120}
-  height={45}
+  width={180}
+  height={70}
   priority
   className="object-contain"
 />
