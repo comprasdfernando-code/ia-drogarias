@@ -18,13 +18,13 @@ export default function Header() {
       <div className="mx-auto flex max-w-[1600px] items-center justify-between px-8 py-3">
         <Link href={base} className="shrink-0">
           <Image
-            src="/logo-tem-aqui-no-bairro.png"
-            alt="Tem Aqui no Bairro"
-            width={180}
-            height={70}
-            priority
-            className="h-auto w-auto object-contain"
-          />
+  src="/logo-tem-aqui-no-bairro.png"
+  alt="Tem Aqui no Bairro"
+  width={120}
+  height={45}
+  priority
+  className="object-contain"
+/>
         </Link>
 
         <nav className="hidden items-center gap-10 text-lg font-bold lg:flex">
