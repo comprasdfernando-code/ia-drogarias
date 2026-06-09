@@ -12,12 +12,14 @@ export default function Page() {
       <section
         className="relative min-h-[560px] overflow-hidden text-white"
         style={{
-          backgroundImage:
-            "linear-gradient(90deg, rgba(6,18,43,.96) 0%, rgba(6,18,43,.84) 42%, rgba(6,18,43,.18) 100%), url('/bairros/jd-rodolfo-pirani.jpg')",
-          backgroundSize: 'cover',
-          backgroundPosition: 'center',
-        }}
+  backgroundImage:
+    "linear-gradient(90deg, rgba(6,18,43,.96) 0%, rgba(6,18,43,.84) 42%, rgba(6,18,43,.18) 100%), url('/bairros/jd-rodolfo-pirani.jpg')",
+  backgroundSize: 'cover',
+  backgroundPosition: 'center',
+}}
+
       >
+
         <div className="relative mx-auto max-w-[1500px] px-8 pb-28 pt-16">
           <p className="mb-10 text-sm font-semibold text-white/75">
             Início › Bairros › Jd. Rodolfo Pirani
