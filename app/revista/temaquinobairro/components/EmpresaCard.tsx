@@ -52,12 +52,12 @@ export default function EmpresaCard({ empresa }: { empresa: any }) {
         <div className="mt-5 space-y-3">
 
           <a
-            href={empresa.whatsapp}
-            target="_blank"
-            className="block rounded-xl bg-green-600 py-3 text-center font-black text-white transition hover:bg-green-700"
-          >
-            WhatsApp
-          </a>
+  href={empresa.pagina}
+  target="_blank"
+  className="block w-full rounded-xl border border-slate-200 py-3 text-center font-black text-slate-900 transition hover:bg-slate-50"
+>
+  Ver Página
+</a>
 
           <button
             className="block w-full rounded-xl border border-slate-200 py-3 text-center font-black text-slate-900 transition hover:bg-slate-50"
