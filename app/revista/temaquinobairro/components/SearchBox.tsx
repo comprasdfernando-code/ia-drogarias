@@ -1,76 +1,67 @@
+'use client'
+
+import { useRouter, useSearchParams } from 'next/navigation'
+import { useState } from 'react'
+
+const base = '/revista/temaquinobairro'
+
 export default function SearchBox({
   bairro = 'Jd. Rodolfo Pirani',
 }: {
   bairro?: string
 }) {
+  const router = useRouter()
+  const params = useSearchParams()
+
+  const [q, setQ] = useState(params.get('q') || '')
+  const [bairroSelecionado, setBairroSelecionado] = useState(
+    params.get('bairro') || bairro
+  )
+
+  const bairros = [
+    'Jd. Rodolfo Pirani',
+    'Baeta Neves',
+    'Jardim Esther',
+    'Vila Bela',
+  ]
+
+  function buscar() {
+    const query = new URLSearchParams()
+
+    if (q) query.set('q', q)
+    if (bairroSelecionado) query.set('bairro', bairroSelecionado)
+
+    router.push(`${base}/buscar?${query.toString()}`)
+  }
+
   return (
-    <div className="relative z-30 mx-auto -mt-20 max-w-[1320px] px-6">
-      <div className="overflow-hidden rounded-[32px] bg-white p-5 shadow-[0_20px_60px_rgba(0,0,0,.18)]">
+    <div className="relative z-30 mx-auto -mt-20 max-w-[1320px] px-4">
+      <div className="rounded-3xl bg-white p-4 shadow-2xl">
+        <div className="grid gap-3 md:grid-cols-[1fr_260px_160px]">
+          <input
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="Buscar comércio ou serviço"
+            className="rounded-2xl border p-4 font-bold"
+          />
 
-        <div className="grid gap-4 lg:grid-cols-[1.5fr_1fr_220px_240px]">
+          <select
+            value={bairroSelecionado}
+            onChange={(e) => setBairroSelecionado(e.target.value)}
+            className="rounded-2xl border p-4 font-bold"
+          >
+            {bairros.map((b) => (
+              <option key={b}>{b}</option>
+            ))}
+          </select>
 
-          <div className="flex items-center gap-4 rounded-2xl border border-slate-200 px-5 py-5 transition hover:border-red-400">
-            <div className="grid h-14 w-14 place-items-center rounded-2xl bg-red-50 text-3xl text-red-600">
-              🔍
-            </div>
-
-            <div>
-              <p className="text-sm font-semibold text-slate-500">
-                O que você procura?
-              </p>
-
-              <p className="text-lg font-bold text-slate-900">
-                Farmácia, Pizzaria, Mercado...
-              </p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-4 rounded-2xl border border-slate-200 px-5 py-5 transition hover:border-red-400">
-            <div className="grid h-14 w-14 place-items-center rounded-2xl bg-red-50 text-3xl text-red-600">
-              📍
-            </div>
-
-            <div>
-              <p className="text-sm font-semibold text-slate-500">
-                Qual bairro?
-              </p>
-
-              <p className="text-lg font-bold text-slate-900">
-                {bairro}
-              </p>
-            </div>
-          </div>
-
-          <button className="rounded-2xl bg-red-600 px-8 py-5 text-xl font-black text-white shadow-lg transition hover:bg-red-700">
+          <button
+            onClick={buscar}
+            className="rounded-2xl bg-red-600 p-4 font-black text-white"
+          >
             Buscar
           </button>
-
-          <button className="rounded-2xl border border-slate-200 bg-white px-6 py-5 text-lg font-black text-slate-900 transition hover:bg-slate-50">
-            📡 Minha Localização
-          </button>
-
         </div>
-
-        <div className="mt-5 flex flex-wrap gap-3">
-          {[
-            'Farmácia',
-            'Pizzaria',
-            'Mercado',
-            'Pet Shop',
-            'Mecânica',
-            'Salão',
-            'Dentista',
-            'Delivery',
-          ].map((item) => (
-            <span
-              key={item}
-              className="rounded-full bg-slate-100 px-4 py-2 text-sm font-bold text-slate-700"
-            >
-              {item}
-            </span>
-          ))}
-        </div>
-
       </div>
     </div>
   )
