@@ -31,7 +31,7 @@ export default function SearchBox({
     if (q) query.set('q', q)
     if (bairroSelecionado) query.set('bairro', bairroSelecionado)
 
-    router.push(`${base}/buscar?${query.toString()}`)
+    router.push(`${base}/busca?${query.toString()}`)
   }
 
   return (
