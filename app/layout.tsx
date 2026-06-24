@@ -5,10 +5,13 @@ import { CartProvider } from "./contexts/CartContext";
 import "leaflet/dist/leaflet.css";
 
 
-export const metadata: Metadata = {
-  title: "IA Drogarias",
-  description: "Saúde com Inteligência ❤️",
-};
+export const metadata = {
+  title: {
+    default: 'Tem Aqui no Bairro',
+    template: '%s | Tem Aqui no Bairro',
+  },
+  description: 'Comércios, serviços, promoções e eventos do seu bairro.',
+}
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
