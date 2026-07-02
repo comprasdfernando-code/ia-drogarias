@@ -417,7 +417,7 @@ function DFDistribuidoraHome({ onSair }: { onSair: () => void }) {
             ) : resultado.length === 0 ? (
               <div className="bg-white border rounded-2xl p-6 text-gray-600">Nenhum produto encontrado.</div>
             ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-5">
+              <div className="space-y-3">
                 {resultado.map((p) => (
                   <ProdutoCardUltra
                     key={p.id}
@@ -441,7 +441,7 @@ function DFDistribuidoraHome({ onSair }: { onSair: () => void }) {
             ) : homeProdutos.length === 0 ? (
               <div className="bg-white border rounded-2xl p-6 text-gray-600">Nenhum produto com estoque disponível no momento.</div>
             ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-5">
+              <div className="space-y-3">
                 {homeProdutos.map((p) => (
                   <ProdutoCardUltra
                     key={p.id}
@@ -460,7 +460,7 @@ function DFDistribuidoraHome({ onSair }: { onSair: () => void }) {
       <section className="max-w-6xl mx-auto px-4 mt-12 pb-12">
         <div className="bg-white rounded-3xl border shadow-sm p-6">
           <h3 className="text-xl md:text-2xl font-extrabold text-gray-900">Compra rápida</h3>
-          <p className="text-gray-600 mt-1">Adicione no carrinho e finalize no WhatsApp em poucos cliques.</p>
+          <p className="text-gray-600 mt-1">Escolha os produtos na lista, monte o carrinho automaticamente e finalize o pedido em poucos cliques.</p>
         </div>
       </section>
 
@@ -966,8 +966,12 @@ function ProdutoCardUltra({
 
     if (estoqueAtual > 0 && already + want > estoqueAtual) {
       const canAdd = Math.max(0, estoqueAtual - already);
+
       if (canAdd <= 0) {
-        push({ title: "Sem estoque 😕", desc: "Você já atingiu o limite disponível." });
+        push({
+          title: "Limite de estoque atingido",
+          desc: "Esse produto já está no carrinho com a quantidade disponível.",
+        });
         return;
       }
 
@@ -983,7 +987,11 @@ function ProdutoCardUltra({
         canAdd
       );
 
-      push({ title: "Adicionado ao carrinho ✅", desc: `${p.nome} • ${canAdd}x (limite do estoque)` });
+      push({
+        title: "Adicionado ao carrinho ✅",
+        desc: `${p.nome} • ${canAdd}x`,
+      });
+
       setQtd(1);
       return;
     }
@@ -1000,76 +1008,113 @@ function ProdutoCardUltra({
       want
     );
 
-    push({ title: "Adicionado ao carrinho ✅", desc: `${p.nome} • ${want}x` });
+    push({
+      title: "Adicionado ao carrinho ✅",
+      desc: `${p.nome} • ${want}x`,
+    });
+
     setQtd(1);
   }
 
   return (
-    <div className="bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition overflow-hidden flex flex-col">
-      <div className="relative p-3">
+    <div className="group overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:border-blue-200 hover:shadow-md">
+      <div className="grid grid-cols-[76px_1fr] gap-3 p-3 sm:grid-cols-[96px_1fr_190px] sm:items-center">
         <Link
           href={`${prefix}/produtos/${p.ean}`}
-          className="bg-gray-50 rounded-xl p-2 flex items-center justify-center hover:opacity-95 transition"
+          className="flex h-20 w-20 items-center justify-center rounded-2xl bg-slate-50 p-2 sm:h-24 sm:w-24"
         >
           <Image
             src={firstImg(p.imagens)}
             alt={p.nome || "Produto"}
-            width={240}
-            height={240}
-            className="rounded object-contain h-24 sm:h-28"
+            width={120}
+            height={120}
+            className="h-full w-full object-contain"
           />
         </Link>
 
-        {pr.emPromo && pr.off > 0 && (
-          <span className="absolute top-3 right-3 text-[11px] font-extrabold bg-red-600 text-white px-2 py-1 rounded-full shadow-sm">
-            {pr.off}% OFF
-          </span>
-        )}
-      </div>
+        <div className="min-w-0">
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            {p.categoria ? (
+              <span className="rounded-full bg-blue-50 px-2 py-1 text-[10px] font-black uppercase text-blue-800">
+                {p.categoria}
+              </span>
+            ) : null}
 
-      <div className="px-3 pb-3 flex-1 flex flex-col">
-        <div className="text-[11px] text-gray-500 line-clamp-1">{p.laboratorio || "—"}</div>
+            {pr.emPromo && pr.off > 0 ? (
+              <span className="rounded-full bg-red-600 px-2 py-1 text-[10px] font-black text-white">
+                {pr.off}% OFF
+              </span>
+            ) : null}
 
-        <Link href={`${prefix}/produtos/${p.ean}`} className="mt-1 font-semibold text-blue-950 text-xs sm:text-sm line-clamp-2 hover:underline">
-          {p.nome}
-        </Link>
+            {!indisponivel ? (
+              <span className="rounded-full bg-green-50 px-2 py-1 text-[10px] font-black text-green-700">
+                Estoque: {estoqueAtual}
+              </span>
+            ) : (
+              <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-black text-slate-500">
+                Sem estoque
+              </span>
+            )}
+          </div>
 
-        {p.apresentacao && <div className="text-[11px] text-gray-600 mt-1 line-clamp-1">{p.apresentacao}</div>}
+          <Link
+            href={`${prefix}/produtos/${p.ean}`}
+            className="line-clamp-2 text-sm font-black uppercase text-slate-950 hover:text-blue-800 hover:underline sm:text-base"
+          >
+            {p.nome}
+          </Link>
 
-        <div className="mt-2">
-          {pr.emPromo ? (
-            <>
-              <div className="text-xs text-gray-500">
-                De <span className="line-through">{brl(pr.pmc)}</span>
+          <div className="mt-2 grid gap-1 text-xs text-slate-600 sm:grid-cols-2">
+            <div>
+              <span className="font-bold text-slate-900">Laboratório:</span>{" "}
+              {p.laboratorio || "—"}
+            </div>
+
+            <div>
+              <span className="font-bold text-slate-900">EAN:</span> {p.ean}
+            </div>
+
+            <div className="sm:col-span-2">
+              <span className="font-bold text-slate-900">Apresentação:</span>{" "}
+              {p.apresentacao || "—"}
+            </div>
+          </div>
+
+          <div className="mt-3 flex flex-wrap items-end gap-2">
+            {pr.emPromo ? (
+              <div>
+                <div className="text-[11px] text-slate-500">
+                  De <span className="line-through">{brl(pr.pmc)}</span>
+                </div>
+                <div className="text-xl font-black text-blue-900">
+                  {brl(pr.final)}
+                </div>
               </div>
-              <div className="text-base font-extrabold text-blue-900">Por {brl(pr.final)}</div>
-            </>
-          ) : (
-            <div className="text-base font-extrabold text-blue-900">{brl(pr.final)}</div>
-          )}
+            ) : (
+              <div className="text-xl font-black text-blue-900">
+                {brl(pr.final)}
+              </div>
+            )}
+          </div>
         </div>
 
-        <div className="mt-2 text-[11px]">
-          {indisponivel ? (
-            <span className="font-extrabold text-gray-500">Sem estoque</span>
-          ) : (
-            <span className="font-bold text-gray-500">Estoque: {estoqueAtual}</span>
-          )}
-        </div>
-
-        <div className="mt-3 flex items-center gap-2">
-          <div className="flex items-center border rounded-xl overflow-hidden">
+        <div className="col-span-2 mt-3 flex items-center gap-2 sm:col-span-1 sm:mt-0 sm:flex-col sm:items-stretch">
+          <div className="flex items-center overflow-hidden rounded-xl border bg-white">
             <button
               onClick={() => setQtd((x) => Math.max(1, x - 1))}
-              className="w-9 h-9 bg-white hover:bg-gray-50 font-extrabold"
+              className="h-10 w-10 font-black hover:bg-slate-50 disabled:opacity-40"
               disabled={indisponivel}
             >
               –
             </button>
-            <div className="w-10 text-center font-extrabold text-sm">{qtd}</div>
+
+            <div className="h-10 w-12 border-x text-center text-sm font-black leading-10">
+              {qtd}
+            </div>
+
             <button
-              onClick={() => setQtd((x) => x + 1)}
-              className="w-9 h-9 bg-white hover:bg-gray-50 font-extrabold"
+              onClick={() => setQtd((x) => Math.min(estoqueAtual || x + 1, x + 1))}
+              className="h-10 w-10 font-black hover:bg-slate-50 disabled:opacity-40"
               disabled={indisponivel}
             >
               +
@@ -1079,22 +1124,24 @@ function ProdutoCardUltra({
           <button
             onClick={add}
             disabled={indisponivel}
-            className={`flex-1 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold ${
-              indisponivel ? "bg-gray-200 text-gray-500 cursor-not-allowed" : "bg-blue-700 hover:bg-blue-800 text-white"
+            className={`h-10 flex-1 rounded-xl px-4 text-sm font-black sm:w-full ${
+              indisponivel
+                ? "cursor-not-allowed bg-slate-200 text-slate-500"
+                : "bg-blue-700 text-white hover:bg-blue-800"
             }`}
           >
-            {indisponivel ? "Indisponível" : "Comprar"}
+            {indisponivel ? "Indisponível" : "Adicionar"}
           </button>
-        </div>
 
-        {indisponivel ? (
-          <button
-            onClick={onEncomendar}
-            className="mt-2 w-full bg-green-600 hover:bg-green-700 text-white py-2.5 rounded-xl text-xs sm:text-sm font-extrabold"
-          >
-            Encomendar
-          </button>
-        ) : null}
+          {indisponivel ? (
+            <button
+              onClick={onEncomendar}
+              className="h-10 flex-1 rounded-xl bg-green-600 px-4 text-sm font-black text-white hover:bg-green-700 sm:w-full"
+            >
+              Encomendar
+            </button>
+          ) : null}
+        </div>
       </div>
     </div>
   );
@@ -1102,20 +1149,22 @@ function ProdutoCardUltra({
 
 function GridSkeleton() {
   return (
-    <div className="mt-6 grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 sm:gap-5">
-      {Array.from({ length: 10 }).map((_, i) => (
-        <div key={i} className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
-          <div className="p-3">
-            <div className="h-28 bg-gray-100 rounded-xl animate-pulse" />
-          </div>
-          <div className="px-3 pb-3">
-            <div className="h-3 w-16 bg-gray-100 rounded animate-pulse" />
-            <div className="mt-2 h-4 w-40 bg-gray-100 rounded animate-pulse" />
-            <div className="mt-2 h-4 w-28 bg-gray-100 rounded animate-pulse" />
-            <div className="mt-3 h-10 bg-gray-100 rounded-xl animate-pulse" />
+    <div className="mt-6 space-y-3">
+      {Array.from({ length: 8 }).map((_, i) => (
+        <div key={i} className="rounded-2xl border border-gray-100 bg-white p-3 shadow-sm">
+          <div className="grid grid-cols-[76px_1fr] gap-3 sm:grid-cols-[96px_1fr_190px] sm:items-center">
+            <div className="h-20 w-20 animate-pulse rounded-2xl bg-gray-100 sm:h-24 sm:w-24" />
+            <div>
+              <div className="h-3 w-24 animate-pulse rounded bg-gray-100" />
+              <div className="mt-2 h-5 w-64 max-w-full animate-pulse rounded bg-gray-100" />
+              <div className="mt-2 h-3 w-40 animate-pulse rounded bg-gray-100" />
+              <div className="mt-3 h-6 w-28 animate-pulse rounded bg-gray-100" />
+            </div>
+            <div className="col-span-2 mt-3 h-10 animate-pulse rounded-xl bg-gray-100 sm:col-span-1 sm:mt-0" />
           </div>
         </div>
       ))}
     </div>
   );
 }
+
