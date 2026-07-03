@@ -507,7 +507,10 @@ function CartModal({
   const [numero, setNumero] = useState("");
   const [bairro, setBairro] = useState("");
 
-  const [pagamento, setPagamento] = useState<"PIX" | "CARTAO" | "DINHEIRO" | "COMBINAR">("PIX");
+  const [pagamento, setPagamento] = useState<"PIX" | "CARTAO" | "DINHEIRO">("PIX");
+  const [tipoCartao, setTipoCartao] = useState<"CREDITO" | "DEBITO">("CREDITO");
+  const [trocoPara, setTrocoPara] = useState("");
+  const [semTroco, setSemTroco] = useState(false);
 
   // ✅ ao abrir, puxa do perfil salvo e preenche automaticamente
   useEffect(() => {
@@ -534,6 +537,17 @@ function CartModal({
 
   const taxaEntrega = tipoEntrega === "ENTREGA" ? TAXA_ENTREGA_FIXA : 0;
   const total = cart.subtotal + taxaEntrega;
+
+  function pagamentoDescricao() {
+    if (pagamento === "PIX") return "PIX";
+    if (pagamento === "CARTAO") {
+      return tipoCartao === "CREDITO" ? "Cartão de Crédito" : "Cartão de Débito";
+    }
+
+    if (semTroco) return "Dinheiro - sem necessidade de troco";
+    if (trocoPara.trim()) return `Dinheiro - troco para ${trocoPara.trim()}`;
+    return "Dinheiro";
+  }
 
   function incSafe(ean: string) {
     const est = Number(estoqueByEan.get(ean) ?? 0);
@@ -579,7 +593,7 @@ function CartModal({
         ? `🚚 *Entrega*\n${endereco}, ${numero} - ${bairro}\nTaxa: ${brl(taxaEntrega)}\n\n`
         : `🏪 *Retirada na loja*\n\n`;
 
-    msg += `💳 Pagamento: ${pagamento}\n\n🛒 *Itens:*\n`;
+    msg += `💳 Pagamento: ${pagamentoDescricao()}\n\n🛒 *Itens:*\n`;
     cart.items.forEach((i) => {
       msg += `• ${i.nome} (${i.ean}) — ${i.qtd}x — ${brl(i.preco * i.qtd)}\n`;
     });
@@ -599,6 +613,9 @@ function CartModal({
     numero,
     bairro,
     pagamento,
+    tipoCartao,
+    trocoPara,
+    semTroco,
     taxaEntrega,
     total,
     cart.subtotal,
@@ -641,7 +658,7 @@ function CartModal({
       p_numero: tipoEntrega === "ENTREGA" ? numero.trim() : null,
       p_bairro: tipoEntrega === "ENTREGA" ? bairro.trim() : null,
 
-      p_pagamento: pagamento,
+      p_pagamento: pagamentoDescricao(),
       p_taxa_entrega: taxaEntrega,
       p_subtotal: cart.subtotal,
       p_total: total,
@@ -887,19 +904,91 @@ function CartModal({
         </div>
 
         {/* PAGAMENTO */}
-        <div className="mt-4">
-          <div className="font-bold mb-2">Pagamento</div>
+        <div className="mt-4 rounded-2xl border bg-gray-50 p-3">
+          <div className="font-extrabold mb-2">Forma de pagamento</div>
 
-          <div className="flex flex-wrap gap-2">
-            {(["PIX", "CARTAO", "DINHEIRO", "COMBINAR"] as const).map((p) => (
+          <div className="grid grid-cols-3 gap-2">
+            <button
+              type="button"
+              onClick={() => setPagamento("PIX")}
+              className={`rounded-xl px-3 py-2 font-extrabold ${
+                pagamento === "PIX" ? "bg-blue-600 text-white" : "bg-white border text-gray-800"
+              }`}
+            >
+              PIX
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setPagamento("CARTAO")}
+              className={`rounded-xl px-3 py-2 font-extrabold ${
+                pagamento === "CARTAO" ? "bg-blue-600 text-white" : "bg-white border text-gray-800"
+              }`}
+            >
+              Cartão
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setPagamento("DINHEIRO")}
+              className={`rounded-xl px-3 py-2 font-extrabold ${
+                pagamento === "DINHEIRO" ? "bg-blue-600 text-white" : "bg-white border text-gray-800"
+              }`}
+            >
+              Dinheiro
+            </button>
+          </div>
+
+          {pagamento === "CARTAO" ? (
+            <div className="mt-3 grid grid-cols-2 gap-2">
               <button
-                key={p}
-                onClick={() => setPagamento(p)}
-                className={`px-3 py-2 rounded ${pagamento === p ? "bg-blue-600 text-white" : "bg-gray-200"}`}
+                type="button"
+                onClick={() => setTipoCartao("CREDITO")}
+                className={`rounded-xl px-3 py-2 text-sm font-extrabold ${
+                  tipoCartao === "CREDITO" ? "bg-green-600 text-white" : "bg-white border text-gray-800"
+                }`}
               >
-                {p}
+                Crédito
               </button>
-            ))}
+
+              <button
+                type="button"
+                onClick={() => setTipoCartao("DEBITO")}
+                className={`rounded-xl px-3 py-2 text-sm font-extrabold ${
+                  tipoCartao === "DEBITO" ? "bg-green-600 text-white" : "bg-white border text-gray-800"
+                }`}
+              >
+                Débito
+              </button>
+            </div>
+          ) : null}
+
+          {pagamento === "DINHEIRO" ? (
+            <div className="mt-3 space-y-2">
+              <input
+                placeholder="Troco para quanto? Ex: 200,00"
+                value={trocoPara}
+                onChange={(e) => setTrocoPara(e.target.value)}
+                disabled={semTroco}
+                className="w-full border p-2 rounded disabled:bg-gray-100 disabled:text-gray-500"
+              />
+
+              <label className="flex items-center gap-2 text-sm font-bold text-gray-700">
+                <input
+                  type="checkbox"
+                  checked={semTroco}
+                  onChange={(e) => {
+                    setSemTroco(e.target.checked);
+                    if (e.target.checked) setTrocoPara("");
+                  }}
+                />
+                Não precisa de troco
+              </label>
+            </div>
+          ) : null}
+
+          <div className="mt-2 text-xs text-gray-600">
+            Vai aparecer no WhatsApp como: <b>{pagamentoDescricao()}</b>
           </div>
         </div>
 
