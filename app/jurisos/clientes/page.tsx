@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { supabase } from "@/lib/supabaseClient";
+import { jurisosSupabase as supabase } from "@/lib/jurisosSupabase";
 
 export default async function ClientesPage() {
   const { data: clientes } = await supabase
