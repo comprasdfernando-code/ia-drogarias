@@ -1,0 +1,5 @@
+import Link from "next/link";
+
+export default function PortoAdminPage(){
+  return <main className="min-h-screen bg-slate-100 p-6"><div className="mx-auto max-w-5xl"><h1 className="text-3xl font-black text-blue-900">Drogarias Porto • Administração</h1><p className="mt-1 text-slate-600">Loja 2 — núcleo inicial</p><div className="mt-8 grid gap-4 md:grid-cols-3">{[["Site da loja","/drogariasporto"],["PDV","/drogariasporto/pdv"],["Caixa automático","/drogariasporto/caixa"]].map(([t,h])=><Link key={h} href={h} className="rounded-2xl border bg-white p-6 shadow-sm hover:border-blue-500"><b className="text-lg">{t}</b><p className="mt-2 text-sm text-slate-500">Abrir módulo</p></Link>)}</div><div className="mt-8 rounded-2xl border bg-white p-6"><h2 className="text-xl font-black">Próximos módulos</h2><p className="mt-2 text-slate-600">Produtos/estoque, boletos, contas financeiras, bancos, compras, fornecedores, fechamento histórico e integração de publicação no FV Marketplace.</p></div></div></main>
+}
