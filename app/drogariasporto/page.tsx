@@ -125,10 +125,10 @@ export default function DrogariasPortoHome() {
           <Link href="/drogariasporto/pdv" className="hidden rounded-xl border px-3 py-2 text-sm font-bold md:block">PDV</Link>
           <Link href="/drogariasporto/caixa" className="hidden rounded-xl border px-3 py-2 text-sm font-bold md:block">Caixa</Link>
           <button className="rounded-xl p-2"><UserRound /></button>
-          <button className="flex items-center gap-2 rounded-xl border px-3 py-2">
+          <Link href="/drogariasporto/carrinho" className="flex items-center gap-2 rounded-xl border px-3 py-2">
             <ShoppingBag className="text-red-500" />
             <span className="hidden sm:block"><b>{brl(total)}</b><small className="block text-slate-500">{qtd} itens</small></span>
-          </button>
+          </Link>
         </div>
         <div className="mx-auto max-w-[1450px] px-4 pb-3 md:hidden">
           <div className="flex items-center rounded-xl border bg-slate-50 px-4"><Search size={19} className="text-red-500" /><input value={busca} onChange={(e) => setBusca(e.target.value)} placeholder="Buscar produto ou EAN" className="w-full bg-transparent px-3 py-3 outline-none" /></div>
@@ -153,7 +153,7 @@ export default function DrogariasPortoHome() {
             <p className="mt-2 max-w-2xl text-blue-100">Catálogo integrado ao estoque da loja e preparado para o FV Marketplace.</p>
           </div>
 
-          <div className="mt-8 flex items-end justify-between"><div><p className="text-sm font-bold text-red-600">DESTAQUES</p><h2 className="text-2xl font-black">Ofertas da Porto</h2></div><button className="font-bold text-red-600">Ver todas</button></div>
+          <div className="mt-8 flex items-end justify-between"><div><p className="text-sm font-bold text-red-600">DESTAQUES</p><h2 className="text-2xl font-black">Ofertas da Porto</h2></div><Link href="/drogariasporto/produtos" className="font-bold text-red-600 hover:underline">Ver todas</Link></div>
 
           {loading ? <div className="py-16 text-center text-slate-500">Carregando produtos...</div> : filtrados.length === 0 ? <div className="mt-6 rounded-2xl border p-10 text-center"><p className="font-bold">Nenhum produto disponível ainda.</p><p className="mt-1 text-sm text-slate-500">Depois de executar o SQL da Porto e vincular produtos à Loja 2, eles aparecerão aqui automaticamente.</p></div> : (
             <div className="mt-5 grid grid-cols-2 gap-4 md:grid-cols-3 xl:grid-cols-5">
