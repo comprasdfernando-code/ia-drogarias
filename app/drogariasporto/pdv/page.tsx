@@ -30,7 +30,12 @@ type Produto = {
   preco_venda: number;
 };
 
-type Item = Produto & { qtd: number };
+type TipoDesconto = "PERCENTUAL" | "VALOR";
+type Item = Produto & {
+  qtd: number;
+  descontoTipo: TipoDesconto;
+  desconto: number;
+};
 type Forma = "Dinheiro" | "Pix" | "Débito" | "Crédito";
 type Pagamento = { forma: Forma; valor: string };
 type Conta = { id: string; nome: string; tipo: string };
@@ -41,6 +46,19 @@ function numero(v: string) {
   const s = v.trim().includes(",") ? v.replace(/\./g, "").replace(",", ".") : v;
   const n = Number(s);
   return Number.isFinite(n) ? n : 0;
+}
+
+function precoLiquidoItem(i: Item) {
+  const desconto =
+    i.descontoTipo === "PERCENTUAL"
+      ? i.preco_venda * (Math.min(100, Math.max(0, i.desconto)) / 100)
+      : Math.min(i.preco_venda, Math.max(0, i.desconto));
+
+  return Math.max(0, i.preco_venda - desconto);
+}
+
+function descontoUnitarioItem(i: Item) {
+  return Math.max(0, i.preco_venda - precoLiquidoItem(i));
 }
 
 export default function PortoPDV() {
@@ -66,7 +84,12 @@ export default function PortoPDV() {
 
   const inputRef = useRef<HTMLInputElement>(null);
 
-  const subtotal = useMemo(() => itens.reduce((s, i) => s + i.preco_venda * i.qtd, 0), [itens]);
+  const subtotalBruto = useMemo(() => itens.reduce((s, i) => s + i.preco_venda * i.qtd, 0), [itens]);
+  const descontoTotal = useMemo(
+    () => itens.reduce((s, i) => s + descontoUnitarioItem(i) * i.qtd, 0),
+    [itens]
+  );
+  const subtotal = Math.max(0, subtotalBruto - descontoTotal);
   const taxa = tipoAtendimento === "ENTREGA" ? Math.max(0, numero(taxaEntrega)) : 0;
   const total = subtotal + taxa;
   const totalPagamentos = useMemo(
@@ -150,7 +173,7 @@ export default function PortoPDV() {
     setItens((old) => {
       const f = old.find((i) => i.id === p.id);
       if (f) return old.map((i) => (i.id === p.id ? { ...i, qtd: Math.min(i.qtd + 1, p.estoque) } : i));
-      return [...old, { ...p, qtd: 1 }];
+      return [...old, { ...p, qtd: 1, descontoTipo: "PERCENTUAL", desconto: 0 }];
     });
   }
 
@@ -159,6 +182,21 @@ export default function PortoPDV() {
       old
         .map((i) => (i.id === id ? { ...i, qtd: Math.min(Math.max(i.qtd + d, 0), i.estoque) } : i))
         .filter((i) => i.qtd > 0)
+    );
+  }
+
+  function alterarDesconto(id: string, tipo: TipoDesconto, valor: number) {
+    setItens((old) =>
+      old.map((i) => {
+        if (i.id !== id) return i;
+
+        const limite = tipo === "PERCENTUAL" ? 100 : i.preco_venda;
+        return {
+          ...i,
+          descontoTipo: tipo,
+          desconto: Math.min(limite, Math.max(0, Number(valor) || 0)),
+        };
+      })
     );
   }
 
@@ -257,16 +295,26 @@ export default function PortoPDV() {
         .single();
       if (error) throw error;
 
-      const rows = itens.map((i) => ({
-        venda_id: v.id,
-        loja_slug: PORTO_LOJA_SLUG,
-        produto_id: i.id,
-        ean: i.ean,
-        nome: i.nome,
-        qtd: i.qtd,
-        preco_unit: i.preco_venda,
-        total: i.preco_venda * i.qtd,
-      }));
+      const rows = itens.map((i) => {
+        const precoLiquido = precoLiquidoItem(i);
+        const descontoUnitario = descontoUnitarioItem(i);
+
+        return {
+          venda_id: v.id,
+          loja_slug: PORTO_LOJA_SLUG,
+          produto_id: i.id,
+          ean: i.ean,
+          nome: i.nome,
+          qtd: i.qtd,
+          preco_original: i.preco_venda,
+          preco_unit: precoLiquido,
+          desconto_tipo: i.desconto > 0 ? i.descontoTipo : null,
+          desconto_percentual: i.descontoTipo === "PERCENTUAL" ? i.desconto : 0,
+          desconto_unitario: descontoUnitario,
+          desconto_total: descontoUnitario * i.qtd,
+          total: precoLiquido * i.qtd,
+        };
+      });
       const { error: ei } = await supabase.from("porto_venda_itens").insert(rows);
       if (ei) throw ei;
 
@@ -326,9 +374,14 @@ export default function PortoPDV() {
         itens: itens.map((i) => ({
           nome: i.nome,
           qtd: i.qtd,
-          precoUnit: i.preco_venda,
-          total: i.preco_venda * i.qtd,
+          precoOriginal: i.preco_venda,
+          precoUnit: precoLiquidoItem(i),
+          descontoUnitario: descontoUnitarioItem(i),
+          descontoTotal: descontoUnitarioItem(i) * i.qtd,
+          total: precoLiquidoItem(i) * i.qtd,
         })),
+        subtotalBruto,
+        descontoTotal,
         subtotal,
         taxaEntrega: taxa,
         total,
@@ -433,7 +486,9 @@ export default function PortoPDV() {
                   <tr>
                     <th className="p-3">Produto</th>
                     <th>Qtd</th>
-                    <th>Unit.</th>
+                    <th>Preço</th>
+                    <th>Desconto</th>
+                    <th>Unit. final</th>
                     <th>Total</th>
                     <th></th>
                   </tr>
@@ -453,7 +508,46 @@ export default function PortoPDV() {
                         </div>
                       </td>
                       <td>{brl(i.preco_venda)}</td>
-                      <td className="font-bold">{brl(i.preco_venda * i.qtd)}</td>
+                      <td>
+                        <div className="flex min-w-[170px] items-center gap-1">
+                          <select
+                            value={i.descontoTipo}
+                            onChange={(e) =>
+                              alterarDesconto(i.id, e.target.value as TipoDesconto, i.desconto)
+                            }
+                            className="rounded-lg border bg-white px-2 py-2 text-xs font-bold"
+                            title="Tipo de desconto"
+                          >
+                            <option value="PERCENTUAL">%</option>
+                            <option value="VALOR">R$</option>
+                          </select>
+                          <input
+                            value={i.desconto ? String(i.desconto).replace(".", ",") : ""}
+                            onChange={(e) =>
+                              alterarDesconto(i.id, i.descontoTipo, numero(e.target.value))
+                            }
+                            inputMode="decimal"
+                            placeholder="0"
+                            className="w-20 rounded-lg border px-2 py-2 text-right font-bold outline-none focus:border-blue-600"
+                          />
+                          {i.desconto > 0 && (
+                            <button
+                              onClick={() => alterarDesconto(i.id, i.descontoTipo, 0)}
+                              className="rounded-lg border px-2 py-2 text-xs font-bold text-red-600"
+                              title="Remover desconto"
+                            >
+                              ×
+                            </button>
+                          )}
+                        </div>
+                        {descontoUnitarioItem(i) > 0 && (
+                          <small className="mt-1 block font-bold text-green-700">
+                            - {brl(descontoUnitarioItem(i))}/un.
+                          </small>
+                        )}
+                      </td>
+                      <td className="font-bold text-blue-800">{brl(precoLiquidoItem(i))}</td>
+                      <td className="font-bold">{brl(precoLiquidoItem(i) * i.qtd)}</td>
                       <td>
                         <button onClick={() => setItens((x) => x.filter((y) => y.id !== i.id))} className="p-2 text-red-600">
                           <Trash2 size={18} />
@@ -550,7 +644,13 @@ export default function PortoPDV() {
             </div>
 
             <div className="mt-4 rounded-xl bg-slate-50 p-3 text-sm">
-              <div className="flex justify-between"><span>Subtotal</span><b>{brl(subtotal)}</b></div>
+              <div className="flex justify-between"><span>Subtotal bruto</span><b>{brl(subtotalBruto)}</b></div>
+              {descontoTotal > 0 && (
+                <div className="mt-1 flex justify-between text-green-700">
+                  <span>Descontos nos itens</span><b>- {brl(descontoTotal)}</b>
+                </div>
+              )}
+              <div className="mt-1 flex justify-between"><span>Subtotal</span><b>{brl(subtotal)}</b></div>
               {tipoAtendimento === "ENTREGA" && <div className="mt-1 flex justify-between"><span>Taxa entrega</span><b>{brl(taxa)}</b></div>}
               <div className="mt-1 flex justify-between"><span>Informado</span><b>{brl(totalPagamentos)}</b></div>
               <div className="mt-1 flex justify-between"><span>Falta</span><b className={faltante > 0 ? "text-red-600" : "text-green-700"}>{brl(faltante)}</b></div>

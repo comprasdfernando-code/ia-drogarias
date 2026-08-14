@@ -3,6 +3,9 @@ export type ItemComprovante = {
   qtd: number;
   precoUnit: number;
   total: number;
+  precoOriginal?: number;
+  descontoUnitario?: number;
+  descontoTotal?: number;
 };
 
 export type PagamentoComprovante = {
@@ -27,6 +30,8 @@ export type ComprovantePorto = {
   clienteTelefone?: string;
   enderecoEntrega?: EnderecoEntregaComprovante | null;
   itens: ItemComprovante[];
+  subtotalBruto?: number;
+  descontoTotal?: number;
   subtotal: number;
   taxaEntrega?: number;
   total: number;
@@ -59,6 +64,7 @@ export function imprimirComprovantePorto(c: ComprovantePorto) {
       (i) => `
         <div class="item">
           <div class="nome">${esc(i.nome)}</div>
+          ${Number(i.descontoUnitario || 0) > 0 ? `<div class="desconto">Preço original: ${money(Number(i.precoOriginal || i.precoUnit))} • Desconto: -${money(Number(i.descontoUnitario || 0))}/un.</div>` : ""}
           <div class="linha"><span>${i.qtd} x ${money(i.precoUnit)}</span><b>${money(i.total)}</b></div>
         </div>`
     )
@@ -106,6 +112,7 @@ export function imprimirComprovantePorto(c: ComprovantePorto) {
   .linha { display: flex; justify-content: space-between; gap: 8px; }
   .item { margin: 6px 0; }
   .nome { font-weight: 700; }
+  .desconto { font-size: 9px; margin-top: 1px; }
   .titulo-bloco { font-weight: 900; margin-bottom: 4px; }
   .total { font-size: 15px; font-weight: 900; }
   .rodape { margin-top: 10px; text-align: center; font-size: 9px; }
@@ -125,6 +132,8 @@ export function imprimirComprovantePorto(c: ComprovantePorto) {
   <div class="titulo-bloco">ITENS</div>
   ${itensHtml}
   <div class="separador"></div>
+  ${Number(c.subtotalBruto || 0) > 0 ? `<div class="linha"><span>Subtotal bruto</span><b>${money(Number(c.subtotalBruto || 0))}</b></div>` : ""}
+  ${Number(c.descontoTotal || 0) > 0 ? `<div class="linha"><span>Descontos</span><b>- ${money(Number(c.descontoTotal || 0))}</b></div>` : ""}
   <div class="linha"><span>Subtotal</span><b>${money(c.subtotal)}</b></div>
   ${Number(c.taxaEntrega || 0) > 0 ? `<div class="linha"><span>Taxa de entrega</span><b>${money(Number(c.taxaEntrega || 0))}</b></div>` : ""}
   <div class="linha total"><span>TOTAL</span><span>${money(c.total)}</span></div>
