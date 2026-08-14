@@ -172,67 +172,92 @@ function AdminProdutosInner({ onSair }: { onSair: () => void }) {
   async function load() {
     try {
       setLoading(true);
-      let query = supabase
-        .from(VIEW)
+
+      // IMPORTANTE: a tela administrativa sempre parte do catálogo MASTER do FV.
+      // Assim TODOS os produtos do FV aparecem aqui, mesmo antes de existir
+      // vínculo com a Drogarias Porto Loja 2.
+      let masterQuery = supabase
+        .from(PROD_TABLE)
         .select(
-          "farmacia_slug,produto_id,ean,nome,laboratorio,categoria,apresentacao,imagens,disponivel_farmacia,estoque,preco_venda,em_promocao,preco_promocional,percentual_off,destaque_home",
+          "id,ean,nome,laboratorio,categoria,apresentacao,pmc,imagens,ativo",
           { count: "exact" }
-        )
-        .eq("farmacia_slug", FARMACIA_SLUG);
+        );
 
       const raw = q.trim();
       if (raw) {
         const digits = onlyDigits(raw);
-        if (digits.length >= 8 && digits.length <= 14) {
-          query = query.or(`ean.eq.${digits},nome.ilike.%${raw}%`);
+        const rawNoSpace = raw.replace(/\s/g, "");
+
+        if (digits.length >= 8 && digits.length <= 14 && digits === rawNoSpace) {
+          masterQuery = masterQuery.eq("ean", digits);
+        } else if (digits.length >= 8 && digits.length <= 14) {
+          masterQuery = masterQuery.or(`ean.eq.${digits},nome.ilike.%${raw}%`);
         } else {
           const safe = raw.replace(/,/g, " ");
-          query = query.or(
+          masterQuery = masterQuery.or(
             `nome.ilike.%${safe}%,laboratorio.ilike.%${safe}%,categoria.ilike.%${safe}%,apresentacao.ilike.%${safe}%`
           );
         }
       }
 
-      if (stockMode === "gt0") query = query.gt("estoque", 0);
-      if (stockMode === "eq0") query = query.eq("estoque", 0);
-
-      query = query.order("estoque", { ascending: false }).order("nome", { ascending: true });
+      masterQuery = masterQuery.order("nome", { ascending: true });
 
       const from = (page - 1) * PAGE_SIZE;
       const to = from + PAGE_SIZE - 1;
-      const { data, count, error } = await query.range(from, to);
-      if (error) throw error;
+      const { data: master, count, error: masterError } = await masterQuery.range(from, to);
+      if (masterError) throw masterError;
 
-      const baseRows = (data || []) as ProdutoPorto[];
-      const ids = baseRows.map((r) => r.produto_id).filter(Boolean);
+      const produtos = master || [];
+      const ids = produtos.map((p: any) => String(p.id));
 
-      let flagMap = new Map<string, { ativo_site: boolean; ativo_pdv: boolean }>();
+      // Busca apenas os dados específicos da Porto para os produtos desta página.
+      // Produto sem vínculo continua aparecendo, com FV/Site/PDV desligados.
+      let lojaMap = new Map<string, any>();
       if (ids.length) {
-        const { data: flags, error: flagsError } = await supabase
+        const { data: loja, error: lojaError } = await supabase
           .from(STORE_TABLE)
-          .select("produto_id,ativo_site,ativo_pdv")
+          .select(
+            "produto_id,estoque,preco_venda,ativo,ativo_site,ativo_pdv,em_promocao,preco_promocional,percentual_off,destaque_home"
+          )
           .eq("farmacia_slug", FARMACIA_SLUG)
           .in("produto_id", ids);
-        if (flagsError) throw flagsError;
-        flagMap = new Map(
-          (flags || []).map((f: any) => [
-            String(f.produto_id),
-            { ativo_site: !!f.ativo_site, ativo_pdv: !!f.ativo_pdv },
-          ])
-        );
+        if (lojaError) throw lojaError;
+        lojaMap = new Map((loja || []).map((r: any) => [String(r.produto_id), r]));
       }
 
-      setRows(
-        baseRows.map((r) => ({
-          ...r,
-          ativo_site: flagMap.get(String(r.produto_id))?.ativo_site ?? false,
-          ativo_pdv: flagMap.get(String(r.produto_id))?.ativo_pdv ?? false,
-        }))
-      );
+      let merged: ProdutoPorto[] = produtos.map((p: any) => {
+        const loja = lojaMap.get(String(p.id));
+        return {
+          farmacia_slug: FARMACIA_SLUG,
+          produto_id: String(p.id),
+          ean: String(p.ean || ""),
+          nome: String(p.nome || ""),
+          laboratorio: p.laboratorio ?? null,
+          categoria: p.categoria ?? null,
+          apresentacao: p.apresentacao ?? null,
+          imagens: Array.isArray(p.imagens) ? p.imagens : null,
+          disponivel_farmacia: !!loja?.ativo,
+          ativo_site: !!loja?.ativo_site,
+          ativo_pdv: !!loja?.ativo_pdv,
+          estoque: Number(loja?.estoque ?? 0),
+          // Se ainda não existe vínculo Porto, mostramos o PMC como referência.
+          // Ao editar/salvar, o preço passa a ser gravado em preco_venda da loja.
+          preco_venda: loja?.preco_venda ?? p.pmc ?? null,
+          em_promocao: !!loja?.em_promocao,
+          preco_promocional: loja?.preco_promocional ?? null,
+          percentual_off: loja?.percentual_off ?? null,
+          destaque_home: !!loja?.destaque_home,
+        };
+      });
+
+      if (stockMode === "gt0") merged = merged.filter((p) => Number(p.estoque || 0) > 0);
+      if (stockMode === "eq0") merged = merged.filter((p) => Number(p.estoque || 0) === 0);
+
+      setRows(merged);
       setTotal(count || 0);
-    } catch (e) {
-      console.error(e);
-      alert("Erro ao carregar produtos da Porto/FV.");
+    } catch (e: any) {
+      console.error("Porto admin produtos:", e);
+      alert(e?.message || "Erro ao carregar produtos do catálogo FV.");
     } finally {
       setLoading(false);
     }
@@ -482,7 +507,7 @@ function AdminProdutosInner({ onSair }: { onSair: () => void }) {
       <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
         <div className="bg-green-50 border border-green-200 rounded-3xl p-4 text-sm text-green-900">
           <b>Integração ativa:</b> tudo que você cadastrar ou editar nesta página atualiza o catálogo FV e o vínculo da Drogarias Porto Loja 2.
-          Preço e estoque continuam exclusivos desta loja.
+          Todos os produtos do FV aparecem abaixo. FV, Site e PDV são ativados separadamente para a Porto. Preço e estoque continuam exclusivos desta loja.
         </div>
 
         <div className="bg-white border rounded-3xl p-4 shadow-sm">
@@ -585,7 +610,7 @@ function AdminProdutosInner({ onSair }: { onSair: () => void }) {
           {loading ? (
             <div className="p-6 text-gray-500">Carregando produtos...</div>
           ) : rows.length === 0 ? (
-            <div className="p-6 text-gray-600">Nenhum produto vinculado à Porto Loja 2.</div>
+            <div className="p-6 text-gray-600">Nenhum produto encontrado no catálogo FV.</div>
           ) : (
             <div className="divide-y">
               {rows.map((p) => (
