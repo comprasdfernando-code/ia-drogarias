@@ -140,7 +140,7 @@ export default function AdminProdutosPorto() {
 }
 
 function AdminProdutosInner({ onSair }: { onSair: () => void }) {
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [q, setQ] = useState("");
@@ -170,10 +170,21 @@ function AdminProdutosInner({ onSair }: { onSair: () => void }) {
   });
 
   async function load() {
+    const rawBusca = q.trim();
+
+    // Para não carregar o catálogo inteiro do FV ao abrir a página.
+    // Os produtos só são consultados quando o usuário pesquisa.
+    if (!rawBusca) {
+      setRows([]);
+      setTotal(0);
+      setLoading(false);
+      return;
+    }
+
     try {
       setLoading(true);
 
-      // IMPORTANTE: a tela administrativa sempre parte do catálogo MASTER do FV.
+      // IMPORTANTE: a pesquisa parte do catálogo MASTER do FV.
       // Assim TODOS os produtos do FV aparecem aqui, mesmo antes de existir
       // vínculo com a Drogarias Porto Loja 2.
       let masterQuery = supabase
@@ -264,7 +275,7 @@ function AdminProdutosInner({ onSair }: { onSair: () => void }) {
   }
 
   useEffect(() => {
-    load();
+    if (q.trim()) load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page]);
 
