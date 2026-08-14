@@ -27,7 +27,6 @@ type Produto = {
 type CartItem = Produto & { qtd: number };
 
 const LOJA_SLUG = "drogariasporto-loja2";
-const VIEW_LOJA = "fv_farmacia_produtos_view";
 const CART_KEY = "PORTO_LOJA2_CART_V1";
 
 const categorias = ["Loja toda", "Medicamentos", "Higiene e Beleza", "Mamãe e Bebê", "Vitaminas", "Cuidados Pessoais", "Dermocosméticos"];
@@ -68,18 +67,69 @@ export default function DrogariasPortoHome() {
   useEffect(() => {
     async function carregar() {
       setLoading(true);
-      const { data, error } = await supabase
-        .from(VIEW_LOJA)
-        .select("produto_id,farmacia_slug,ean,nome,laboratorio,categoria,apresentacao,imagens,pmc,estoque,preco_venda,disponivel_farmacia,em_promocao,preco_promocional,percentual_off")
+      const { data: lojaRows, error: lojaError } = await supabase
+        .from("fv_farmacia_produtos")
+        .select("produto_id,estoque,preco_venda,ativo,ativo_site,em_promocao,preco_promocional,percentual_off")
         .eq("farmacia_slug", LOJA_SLUG)
-        .eq("disponivel_farmacia", true)
+        .eq("ativo_site", true)
         .gt("estoque", 0)
         .order("em_promocao", { ascending: false })
-        .order("nome", { ascending: true })
         .limit(180);
 
-      if (error) console.error("Porto load:", error);
-      setProdutos((data || []) as Produto[]);
+      if (lojaError) {
+        console.error("Porto loja load:", lojaError);
+        setProdutos([]);
+        setLoading(false);
+        return;
+      }
+
+      const ids = (lojaRows || []).map((r: any) => r.produto_id);
+      if (!ids.length) {
+        setProdutos([]);
+        setLoading(false);
+        return;
+      }
+
+      const { data: masterRows, error: masterError } = await supabase
+        .from("fv_produtos")
+        .select("id,ean,nome,laboratorio,categoria,apresentacao,imagens,pmc,ativo")
+        .in("id", ids)
+        .eq("ativo", true);
+
+      if (masterError) {
+        console.error("Porto master load:", masterError);
+        setProdutos([]);
+        setLoading(false);
+        return;
+      }
+
+      const masterMap = new Map((masterRows || []).map((m: any) => [String(m.id), m]));
+      const data = (lojaRows || [])
+        .map((l: any) => {
+          const m: any = masterMap.get(String(l.produto_id));
+          if (!m) return null;
+          return {
+            produto_id: String(l.produto_id),
+            farmacia_slug: LOJA_SLUG,
+            ean: String(m.ean || ""),
+            nome: String(m.nome || ""),
+            laboratorio: m.laboratorio ?? null,
+            categoria: m.categoria ?? null,
+            apresentacao: m.apresentacao ?? null,
+            imagens: m.imagens ?? null,
+            pmc: Number(m.pmc || 0),
+            estoque: Number(l.estoque || 0),
+            preco_venda: Number(l.preco_venda || 0),
+            disponivel_farmacia: !!l.ativo,
+            em_promocao: !!l.em_promocao,
+            preco_promocional: l.preco_promocional == null ? null : Number(l.preco_promocional),
+            percentual_off: l.percentual_off == null ? null : Number(l.percentual_off),
+          } as Produto;
+        })
+        .filter(Boolean)
+        .sort((a: any, b: any) => String(a.nome).localeCompare(String(b.nome), "pt-BR"));
+
+      setProdutos(data as Produto[]);
       setLoading(false);
     }
     carregar();

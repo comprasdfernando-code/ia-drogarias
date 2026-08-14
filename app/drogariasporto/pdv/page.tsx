@@ -41,7 +41,7 @@ export default function PortoPDV() {
       q=digits.length>=8?q.eq("ean",digits):q.ilike("nome",`%${termo}%`);
       const {data:cat,error}=await q; if(error)throw error;
       const ids=(cat||[]).map((p:any)=>p.id); if(!ids.length){setResultados([]);return;}
-      const {data:loja,error:e2}=await supabase.from("fv_farmacia_produtos").select("produto_id,estoque,preco_venda,ativo").eq("farmacia_slug",PORTO_LOJA_SLUG).in("produto_id",ids); if(e2)throw e2;
+      const {data:loja,error:e2}=await supabase.from("fv_farmacia_produtos").select("produto_id,estoque,preco_venda,ativo,ativo_pdv").eq("farmacia_slug",PORTO_LOJA_SLUG).eq("ativo_pdv",true).in("produto_id",ids); if(e2)throw e2;
       const map=new Map((loja||[]).map((x:any)=>[String(x.produto_id),x]));
       const out=(cat||[]).map((p:any)=>{const l:any=map.get(String(p.id));return{id:String(p.id),ean:String(p.ean||""),nome:String(p.nome||""),laboratorio:p.laboratorio,apresentacao:p.apresentacao,estoque:Number(l?.estoque||0),preco_venda:Number(l?.preco_venda||0)}}).filter((p:any)=>p.estoque>0&&p.preco_venda>0);
       setResultados(out as Produto[]); if(out.length===1)add(out[0] as Produto);

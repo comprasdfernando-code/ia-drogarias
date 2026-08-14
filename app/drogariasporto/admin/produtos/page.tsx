@@ -26,7 +26,6 @@ const PAGE_SIZE = 50;
 
 type ProdutoPorto = {
   farmacia_slug: string;
-  pmc: number | null;
   produto_id: string;
   ean: string;
   nome: string;
@@ -35,6 +34,8 @@ type ProdutoPorto = {
   apresentacao: string | null;
   imagens: string[] | null;
   disponivel_farmacia: boolean | null;
+  ativo_site: boolean | null;
+  ativo_pdv: boolean | null;
   estoque: number | null;
   preco_venda: number | null;
   em_promocao: boolean | null;
@@ -163,90 +164,75 @@ function AdminProdutosInner({ onSair }: { onSair: () => void }) {
     percentual_off: "",
     destaque_home: false,
     ativo: true,
+    ativo_site: true,
+    ativo_pdv: true,
     imagensText: "",
   });
 
   async function load() {
     try {
       setLoading(true);
-
-      // Busca no catálogo MASTER do FV. Assim a tela encontra produtos mesmo
-      // antes de eles estarem vinculados à Drogarias Porto Loja 2.
-      let masterQuery = supabase
-        .from(PROD_TABLE)
+      let query = supabase
+        .from(VIEW)
         .select(
-          "id,ean,nome,laboratorio,categoria,apresentacao,pmc,imagens,ativo",
+          "farmacia_slug,produto_id,ean,nome,laboratorio,categoria,apresentacao,imagens,disponivel_farmacia,estoque,preco_venda,em_promocao,preco_promocional,percentual_off,destaque_home",
           { count: "exact" }
-        );
+        )
+        .eq("farmacia_slug", FARMACIA_SLUG);
 
       const raw = q.trim();
       if (raw) {
         const digits = onlyDigits(raw);
-        const rawNoSpace = raw.replace(/\s/g, "");
-
-        if (digits.length >= 8 && digits.length <= 14 && digits === rawNoSpace) {
-          masterQuery = masterQuery.eq("ean", digits);
-        } else if (digits.length >= 8 && digits.length <= 14) {
-          masterQuery = masterQuery.or(`ean.eq.${digits},nome.ilike.%${raw}%`);
+        if (digits.length >= 8 && digits.length <= 14) {
+          query = query.or(`ean.eq.${digits},nome.ilike.%${raw}%`);
         } else {
           const safe = raw.replace(/,/g, " ");
-          masterQuery = masterQuery.or(
+          query = query.or(
             `nome.ilike.%${safe}%,laboratorio.ilike.%${safe}%,categoria.ilike.%${safe}%,apresentacao.ilike.%${safe}%`
           );
         }
       }
 
-      masterQuery = masterQuery.order("nome", { ascending: true });
+      if (stockMode === "gt0") query = query.gt("estoque", 0);
+      if (stockMode === "eq0") query = query.eq("estoque", 0);
+
+      query = query.order("estoque", { ascending: false }).order("nome", { ascending: true });
 
       const from = (page - 1) * PAGE_SIZE;
       const to = from + PAGE_SIZE - 1;
-      const { data: master, count, error: masterError } = await masterQuery.range(from, to);
-      if (masterError) throw masterError;
+      const { data, count, error } = await query.range(from, to);
+      if (error) throw error;
 
-      const produtos = master || [];
-      const ids = produtos.map((p: any) => p.id);
+      const baseRows = (data || []) as ProdutoPorto[];
+      const ids = baseRows.map((r) => r.produto_id).filter(Boolean);
 
-      let lojaMap = new Map<string, any>();
+      let flagMap = new Map<string, { ativo_site: boolean; ativo_pdv: boolean }>();
       if (ids.length) {
-        const { data: loja, error: lojaError } = await supabase
+        const { data: flags, error: flagsError } = await supabase
           .from(STORE_TABLE)
-          .select("produto_id,estoque,preco_venda,ativo,em_promocao,preco_promocional,percentual_off,destaque_home")
+          .select("produto_id,ativo_site,ativo_pdv")
           .eq("farmacia_slug", FARMACIA_SLUG)
           .in("produto_id", ids);
-        if (lojaError) throw lojaError;
-        lojaMap = new Map((loja || []).map((r: any) => [r.produto_id, r]));
+        if (flagsError) throw flagsError;
+        flagMap = new Map(
+          (flags || []).map((f: any) => [
+            String(f.produto_id),
+            { ativo_site: !!f.ativo_site, ativo_pdv: !!f.ativo_pdv },
+          ])
+        );
       }
 
-      let merged: ProdutoPorto[] = produtos.map((p: any) => {
-        const loja = lojaMap.get(p.id);
-        return {
-          farmacia_slug: FARMACIA_SLUG,
-          produto_id: p.id,
-          ean: p.ean,
-          nome: p.nome,
-          laboratorio: p.laboratorio,
-          categoria: p.categoria,
-          apresentacao: p.apresentacao,
-          pmc: p.pmc,
-          imagens: p.imagens,
-          disponivel_farmacia: loja?.ativo ?? false,
-          estoque: Number(loja?.estoque ?? 0),
-          preco_venda: loja?.preco_venda ?? p.pmc ?? null,
-          em_promocao: loja?.em_promocao ?? false,
-          preco_promocional: loja?.preco_promocional ?? null,
-          percentual_off: loja?.percentual_off ?? null,
-          destaque_home: loja?.destaque_home ?? false,
-        };
-      });
-
-      if (stockMode === "gt0") merged = merged.filter((p) => Number(p.estoque || 0) > 0);
-      if (stockMode === "eq0") merged = merged.filter((p) => Number(p.estoque || 0) === 0);
-
-      setRows(merged);
+      setRows(
+        baseRows.map((r) => ({
+          ...r,
+          ativo_site: flagMap.get(String(r.produto_id))?.ativo_site ?? false,
+          ativo_pdv: flagMap.get(String(r.produto_id))?.ativo_pdv ?? false,
+        }))
+      );
       setTotal(count || 0);
-    } catch (e: any) {
-      console.error("Porto admin produtos:", e);
-      alert(e?.message || "Erro ao carregar produtos do catálogo FV.");
+    } catch (e) {
+      console.error(e);
+      alert("Erro ao carregar produtos da Porto/FV.");
     } finally {
       setLoading(false);
     }
@@ -297,8 +283,14 @@ function AdminProdutosInner({ onSair }: { onSair: () => void }) {
     await toggleQuick(produtoId, { estoque: next });
   }
 
-  function openEdit(p: ProdutoPorto) {
-    setEditing({ ...p, pmc: p.pmc ?? null });
+  async function openEdit(p: ProdutoPorto) {
+    try {
+      const { data, error } = await supabase.from(PROD_TABLE).select("pmc").eq("id", p.produto_id).single();
+      if (error) throw error;
+      setEditing({ ...p, pmc: data?.pmc ?? null });
+    } catch {
+      setEditing({ ...p, pmc: null });
+    }
   }
 
   async function saveEdit() {
@@ -329,6 +321,8 @@ function AdminProdutosInner({ onSair }: { onSair: () => void }) {
       // 2) Atualiza/vincula a Porto no FV
       await patchLoja(id, {
         ativo: !!editing.disponivel_farmacia,
+        ativo_site: !!editing.ativo_site,
+        ativo_pdv: !!editing.ativo_pdv,
         estoque: Math.max(0, Number(toInt(editing.estoque) ?? 0)),
         preco_venda: toNum(editing.preco_venda),
         em_promocao: !!editing.em_promocao,
@@ -405,6 +399,8 @@ function AdminProdutosInner({ onSair }: { onSair: () => void }) {
       // vincula/atualiza a Drogarias Porto no marketplace FV
       await patchLoja(produtoId, {
         ativo: novo.ativo,
+        ativo_site: novo.ativo_site,
+        ativo_pdv: novo.ativo_pdv,
         estoque: Math.max(0, Number(toInt(novo.estoque) ?? 0)),
         preco_venda: toNum(novo.preco_venda),
         em_promocao: novo.em_promocao,
@@ -427,6 +423,8 @@ function AdminProdutosInner({ onSair }: { onSair: () => void }) {
         percentual_off: "",
         destaque_home: false,
         ativo: true,
+        ativo_site: true,
+        ativo_pdv: true,
         imagensText: "",
       });
       setQ(ean);
@@ -484,7 +482,7 @@ function AdminProdutosInner({ onSair }: { onSair: () => void }) {
       <div className="max-w-7xl mx-auto px-4 py-6 space-y-6">
         <div className="bg-green-50 border border-green-200 rounded-3xl p-4 text-sm text-green-900">
           <b>Integração ativa:</b> tudo que você cadastrar ou editar nesta página atualiza o catálogo FV e o vínculo da Drogarias Porto Loja 2.
-          A busca consulta todo o catálogo FV; ao salvar, o produto é vinculado à Porto. Preço e estoque continuam exclusivos desta loja.
+          Preço e estoque continuam exclusivos desta loja.
         </div>
 
         <div className="bg-white border rounded-3xl p-4 shadow-sm">
@@ -556,6 +554,12 @@ function AdminProdutosInner({ onSair }: { onSair: () => void }) {
             <Field label="Ativo no FV?" className="md:col-span-1">
               <SelectBool value={novo.ativo} onChange={(v) => setNovo((p) => ({ ...p, ativo: v }))} />
             </Field>
+            <Field label="Ativo no Site Porto?" className="md:col-span-1">
+              <SelectBool value={novo.ativo_site} onChange={(v) => setNovo((p) => ({ ...p, ativo_site: v }))} />
+            </Field>
+            <Field label="Ativo no PDV?" className="md:col-span-1">
+              <SelectBool value={novo.ativo_pdv} onChange={(v) => setNovo((p) => ({ ...p, ativo_pdv: v }))} />
+            </Field>
             <Field label="Imagens (JSON ou URLs separadas)" className="md:col-span-6">
               <textarea value={novo.imagensText} onChange={(e) => setNovo((p) => ({ ...p, imagensText: e.target.value }))} rows={2} className="input" placeholder='["https://.../foto.jpg"]' />
             </Field>
@@ -610,6 +614,8 @@ function AdminProdutosInner({ onSair }: { onSair: () => void }) {
                     <button onClick={() => changeEstoque(p.produto_id, 1)} disabled={savingId === p.produto_id} className="smallbtn">+1</button>
                     <button onClick={() => changeEstoque(p.produto_id, 10)} disabled={savingId === p.produto_id} className="smallbtn">+10</button>
                     <QuickToggle label="FV" value={!!p.disponivel_farmacia} disabled={savingId === p.produto_id} onChange={(v) => toggleQuick(p.produto_id, { ativo: v })} />
+                    <QuickToggle label="Site" value={!!p.ativo_site} disabled={savingId === p.produto_id} onChange={(v) => toggleQuick(p.produto_id, { ativo_site: v })} />
+                    <QuickToggle label="PDV" value={!!p.ativo_pdv} disabled={savingId === p.produto_id} onChange={(v) => toggleQuick(p.produto_id, { ativo_pdv: v })} />
                     <QuickToggle label="Promo" value={!!p.em_promocao} disabled={savingId === p.produto_id} onChange={(v) => toggleQuick(p.produto_id, { em_promocao: v })} />
                     <QuickToggle label="Destaque" value={!!p.destaque_home} disabled={savingId === p.produto_id} onChange={(v) => toggleQuick(p.produto_id, { destaque_home: v })} />
                     <button onClick={() => openEdit(p)} className="smallbtn">Editar</button>
@@ -686,6 +692,8 @@ function EditModal({ p, setP, saving, onClose, onSave }: { p: EditProduto; setP:
           <Field label="Preço Porto" className="md:col-span-2"><input value={String(p.preco_venda ?? "")} onChange={(e) => setP({ ...p, preco_venda: e.target.value as any })} className="input" /></Field>
           <Field label="Estoque Porto" className="md:col-span-2"><input value={String(p.estoque ?? 0)} onChange={(e) => setP({ ...p, estoque: e.target.value as any })} className="input" /></Field>
           <Field label="Ativo no FV?" className="md:col-span-2"><SelectBool value={!!p.disponivel_farmacia} onChange={(v) => setP({ ...p, disponivel_farmacia: v })} /></Field>
+          <Field label="Ativo no Site Porto?" className="md:col-span-2"><SelectBool value={!!p.ativo_site} onChange={(v) => setP({ ...p, ativo_site: v })} /></Field>
+          <Field label="Ativo no PDV?" className="md:col-span-2"><SelectBool value={!!p.ativo_pdv} onChange={(v) => setP({ ...p, ativo_pdv: v })} /></Field>
           <Field label="Promo?" className="md:col-span-2"><SelectBool value={!!p.em_promocao} onChange={(v) => setP({ ...p, em_promocao: v })} /></Field>
           <Field label="Destaque?" className="md:col-span-2"><SelectBool value={!!p.destaque_home} onChange={(v) => setP({ ...p, destaque_home: v })} /></Field>
           <Field label="Preço promocional" className="md:col-span-2"><input value={String(p.preco_promocional ?? "")} onChange={(e) => setP({ ...p, preco_promocional: e.target.value as any })} className="input" /></Field>
