@@ -115,57 +115,74 @@ export default function PortoPDV() {
   async function pesquisar() {
     const termo = busca.trim();
     if (!termo) return;
+
     setLoading(true);
     try {
+      // 1) Primeiro procuramos SOMENTE os produtos que correspondem ao termo/EAN
+      // no catálogo master do FV. Isso evita carregar/truncar milhares de vínculos
+      // da Porto antes da pesquisa.
       const digits = termo.replace(/\D/g, "");
-      let q = supabase
+      let produtoQuery = supabase
         .from("fv_produtos")
-        .select("id,ean,nome,laboratorio,apresentacao,ativo")
-        .eq("ativo", true)
-        .limit(30);
+        .select("id,ean,nome,laboratorio,apresentacao")
+        .limit(50);
 
-      q = digits.length >= 8 ? q.eq("ean", digits) : q.ilike("nome", `%${termo}%`);
-      const { data: cat, error } = await q;
-      if (error) throw error;
+      if (digits.length >= 8) {
+        produtoQuery = produtoQuery.eq("ean", digits);
+      } else {
+        produtoQuery = produtoQuery.ilike("nome", `%${termo}%`);
+      }
 
-      const ids = (cat || []).map((p: any) => p.id);
-      if (!ids.length) {
+      const { data: catalogo, error: produtoError } = await produtoQuery;
+      if (produtoError) throw produtoError;
+
+      const produtosEncontrados = catalogo || [];
+      if (!produtosEncontrados.length) {
         setResultados([]);
         return;
       }
 
-      const { data: loja, error: e2 } = await supabase
+      // 2) Para os poucos produtos encontrados, verificamos se estão liberados
+      // especificamente para o PDV da Drogarias Porto Loja 2.
+      // IMPORTANTE: não usamos mais .limit(1000) na tabela da loja.
+      // O limite anterior podia deixar produtos ativos de fora quando o catálogo crescia.
+      const ids = produtosEncontrados.map((p: any) => String(p.id));
+
+      const { data: loja, error: lojaError } = await supabase
         .from("fv_farmacia_produtos")
-        .select("produto_id,estoque,preco_venda,ativo,ativo_pdv")
+        .select("produto_id,estoque,preco_venda,ativo_pdv")
         .eq("farmacia_slug", PORTO_LOJA_SLUG)
         .eq("ativo_pdv", true)
+        .gt("estoque", 0)
+        .gt("preco_venda", 0)
         .in("produto_id", ids);
-      if (e2) throw e2;
 
-      const map = new Map((loja || []).map((x: any) => [String(x.produto_id), x]));
-      const out = (cat || [])
+      if (lojaError) throw lojaError;
+
+      const lojaMap = new Map((loja || []).map((r: any) => [String(r.produto_id), r]));
+
+      const out: Produto[] = produtosEncontrados
+        .filter((p: any) => lojaMap.has(String(p.id)))
         .map((p: any) => {
-          const l: any = map.get(String(p.id));
+          const l: any = lojaMap.get(String(p.id));
           return {
             id: String(p.id),
             ean: String(p.ean || ""),
             nome: String(p.nome || ""),
-            laboratorio: p.laboratorio,
-            apresentacao: p.apresentacao,
+            laboratorio: p.laboratorio ?? null,
+            apresentacao: p.apresentacao ?? null,
             estoque: Number(l?.estoque || 0),
             preco_venda: Number(l?.preco_venda || 0),
           };
-        })
-        .filter((p: any) => p.estoque > 0 && p.preco_venda > 0);
+        });
 
-      setResultados(out as Produto[]);
-      if (out.length === 1) add(out[0] as Produto);
+      setResultados(out);
+      if (out.length === 1) add(out[0]);
     } catch (e: any) {
+      console.error("Erro ao buscar produto no PDV Porto:", e);
       alert(e?.message || "Erro ao buscar produto");
     } finally {
       setLoading(false);
-      setBusca("");
-      inputRef.current?.focus();
     }
   }
 
