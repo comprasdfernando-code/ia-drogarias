@@ -1854,8 +1854,8 @@ const precoConsulta =
   {loading
     ? "..."
     : "Buscar"}
-
-                  <button
+</button>
+              <button
                 type="button"
                 onClick={() =>
                   setCameraAberta(
@@ -1869,7 +1869,6 @@ const precoConsulta =
                   size={22}
                 />
               </button>
-</button>
 
             </div>
 
