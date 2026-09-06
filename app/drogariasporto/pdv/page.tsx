@@ -13,11 +13,13 @@ import {
   QrCode,
   ReceiptText,
   Search,
+  ShoppingCart,
   Trash2,
   Truck,
   Store,
   X,
 } from "lucide-react";
+import { BrowserMultiFormatReader } from "@zxing/browser";
 import { supabase } from "@/lib/supabaseClient";
 import { PORTO_LOJA_SLUG, brl } from "../_lib/porto";
 import {
@@ -31,12 +33,8 @@ type Produto = {
   nome: string;
   laboratorio: string | null;
   apresentacao: string | null;
-
-  // Drogarias Porto
   estoque: number;
   preco_venda: number;
-
-  // Consulta FV
   preco_consulta: number;
   pode_vender: boolean;
 };
@@ -81,475 +79,292 @@ function precoLiquidoItem(i: Item) {
     i.descontoTipo === "PERCENTUAL"
       ? i.preco_venda *
         (Math.min(100, Math.max(0, i.desconto)) / 100)
-      : Math.min(
-          i.preco_venda,
-          Math.max(0, i.desconto)
-        );
+      : Math.min(i.preco_venda, Math.max(0, i.desconto));
 
-  return Math.max(
-    0,
-    i.preco_venda - desconto
-  );
+  return Math.max(0, i.preco_venda - desconto);
 }
 
 function descontoUnitarioItem(i: Item) {
-  return Math.max(
-    0,
-    i.preco_venda - precoLiquidoItem(i)
-  );
+  return Math.max(0, i.preco_venda - precoLiquidoItem(i));
 }
 
 export default function PortoPDV() {
   const [busca, setBusca] = useState("");
+  const [resultados, setResultados] = useState<Produto[]>([]);
+  const [itens, setItens] = useState<Item[]>([]);
 
-  const [resultados, setResultados] =
-    useState<Produto[]>([]);
+  const [pagamentos, setPagamentos] = useState<Pagamento[]>([
+    {
+      forma: "Dinheiro",
+      valor: "",
+    },
+  ]);
 
-  const [itens, setItens] =
-    useState<Item[]>([]);
+  const [contas, setContas] = useState<Conta[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [salvando, setSalvando] = useState(false);
 
-  const [pagamentos, setPagamentos] =
-    useState<Pagamento[]>([
-      {
-        forma: "Dinheiro",
-        valor: "",
-      },
-    ]);
+  const [tipoAtendimento, setTipoAtendimento] =
+    useState<TipoAtendimento>("BALCAO");
 
-  const [contas, setContas] =
-    useState<Conta[]>([]);
+  const [clienteNome, setClienteNome] = useState("");
+  const [clienteTelefone, setClienteTelefone] = useState("");
+  const [endereco, setEndereco] = useState("");
+  const [numeroEndereco, setNumeroEndereco] = useState("");
+  const [bairro, setBairro] = useState("");
+  const [complemento, setComplemento] = useState("");
+  const [referencia, setReferencia] = useState("");
+  const [taxaEntrega, setTaxaEntrega] = useState("0");
+  const [observacoes, setObservacoes] = useState("");
 
-  const [loading, setLoading] =
-    useState(false);
+  const [ultimoComprovante, setUltimoComprovante] =
+    useState<ComprovantePorto | null>(null);
 
-  const [salvando, setSalvando] =
-    useState(false);
+  const [cameraAberta, setCameraAberta] = useState(false);
+  const [cameraErro, setCameraErro] = useState("");
+  const [cameraLendo, setCameraLendo] = useState(false);
 
-  const [
-    tipoAtendimento,
-    setTipoAtendimento,
-  ] =
-    useState<TipoAtendimento>(
-      "BALCAO"
-    );
+  const inputRef = useRef<HTMLInputElement>(null);
+  const videoRef = useRef<HTMLVideoElement>(null);
+  const scannerControlsRef = useRef<any>(null);
+  const codigoLidoRef = useRef(false);
+  const pagamentoRef = useRef<HTMLDivElement>(null);
 
-  const [
-    clienteNome,
-    setClienteNome,
-  ] = useState("");
+  const subtotalBruto = useMemo(
+    () =>
+      itens.reduce(
+        (s, i) => s + i.preco_venda * i.qtd,
+        0
+      ),
+    [itens]
+  );
 
-  const [
-    clienteTelefone,
-    setClienteTelefone,
-  ] = useState("");
+  const descontoTotal = useMemo(
+    () =>
+      itens.reduce(
+        (s, i) =>
+          s + descontoUnitarioItem(i) * i.qtd,
+        0
+      ),
+    [itens]
+  );
 
-  const [
-    endereco,
-    setEndereco,
-  ] = useState("");
-
-  const [
-    numeroEndereco,
-    setNumeroEndereco,
-  ] = useState("");
-
-  const [
-    bairro,
-    setBairro,
-  ] = useState("");
-
-  const [
-    complemento,
-    setComplemento,
-  ] = useState("");
-
-  const [
-    referencia,
-    setReferencia,
-  ] = useState("");
-
-  const [
-    taxaEntrega,
-    setTaxaEntrega,
-  ] = useState("0");
-
-  const [
-    observacoes,
-    setObservacoes,
-  ] = useState("");
-
-  const [
-    ultimoComprovante,
-    setUltimoComprovante,
-  ] =
-    useState<ComprovantePorto | null>(
-      null
-    );
-
-  const inputRef =
-    useRef<HTMLInputElement>(null);
-      const [cameraAberta, setCameraAberta] =
-    useState(false);
-
-  const [cameraErro, setCameraErro] =
-    useState("");
-
-  const videoRef =
-    useRef<HTMLVideoElement>(null);
-
-  const streamRef =
-    useRef<MediaStream | null>(null);
-
-  const scanFrameRef =
-    useRef<number | null>(null);
-
-  const codigoLidoRef =
-    useRef(false);
-
-  const subtotalBruto =
-    useMemo(
-      () =>
-        itens.reduce(
-          (s, i) =>
-            s +
-            i.preco_venda *
-              i.qtd,
-          0
-        ),
-      [itens]
-    );
-
-  const descontoTotal =
-    useMemo(
-      () =>
-        itens.reduce(
-          (s, i) =>
-            s +
-            descontoUnitarioItem(i) *
-              i.qtd,
-          0
-        ),
-      [itens]
-    );
-
-  const subtotal =
-    Math.max(
-      0,
-      subtotalBruto -
-        descontoTotal
-    );
+  const subtotal = Math.max(
+    0,
+    subtotalBruto - descontoTotal
+  );
 
   const taxa =
     tipoAtendimento === "ENTREGA"
-      ? Math.max(
-          0,
-          numero(taxaEntrega)
-        )
+      ? Math.max(0, numero(taxaEntrega))
       : 0;
 
-  const total =
-    subtotal + taxa;
+  const total = subtotal + taxa;
 
-  const totalPagamentos =
-    useMemo(
-      () =>
-        pagamentos.reduce(
-          (s, p) =>
-            s +
-            numero(p.valor),
-          0
-        ),
-      [pagamentos]
-    );
+  const totalPagamentos = useMemo(
+    () =>
+      pagamentos.reduce(
+        (s, p) => s + numero(p.valor),
+        0
+      ),
+    [pagamentos]
+  );
 
-  const faltante =
-    Math.max(
-      0,
-      total -
-        totalPagamentos
-    );
+  const faltante = Math.max(
+    0,
+    total - totalPagamentos
+  );
+
+  const quantidadeItens = useMemo(
+    () =>
+      itens.reduce(
+        (s, i) => s + i.qtd,
+        0
+      ),
+    [itens]
+  );
 
   useEffect(() => {
     inputRef.current?.focus();
     carregarContas();
   }, []);
 
+  useEffect(() => {
+    return () => {
+      pararCamera();
+    };
+  }, []);
+
   async function carregarContas() {
-    const { data } =
-      await supabase
-        .from(
-          "porto_contas_financeiras"
-        )
-        .select(
-          "id,nome,tipo"
-        )
-        .eq(
-          "loja_slug",
-          PORTO_LOJA_SLUG
-        )
-        .eq(
-          "ativo",
-          true
-        );
+    const { data } = await supabase
+      .from("porto_contas_financeiras")
+      .select("id,nome,tipo")
+      .eq("loja_slug", PORTO_LOJA_SLUG)
+      .eq("ativo", true);
 
-    setContas(
-      (data || []) as Conta[]
-    );
+    setContas((data || []) as Conta[]);
   }
 
-  /*
-   * =========================================================
-   * PESQUISA
-   * =========================================================
-   *
-   * CONSULTA:
-   * pesquisa TODO o catálogo fv_produtos.
-   *
-   * VENDA:
-   * cruza com fv_farmacia_produtos.
-   *
-   * COM ESTOQUE PORTO:
-   * aparece primeiro e pode adicionar.
-   *
-   * SEM ESTOQUE:
-   * aparece depois para consulta.
-   */
-    function fecharCamera() {
-    codigoLidoRef.current =
-      false;
-
-    if (
-      scanFrameRef.current !==
-      null
-    ) {
-      cancelAnimationFrame(
-        scanFrameRef.current
-      );
-
-      scanFrameRef.current =
-        null;
-    }
-
-    if (
-      streamRef.current
-    ) {
-      streamRef.current
-        .getTracks()
-        .forEach(
-          (track) =>
-            track.stop()
-        );
-
-      streamRef.current =
-        null;
-    }
-
-    if (
-      videoRef.current
-    ) {
-      videoRef.current.srcObject =
-        null;
-    }
-
-    setCameraAberta(
-      false
-    );
-  }
-
-  async function iniciarCamera() {
-    setCameraErro("");
-
-    codigoLidoRef.current =
-      false;
-
-    const BarcodeDetectorClass =
-      (window as any)
-        .BarcodeDetector;
-
-    if (
-      !BarcodeDetectorClass
-    ) {
-      setCameraErro(
-        "Este navegador não possui leitura nativa de código de barras. Tente pelo Chrome no celular."
-      );
-
-      return;
-    }
-
+  function pararCamera() {
     try {
+      scannerControlsRef.current?.stop?.();
+    } catch {}
+
+    scannerControlsRef.current = null;
+
+    if (videoRef.current?.srcObject) {
       const stream =
-        await navigator.mediaDevices.getUserMedia(
-          {
-            video: {
-              facingMode: {
-                ideal:
-                  "environment",
-              },
-            },
+        videoRef.current.srcObject as MediaStream;
 
-            audio: false,
-          }
+      stream
+        .getTracks()
+        .forEach((track) =>
+          track.stop()
         );
 
-      streamRef.current =
-        stream;
-
-      const video =
-        videoRef.current;
-
-      if (!video) {
-        stream
-          .getTracks()
-          .forEach(
-            (track) =>
-              track.stop()
-          );
-
-        return;
-      }
-
-      video.srcObject =
-        stream;
-
-      await video.play();
-
-      const detector =
-        new BarcodeDetectorClass(
-          {
-            formats: [
-              "ean_13",
-              "ean_8",
-              "upc_a",
-              "upc_e",
-              "code_128",
-            ],
-          }
-        );
-
-      const detectar =
-        async () => {
-          if (
-            codigoLidoRef.current ||
-            !videoRef.current
-          ) {
-            return;
-          }
-
-          try {
-            const codigos =
-              await detector.detect(
-                videoRef.current
-              );
-
-            if (
-              codigos?.length
-            ) {
-              const codigo =
-                String(
-                  codigos[0]
-                    .rawValue ||
-                    ""
-                ).trim();
-
-              if (codigo) {
-                codigoLidoRef.current =
-                  true;
-
-                setBusca(
-                  codigo
-                );
-
-                fecharCamera();
-
-                await pesquisar(
-                  codigo
-                );
-
-                return;
-              }
-            }
-          } catch (
-            erro
-          ) {
-            console.error(
-              "Erro na leitura do código:",
-              erro
-            );
-          }
-
-          scanFrameRef.current =
-            requestAnimationFrame(
-              detectar
-            );
-        };
-
-      scanFrameRef.current =
-        requestAnimationFrame(
-          detectar
-        );
-    } catch (
-      erro: any
-    ) {
-      console.error(
-        "Erro ao abrir câmera:",
-        erro
-      );
-
-      setCameraErro(
-        "Não foi possível abrir a câmera. Verifique a permissão do navegador."
-      );
+      videoRef.current.srcObject = null;
     }
+
+    setCameraLendo(false);
+  }
+
+  function fecharCamera() {
+    pararCamera();
+    codigoLidoRef.current = false;
+    setCameraAberta(false);
+    setCameraErro("");
+  }
+
+  async function abrirCamera() {
+    setCameraErro("");
+    codigoLidoRef.current = false;
+    setCameraAberta(true);
   }
 
   useEffect(() => {
-    if (
-      !cameraAberta
-    ) {
-      return;
-    }
+    if (!cameraAberta) return;
 
-    const timer =
-      setTimeout(
-        () => {
-          iniciarCamera();
-        },
-        100
-      );
+    let cancelado = false;
 
-    return () => {
-      clearTimeout(
-        timer
+    async function iniciarScanner() {
+      await new Promise((resolve) =>
+        setTimeout(resolve, 150)
       );
 
       if (
-        scanFrameRef.current !==
-        null
+        cancelado ||
+        !videoRef.current
       ) {
-        cancelAnimationFrame(
-          scanFrameRef.current
-        );
+        return;
       }
 
-      if (
-        streamRef.current
-      ) {
-        streamRef.current
-          .getTracks()
-          .forEach(
-            (track) =>
-              track.stop()
+      try {
+        if (
+          !navigator.mediaDevices ||
+          !navigator.mediaDevices.getUserMedia
+        ) {
+          throw new Error(
+            "Câmera não disponível neste navegador."
+          );
+        }
+
+        setCameraLendo(true);
+
+        const reader =
+          new BrowserMultiFormatReader();
+
+        const controls =
+          await reader.decodeFromConstraints(
+            {
+              video: {
+                facingMode: {
+                  ideal: "environment",
+                },
+                width: {
+                  ideal: 1280,
+                },
+                height: {
+                  ideal: 720,
+                },
+              },
+              audio: false,
+            },
+            videoRef.current,
+            (result) => {
+              if (
+                !result ||
+                codigoLidoRef.current
+              ) {
+                return;
+              }
+
+              const codigo =
+                result.getText().trim();
+
+              if (!codigo) return;
+
+              codigoLidoRef.current = true;
+
+              if (
+                "vibrate" in navigator
+              ) {
+                navigator.vibrate?.(120);
+              }
+
+              setBusca(codigo);
+
+              setTimeout(() => {
+                fecharCamera();
+                pesquisar(codigo);
+              }, 100);
+            }
           );
 
-        streamRef.current =
-          null;
+        scannerControlsRef.current =
+          controls;
+      } catch (erro: any) {
+        console.error(
+          "Erro ao abrir câmera:",
+          erro
+        );
+
+        setCameraLendo(false);
+
+        if (
+          erro?.name ===
+          "NotAllowedError"
+        ) {
+          setCameraErro(
+            "A câmera foi bloqueada. Libere a permissão da câmera para este site no navegador."
+          );
+        } else if (
+          erro?.name ===
+          "NotFoundError"
+        ) {
+          setCameraErro(
+            "Nenhuma câmera foi encontrada neste aparelho."
+          );
+        } else {
+          setCameraErro(
+            erro?.message ||
+              "Não foi possível abrir a câmera."
+          );
+        }
       }
+    }
+
+    iniciarScanner();
+
+    return () => {
+      cancelado = true;
+      pararCamera();
     };
   }, [cameraAberta]);
+
   async function pesquisar(
-  termoForcado?: string
-) {
-  const termo =
-    (
+    termoForcado?: string
+  ) {
+    const termo = (
       termoForcado ??
       busca
     ).trim();
@@ -563,43 +378,26 @@ export default function PortoPDV() {
 
     try {
       const digits =
-        termo.replace(
-          /\D/g,
-          ""
-        );
+        termo.replace(/\D/g, "");
 
-      /*
-       * 1 - Pesquisa catálogo FV
-       */
-      let produtoQuery =
-        supabase
-          .from(
-            "fv_produtos"
-          )
-          .select(`
-            id,
-            ean,
-            nome,
-            laboratorio,
-            apresentacao,
-            pmc
-          `)
-          .limit(100);
+      let produtoQuery = supabase
+        .from("fv_produtos")
+        .select(`
+          id,
+          ean,
+          nome,
+          laboratorio,
+          apresentacao,
+          pmc
+        `)
+        .limit(100);
 
-      /*
-       * Código de barras
-       */
-      if (
-        digits.length >= 8
-      ) {
+      if (digits.length >= 8) {
         produtoQuery =
           produtoQuery.or(
             `ean.eq.${digits},nome.ilike.%${termo}%`
           );
       } else {
-        /*
-         * Pesquisa pelo nome
-         */
         produtoQuery =
           produtoQuery.ilike(
             "nome",
@@ -610,27 +408,19 @@ export default function PortoPDV() {
       const {
         data: catalogo,
         error: produtoError,
-      } =
-        await produtoQuery;
+      } = await produtoQuery;
 
-      if (produtoError) {
+      if (produtoError)
         throw produtoError;
-      }
 
       const produtosEncontrados =
         catalogo || [];
 
-      if (
-        !produtosEncontrados.length
-      ) {
+      if (!produtosEncontrados.length) {
         setResultados([]);
         return;
       }
 
-      /*
-       * 2 - Procura os mesmos produtos
-       * na Drogarias Porto
-       */
       const ids =
         produtosEncontrados.map(
           (p: any) =>
@@ -640,54 +430,37 @@ export default function PortoPDV() {
       const {
         data: produtosPorto,
         error: lojaError,
-      } =
-        await supabase
-          .from(
-            "fv_farmacia_produtos"
-          )
-          .select(`
-            produto_id,
-            estoque,
-            preco_venda,
-            ativo,
-            ativo_pdv
-          `)
-          .eq(
-            "farmacia_slug",
-            PORTO_LOJA_SLUG
-          )
-          .in(
-            "produto_id",
-            ids
-          );
+      } = await supabase
+        .from("fv_farmacia_produtos")
+        .select(`
+          produto_id,
+          estoque,
+          preco_venda,
+          ativo,
+          ativo_pdv
+        `)
+        .eq(
+          "farmacia_slug",
+          PORTO_LOJA_SLUG
+        )
+        .in(
+          "produto_id",
+          ids
+        );
 
-      if (lojaError) {
+      if (lojaError)
         throw lojaError;
-      }
 
-      /*
-       * Mapa:
-       *
-       * produto_id -> dados Porto
-       */
       const portoMap =
         new Map(
-          (
-            produtosPorto ||
-            []
-          ).map(
+          (produtosPorto || []).map(
             (r: any) => [
-              String(
-                r.produto_id
-              ),
+              String(r.produto_id),
               r,
             ]
           )
         );
 
-      /*
-       * 3 - Junta FV + Porto
-       */
       const lista: Produto[] =
         produtosEncontrados.map(
           (p: any) => {
@@ -698,191 +471,103 @@ export default function PortoPDV() {
 
             const estoque =
               Number(
-                porto?.estoque ||
-                  0
+                porto?.estoque || 0
               );
 
             const precoPortoCadastrado =
-  Number(
-    porto?.preco_venda ||
-      0
-  );
+              Number(
+                porto?.preco_venda || 0
+              );
 
-const precoPMC =
-  Number(
-    p?.pmc ||
-      0
-  );
+            const precoPMC =
+              Number(p?.pmc || 0);
 
-/*
- * Se existe preço próprio da Porto, usa ele.
- * Se não existir, usa o PMC do FV.
- */
-const precoPorto =
-  precoPortoCadastrado > 0
-    ? precoPortoCadastrado
-    : precoPMC;
+            const precoPorto =
+              precoPortoCadastrado > 0
+                ? precoPortoCadastrado
+                : precoPMC;
 
-/*
- * Preço usado para consulta
- */
-const precoConsulta =
-  precoPMC > 0
-    ? precoPMC
-    : precoPorto;
+            const precoConsulta =
+              precoPMC > 0
+                ? precoPMC
+                : precoPorto;
 
-            /*
-             * REGRA DE VENDA
-             *
-             * Para vender:
-             *
-             * - precisa existir vínculo Porto
-             * - estoque > 0
-             * - preço Porto > 0
-             *
-             * ativo_pdv NÃO interfere
-             * na consulta.
-             */
             const podeVender =
               !!porto &&
               estoque > 0 &&
               precoPorto > 0;
 
             return {
-              id:
-                String(p.id),
-
-              ean:
-                String(
-                  p.ean ||
-                    ""
-                ),
-
-              nome:
-                String(
-                  p.nome ||
-                    ""
-                ),
-
+              id: String(p.id),
+              ean: String(p.ean || ""),
+              nome: String(p.nome || ""),
               laboratorio:
-                p.laboratorio ??
-                null,
-
+                p.laboratorio ?? null,
               apresentacao:
-                p.apresentacao ??
-                null,
-
+                p.apresentacao ?? null,
               estoque,
-
               preco_venda:
                 precoPorto,
-
               preco_consulta:
                 precoConsulta,
-
               pode_vender:
                 podeVender,
             };
           }
         );
 
-      /*
-       * =====================================================
-       * ORDENAÇÃO
-       * =====================================================
-       *
-       * 1º COM estoque Porto
-       * 2º SEM estoque
-       */
-      lista.sort(
-        (a, b) => {
-          if (
-            a.pode_vender !==
-            b.pode_vender
-          ) {
-            return a.pode_vender
-              ? -1
-              : 1;
-          }
-
-          /*
-           * Se for EAN:
-           * EAN exato primeiro
-           */
-          const aEAN =
-            digits.length >= 8 &&
-            a.ean.replace(
-              /\D/g,
-              ""
-            ) === digits;
-
-          const bEAN =
-            digits.length >= 8 &&
-            b.ean.replace(
-              /\D/g,
-              ""
-            ) === digits;
-
-          if (
-            aEAN !== bEAN
-          ) {
-            return aEAN
-              ? -1
-              : 1;
-          }
-
-          /*
-           * Depois ordena
-           * alfabeticamente
-           */
-          return a.nome.localeCompare(
-            b.nome,
-            "pt-BR"
-          );
+      lista.sort((a, b) => {
+        if (
+          a.pode_vender !==
+          b.pode_vender
+        ) {
+          return a.pode_vender
+            ? -1
+            : 1;
         }
-      );
 
-      setResultados(
-        lista
-      );
+        const aEAN =
+          digits.length >= 8 &&
+          a.ean.replace(/\D/g, "") ===
+            digits;
 
-      /*
-       * =====================================================
-       * LEITOR DE CÓDIGO DE BARRAS
-       * =====================================================
-       *
-       * Se bipar EAN exato
-       * e tiver estoque:
-       *
-       * adiciona automaticamente.
-       */
-      if (
-        digits.length >= 8
-      ) {
+        const bEAN =
+          digits.length >= 8 &&
+          b.ean.replace(/\D/g, "") ===
+            digits;
+
+        if (aEAN !== bEAN) {
+          return aEAN ? -1 : 1;
+        }
+
+        return a.nome.localeCompare(
+          b.nome,
+          "pt-BR"
+        );
+      });
+
+      setResultados(lista);
+
+      if (digits.length >= 8) {
         const exato =
           lista.find(
             (p) =>
               p.ean.replace(
                 /\D/g,
                 ""
-              ) ===
-                digits &&
+              ) === digits &&
               p.pode_vender
           );
 
         if (exato) {
           add(exato);
-
           setBusca("");
-
           setResultados([]);
         }
       }
-    } catch (
-      e: any
-    ) {
+    } catch (e: any) {
       console.error(
-        "Erro ao buscar produto no PDV Porto:",
+        "Erro ao buscar produto:",
         e
       );
 
@@ -891,9 +576,7 @@ const precoConsulta =
           "Erro ao buscar produto"
       );
     } finally {
-      setLoading(
-        false
-      );
+      setLoading(false);
 
       setTimeout(
         () =>
@@ -903,19 +586,7 @@ const precoConsulta =
     }
   }
 
-  /*
-   * =========================================================
-   * ADICIONAR AO CARRINHO
-   * =========================================================
-   */
-  function add(
-    p: Produto
-  ) {
-    /*
-     * Produto sem estoque
-     * continua aparecendo,
-     * mas NÃO entra na venda.
-     */
+  function add(p: Produto) {
     if (
       !p.pode_vender ||
       p.estoque <= 0 ||
@@ -924,81 +595,62 @@ const precoConsulta =
       return;
     }
 
-    setItens(
-      (old) => {
-        const f =
-          old.find(
-            (i) =>
-              i.id ===
-              p.id
-          );
+    setItens((old) => {
+      const f = old.find(
+        (i) => i.id === p.id
+      );
 
-        if (f) {
-          return old.map(
-            (i) =>
-              i.id === p.id
-                ? {
-                    ...i,
-
-                    qtd:
-                      Math.min(
-                        i.qtd +
-                          1,
-                        p.estoque
-                      ),
-                  }
-                : i
-          );
-        }
-
-        return [
-          ...old,
-
-          {
-            ...p,
-
-            qtd: 1,
-
-            descontoTipo:
-              "PERCENTUAL",
-
-            desconto: 0,
-          },
-        ];
+      if (f) {
+        return old.map((i) =>
+          i.id === p.id
+            ? {
+                ...i,
+                qtd: Math.min(
+                  i.qtd + 1,
+                  p.estoque
+                ),
+              }
+            : i
+        );
       }
-    );
+
+      return [
+        ...old,
+        {
+          ...p,
+          qtd: 1,
+          descontoTipo:
+            "PERCENTUAL",
+          desconto: 0,
+        },
+      ];
+    });
+
+    setBusca("");
+    setResultados([]);
   }
 
   function qtd(
     id: string,
     d: number
   ) {
-    setItens(
-      (old) =>
-        old
-          .map(
-            (i) =>
-              i.id === id
-                ? {
-                    ...i,
-
-                    qtd:
-                      Math.min(
-                        Math.max(
-                          i.qtd +
-                            d,
-                          0
-                        ),
-
-                        i.estoque
-                      ),
-                  }
-                : i
-          )
-          .filter(
-            (i) =>
-              i.qtd > 0
-          )
+    setItens((old) =>
+      old
+        .map((i) =>
+          i.id === id
+            ? {
+                ...i,
+                qtd: Math.min(
+                  Math.max(
+                    i.qtd + d,
+                    0
+                  ),
+                  i.estoque
+                ),
+              }
+            : i
+        )
+        .filter((i) => i.qtd > 0)
     );
   }
 
@@ -1007,71 +659,52 @@ const precoConsulta =
     tipo: TipoDesconto,
     valor: number
   ) {
-    setItens(
-      (old) =>
-        old.map(
-          (i) => {
-            if (
-              i.id !== id
+    setItens((old) =>
+      old.map((i) => {
+        if (i.id !== id)
+          return i;
+
+        const limite =
+          tipo ===
+          "PERCENTUAL"
+            ? 100
+            : i.preco_venda;
+
+        return {
+          ...i,
+          descontoTipo: tipo,
+          desconto: Math.min(
+            limite,
+            Math.max(
+              0,
+              Number(valor) || 0
             )
-              return i;
-
-            const limite =
-              tipo ===
-              "PERCENTUAL"
-                ? 100
-                : i.preco_venda;
-
-            return {
-              ...i,
-
-              descontoTipo:
-                tipo,
-
-              desconto:
-                Math.min(
-                  limite,
-
-                  Math.max(
-                    0,
-                    Number(
-                      valor
-                    ) || 0
-                  )
-                ),
-            };
-          }
-        )
+          ),
+        };
+      })
     );
   }
 
   function contaPorForma(
     forma: Forma
   ) {
-    if (
-      forma ===
-      "Dinheiro"
-    )
+    if (forma === "Dinheiro") {
       return (
         contas.find(
-          (c) =>
-            c.tipo ===
-            "CAIXA"
+          (c) => c.tipo === "CAIXA"
         ) || null
       );
+    }
 
-    if (
-      forma === "Pix"
-    )
+    if (forma === "Pix") {
       return (
         contas.find(
           (c) =>
-            c.tipo ===
-              "BANCO" ||
-            c.tipo ===
-              "PIX"
+            c.tipo === "BANCO" ||
+            c.tipo === "PIX"
         ) || null
       );
+    }
 
     return (
       contas.find(
@@ -1083,45 +716,38 @@ const precoConsulta =
   }
 
   function addPagamento() {
-    setPagamentos(
-      (p) => [
-        ...p,
-
-        {
-          forma: "Pix",
-          valor: "",
-        },
-      ]
-    );
+    setPagamentos((p) => [
+      ...p,
+      {
+        forma: "Pix",
+        valor: "",
+      },
+    ]);
   }
 
   function setPagamento(
     idx: number,
     patch: Partial<Pagamento>
   ) {
-    setPagamentos(
-      (old) =>
-        old.map(
-          (p, i) =>
-            i === idx
-              ? {
-                  ...p,
-                  ...patch,
-                }
-              : p
-        )
+    setPagamentos((old) =>
+      old.map((p, i) =>
+        i === idx
+          ? {
+              ...p,
+              ...patch,
+            }
+          : p
+      )
     );
   }
 
   function removerPagamento(
     idx: number
   ) {
-    setPagamentos(
-      (old) =>
-        old.filter(
-          (_, i) =>
-            i !== idx
-        )
+    setPagamentos((old) =>
+      old.filter(
+        (_, i) => i !== idx
+      )
     );
   }
 
@@ -1136,37 +762,30 @@ const precoConsulta =
     setTaxaEntrega("0");
     setObservacoes("");
   }
-
-  /*
-   * =========================================================
-   * FINALIZAÇÃO
-   * =========================================================
-   *
-   * Mantida a estrutura do seu PDV atual.
-   */
-  async function finalizar() {
-    if (!itens.length)
+    async function finalizar() {
+    if (!itens.length) {
       return alert(
         "Adicione produtos à venda."
       );
+    }
 
     if (
       tipoAtendimento ===
       "ENTREGA"
     ) {
-      if (
-        !clienteNome.trim()
-      )
+      if (!clienteNome.trim()) {
         return alert(
           "Informe o nome do cliente para entrega."
         );
+      }
 
       if (
         !clienteTelefone.trim()
-      )
+      ) {
         return alert(
           "Informe o telefone/WhatsApp do cliente."
         );
+      }
 
       if (
         !endereco.trim() ||
@@ -1181,32 +800,25 @@ const precoConsulta =
 
     const validos =
       pagamentos
-        .map(
-          (p) => ({
-            ...p,
-
-            numero:
-              numero(
-                p.valor
-              ),
-          })
-        )
+        .map((p) => ({
+          ...p,
+          numero: numero(p.valor),
+        }))
         .filter(
-          (p) =>
-            p.numero > 0
+          (p) => p.numero > 0
         );
 
-    if (!validos.length)
+    if (!validos.length) {
       return alert(
         "Informe o pagamento."
       );
+    }
 
     if (
       Math.abs(
         validos.reduce(
           (s, p) =>
-            s +
-            p.numero,
+            s + p.numero,
           0
         ) - total
       ) > 0.009
@@ -1218,50 +830,43 @@ const precoConsulta =
       );
     }
 
-    setSalvando(
-      true
-    );
+    setSalvando(true);
 
     try {
-      /*
-       * CAIXA ABERTO
-       */
       const {
         data: cx,
         error: cxErr,
-      } =
-        await supabase
-          .from(
-            "porto_caixa_sessoes"
-          )
-          .select(
-            "id"
-          )
-          .eq(
-            "loja_slug",
-            PORTO_LOJA_SLUG
-          )
-          .eq(
-            "status",
-            "aberto"
-          )
-          .order(
-            "aberto_em",
-            {
-              ascending:
-                false,
-            }
-          )
-          .limit(1)
-          .maybeSingle();
+      } = await supabase
+        .from(
+          "porto_caixa_sessoes"
+        )
+        .select("id")
+        .eq(
+          "loja_slug",
+          PORTO_LOJA_SLUG
+        )
+        .eq(
+          "status",
+          "aberto"
+        )
+        .order(
+          "aberto_em",
+          {
+            ascending: false,
+          }
+        )
+        .limit(1)
+        .maybeSingle();
 
-      if (cxErr)
+      if (cxErr) {
         throw cxErr;
+      }
 
-      if (!cx)
+      if (!cx) {
         throw new Error(
           "Abra o caixa antes de finalizar vendas."
         );
+      }
 
       const cliente =
         tipoAtendimento ===
@@ -1269,7 +874,6 @@ const precoConsulta =
           ? {
               nome:
                 clienteNome.trim(),
-
               telefone:
                 clienteTelefone.trim(),
             }
@@ -1281,159 +885,104 @@ const precoConsulta =
           ? {
               endereco:
                 endereco.trim(),
-
               numero:
                 numeroEndereco.trim(),
-
               bairro:
                 bairro.trim(),
-
               complemento:
                 complemento.trim() ||
                 null,
-
               referencia:
                 referencia.trim() ||
                 null,
             }
           : null;
 
-      /*
-       * VENDA
-       */
       const {
         data: v,
         error,
-      } =
-        await supabase
-          .from(
-            "porto_vendas"
-          )
-          .insert({
+      } = await supabase
+        .from("porto_vendas")
+        .insert({
+          loja_slug:
+            PORTO_LOJA_SLUG,
+          caixa_sessao_id:
+            cx.id,
+          origem: "PDV",
+          status:
+            "FINALIZADA",
+          cliente,
+          tipo_entrega:
+            tipoAtendimento,
+          endereco_entrega:
+            enderecoEntrega,
+          taxa_entrega: taxa,
+          observacoes:
+            observacoes.trim() ||
+            null,
+          total,
+          finalizada_em:
+            new Date().toISOString(),
+        })
+        .select("id")
+        .single();
+
+      if (error) {
+        throw error;
+      }
+
+      const rows =
+        itens.map((i) => {
+          const precoLiquido =
+            precoLiquidoItem(i);
+
+          const descontoUnitario =
+            descontoUnitarioItem(i);
+
+          return {
+            venda_id: v.id,
             loja_slug:
               PORTO_LOJA_SLUG,
-
-            caixa_sessao_id:
-              cx.id,
-
-            origem:
-              "PDV",
-
-            status:
-              "FINALIZADA",
-
-            cliente,
-
-            tipo_entrega:
-              tipoAtendimento,
-
-            endereco_entrega:
-              enderecoEntrega,
-
-            taxa_entrega:
-              taxa,
-
-            observacoes:
-              observacoes.trim() ||
-              null,
-
-            total,
-
-            finalizada_em:
-              new Date().toISOString(),
-          })
-          .select(
-            "id"
-          )
-          .single();
-
-      if (error)
-        throw error;
-
-      /*
-       * ITENS
-       */
-      const rows =
-        itens.map(
-          (i) => {
-            const precoLiquido =
-              precoLiquidoItem(
-                i
-              );
-
-            const descontoUnitario =
-              descontoUnitarioItem(
-                i
-              );
-
-            return {
-              venda_id:
-                v.id,
-
-              loja_slug:
-                PORTO_LOJA_SLUG,
-
-              produto_id:
-                i.id,
-
-              ean:
-                i.ean,
-
-              nome:
-                i.nome,
-
-              qtd:
-                i.qtd,
-
-              preco_original:
-                i.preco_venda,
-
-              preco_unit:
-                precoLiquido,
-
-              desconto_tipo:
-                i.desconto >
-                0
-                  ? i.descontoTipo
-                  : null,
-
-              desconto_percentual:
-                i.descontoTipo ===
-                "PERCENTUAL"
-                  ? i.desconto
-                  : 0,
-
-              desconto_unitario:
-                descontoUnitario,
-
-              desconto_total:
-                descontoUnitario *
-                i.qtd,
-
-              total:
-                precoLiquido *
-                i.qtd,
-            };
-          }
-        );
+            produto_id: i.id,
+            ean: i.ean,
+            nome: i.nome,
+            qtd: i.qtd,
+            preco_original:
+              i.preco_venda,
+            preco_unit:
+              precoLiquido,
+            desconto_tipo:
+              i.desconto > 0
+                ? i.descontoTipo
+                : null,
+            desconto_percentual:
+              i.descontoTipo ===
+              "PERCENTUAL"
+                ? i.desconto
+                : 0,
+            desconto_unitario:
+              descontoUnitario,
+            desconto_total:
+              descontoUnitario *
+              i.qtd,
+            total:
+              precoLiquido *
+              i.qtd,
+          };
+        });
 
       const {
         error: ei,
-      } =
-        await supabase
-          .from(
-            "porto_venda_itens"
-          )
-          .insert(
-            rows
-          );
+      } = await supabase
+        .from(
+          "porto_venda_itens"
+        )
+        .insert(rows);
 
-      if (ei)
+      if (ei) {
         throw ei;
+      }
 
-      /*
-       * PAGAMENTOS
-       */
       for (
         const p of validos
       ) {
@@ -1444,88 +993,66 @@ const precoConsulta =
 
         const {
           error: ep,
-        } =
-          await supabase
-            .from(
-              "porto_venda_pagamentos"
-            )
-            .insert({
-              venda_id:
-                v.id,
+        } = await supabase
+          .from(
+            "porto_venda_pagamentos"
+          )
+          .insert({
+            venda_id: v.id,
+            caixa_sessao_id:
+              cx.id,
+            loja_slug:
+              PORTO_LOJA_SLUG,
+            forma: p.forma,
+            valor: p.numero,
+            conta_financeira_id:
+              conta?.id ||
+              null,
+          });
 
-              caixa_sessao_id:
-                cx.id,
-
-              loja_slug:
-                PORTO_LOJA_SLUG,
-
-              forma:
-                p.forma,
-
-              valor:
-                p.numero,
-
-              conta_financeira_id:
-                conta?.id ||
-                null,
-            });
-
-        if (ep)
+        if (ep) {
           throw ep;
+        }
 
-        /*
-         * FINANCEIRO
-         */
         if (conta) {
           const {
             error: mf,
-          } =
-            await supabase
-              .from(
-                "porto_movimentacoes_financeiras"
-              )
-              .insert({
-                loja_slug:
-                  PORTO_LOJA_SLUG,
+          } = await supabase
+            .from(
+              "porto_movimentacoes_financeiras"
+            )
+            .insert({
+              loja_slug:
+                PORTO_LOJA_SLUG,
+              conta_financeira_id:
+                conta.id,
+              tipo: "ENTRADA",
+              categoria:
+                `VENDA_${p.forma.toUpperCase()}`,
+              descricao:
+                `Venda PDV ${v.id.slice(
+                  0,
+                  8
+                )}${
+                  tipoAtendimento ===
+                  "ENTREGA"
+                    ? " - ENTREGA"
+                    : ""
+                }`,
+              valor:
+                p.numero,
+              origem_tipo:
+                "VENDA",
+              origem_id:
+                v.id,
+            });
 
-                conta_financeira_id:
-                  conta.id,
-
-                tipo:
-                  "ENTRADA",
-
-                categoria:
-                  `VENDA_${p.forma.toUpperCase()}`,
-
-                descricao:
-                  `Venda PDV ${v.id.slice(
-                    0,
-                    8
-                  )}${
-                    tipoAtendimento ===
-                    "ENTREGA"
-                      ? " - ENTREGA"
-                      : ""
-                  }`,
-
-                valor:
-                  p.numero,
-
-                origem_tipo:
-                  "VENDA",
-
-                origem_id:
-                  v.id,
-              });
-
-          if (mf)
+          if (mf) {
             throw mf;
+          }
         }
       }
 
-      /*
-       * BAIXA DE ESTOQUE
-       */
       for (
         const i of itens
       ) {
@@ -1538,46 +1065,37 @@ const precoConsulta =
 
         const {
           error: est,
-        } =
-          await supabase
-            .from(
-              "fv_farmacia_produtos"
-            )
-            .update({
-              estoque:
-                novo,
-            })
-            .eq(
-              "farmacia_slug",
-              PORTO_LOJA_SLUG
-            )
-            .eq(
-              "produto_id",
-              i.id
-            );
+        } = await supabase
+          .from(
+            "fv_farmacia_produtos"
+          )
+          .update({
+            estoque: novo,
+          })
+          .eq(
+            "farmacia_slug",
+            PORTO_LOJA_SLUG
+          )
+          .eq(
+            "produto_id",
+            i.id
+          );
 
-        if (est)
+        if (est) {
           throw est;
+        }
       }
 
-      /*
-       * COMPROVANTE
-       */
       const comprovante: ComprovantePorto =
         {
           numero:
             v.id
-              .slice(
-                0,
-                8
-              )
+              .slice(0, 8)
               .toUpperCase(),
 
-          data:
-            new Date(),
+          data: new Date(),
 
-          origem:
-            "PDV",
+          origem: "PDV",
 
           tipo:
             tipoAtendimento,
@@ -1599,17 +1117,13 @@ const precoConsulta =
               ? {
                   endereco:
                     enderecoEntrega.endereco,
-
                   numero:
                     enderecoEntrega.numero,
-
                   bairro:
                     enderecoEntrega.bairro,
-
                   complemento:
                     enderecoEntrega.complemento ||
                     undefined,
-
                   referencia:
                     enderecoEntrega.referencia ||
                     undefined,
@@ -1619,36 +1133,26 @@ const precoConsulta =
           itens:
             itens.map(
               (i) => ({
-                nome:
-                  i.nome,
-
-                qtd:
-                  i.qtd,
-
+                nome: i.nome,
+                qtd: i.qtd,
                 precoOriginal:
                   i.preco_venda,
-
                 precoUnit:
                   precoLiquidoItem(
                     i
                   ),
-
                 descontoUnitario:
                   descontoUnitarioItem(
                     i
                   ),
-
                 descontoTotal:
                   descontoUnitarioItem(
                     i
-                  ) *
-                  i.qtd,
-
+                  ) * i.qtd,
                 total:
                   precoLiquidoItem(
                     i
-                  ) *
-                  i.qtd,
+                  ) * i.qtd,
               })
             ),
 
@@ -1666,11 +1170,8 @@ const precoConsulta =
           pagamentos:
             validos.map(
               (p) => ({
-                forma:
-                  p.forma,
-
-                valor:
-                  p.numero,
+                forma: p.forma,
+                valor: p.numero,
               })
             ),
 
@@ -1700,22 +1201,14 @@ const precoConsulta =
           `A impressão do comprovante foi aberta.`
       );
 
-      /*
-       * LIMPA VENDA
-       */
       setItens([]);
-
       setResultados([]);
-
       setBusca("");
 
       setPagamentos([
         {
-          forma:
-            "Dinheiro",
-
-          valor:
-            "",
+          forma: "Dinheiro",
+          valor: "",
         },
       ]);
 
@@ -1724,57 +1217,53 @@ const precoConsulta =
       );
 
       limparEntrega();
-    } catch (
-      e: any
-    ) {
-      console.error(
-        e
-      );
+    } catch (e: any) {
+      console.error(e);
 
       alert(
         e?.message ||
           "Erro ao finalizar venda"
       );
     } finally {
-      setSalvando(
-        false
-      );
+      setSalvando(false);
 
       inputRef.current?.focus();
     }
   }
 
   return (
-    <main className="min-h-screen bg-slate-100 p-2 pb-24 sm:p-4 md:p-6">
+    <main className="min-h-screen bg-slate-100 pb-28 md:p-5 md:pb-5">
+
       <div className="mx-auto max-w-[1500px]">
 
         {/* CABEÇALHO */}
 
-        <header className="mb-3 flex items-center justify-between rounded-2xl bg-blue-900 p-3 text-white md:mb-4 md:p-4">
+        <header className="sticky top-0 z-30 flex items-center justify-between bg-blue-900 px-3 py-3 text-white shadow md:relative md:mb-4 md:rounded-2xl md:px-5 md:py-4">
 
           <div>
-            <p className="text-[10px] font-bold text-blue-200 md:text-xs">
-              DROGARIAS PORTO • LOJA 2
+            <p className="text-[10px] font-bold uppercase text-blue-200">
+              Drogarias Porto • Loja 2
             </p>
 
-            <h1 className="text-xl font-black md:text-2xl">
+            <h1 className="text-xl font-black">
               PDV
             </h1>
           </div>
 
-          <div className="flex gap-2">
+          <div className="flex items-center gap-2">
 
             {ultimoComprovante && (
               <button
+                type="button"
                 onClick={() =>
                   imprimirComprovantePorto(
                     ultimoComprovante
                   )
                 }
-                className="hidden items-center gap-2 rounded-xl bg-white/10 px-3 py-2 font-bold sm:flex"
+                className="hidden rounded-xl bg-white/10 px-3 py-2 font-bold md:flex md:items-center md:gap-2"
               >
                 <Printer
-                  size={18}
+                  size={17}
                 />
 
                 Reimprimir
@@ -1785,12 +1274,14 @@ const precoConsulta =
               href="/drogariasporto"
               className="rounded-xl bg-white/10 p-2"
             >
-              <ArrowLeft />
+              <ArrowLeft
+                size={20}
+              />
             </Link>
 
             <Link
               href="/drogariasporto/caixa"
-              className="rounded-xl bg-white px-3 py-2 text-sm font-bold text-blue-900 md:px-4"
+              className="rounded-xl bg-white px-3 py-2 text-sm font-black text-blue-900"
             >
               Caixa
             </Link>
@@ -1800,218 +1291,231 @@ const precoConsulta =
         </header>
 
 
-        <div className="grid gap-4 xl:grid-cols-[1fr_480px]">
+        <div className="grid gap-4 md:px-0 xl:grid-cols-[1fr_480px]">
 
-          {/* LADO ESQUERDO */}
+          {/* ESQUERDA */}
 
-          <section className="rounded-2xl bg-white p-3 shadow-sm md:p-4">
+          <section className="bg-white p-3 shadow-sm md:rounded-2xl md:p-4">
 
             {/* BUSCA */}
 
-            <div className="flex gap-2">
+            <div className="sticky top-[68px] z-20 -mx-3 bg-white px-3 pb-3 pt-1 md:relative md:top-auto md:mx-0 md:px-0 md:pt-0">
 
-              <div className="flex flex-1 items-center rounded-xl border-2 border-blue-300 px-3 focus-within:border-blue-600 md:px-4">
+              <div className="flex gap-2">
 
-                <Search />
+                <div className="flex min-w-0 flex-1 items-center rounded-xl border-2 border-blue-300 bg-white px-3 focus-within:border-blue-700">
 
-                <input
-                  ref={
-                    inputRef
+                  <Search
+                    size={20}
+                    className="shrink-0 text-slate-500"
+                  />
+
+                  <input
+                    ref={inputRef}
+                    value={busca}
+                    onChange={(
+                      e
+                    ) =>
+                      setBusca(
+                        e.target.value
+                      )
+                    }
+                    onKeyDown={(
+                      e
+                    ) => {
+                      if (
+                        e.key ===
+                        "Enter"
+                      ) {
+                        pesquisar();
+                      }
+                    }}
+                    placeholder="Nome ou código"
+                    className="min-w-0 flex-1 bg-transparent px-3 py-3 text-base font-bold outline-none md:py-4"
+                  />
+
+                </div>
+
+
+                <button
+                  type="button"
+                  onClick={
+                    abrirCamera
                   }
-                  value={
-                    busca
-                  }
-                  onChange={(
-                    e
-                  ) =>
-                    setBusca(
-                      e.target.value
-                    )
-                  }
-                  onKeyDown={(
-                    e
-                  ) =>
-                    e.key ===
-                      "Enter" &&
+                  className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-white active:scale-95 md:h-auto md:w-14"
+                  title="Ler código de barras"
+                >
+                  <Camera
+                    size={22}
+                  />
+                </button>
+
+
+                <button
+                  type="button"
+                  onClick={() =>
                     pesquisar()
                   }
-                  placeholder="Nome ou código de barras"
-                  className="w-full px-3 py-3 text-base font-semibold outline-none md:py-4 md:text-lg"
-                />
+                  disabled={loading}
+                  className="hidden rounded-xl bg-blue-700 px-5 font-black text-white disabled:opacity-50 sm:block"
+                >
+                  {loading
+                    ? "..."
+                    : "Buscar"}
+                </button>
 
               </div>
 
-                            <button
-                type="button"
-                onClick={() =>
-                  setCameraAberta(
-                    true
-                  )
-                }
-                className="flex min-w-12 items-center justify-center rounded-xl bg-slate-800 px-3 text-white hover:bg-slate-900"
-                title="Ler código pela câmera"
-              >
-                <Camera
-                  size={22}
-                />
-              </button>
 
               <button
-  type="button"
-  onClick={() =>
-    pesquisar()
-  }
-  disabled={
-    loading
-  }
-  className="rounded-xl bg-blue-700 px-4 font-black text-white disabled:opacity-50 md:px-6"
->
-  {loading
-    ? "..."
-    : "Buscar"}
-</button>
+                type="button"
+                onClick={() =>
+                  pesquisar()
+                }
+                disabled={loading}
+                className="mt-2 w-full rounded-xl bg-blue-700 py-3 font-black text-white disabled:opacity-50 sm:hidden"
+              >
+                {loading
+                  ? "Buscando..."
+                  : "BUSCAR PRODUTO"}
+              </button>
 
             </div>
-
-            <p className="mt-2 text-xs text-slate-500">
-              Consulta todos os produtos do FV. Produtos com estoque na Porto aparecem primeiro.
-            </p>
 
 
             {/* RESULTADOS */}
 
-            <div className="mt-3 grid gap-2 md:grid-cols-2">
-
-              {loading ? (
-
-                <p className="p-4">
-                  Buscando...
-                </p>
-
-              ) : (
-
-                resultados.map(
-                  (p) => (
-
-                    <div
-                      key={
-                        p.id
-                      }
-                      className={`rounded-2xl border-2 p-3 ${
-                        p.pode_vender
-                          ? "border-green-200 bg-green-50/40"
-                          : "border-slate-200 bg-white"
-                      }`}
-                    >
-
-                      <div className="flex items-start gap-3">
-
-                        <div className="min-w-0 flex-1">
-
-                          {/* STATUS */}
-
-                          <div className="mb-2">
-
-                            {p.pode_vender ? (
-
-                              <span className="rounded-full bg-green-100 px-2 py-1 text-[10px] font-black text-green-800">
-                                EM ESTOQUE
-                              </span>
-
-                            ) : (
-
-                              <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-black text-slate-600">
-                                CONSULTA
-                              </span>
-
-                            )}
-
-                          </div>
+            {loading && (
+              <div className="rounded-xl bg-blue-50 p-4 text-center font-bold text-blue-800">
+                Buscando produtos...
+              </div>
+            )}
 
 
-                          {/* NOME */}
+            {!loading &&
+              resultados.length >
+                0 && (
 
-                          <div className="text-base font-black leading-tight text-slate-900">
-                            {p.nome}
-                          </div>
+              <div className="mb-4 space-y-2">
+
+                <div className="flex items-center justify-between">
+
+                  <h2 className="text-sm font-black uppercase text-slate-600">
+                    Resultados
+                  </h2>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setResultados(
+                        []
+                      )
+                    }
+                    className="text-xs font-bold text-slate-500"
+                  >
+                    Limpar
+                  </button>
+
+                </div>
 
 
-                          {/* LAB / APRESENTAÇÃO */}
+                <div className="grid gap-2 md:grid-cols-2">
 
-                          <div className="mt-1 text-xs text-slate-500">
+                  {resultados.map(
+                    (p) => (
 
-                            {[
-                              p.laboratorio,
-                              p.apresentacao,
-                            ]
-                              .filter(
-                                Boolean
-                              )
-                              .join(
-                                " • "
-                              )}
+                      <div
+                        key={p.id}
+                        className={`rounded-2xl border-2 p-3 ${
+                          p.pode_vender
+                            ? "border-green-200 bg-green-50/40"
+                            : "border-slate-200 bg-white"
+                        }`}
+                      >
 
-                          </div>
+                        <div className="flex gap-3">
+
+                          <div className="min-w-0 flex-1">
+
+                            <span
+                              className={`inline-flex rounded-full px-2 py-1 text-[10px] font-black ${
+                                p.pode_vender
+                                  ? "bg-green-100 text-green-800"
+                                  : "bg-slate-100 text-slate-600"
+                              }`}
+                            >
+                              {p.pode_vender
+                                ? "EM ESTOQUE"
+                                : "CONSULTA"}
+                            </span>
 
 
-                          {/* EAN */}
-
-                          {p.ean && (
-
-                            <div className="mt-1 text-[11px] text-slate-400">
-                              EAN{" "}
-                              {p.ean}
+                            <div className="mt-2 text-base font-black leading-tight text-slate-900">
+                              {p.nome}
                             </div>
 
-                          )}
 
+                            <div className="mt-1 text-xs text-slate-500">
 
-                          {/* PREÇO E ESTOQUE */}
-
-                          <div className="mt-3 flex flex-wrap items-end gap-x-5 gap-y-2">
-
-                            <div>
-
-                              <div className="text-[10px] font-bold uppercase text-slate-400">
-
-                                {p.pode_vender
-                                  ? "Preço Porto"
-                                  : "Preço consulta FV"}
-
-                              </div>
-
-                              <div className="text-xl font-black text-blue-800">
-
-                                {brl(
-                                  p.pode_vender
-                                    ? p.preco_venda
-                                    : p.preco_consulta
+                              {[
+                                p.laboratorio,
+                                p.apresentacao,
+                              ]
+                                .filter(
+                                  Boolean
+                                )
+                                .join(
+                                  " • "
                                 )}
 
-                              </div>
-
                             </div>
 
 
-                            <div>
+                            {p.ean && (
+                              <div className="mt-1 text-[11px] text-slate-400">
+                                EAN {p.ean}
+                              </div>
+                            )}
 
-                              <div className="text-[10px] font-bold uppercase text-slate-400">
-                                Estoque Porto
+
+                            <div className="mt-3 flex items-end justify-between gap-3">
+
+                              <div>
+                                <div className="text-[10px] font-bold uppercase text-slate-400">
+                                  {p.pode_vender
+                                    ? "Preço Porto"
+                                    : "Consulta"}
+                                </div>
+
+                                <div className="text-2xl font-black text-blue-900">
+                                  {brl(
+                                    p.pode_vender
+                                      ? p.preco_venda
+                                      : p.preco_consulta
+                                  )}
+                                </div>
                               </div>
 
-                              <div
-                                className={
-                                  p.estoque >
-                                  0
-                                    ? "font-black text-green-700"
-                                    : "font-black text-slate-500"
-                                }
-                              >
 
-                                {p.estoque >
-                                0
-                                  ? p.estoque
-                                  : "Sem estoque"}
+                              <div className="text-right">
+
+                                <div className="text-[10px] font-bold uppercase text-slate-400">
+                                  Estoque
+                                </div>
+
+                                <div
+                                  className={`font-black ${
+                                    p.estoque >
+                                    0
+                                      ? "text-green-700"
+                                      : "text-slate-500"
+                                  }`}
+                                >
+                                  {p.estoque >
+                                  0
+                                    ? p.estoque
+                                    : "0"}
+                                </div>
 
                               </div>
 
@@ -2019,12 +1523,6 @@ const precoConsulta =
 
                           </div>
 
-                        </div>
-
-
-                        {/* ADICIONAR */}
-
-                        <div className="flex shrink-0 self-stretch items-end">
 
                           <button
                             type="button"
@@ -2032,22 +1530,243 @@ const precoConsulta =
                               !p.pode_vender
                             }
                             onClick={() =>
-                              add(
-                                p
-                              )
+                              add(p)
                             }
-                            className={`min-h-12 rounded-xl px-3 text-sm font-black ${
+                            className={`self-end rounded-xl px-3 py-3 text-sm font-black ${
                               p.pode_vender
-                                ? "bg-green-600 text-white hover:bg-green-700 active:scale-95"
-                                : "cursor-not-allowed bg-slate-100 text-slate-400"
+                                ? "bg-green-600 text-white active:scale-95"
+                                : "bg-slate-100 text-slate-400"
                             }`}
                           >
-
                             {p.pode_vender
-                              ? "+ Adicionar"
-                              : "Indisponível"}
-
+                              ? "+"
+                              : "—"}
                           </button>
+
+                        </div>
+
+                      </div>
+
+                    )
+                  )}
+
+                </div>
+
+              </div>
+
+            )}
+
+
+            {/* CARRINHO MOBILE */}
+
+            <div className="md:hidden">
+
+              <div className="mb-2 flex items-center justify-between">
+
+                <div className="flex items-center gap-2">
+
+                  <ShoppingCart
+                    size={18}
+                  />
+
+                  <h2 className="font-black">
+                    Carrinho
+                  </h2>
+
+                </div>
+
+                <span className="rounded-full bg-blue-100 px-2 py-1 text-xs font-black text-blue-800">
+                  {quantidadeItens} item(ns)
+                </span>
+
+              </div>
+
+
+              {!itens.length && (
+
+                <div className="rounded-2xl border-2 border-dashed p-8 text-center text-slate-400">
+                  Nenhum produto adicionado
+                </div>
+
+              )}
+
+
+              <div className="space-y-3">
+
+                {itens.map(
+                  (i) => (
+
+                    <div
+                      key={i.id}
+                      className="rounded-2xl border bg-white p-3 shadow-sm"
+                    >
+
+                      <div className="flex items-start justify-between gap-3">
+
+                        <div className="min-w-0 flex-1">
+
+                          <div className="font-black leading-tight">
+                            {i.nome}
+                          </div>
+
+                          <div className="mt-1 text-xs text-slate-500">
+                            {brl(
+                              i.preco_venda
+                            )}{" "}
+                            cada
+                          </div>
+
+                        </div>
+
+
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setItens(
+                              (
+                                old
+                              ) =>
+                                old.filter(
+                                  (
+                                    x
+                                  ) =>
+                                    x.id !==
+                                    i.id
+                                )
+                            )
+                          }
+                          className="rounded-lg bg-red-50 p-2 text-red-600"
+                        >
+                          <Trash2
+                            size={18}
+                          />
+                        </button>
+
+                      </div>
+
+
+                      <div className="mt-3 flex items-center justify-between gap-2">
+
+                        <div className="inline-flex items-center rounded-xl border">
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              qtd(
+                                i.id,
+                                -1
+                              )
+                            }
+                            className="p-3"
+                          >
+                            <Minus
+                              size={16}
+                            />
+                          </button>
+
+                          <span className="min-w-9 text-center font-black">
+                            {i.qtd}
+                          </span>
+
+                          <button
+                            type="button"
+                            onClick={() =>
+                              qtd(
+                                i.id,
+                                1
+                              )
+                            }
+                            className="p-3"
+                          >
+                            <Plus
+                              size={16}
+                            />
+                          </button>
+
+                        </div>
+
+
+                        <div className="text-right">
+
+                          <div className="text-xs text-slate-500">
+                            Total
+                          </div>
+
+                          <div className="text-xl font-black text-blue-900">
+                            {brl(
+                              precoLiquidoItem(
+                                i
+                              ) *
+                                i.qtd
+                            )}
+                          </div>
+
+                        </div>
+
+                      </div>
+
+
+                      <div className="mt-3 rounded-xl bg-slate-50 p-2">
+
+                        <div className="mb-1 text-xs font-bold text-slate-500">
+                          Desconto
+                        </div>
+
+                        <div className="grid grid-cols-[90px_1fr] gap-2">
+
+                          <select
+                            value={
+                              i.descontoTipo
+                            }
+                            onChange={(
+                              e
+                            ) =>
+                              alterarDesconto(
+                                i.id,
+                                e.target
+                                  .value as TipoDesconto,
+                                i.desconto
+                              )
+                            }
+                            className="rounded-lg border bg-white px-2 py-2 font-bold"
+                          >
+                            <option value="PERCENTUAL">
+                              %
+                            </option>
+
+                            <option value="VALOR">
+                              R$
+                            </option>
+                          </select>
+
+
+                          <input
+                            value={
+                              i.desconto
+                                ? String(
+                                    i.desconto
+                                  ).replace(
+                                    ".",
+                                    ","
+                                  )
+                                : ""
+                            }
+                            onChange={(
+                              e
+                            ) =>
+                              alterarDesconto(
+                                i.id,
+                                i.descontoTipo,
+                                numero(
+                                  e.target
+                                    .value
+                                )
+                              )
+                            }
+                            inputMode="decimal"
+                            placeholder="0"
+                            className="rounded-lg border bg-white px-3 py-2 text-right font-bold outline-none"
+                          />
 
                         </div>
 
@@ -2056,18 +1775,18 @@ const precoConsulta =
                     </div>
 
                   )
-                )
+                )}
 
-              )}
+              </div>
 
             </div>
 
 
-            {/* CARRINHO */}
+            {/* CARRINHO DESKTOP */}
 
-            <div className="mt-5 overflow-x-auto rounded-xl border">
+            <div className="mt-4 hidden overflow-x-auto rounded-xl border md:block">
 
-              <table className="min-w-[850px] w-full text-sm">
+              <table className="w-full min-w-[850px] text-sm">
 
                 <thead className="bg-slate-50 text-left">
 
@@ -2076,26 +1795,11 @@ const precoConsulta =
                       Produto
                     </th>
 
-                    <th>
-                      Qtd
-                    </th>
-
-                    <th>
-                      Preço
-                    </th>
-
-                    <th>
-                      Desconto
-                    </th>
-
-                    <th>
-                      Unit. final
-                    </th>
-
-                    <th>
-                      Total
-                    </th>
-
+                    <th>Qtd</th>
+                    <th>Preço</th>
+                    <th>Desconto</th>
+                    <th>Unit. final</th>
+                    <th>Total</th>
                     <th></th>
                   </tr>
 
@@ -2107,9 +1811,7 @@ const precoConsulta =
                     (i) => (
 
                       <tr
-                        key={
-                          i.id
-                        }
+                        key={i.id}
                         className="border-t"
                       >
 
@@ -2120,8 +1822,7 @@ const precoConsulta =
                           </b>
 
                           <small className="block text-slate-500">
-                            EAN{" "}
-                            {i.ean}
+                            EAN {i.ean}
                           </small>
 
                         </td>
@@ -2132,6 +1833,7 @@ const precoConsulta =
                           <div className="inline-flex items-center rounded-lg border">
 
                             <button
+                              type="button"
                               onClick={() =>
                                 qtd(
                                   i.id,
@@ -2141,9 +1843,7 @@ const precoConsulta =
                               className="p-2"
                             >
                               <Minus
-                                size={
-                                  14
-                                }
+                                size={14}
                               />
                             </button>
 
@@ -2152,6 +1852,7 @@ const precoConsulta =
                             </b>
 
                             <button
+                              type="button"
                               onClick={() =>
                                 qtd(
                                   i.id,
@@ -2161,9 +1862,7 @@ const precoConsulta =
                               className="p-2"
                             >
                               <Plus
-                                size={
-                                  14
-                                }
+                                size={14}
                               />
                             </button>
 
@@ -2234,88 +1933,46 @@ const precoConsulta =
                               }
                               inputMode="decimal"
                               placeholder="0"
-                              className="w-20 rounded-lg border px-2 py-2 text-right font-bold outline-none focus:border-blue-600"
+                              className="w-20 rounded-lg border px-2 py-2 text-right font-bold"
                             />
 
-
-                            {i.desconto >
-                              0 && (
-
-                              <button
-                                onClick={() =>
-                                  alterarDesconto(
-                                    i.id,
-                                    i.descontoTipo,
-                                    0
-                                  )
-                                }
-                                className="rounded-lg border px-2 py-2 text-xs font-bold text-red-600"
-                              >
-                                ×
-                              </button>
-
-                            )}
-
                           </div>
-
-
-                          {descontoUnitarioItem(
-                            i
-                          ) > 0 && (
-
-                            <small className="mt-1 block font-bold text-green-700">
-
-                              -{" "}
-                              {brl(
-                                descontoUnitarioItem(
-                                  i
-                                )
-                              )}
-                              /un.
-
-                            </small>
-
-                          )}
 
                         </td>
 
 
                         <td className="font-bold text-blue-800">
-
                           {brl(
                             precoLiquidoItem(
                               i
                             )
                           )}
-
                         </td>
 
 
                         <td className="font-bold">
-
                           {brl(
                             precoLiquidoItem(
                               i
                             ) *
                               i.qtd
                           )}
-
                         </td>
 
 
                         <td>
-
                           <button
+                            type="button"
                             onClick={() =>
                               setItens(
                                 (
-                                  x
+                                  old
                                 ) =>
-                                  x.filter(
+                                  old.filter(
                                     (
-                                      y
+                                      x
                                     ) =>
-                                      y.id !==
+                                      x.id !==
                                       i.id
                                   )
                               )
@@ -2323,12 +1980,9 @@ const precoConsulta =
                             className="p-2 text-red-600"
                           >
                             <Trash2
-                              size={
-                                18
-                              }
+                              size={18}
                             />
                           </button>
-
                         </td>
 
                       </tr>
@@ -2356,30 +2010,51 @@ const precoConsulta =
 
           {/* FINALIZAÇÃO */}
 
-          <aside className="rounded-2xl bg-white p-4 shadow-sm md:p-5">
+          <aside
+            ref={
+              pagamentoRef
+            }
+            className="bg-white p-4 shadow-sm md:rounded-2xl md:p-5"
+          >
 
-            <p className="text-sm font-bold text-slate-500">
-              TOTAL DA VENDA
-            </p>
+            <div className="rounded-2xl bg-blue-950 p-4 text-white">
 
-            <div className="mt-1 text-4xl font-black text-blue-900 md:text-5xl">
-              {brl(
-                total
-              )}
+              <div className="flex items-center justify-between">
+
+                <div>
+
+                  <div className="text-xs font-bold text-blue-200">
+                    TOTAL DA VENDA
+                  </div>
+
+                  <div className="text-4xl font-black">
+                    {brl(total)}
+                  </div>
+
+                </div>
+
+                <ShoppingCart
+                  size={32}
+                  className="text-blue-300"
+                />
+
+              </div>
+
             </div>
 
 
             {/* ATENDIMENTO */}
 
-            <div className="mt-5">
+            <div className="mt-4">
 
-              <h2 className="font-black">
+              <div className="mb-2 text-sm font-black">
                 Tipo de atendimento
-              </h2>
+              </div>
 
-              <div className="mt-2 grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-2 gap-2">
 
                 <button
+                  type="button"
                   onClick={() =>
                     setTipoAtendimento(
                       "BALCAO"
@@ -2389,13 +2064,11 @@ const precoConsulta =
                     tipoAtendimento ===
                     "BALCAO"
                       ? "border-blue-700 bg-blue-50 text-blue-800"
-                      : "border-slate-200"
+                      : "border-slate-200 bg-white"
                   }`}
                 >
                   <Store
-                    size={
-                      18
-                    }
+                    size={18}
                   />
 
                   Balcão
@@ -2403,6 +2076,7 @@ const precoConsulta =
 
 
                 <button
+                  type="button"
                   onClick={() =>
                     setTipoAtendimento(
                       "ENTREGA"
@@ -2412,13 +2086,11 @@ const precoConsulta =
                     tipoAtendimento ===
                     "ENTREGA"
                       ? "border-green-600 bg-green-50 text-green-800"
-                      : "border-slate-200"
+                      : "border-slate-200 bg-white"
                   }`}
                 >
                   <Truck
-                    size={
-                      18
-                    }
+                    size={18}
                   />
 
                   Entrega
@@ -2434,22 +2106,18 @@ const precoConsulta =
             {tipoAtendimento ===
               "ENTREGA" && (
 
-              <div className="mt-4 rounded-2xl border-2 border-green-100 bg-green-50/40 p-4">
+              <div className="mt-4 rounded-2xl border-2 border-green-100 bg-green-50/40 p-3">
 
                 <div className="mb-3 flex items-center gap-2 font-black text-green-900">
-
                   <Truck
-                    size={
-                      18
-                    }
+                    size={18}
                   />
 
                   Dados da entrega
-
                 </div>
 
 
-                <div className="grid gap-2 sm:grid-cols-2">
+                <div className="grid gap-2">
 
                   <input
                     value={
@@ -2459,12 +2127,11 @@ const precoConsulta =
                       e
                     ) =>
                       setClienteNome(
-                        e.target
-                          .value
+                        e.target.value
                       )
                     }
                     placeholder="Nome do cliente *"
-                    className="rounded-xl border p-3 sm:col-span-2"
+                    className="rounded-xl border bg-white p-3"
                   />
 
 
@@ -2476,63 +2143,60 @@ const precoConsulta =
                       e
                     ) =>
                       setClienteTelefone(
-                        e.target
-                          .value
+                        e.target.value
                       )
                     }
                     placeholder="Telefone / WhatsApp *"
-                    className="rounded-xl border p-3 sm:col-span-2"
+                    className="rounded-xl border bg-white p-3"
                   />
 
 
-                  <input
-                    value={
-                      endereco
-                    }
-                    onChange={(
-                      e
-                    ) =>
-                      setEndereco(
-                        e.target
-                          .value
-                      )
-                    }
-                    placeholder="Endereço *"
-                    className="rounded-xl border p-3"
-                  />
+                  <div className="grid grid-cols-[1fr_100px] gap-2">
+
+                    <input
+                      value={
+                        endereco
+                      }
+                      onChange={(
+                        e
+                      ) =>
+                        setEndereco(
+                          e.target.value
+                        )
+                      }
+                      placeholder="Endereço *"
+                      className="min-w-0 rounded-xl border bg-white p-3"
+                    />
+
+                    <input
+                      value={
+                        numeroEndereco
+                      }
+                      onChange={(
+                        e
+                      ) =>
+                        setNumeroEndereco(
+                          e.target.value
+                        )
+                      }
+                      placeholder="Nº *"
+                      className="rounded-xl border bg-white p-3"
+                    />
+
+                  </div>
 
 
                   <input
-                    value={
-                      numeroEndereco
-                    }
-                    onChange={(
-                      e
-                    ) =>
-                      setNumeroEndereco(
-                        e.target
-                          .value
-                      )
-                    }
-                    placeholder="Número *"
-                    className="rounded-xl border p-3"
-                  />
-
-
-                  <input
-                    value={
-                      bairro
-                    }
+                    value={bairro}
                     onChange={(
                       e
                     ) =>
                       setBairro(
-                        e.target
-                          .value
+                        e.target.value
                       )
                     }
                     placeholder="Bairro *"
-                    className="rounded-xl border p-3 sm:col-span-2"
+                    className="rounded-xl border bg-white p-3"
                   />
 
 
@@ -2544,12 +2208,11 @@ const precoConsulta =
                       e
                     ) =>
                       setComplemento(
-                        e.target
-                          .value
+                        e.target.value
                       )
                     }
                     placeholder="Complemento"
-                    className="rounded-xl border p-3 sm:col-span-2"
+                    className="rounded-xl border bg-white p-3"
                   />
 
 
@@ -2561,39 +2224,29 @@ const precoConsulta =
                       e
                     ) =>
                       setReferencia(
-                        e.target
-                          .value
+                        e.target.value
                       )
                     }
                     placeholder="Referência"
-                    className="rounded-xl border p-3 sm:col-span-2"
+                    className="rounded-xl border bg-white p-3"
                   />
 
 
-                  <label className="sm:col-span-2">
-
-                    <span className="mb-1 block text-xs font-bold text-slate-600">
-                      Taxa de entrega
-                    </span>
-
-                    <input
-                      value={
-                        taxaEntrega
-                      }
-                      onChange={(
-                        e
-                      ) =>
-                        setTaxaEntrega(
-                          e.target
-                            .value
-                        )
-                      }
-                      placeholder="0,00"
-                      inputMode="decimal"
-                      className="w-full rounded-xl border p-3"
-                    />
-
-                  </label>
+                  <input
+                    value={
+                      taxaEntrega
+                    }
+                    onChange={(
+                      e
+                    ) =>
+                      setTaxaEntrega(
+                        e.target.value
+                      )
+                    }
+                    placeholder="Taxa de entrega"
+                    inputMode="decimal"
+                    className="rounded-xl border bg-white p-3"
+                  />
 
 
                   <textarea
@@ -2604,12 +2257,11 @@ const precoConsulta =
                       e
                     ) =>
                       setObservacoes(
-                        e.target
-                          .value
+                        e.target.value
                       )
                     }
-                    placeholder="Observações da entrega"
-                    className="min-h-20 rounded-xl border p-3 sm:col-span-2"
+                    placeholder="Observações"
+                    className="min-h-20 rounded-xl border bg-white p-3"
                   />
 
                 </div>
@@ -2628,18 +2280,19 @@ const precoConsulta =
               </h2>
 
               <button
+                type="button"
                 onClick={
                   addPagamento
                 }
-                className="rounded-lg border px-3 py-2 text-sm font-bold"
+                className="rounded-xl border px-3 py-2 text-xs font-black"
               >
-                + Pagamento misto
+                + Misto
               </button>
 
             </div>
 
 
-            <div className="mt-3 space-y-3">
+            <div className="mt-3 space-y-2">
 
               {pagamentos.map(
                 (
@@ -2648,97 +2301,86 @@ const precoConsulta =
                 ) => (
 
                   <div
-                    key={
-                      idx
-                    }
-                    className="rounded-xl border p-3"
+                    key={idx}
+                    className="grid grid-cols-[1fr_120px_auto] gap-2 rounded-xl border p-2"
                   >
 
-                    <div className="grid grid-cols-[1fr_120px_auto] gap-2">
-
-                      <select
-                        value={
-                          p.forma
-                        }
-                        onChange={(
-                          e
-                        ) =>
-                          setPagamento(
-                            idx,
-                            {
-                              forma:
-                                e
-                                  .target
-                                  .value as Forma,
-                            }
-                          )
-                        }
-                        className="rounded-lg border p-2 font-bold"
-                      >
-
-                        <option>
-                          Dinheiro
-                        </option>
-
-                        <option>
-                          Pix
-                        </option>
-
-                        <option>
-                          Débito
-                        </option>
-
-                        <option>
-                          Crédito
-                        </option>
-
-                      </select>
-
-
-                      <input
-                        value={
-                          p.valor
-                        }
-                        onChange={(
-                          e
-                        ) =>
-                          setPagamento(
-                            idx,
-                            {
-                              valor:
-                                e
-                                  .target
-                                  .value,
-                            }
-                          )
-                        }
-                        className="rounded-lg border p-2 text-right font-bold"
-                        placeholder="0,00"
-                        inputMode="decimal"
-                      />
-
-
-                      {pagamentos.length >
-                        1 && (
-
-                        <button
-                          onClick={() =>
-                            removerPagamento(
-                              idx
-                            )
+                    <select
+                      value={
+                        p.forma
+                      }
+                      onChange={(
+                        e
+                      ) =>
+                        setPagamento(
+                          idx,
+                          {
+                            forma:
+                              e.target
+                                .value as Forma,
                           }
-                          className="rounded-lg p-2 text-red-600"
-                        >
-                          <Trash2
-                            size={
-                              18
-                            }
-                          />
-                        </button>
+                        )
+                      }
+                      className="min-w-0 rounded-lg border bg-white p-2 font-bold"
+                    >
+                      <option>
+                        Dinheiro
+                      </option>
 
-                      )}
+                      <option>
+                        Pix
+                      </option>
 
-                    </div>
+                      <option>
+                        Débito
+                      </option>
+
+                      <option>
+                        Crédito
+                      </option>
+                    </select>
+
+
+                    <input
+                      value={
+                        p.valor
+                      }
+                      onChange={(
+                        e
+                      ) =>
+                        setPagamento(
+                          idx,
+                          {
+                            valor:
+                              e.target
+                                .value,
+                          }
+                        )
+                      }
+                      inputMode="decimal"
+                      placeholder="0,00"
+                      className="min-w-0 rounded-lg border p-2 text-right font-black"
+                    />
+
+
+                    {pagamentos.length >
+                      1 && (
+
+                      <button
+                        type="button"
+                        onClick={() =>
+                          removerPagamento(
+                            idx
+                          )
+                        }
+                        className="rounded-lg p-2 text-red-600"
+                      >
+                        <Trash2
+                          size={18}
+                        />
+                      </button>
+
+                    )}
 
                   </div>
 
@@ -2750,10 +2392,9 @@ const precoConsulta =
 
             {/* RESUMO */}
 
-            <div className="mt-4 rounded-xl bg-slate-50 p-3 text-sm">
+            <div className="mt-4 space-y-1 rounded-xl bg-slate-50 p-3 text-sm">
 
               <div className="flex justify-between">
-
                 <span>
                   Subtotal bruto
                 </span>
@@ -2763,17 +2404,15 @@ const precoConsulta =
                     subtotalBruto
                   )}
                 </b>
-
               </div>
 
 
               {descontoTotal >
                 0 && (
 
-                <div className="mt-1 flex justify-between text-green-700">
-
+                <div className="flex justify-between text-green-700">
                   <span>
-                    Descontos nos itens
+                    Descontos
                   </span>
 
                   <b>
@@ -2782,14 +2421,12 @@ const precoConsulta =
                       descontoTotal
                     )}
                   </b>
-
                 </div>
 
               )}
 
 
-              <div className="mt-1 flex justify-between">
-
+              <div className="flex justify-between">
                 <span>
                   Subtotal
                 </span>
@@ -2799,15 +2436,13 @@ const precoConsulta =
                     subtotal
                   )}
                 </b>
-
               </div>
 
 
               {tipoAtendimento ===
                 "ENTREGA" && (
 
-                <div className="mt-1 flex justify-between">
-
+                <div className="flex justify-between">
                   <span>
                     Taxa entrega
                   </span>
@@ -2817,14 +2452,12 @@ const precoConsulta =
                       taxa
                     )}
                   </b>
-
                 </div>
 
               )}
 
 
-              <div className="mt-1 flex justify-between">
-
+              <div className="flex justify-between">
                 <span>
                   Informado
                 </span>
@@ -2834,20 +2467,17 @@ const precoConsulta =
                     totalPagamentos
                   )}
                 </b>
-
               </div>
 
 
-              <div className="mt-1 flex justify-between">
-
+              <div className="flex justify-between">
                 <span>
                   Falta
                 </span>
 
                 <b
                   className={
-                    faltante >
-                    0
+                    faltante > 0
                       ? "text-red-600"
                       : "text-green-700"
                   }
@@ -2856,57 +2486,26 @@ const precoConsulta =
                     faltante
                   )}
                 </b>
-
               </div>
 
             </div>
 
-
-            {/* ÍCONES */}
-
-            <div className="mt-4 grid grid-cols-4 gap-2 text-center text-xs font-bold text-slate-500">
-
-              <div>
-                <Banknote className="mx-auto" />
-                Dinheiro
-              </div>
-
-              <div>
-                <QrCode className="mx-auto" />
-                Pix
-              </div>
-
-              <div>
-                <CreditCard className="mx-auto" />
-                Débito
-              </div>
-
-              <div>
-                <CreditCard className="mx-auto" />
-                Crédito
-              </div>
-
-            </div>
-
-
-            {/* FINALIZAR */}
 
             <button
+              type="button"
               disabled={
                 salvando ||
                 !itens.length ||
                 Math.abs(
                   totalPagamentos -
                     total
-                ) >
-                  0.009
+                ) > 0.009
               }
               onClick={
                 finalizar
               }
-              className="mt-6 flex w-full items-center justify-center gap-2 rounded-2xl bg-green-600 py-5 text-xl font-black text-white disabled:opacity-40"
+              className="mt-5 flex w-full items-center justify-center gap-2 rounded-2xl bg-green-600 py-4 text-lg font-black text-white disabled:opacity-40"
             >
-
               <ReceiptText />
 
               {salvando
@@ -2915,21 +2514,155 @@ const precoConsulta =
                   "ENTREGA"
                 ? "FINALIZAR ENTREGA"
                 : "FINALIZAR VENDA"}
-
             </button>
-
-
-            <p className="mt-3 text-center text-xs text-slate-500">
-
-              Ao finalizar, a venda vai para o caixa e o comprovante abre para impressão automaticamente.
-
-            </p>
 
           </aside>
 
         </div>
 
       </div>
+
+
+      {/* BARRA FIXA MOBILE */}
+
+      <div className="fixed inset-x-0 bottom-0 z-40 border-t bg-white p-2 shadow-[0_-4px_20px_rgba(0,0,0,0.12)] md:hidden">
+
+        <div className="mx-auto flex max-w-lg items-center gap-3">
+
+          <div className="min-w-0 flex-1">
+
+            <div className="text-[10px] font-bold uppercase text-slate-500">
+              {quantidadeItens} item(ns)
+            </div>
+
+            <div className="text-2xl font-black text-blue-950">
+              {brl(total)}
+            </div>
+
+          </div>
+
+
+          <button
+            type="button"
+            disabled={
+              !itens.length
+            }
+            onClick={() =>
+              pagamentoRef.current?.scrollIntoView(
+                {
+                  behavior:
+                    "smooth",
+                  block: "start",
+                }
+              )
+            }
+            className="rounded-xl bg-blue-700 px-5 py-3 font-black text-white disabled:opacity-40"
+          >
+            PAGAMENTO
+          </button>
+
+        </div>
+
+      </div>
+
+
+      {/* MODAL CÂMERA */}
+
+      {cameraAberta && (
+
+        <div className="fixed inset-0 z-[100] bg-black">
+
+          <div className="flex h-full flex-col">
+
+            <div className="flex items-center justify-between bg-black/90 p-4 text-white">
+
+              <div>
+
+                <div className="font-black">
+                  Ler código de barras
+                </div>
+
+                <div className="text-xs text-slate-300">
+                  Aponte para o EAN do produto
+                </div>
+
+              </div>
+
+
+              <button
+                type="button"
+                onClick={
+                  fecharCamera
+                }
+                className="rounded-xl bg-white/10 p-2"
+              >
+                <X
+                  size={24}
+                />
+              </button>
+
+            </div>
+
+
+            <div className="relative flex flex-1 items-center justify-center overflow-hidden bg-black">
+
+              <video
+                ref={videoRef}
+                playsInline
+                muted
+                className="h-full w-full object-cover"
+              />
+
+
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+
+                <div className="relative h-36 w-[88%] max-w-md rounded-2xl border-2 border-white">
+
+                  <div className="absolute left-4 right-4 top-1/2 h-[2px] bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.9)]" />
+
+                </div>
+
+              </div>
+
+
+              {cameraLendo && (
+                <div className="absolute bottom-8 rounded-full bg-black/70 px-4 py-2 text-sm font-bold text-white">
+                  Procurando código...
+                </div>
+              )}
+
+            </div>
+
+
+            {cameraErro && (
+
+              <div className="bg-red-600 p-4 text-center text-sm font-bold text-white">
+                {cameraErro}
+              </div>
+
+            )}
+
+
+            <div className="bg-black p-4">
+
+              <button
+                type="button"
+                onClick={
+                  fecharCamera
+                }
+                className="w-full rounded-xl bg-white py-3 font-black text-slate-900"
+              >
+                Fechar câmera
+              </button>
+
+            </div>
+
+          </div>
+
+        </div>
+
+      )}
+
     </main>
   );
 }
