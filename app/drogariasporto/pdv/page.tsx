@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   ArrowLeft,
   Banknote,
+  Camera,
   CreditCard,
   Minus,
   Plus,
@@ -15,6 +16,7 @@ import {
   Trash2,
   Truck,
   Store,
+  X,
 } from "lucide-react";
 import { supabase } from "@/lib/supabaseClient";
 import { PORTO_LOJA_SLUG, brl } from "../_lib/porto";
@@ -186,6 +188,23 @@ export default function PortoPDV() {
 
   const inputRef =
     useRef<HTMLInputElement>(null);
+      const [cameraAberta, setCameraAberta] =
+    useState(false);
+
+  const [cameraErro, setCameraErro] =
+    useState("");
+
+  const videoRef =
+    useRef<HTMLVideoElement>(null);
+
+  const streamRef =
+    useRef<MediaStream | null>(null);
+
+  const scanFrameRef =
+    useRef<number | null>(null);
+
+  const codigoLidoRef =
+    useRef(false);
 
   const subtotalBruto =
     useMemo(
@@ -295,9 +314,245 @@ export default function PortoPDV() {
    * SEM ESTOQUE:
    * aparece depois para consulta.
    */
-  async function pesquisar() {
-    const termo =
-      busca.trim();
+    function fecharCamera() {
+    codigoLidoRef.current =
+      false;
+
+    if (
+      scanFrameRef.current !==
+      null
+    ) {
+      cancelAnimationFrame(
+        scanFrameRef.current
+      );
+
+      scanFrameRef.current =
+        null;
+    }
+
+    if (
+      streamRef.current
+    ) {
+      streamRef.current
+        .getTracks()
+        .forEach(
+          (track) =>
+            track.stop()
+        );
+
+      streamRef.current =
+        null;
+    }
+
+    if (
+      videoRef.current
+    ) {
+      videoRef.current.srcObject =
+        null;
+    }
+
+    setCameraAberta(
+      false
+    );
+  }
+
+  async function iniciarCamera() {
+    setCameraErro("");
+
+    codigoLidoRef.current =
+      false;
+
+    const BarcodeDetectorClass =
+      (window as any)
+        .BarcodeDetector;
+
+    if (
+      !BarcodeDetectorClass
+    ) {
+      setCameraErro(
+        "Este navegador não possui leitura nativa de código de barras. Tente pelo Chrome no celular."
+      );
+
+      return;
+    }
+
+    try {
+      const stream =
+        await navigator.mediaDevices.getUserMedia(
+          {
+            video: {
+              facingMode: {
+                ideal:
+                  "environment",
+              },
+            },
+
+            audio: false,
+          }
+        );
+
+      streamRef.current =
+        stream;
+
+      const video =
+        videoRef.current;
+
+      if (!video) {
+        stream
+          .getTracks()
+          .forEach(
+            (track) =>
+              track.stop()
+          );
+
+        return;
+      }
+
+      video.srcObject =
+        stream;
+
+      await video.play();
+
+      const detector =
+        new BarcodeDetectorClass(
+          {
+            formats: [
+              "ean_13",
+              "ean_8",
+              "upc_a",
+              "upc_e",
+              "code_128",
+            ],
+          }
+        );
+
+      const detectar =
+        async () => {
+          if (
+            codigoLidoRef.current ||
+            !videoRef.current
+          ) {
+            return;
+          }
+
+          try {
+            const codigos =
+              await detector.detect(
+                videoRef.current
+              );
+
+            if (
+              codigos?.length
+            ) {
+              const codigo =
+                String(
+                  codigos[0]
+                    .rawValue ||
+                    ""
+                ).trim();
+
+              if (codigo) {
+                codigoLidoRef.current =
+                  true;
+
+                setBusca(
+                  codigo
+                );
+
+                fecharCamera();
+
+                await pesquisar(
+                  codigo
+                );
+
+                return;
+              }
+            }
+          } catch (
+            erro
+          ) {
+            console.error(
+              "Erro na leitura do código:",
+              erro
+            );
+          }
+
+          scanFrameRef.current =
+            requestAnimationFrame(
+              detectar
+            );
+        };
+
+      scanFrameRef.current =
+        requestAnimationFrame(
+          detectar
+        );
+    } catch (
+      erro: any
+    ) {
+      console.error(
+        "Erro ao abrir câmera:",
+        erro
+      );
+
+      setCameraErro(
+        "Não foi possível abrir a câmera. Verifique a permissão do navegador."
+      );
+    }
+  }
+
+  useEffect(() => {
+    if (
+      !cameraAberta
+    ) {
+      return;
+    }
+
+    const timer =
+      setTimeout(
+        () => {
+          iniciarCamera();
+        },
+        100
+      );
+
+    return () => {
+      clearTimeout(
+        timer
+      );
+
+      if (
+        scanFrameRef.current !==
+        null
+      ) {
+        cancelAnimationFrame(
+          scanFrameRef.current
+        );
+      }
+
+      if (
+        streamRef.current
+      ) {
+        streamRef.current
+          .getTracks()
+          .forEach(
+            (track) =>
+              track.stop()
+          );
+
+        streamRef.current =
+          null;
+      }
+    };
+  }, [cameraAberta]);
+  async function pesquisar(
+  termoForcado?: string
+) {
+  const termo =
+    (
+      termoForcado ??
+      busca
+    ).trim();
 
     if (!termo) {
       setResultados([]);
@@ -1587,18 +1842,34 @@ const precoConsulta =
               </div>
 
               <button
-                onClick={
-                  pesquisar
+  type="button"
+  onClick={() =>
+    pesquisar()
+  }
+  disabled={
+    loading
+  }
+  className="rounded-xl bg-blue-700 px-4 font-black text-white disabled:opacity-50 md:px-6"
+>
+  {loading
+    ? "..."
+    : "Buscar"}
+
+                  <button
+                type="button"
+                onClick={() =>
+                  setCameraAberta(
+                    true
+                  )
                 }
-                disabled={
-                  loading
-                }
-                className="rounded-xl bg-blue-700 px-4 font-black text-white disabled:opacity-50 md:px-6"
+                className="flex min-w-12 items-center justify-center rounded-xl bg-slate-800 px-3 text-white hover:bg-slate-900"
+                title="Ler código pela câmera"
               >
-                {loading
-                  ? "..."
-                  : "Buscar"}
+                <Camera
+                  size={22}
+                />
               </button>
+</button>
 
             </div>
 
