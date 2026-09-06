@@ -447,27 +447,34 @@ export default function PortoPDV() {
                   0
               );
 
-            const precoPorto =
-              Number(
-                porto?.preco_venda ||
-                  0
-              );
+            const precoPortoCadastrado =
+  Number(
+    porto?.preco_venda ||
+      0
+  );
 
-            /*
-             * Preço para consulta.
-             *
-             * Sem estoque:
-             * usa PMC do FV.
-             *
-             * Se não existir PMC,
-             * tenta preço Porto.
-             */
-            const precoConsulta =
-              Number(
-                p?.pmc ||
-                  precoPorto ||
-                  0
-              );
+const precoPMC =
+  Number(
+    p?.pmc ||
+      0
+  );
+
+/*
+ * Se existe preço próprio da Porto, usa ele.
+ * Se não existir, usa o PMC do FV.
+ */
+const precoPorto =
+  precoPortoCadastrado > 0
+    ? precoPortoCadastrado
+    : precoPMC;
+
+/*
+ * Preço usado para consulta
+ */
+const precoConsulta =
+  precoPMC > 0
+    ? precoPMC
+    : precoPorto;
 
             /*
              * REGRA DE VENDA
