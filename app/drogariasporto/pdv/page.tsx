@@ -1841,6 +1841,21 @@ const precoConsulta =
 
               </div>
 
+                            <button
+                type="button"
+                onClick={() =>
+                  setCameraAberta(
+                    true
+                  )
+                }
+                className="flex min-w-12 items-center justify-center rounded-xl bg-slate-800 px-3 text-white hover:bg-slate-900"
+                title="Ler código pela câmera"
+              >
+                <Camera
+                  size={22}
+                />
+              </button>
+
               <button
   type="button"
   onClick={() =>
@@ -1855,20 +1870,6 @@ const precoConsulta =
     ? "..."
     : "Buscar"}
 </button>
-              <button
-                type="button"
-                onClick={() =>
-                  setCameraAberta(
-                    true
-                  )
-                }
-                className="flex min-w-12 items-center justify-center rounded-xl bg-slate-800 px-3 text-white hover:bg-slate-900"
-                title="Ler código pela câmera"
-              >
-                <Camera
-                  size={22}
-                />
-              </button>
 
             </div>
 
