@@ -1,70 +1,53 @@
 "use client";
 
-import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import {
   ArrowLeft,
-  Barcode,
   Camera,
-  Check,
-  ChevronLeft,
-  ChevronRight,
-  CircleDollarSign,
-  ImageIcon,
-  Loader2,
-  Package,
-  PackagePlus,
+  ChevronDown,
+  ChevronUp,
+  LogOut,
+  Minus,
   RefreshCw,
+  Save,
   Search,
-  ShoppingCart,
-  Sparkles,
+  Settings2,
   X,
 } from "lucide-react";
-
-import { createClient } from "@supabase/supabase-js";
+import { BrowserMultiFormatReader } from "@zxing/browser";
+import { supabase } from "@/lib/supabaseClient";
 
 /* =========================================================
-   DROGARIA REDE FABIANO
-   ADMIN PRODUTOS — MOBILE / MODERNO
-   ========================================================= */
+   CONFIGURAÇÃO REDE FABIANO
+========================================================= */
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+const SENHA_ADMIN = "021185";
 
 const FARMACIA_SLUG = "drogariaredefabiano";
-const SENHA_ADMIN = "102030";
 
-const VIEW = "fv_produtos_loja_view";
-const WRITE_TABLE = "fv_farmacia_produtos";
 const PROD_TABLE = "fv_produtos";
+const STORE_TABLE = "fv_farmacia_produtos";
 
-const PAGE_SIZE = 30;
+const PAGE_SIZE = 50;
 
-/* =========================================================
-   TIPOS
-   ========================================================= */
-
-type ViewRow = {
+type ProdutoFabiano = {
   farmacia_slug: string;
   produto_id: string;
 
-  ean: string | null;
-  nome: string | null;
+  ean: string;
+  nome: string;
+
   laboratorio: string | null;
   categoria: string | null;
   apresentacao: string | null;
 
-  imagens: any | null;
+  imagens: string[] | null;
 
   disponivel_farmacia: boolean | null;
+  ativo_site: boolean | null;
+  ativo_pdv: boolean | null;
 
   estoque: number | null;
 
@@ -78,1147 +61,652 @@ type ViewRow = {
   destaque_home: boolean | null;
 };
 
-type RowUI = ViewRow & {
-  _dirty?: boolean;
-  _saving?: boolean;
-  _error?: string | null;
+type EditProduto = ProdutoFabiano & {
+  pmc?: number | null;
 };
 
-type BarcodeDetectorConstructor = new (options?: {
-  formats?: string[];
-}) => {
-  detect: (
-    source: ImageBitmapSource
-  ) => Promise<
-    Array<{
-      rawValue?: string;
-      format?: string;
-    }>
-  >;
+type NovoProduto = {
+  ean: string;
+  nome: string;
+
+  laboratorio: string;
+  categoria: string;
+  apresentacao: string;
+
+  pmc: string;
+
+  preco_custo: string;
+  preco_venda: string;
+
+  estoque: string;
+
+  em_promocao: boolean;
+  preco_promocional: string;
+  percentual_off: string;
+
+  destaque_home: boolean;
+
+  ativo: boolean;
+  ativo_site: boolean;
+  ativo_pdv: boolean;
+
+  imagensText: string;
+};
+
+const NOVO_VAZIO: NovoProduto = {
+  ean: "",
+  nome: "",
+
+  laboratorio: "",
+  categoria: "",
+  apresentacao: "",
+
+  pmc: "",
+
+  preco_custo: "",
+  preco_venda: "",
+
+  estoque: "0",
+
+  em_promocao: false,
+  preco_promocional: "",
+  percentual_off: "",
+
+  destaque_home: false,
+
+  ativo: true,
+  ativo_site: true,
+  ativo_pdv: true,
+
+  imagensText: "",
 };
 
 /* =========================================================
-   HELPERS
-   ========================================================= */
+   FUNÇÕES AUXILIARES
+========================================================= */
 
-function onlyDigits(value: string) {
-  return (value || "").replace(/\D/g, "");
-}
+function brl(v: number | null | undefined) {
+  if (
+    v === null ||
+    v === undefined ||
+    Number.isNaN(Number(v))
+  ) {
+    return "—";
+  }
 
-function brl(value: number | null | undefined) {
-  const n = Number(value || 0);
-
-  return n.toLocaleString("pt-BR", {
+  return Number(v).toLocaleString("pt-BR", {
     style: "currency",
     currency: "BRL",
   });
 }
 
-function numberFromInput(value: string) {
-  if (value.trim() === "") return null;
-
-  /*
-    Aceita:
-    10
-    10.50
-    10,50
-  */
-
-  let normalized = value.trim();
-
-  if (normalized.includes(",") && normalized.includes(".")) {
-    normalized = normalized.replace(/\./g, "").replace(",", ".");
-  } else {
-    normalized = normalized.replace(",", ".");
+function firstImg(imagens?: string[] | null) {
+  if (
+    Array.isArray(imagens) &&
+    imagens.length > 0 &&
+    imagens[0]
+  ) {
+    return imagens[0];
   }
 
-  const n = Number(normalized);
-
-  return Number.isFinite(n) ? n : null;
+  return "/produtos/caixa-padrao.png";
 }
 
-function normalizeImgs(value: any): string[] {
-  if (!value) return [];
+function onlyDigits(v: string) {
+  return (v || "").replace(/\D/g, "");
+}
 
-  if (Array.isArray(value)) {
-    return value.map(String).filter(Boolean);
+function toNum(v: unknown) {
+  if (v === null || v === undefined) {
+    return null;
   }
 
-  if (typeof value === "string") {
-    try {
-      const parsed = JSON.parse(value);
+  let s = String(v).trim();
 
-      if (Array.isArray(parsed)) {
-        return parsed.map(String).filter(Boolean);
-      }
-    } catch {
-      return value.trim() ? [value.trim()] : [];
-    }
+  if (!s) {
+    return null;
   }
 
-  return [];
+  if (s.includes(",")) {
+    s = s
+      .replace(/\./g, "")
+      .replace(",", ".");
+  }
+
+  const n = Number(s);
+
+  return Number.isFinite(n)
+    ? n
+    : null;
 }
 
-function firstImg(value: any) {
-  const imgs = normalizeImgs(value);
+function toInt(v: unknown) {
+  const n = toNum(v);
 
-  return imgs.length > 0
-    ? imgs[0]
-    : "/produtos/caixa-padrao.png";
+  return n === null
+    ? null
+    : Math.trunc(n);
 }
 
-function cleanUrl(url: string) {
-  return (url || "").trim().replace(/\s+/g, "");
-}
+function safeJsonArray(v: string): string[] | null {
+  const raw = v.trim();
 
-function isValidHttpUrl(url: string) {
+  if (!raw) {
+    return null;
+  }
+
   try {
-    const parsed = new URL(url);
+    const parsed = JSON.parse(raw);
 
-    return (
-      parsed.protocol === "http:" ||
-      parsed.protocol === "https:"
-    );
-  } catch {
-    return false;
-  }
-}
+    if (Array.isArray(parsed)) {
+      const arr = parsed
+        .map((x) => String(x || "").trim())
+        .filter(Boolean);
 
-function urlsToJsonb(text: string): string[] {
-  const lines = (text || "")
-    .split("\n")
-    .map((line) => cleanUrl(line))
+      return arr.length
+        ? arr
+        : null;
+    }
+  } catch {}
+
+  const arr = raw
+    .split(/[\n,;]/g)
+    .map((x) => x.trim())
     .filter(Boolean);
 
-  const valid = lines.filter(isValidHttpUrl);
-
-  return Array.from(new Set(valid));
+  return arr.length
+    ? arr
+    : null;
 }
 
-function escapeForILike(term: string) {
-  return term
-    .replaceAll("\\", "\\\\")
-    .replaceAll("%", "\\%")
-    .replaceAll("_", "\\_")
-    .replace(/,+/g, " ")
-    .trim();
+function margem(
+  custo: number | null | undefined,
+  venda: number | null | undefined
+) {
+  const c = Number(custo || 0);
+  const v = Number(venda || 0);
+
+  if (c <= 0 || v <= 0) {
+    return null;
+  }
+
+  return ((v - c) / v) * 100;
 }
 
-function stockStyle(stock: number) {
-  if (stock <= 0) {
-    return {
-      label: "SEM ESTOQUE",
-      className:
-        "bg-red-50 text-red-700 border-red-200",
-    };
+function lucro(
+  custo: number | null | undefined,
+  venda: number | null | undefined
+) {
+  const c = Number(custo || 0);
+  const v = Number(venda || 0);
+
+  if (v <= 0) {
+    return null;
   }
 
-  if (stock <= 5) {
-    return {
-      label: "ESTOQUE BAIXO",
-      className:
-        "bg-amber-50 text-amber-700 border-amber-200",
-    };
-  }
-
-  return {
-    label: "EM ESTOQUE",
-    className:
-      "bg-emerald-50 text-emerald-700 border-emerald-200",
-  };
+  return v - c;
 }
 
 /* =========================================================
-   COMPONENTE
-   ========================================================= */
+   LOGIN
+========================================================= */
 
 export default function AdminProdutosFabiano() {
-  /* =======================================================
-     LOGIN
-     ======================================================= */
-
-  const [autenticado, setAutenticado] = useState(false);
+  const [authed, setAuthed] = useState(false);
   const [senha, setSenha] = useState("");
 
-  /* =======================================================
-     GERAL
-     ======================================================= */
-
-  const [carregando, setCarregando] = useState(false);
-  const [toastMsg, setToastMsg] = useState<string | null>(null);
-
-  /*
-    IMPORTANTE:
-
-    A tela nova NÃO abre despejando o estoque inteiro.
-
-    O usuário pesquisa pelo:
-    - nome
-    - EAN
-    - laboratório
-    - apresentação
-
-    ou usa a câmera.
-  */
-
-  const [jaPesquisou, setJaPesquisou] = useState(false);
-
-  const [rows, setRows] = useState<RowUI[]>([]);
-
-  const rowsRef = useRef<RowUI[]>([]);
-
   useEffect(() => {
-    rowsRef.current = rows;
-  }, [rows]);
+    if (
+      typeof window !== "undefined" &&
+      localStorage.getItem(
+        "fabiano_admin_produtos_ok"
+      ) === "1"
+    ) {
+      setAuthed(true);
+    }
+  }, []);
 
-  /* =======================================================
-     BUSCA
-     ======================================================= */
+  function login() {
+    if (senha === SENHA_ADMIN) {
+      localStorage.setItem(
+        "fabiano_admin_produtos_ok",
+        "1"
+      );
 
-  const [busca, setBusca] = useState("");
-
-  const buscaRef = useRef<HTMLInputElement | null>(null);
-
-  const [somenteAtivos, setSomenteAtivos] = useState(false);
-  const [somenteComEstoque, setSomenteComEstoque] =
-    useState(false);
-
-  /* =======================================================
-     PAGINAÇÃO
-     ======================================================= */
-
-  const [page, setPage] = useState(1);
-  const [totalCount, setTotalCount] = useState(0);
-
-  const totalPages = useMemo(() => {
-    if (!totalCount) return 1;
-
-    return Math.max(
-      1,
-      Math.ceil(totalCount / PAGE_SIZE)
-    );
-  }, [totalCount]);
-
-  /* =======================================================
-     AUTOSAVE
-     ======================================================= */
-
-  const timersRef = useRef<Record<string, any>>({});
-
-  /* =======================================================
-     MODAL IMAGEM
-     ======================================================= */
-
-  const [imgModalOpen, setImgModalOpen] = useState(false);
-  const [imgProduto, setImgProduto] =
-    useState<RowUI | null>(null);
-
-  const [imgTextarea, setImgTextarea] = useState("");
-  const [imgSaving, setImgSaving] = useState(false);
-
-  /* =======================================================
-     NOVO PRODUTO
-     ======================================================= */
-
-  const [novoOpen, setNovoOpen] = useState(false);
-  const [novoSaving, setNovoSaving] = useState(false);
-
-  const [novoEAN, setNovoEAN] = useState("");
-  const [novoNome, setNovoNome] = useState("");
-  const [novoLab, setNovoLab] = useState("");
-  const [novoCategoria, setNovoCategoria] = useState("");
-  const [novoApresentacao, setNovoApresentacao] =
-    useState("");
-
-  const [novoImgs, setNovoImgs] = useState("");
-
-  const [novoAtivo, setNovoAtivo] = useState(true);
-  const [novoDestaque, setNovoDestaque] = useState(false);
-
-  const [novoEstoque, setNovoEstoque] = useState("0");
-
-  // NOVO — PREÇO DE CUSTO
-  const [novoPrecoCusto, setNovoPrecoCusto] = useState("");
-
-  const [novoPreco, setNovoPreco] = useState("");
-
-  const [novoPromo, setNovoPromo] = useState(false);
-  const [novoPrecoPromo, setNovoPrecoPromo] = useState("");
-  const [novoOff, setNovoOff] = useState("");
-
-  /* =======================================================
-     CÂMERA / LEITOR EAN
-     ======================================================= */
-
-  const [cameraOpen, setCameraOpen] = useState(false);
-
-  const [cameraTarget, setCameraTarget] = useState<
-    "busca" | "novo"
-  >("busca");
-
-  const [cameraErro, setCameraErro] =
-    useState<string | null>(null);
-
-  const [cameraLendo, setCameraLendo] = useState(false);
-
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-
-  const streamRef = useRef<MediaStream | null>(null);
-
-  const scanTimerRef = useRef<any>(null);
-
-  /* =======================================================
-     TOAST
-     ======================================================= */
-
-  function toast(message: string) {
-    setToastMsg(message);
-
-    window.clearTimeout((toast as any)._timer);
-
-    (toast as any)._timer = window.setTimeout(() => {
-      setToastMsg(null);
-    }, 2200);
+      setAuthed(true);
+    } else {
+      alert("Senha incorreta.");
+    }
   }
 
-  /* =======================================================
-     LOGIN
-     ======================================================= */
+  function sair() {
+    localStorage.removeItem(
+      "fabiano_admin_produtos_ok"
+    );
 
-  function autenticar() {
-    if (senha === SENHA_ADMIN) {
-      setAutenticado(true);
-      setSenha("");
+    setAuthed(false);
+    setSenha("");
+  }
 
-      setTimeout(() => {
-        buscaRef.current?.focus();
-      }, 250);
+  if (!authed) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-100 p-4">
+        <div className="w-full max-w-md rounded-3xl bg-white p-6 shadow-xl">
+          <div className="text-xs font-black uppercase text-blue-700">
+            Drogaria Rede Fabiano
+          </div>
+
+          <div className="mt-1 text-2xl font-black text-slate-950">
+            Admin de Produtos
+          </div>
+
+          <div className="mt-1 text-sm text-slate-500">
+            Integrado ao FV Marketplace
+          </div>
+
+          <input
+            value={senha}
+            onChange={(e) =>
+              setSenha(e.target.value)
+            }
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                login();
+              }
+            }}
+            type="password"
+            placeholder="Senha"
+            className="mt-5 w-full rounded-2xl border-2 border-slate-200 px-4 py-3 font-bold outline-none focus:border-blue-600"
+          />
+
+          <button
+            onClick={login}
+            className="mt-3 w-full rounded-2xl bg-blue-800 py-3 font-black text-white"
+          >
+            Entrar
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <AdminProdutosInner
+      onSair={sair}
+    />
+  );
+}
+
+/* =========================================================
+   ADMIN INTERNO
+========================================================= */
+
+function AdminProdutosInner({
+  onSair,
+}: {
+  onSair: () => void;
+}) {
+  const [loading, setLoading] = useState(false);
+
+  const [savingId, setSavingId] =
+    useState<string | null>(null);
+
+  const [deletingId, setDeletingId] =
+    useState<string | null>(null);
+
+  const [q, setQ] = useState("");
+
+  const [page, setPage] = useState(1);
+
+  const [stockMode, setStockMode] =
+    useState<"all" | "gt0" | "eq0">("all");
+
+  const [rows, setRows] =
+    useState<ProdutoFabiano[]>([]);
+
+  const [total, setTotal] = useState(0);
+
+  const [editing, setEditing] =
+    useState<EditProduto | null>(null);
+
+  const [novo, setNovo] =
+    useState<NovoProduto>(NOVO_VAZIO);
+
+  const [novoAberto, setNovoAberto] =
+    useState(false);
+
+  /* =========================================================
+     CÂMERA ZXING
+  ========================================================= */
+
+  const [cameraAberta, setCameraAberta] =
+    useState(false);
+
+  const [cameraErro, setCameraErro] =
+    useState("");
+
+  const [cameraLendo, setCameraLendo] =
+    useState(false);
+
+  const videoRef =
+    useRef<HTMLVideoElement>(null);
+
+  const scannerControlsRef =
+    useRef<any>(null);
+
+  const codigoLidoRef =
+    useRef(false);
+
+  /* =========================================================
+     CARREGAR PRODUTOS
+  ========================================================= */
+
+  async function load(
+    termoForcado?: string
+  ) {
+    const rawBusca =
+      (
+        termoForcado ??
+        q
+      ).trim();
+
+    if (!rawBusca) {
+      setRows([]);
+      setTotal(0);
+      setLoading(false);
 
       return;
     }
 
-    alert("Senha incorreta!");
-  }
+    try {
+      setLoading(true);
 
-  /* =======================================================
-     LIMPAR BUSCA
-     ======================================================= */
-
-  function limparBusca() {
-    setBusca("");
-    setRows([]);
-    setTotalCount(0);
-    setPage(1);
-    setJaPesquisou(false);
-
-    setSomenteAtivos(false);
-    setSomenteComEstoque(false);
-
-    setTimeout(() => {
-      buscaRef.current?.focus();
-    }, 100);
-  }
-
-  /* =======================================================
-     BUSCAR PRODUTOS
-     ======================================================= */
-
-  const carregar = useCallback(
-    async (
-      pagina = 1,
-      termoForcado?: string
-    ) => {
-      const termo = (
-        termoForcado !== undefined
-          ? termoForcado
-          : busca
-      ).trim();
-
-      /*
-        Diferente da versão antiga:
-        não busca todos os produtos quando campo está vazio.
-      */
-
-      if (!termo) {
-        setRows([]);
-        setTotalCount(0);
-        setJaPesquisou(false);
-        setCarregando(false);
-
-        return;
-      }
-
-      try {
-        setCarregando(true);
-        setJaPesquisou(true);
-
-        const digits = onlyDigits(termo);
-
-        const from =
-          (pagina - 1) * PAGE_SIZE;
-
-        const to =
-          from + PAGE_SIZE - 1;
-
-        let query = supabase
-          .from(VIEW)
+      let masterQuery =
+        supabase
+          .from(PROD_TABLE)
           .select(
-            `
-              farmacia_slug,
-              produto_id,
-              ean,
-              nome,
-              laboratorio,
-              categoria,
-              apresentacao,
-              imagens,
-              disponivel_farmacia,
-              estoque,
-              preco_custo,
-              preco_venda,
-              em_promocao,
-              preco_promocional,
-              percentual_off,
-              destaque_home
-            `,
+            "id,ean,nome,laboratorio,categoria,apresentacao,pmc,imagens,ativo",
             {
               count: "exact",
             }
-          )
-          .eq(
-            "farmacia_slug",
-            FARMACIA_SLUG
           );
 
-        if (somenteAtivos) {
-          query = query.eq(
-            "disponivel_farmacia",
-            true
-          );
-        }
+      const raw = rawBusca;
 
-        if (somenteComEstoque) {
-          query = query.gt("estoque", 0);
-        }
+      const digits =
+        onlyDigits(raw);
 
-        /*
-          Se for código de barras:
-          prioriza EAN.
+      const rawNoSpace =
+        raw.replace(/\s/g, "");
 
-          Ex:
-          7891058001158
-        */
-
-        if (
-          digits.length >= 6 &&
-          digits === termo.replace(/\s/g, "")
-        ) {
-          query = query.ilike(
+      if (
+        digits.length >= 8 &&
+        digits.length <= 14 &&
+        digits === rawNoSpace
+      ) {
+        masterQuery =
+          masterQuery.eq(
             "ean",
-            `%${digits}%`
+            digits
           );
-        } else {
-          const safe =
-            escapeForILike(termo);
+      } else if (
+        digits.length >= 8 &&
+        digits.length <= 14
+      ) {
+        masterQuery =
+          masterQuery.or(
+            `ean.eq.${digits},nome.ilike.%${raw}%`
+          );
+      } else {
+        const safe =
+          raw.replace(/,/g, " ");
 
-          query = query.or(
-            [
-              `nome.ilike.%${safe}%`,
-              `laboratorio.ilike.%${safe}%`,
-              `apresentacao.ilike.%${safe}%`,
-              `ean.ilike.%${safe}%`,
-            ].join(",")
+        masterQuery =
+          masterQuery.or(
+            `nome.ilike.%${safe}%,laboratorio.ilike.%${safe}%,categoria.ilike.%${safe}%,apresentacao.ilike.%${safe}%`
           );
+      }
+
+      masterQuery =
+        masterQuery.order(
+          "nome",
+          {
+            ascending: true,
+          }
+        );
+
+      const from =
+        (page - 1) * PAGE_SIZE;
+
+      const to =
+        from + PAGE_SIZE - 1;
+
+      const {
+        data: master,
+        count,
+        error: masterError,
+      } =
+        await masterQuery.range(
+          from,
+          to
+        );
+
+      if (masterError) {
+        throw masterError;
+      }
+
+      const produtos =
+        master || [];
+
+      const ids =
+        produtos.map(
+          (p: any) =>
+            String(p.id)
+        );
+
+      let lojaMap =
+        new Map<string, any>();
+
+      if (ids.length) {
+        const {
+          data: loja,
+          error: lojaError,
+        } =
+          await supabase
+            .from(STORE_TABLE)
+            .select(
+              "produto_id,estoque,preco_custo,preco_venda,ativo,ativo_site,ativo_pdv,em_promocao,preco_promocional,percentual_off,destaque_home"
+            )
+            .eq(
+              "farmacia_slug",
+              FARMACIA_SLUG
+            )
+            .in(
+              "produto_id",
+              ids
+            );
+
+        if (lojaError) {
+          throw lojaError;
         }
 
-        /*
-          Produtos com estoque primeiro.
-          Depois ordem alfabética.
-        */
-
-        query = query
-          .order("estoque", {
-            ascending: false,
-            nullsFirst: false,
-          })
-          .order("nome", {
-            ascending: true,
-          })
-          .range(from, to);
-
-        const {
-          data,
-          error,
-          count,
-        } = await query;
-
-        if (error) throw error;
-
-        const list: RowUI[] = (
-          data || []
-        ).map((item: any) => ({
-          ...item,
-
-          preco_custo:
-            item.preco_custo == null
-              ? null
-              : Number(item.preco_custo),
-
-          preco_venda:
-            item.preco_venda == null
-              ? null
-              : Number(item.preco_venda),
-
-          estoque:
-            item.estoque == null
-              ? 0
-              : Number(item.estoque),
-
-          _dirty: false,
-          _saving: false,
-          _error: null,
-        }));
-
-        setRows(list);
-
-        setTotalCount(
-          Number(count || 0)
-        );
-
-        setPage(pagina);
-      } catch (error: any) {
-        console.error(error);
-
-        setRows([]);
-        setTotalCount(0);
-
-        alert(
-          error?.message ||
-            "Erro ao buscar produtos."
-        );
-      } finally {
-        setCarregando(false);
-      }
-    },
-    [
-      busca,
-      somenteAtivos,
-      somenteComEstoque,
-    ]
-  );
-
-  /* =======================================================
-     ENTER NA BUSCA
-     ======================================================= */
-
-  function handleBuscaKeyDown(
-    event: React.KeyboardEvent<HTMLInputElement>
-  ) {
-    if (event.key !== "Enter") return;
-
-    event.preventDefault();
-
-    setPage(1);
-
-    carregar(1);
-  }
-
-  /* =======================================================
-     BUSCA COM DEBOUNCE
-     ======================================================= */
-
-  useEffect(() => {
-    if (!autenticado) return;
-
-    const termo = busca.trim();
-
-    if (!termo) {
-      setRows([]);
-      setTotalCount(0);
-      setJaPesquisou(false);
-
-      return;
-    }
-
-    /*
-      Para EAN lido pela câmera ou digitado,
-      não precisa esperar muito.
-    */
-
-    const digits = onlyDigits(termo);
-
-    const delay =
-      digits.length >= 8
-        ? 150
-        : 500;
-
-    const timer = window.setTimeout(() => {
-      setPage(1);
-
-      carregar(1);
-    }, delay);
-
-    return () =>
-      window.clearTimeout(timer);
-  }, [
-    busca,
-    autenticado,
-    somenteAtivos,
-    somenteComEstoque,
-    carregar,
-  ]);
-
-  /* =======================================================
-     ALTERAR CAMPO
-     ======================================================= */
-
-  function setField(
-    produtoId: string,
-    patch: Partial<RowUI>,
-    autosave = true
-  ) {
-    setRows((prev) =>
-      prev.map((item) =>
-        item.produto_id === produtoId
-          ? {
-              ...item,
-              ...patch,
-              _dirty: true,
-              _error: null,
-            }
-          : item
-      )
-    );
-
-    if (autosave) {
-      agendarSalvar(produtoId);
-    }
-  }
-
-  /* =======================================================
-     AUTOSAVE
-     ======================================================= */
-
-  function agendarSalvar(
-    produtoId: string,
-    ms = 700
-  ) {
-    if (timersRef.current[produtoId]) {
-      window.clearTimeout(
-        timersRef.current[produtoId]
-      );
-    }
-
-    timersRef.current[produtoId] =
-      window.setTimeout(() => {
-        salvarAgora(produtoId);
-
-        timersRef.current[produtoId] =
-          null;
-      }, ms);
-  }
-
-  /* =======================================================
-     SALVAR PRODUTO
-     ======================================================= */
-
-  async function salvarAgora(
-    produtoId: string
-  ) {
-    const row =
-      rowsRef.current.find(
-        (item) =>
-          item.produto_id === produtoId
-      );
-
-    if (!row) return;
-
-    const imgs =
-      normalizeImgs(row.imagens);
-
-    const estoque =
-      Math.max(
-        0,
-        Number(row.estoque || 0)
-      );
-
-    const precoCusto =
-      row.preco_custo == null
-        ? null
-        : Number(row.preco_custo);
-
-    const precoVenda =
-      row.preco_venda == null
-        ? null
-        : Number(row.preco_venda);
-
-    const precoPromo =
-      row.preco_promocional == null
-        ? null
-        : Number(
-            row.preco_promocional
+        lojaMap =
+          new Map(
+            (loja || []).map(
+              (r: any) => [
+                String(
+                  r.produto_id
+                ),
+                r,
+              ]
+            )
           );
+      }
 
-    const percentualOff =
-      row.percentual_off == null
-        ? null
-        : Number(row.percentual_off);
+      let merged: ProdutoFabiano[] =
+        produtos.map(
+          (p: any) => {
+            const loja =
+              lojaMap.get(
+                String(p.id)
+              );
 
-    const payload = {
-      farmacia_slug:
-        FARMACIA_SLUG,
-
-      produto_id:
-        row.produto_id,
-
-      ativo:
-        !!row.disponivel_farmacia,
-
-      estoque,
-
-      // NOVO
-      preco_custo: precoCusto,
-
-      preco_venda: precoVenda,
-
-      em_promocao:
-        !!row.em_promocao,
-
-      preco_promocional:
-        precoPromo,
-
-      percentual_off:
-        percentualOff,
-
-      destaque_home:
-        !!row.destaque_home,
-
-      imagens:
-        imgs.length
-          ? imgs
-          : null,
-    };
-
-    setRows((prev) =>
-      prev.map((item) =>
-        item.produto_id === produtoId
-          ? {
-              ...item,
-              _saving: true,
-              _error: null,
-            }
-          : item
-      )
-    );
-
-    try {
-      const { error } =
-        await supabase
-          .from(WRITE_TABLE)
-          .upsert(payload, {
-            onConflict:
-              "farmacia_slug,produto_id",
-          });
-
-      if (error) throw error;
-
-      setRows((prev) =>
-        prev.map((item) =>
-          item.produto_id === produtoId
-            ? {
-                ...item,
-                _saving: false,
-                _dirty: false,
-                _error: null,
-              }
-            : item
-        )
-      );
-
-      toast("Produto salvo");
-    } catch (error: any) {
-      console.error(error);
-
-      setRows((prev) =>
-        prev.map((item) =>
-          item.produto_id === produtoId
-            ? {
-                ...item,
-                _saving: false,
-                _error:
-                  error?.message ||
-                  "Erro ao salvar",
-              }
-            : item
-        )
-      );
-
-      toast("Erro ao salvar");
-    }
-  }
-
-  /* =======================================================
-     IMAGENS
-     ======================================================= */
-
-  function abrirModalImagens(
-    row: RowUI
-  ) {
-    setImgProduto(row);
-
-    setImgTextarea(
-      normalizeImgs(
-        row.imagens
-      ).join("\n")
-    );
-
-    setImgModalOpen(true);
-  }
-
-  function fecharModalImagens() {
-    setImgModalOpen(false);
-    setImgProduto(null);
-    setImgTextarea("");
-    setImgSaving(false);
-  }
-
-  async function salvarImagensDoModal() {
-    if (!imgProduto) return;
-
-    const imgs =
-      urlsToJsonb(imgTextarea);
-
-    const lines = (
-      imgTextarea || ""
-    )
-      .split("\n")
-      .map((line) =>
-        cleanUrl(line)
-      )
-      .filter(Boolean);
-
-    const invalid =
-      lines.filter(
-        (url) =>
-          !isValidHttpUrl(url)
-      );
-
-    if (invalid.length > 0) {
-      alert(
-        "Existe uma URL inválida.\n\nAs imagens precisam começar com http:// ou https://"
-      );
-
-      return;
-    }
-
-    setImgSaving(true);
-
-    try {
-      const { error } =
-        await supabase
-          .from(WRITE_TABLE)
-          .upsert(
-            {
+            return {
               farmacia_slug:
                 FARMACIA_SLUG,
 
               produto_id:
-                imgProduto.produto_id,
+                String(p.id),
+
+              ean:
+                String(p.ean || ""),
+
+              nome:
+                String(p.nome || ""),
+
+              laboratorio:
+                p.laboratorio ?? null,
+
+              categoria:
+                p.categoria ?? null,
+
+              apresentacao:
+                p.apresentacao ?? null,
 
               imagens:
-                imgs.length
-                  ? imgs
+                Array.isArray(p.imagens)
+                  ? p.imagens
                   : null,
-            },
-            {
-              onConflict:
-                "farmacia_slug,produto_id",
-            }
+
+              disponivel_farmacia:
+                !!loja?.ativo,
+
+              ativo_site:
+                !!loja?.ativo_site,
+
+              ativo_pdv:
+                !!loja?.ativo_pdv,
+
+              estoque:
+                Number(
+                  loja?.estoque ?? 0
+                ),
+
+              preco_custo:
+                loja?.preco_custo ??
+                null,
+
+              preco_venda:
+                loja?.preco_venda ??
+                p.pmc ??
+                null,
+
+              em_promocao:
+                !!loja?.em_promocao,
+
+              preco_promocional:
+                loja?.preco_promocional ??
+                null,
+
+              percentual_off:
+                loja?.percentual_off ??
+                null,
+
+              destaque_home:
+                !!loja?.destaque_home,
+            };
+          }
+        );
+
+      if (stockMode === "gt0") {
+        merged =
+          merged.filter(
+            (p) =>
+              Number(
+                p.estoque || 0
+              ) > 0
           );
+      }
 
-      if (error) throw error;
+      if (stockMode === "eq0") {
+        merged =
+          merged.filter(
+            (p) =>
+              Number(
+                p.estoque || 0
+              ) === 0
+          );
+      }
 
-      setRows((prev) =>
-        prev.map((item) =>
-          item.produto_id ===
-          imgProduto.produto_id
-            ? {
-                ...item,
+      setRows(merged);
+      setTotal(count || 0);
 
-                imagens:
-                  imgs.length
-                    ? imgs
-                    : null,
+      if (
+        digits.length >= 8 &&
+        merged.length === 0
+      ) {
+        setNovo((p) => ({
+          ...p,
+          ean: digits,
+        }));
 
-                _dirty: false,
-                _error: null,
-              }
-            : item
-        )
+        setNovoAberto(true);
+      }
+    } catch (e: any) {
+      console.error(
+        "Rede Fabiano admin produtos:",
+        e
       );
 
-      toast("Imagens salvas");
-
-      fecharModalImagens();
-    } catch (error: any) {
-      console.error(error);
-
       alert(
-        error?.message ||
-          "Erro ao salvar imagens."
+        e?.message ||
+          "Erro ao carregar produtos do catálogo FV."
       );
     } finally {
-      setImgSaving(false);
+      setLoading(false);
     }
   }
 
-  /* =======================================================
-     NOVO PRODUTO
-     ======================================================= */
-
-  function abrirNovoProduto(
-    eanInicial = ""
-  ) {
-    setNovoEAN(eanInicial);
-
-    setNovoNome("");
-    setNovoLab("");
-    setNovoCategoria("");
-    setNovoApresentacao("");
-    setNovoImgs("");
-
-    setNovoAtivo(true);
-    setNovoDestaque(false);
-
-    setNovoEstoque("0");
-
-    setNovoPrecoCusto("");
-    setNovoPreco("");
-
-    setNovoPromo(false);
-    setNovoPrecoPromo("");
-    setNovoOff("");
-
-    setNovoSaving(false);
-    setNovoOpen(true);
-  }
-
-  function fecharNovoProduto() {
-    setNovoOpen(false);
-    setNovoSaving(false);
-  }
-
-  /* =======================================================
-     SALVAR NOVO PRODUTO
-     ======================================================= */
-
-  async function salvarNovoProduto() {
-    const eanDigits =
-      onlyDigits(novoEAN);
-
-    if (eanDigits.length < 6) {
-      alert(
-        "EAN inválido. Digite ou leia o código de barras."
-      );
-
-      return;
+  useEffect(() => {
+    if (q.trim()) {
+      load();
     }
 
-    if (!novoNome.trim()) {
-      alert(
-        "Digite o nome do produto."
-      );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page]);
 
-      return;
-    }
+  useEffect(() => {
+    const t =
+      setTimeout(() => {
+        setPage(1);
+        load();
+      }, 350);
 
-    const imgs =
-      urlsToJsonb(novoImgs);
+    return () =>
+      clearTimeout(t);
 
-    const lines = (
-      novoImgs || ""
-    )
-      .split("\n")
-      .map((line) =>
-        cleanUrl(line)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q, stockMode]);
+
+  const pages =
+    Math.max(
+      1,
+      Math.ceil(
+        total / PAGE_SIZE
       )
-      .filter(Boolean);
+    );
 
-    const invalid =
-      lines.filter(
-        (url) =>
-          !isValidHttpUrl(url)
-      );
+  /* =========================================================
+     SALVAR DADOS DA LOJA
+  ========================================================= */
 
-    if (invalid.length > 0) {
-      alert(
-        "Existe uma URL de imagem inválida."
-      );
-
-      return;
-    }
-
-    const estoqueNum =
-      Math.max(
-        0,
-        Number(novoEstoque || 0)
-      );
-
-    const precoCustoNum =
-      numberFromInput(
-        novoPrecoCusto
-      );
-
-    const precoVendaNum =
-      numberFromInput(
-        novoPreco
-      );
-
-    const precoPromoNum =
-      numberFromInput(
-        novoPrecoPromo
-      );
-
-    const offNum =
-      numberFromInput(
-        novoOff
-      );
-
-    setNovoSaving(true);
-
-    try {
-      /*
-        1 — Procura EAN na base master.
-      */
-
-      const {
-        data: encontrado,
-        error: erroBusca,
-      } = await supabase
-        .from(PROD_TABLE)
-        .select("id")
-        .eq("ean", eanDigits)
-        .limit(1);
-
-      if (erroBusca) {
-        throw erroBusca;
-      }
-
-      let produtoId:
-        | string
-        | null =
-        encontrado?.[0]?.id ??
-        null;
-
-      /*
-        2 — Se não existir,
-        cria produto master.
-      */
-
-      if (!produtoId) {
-        const {
-          data: criado,
-          error: erroCriacao,
-        } = await supabase
-          .from(PROD_TABLE)
-          .insert({
-            ean: eanDigits,
-
-            nome:
-              novoNome.trim(),
-
-            laboratorio:
-              novoLab.trim() ||
-              null,
-
-            categoria:
-              novoCategoria.trim() ||
-              null,
-
-            apresentacao:
-              novoApresentacao.trim() ||
-              null,
-
-            imagens:
-              imgs.length
-                ? imgs
-                : null,
-
-            pmc: 0,
-          })
-          .select("id")
-          .single();
-
-        if (erroCriacao) {
-          throw erroCriacao;
-        }
-
-        produtoId =
-          criado?.id ?? null;
-      } else {
-        /*
-          Produto já existe:
-          atualiza informações master.
-        */
-
-        const {
-          error: erroUpdate,
-        } = await supabase
-          .from(PROD_TABLE)
-          .update({
-            nome:
-              novoNome.trim(),
-
-            laboratorio:
-              novoLab.trim() ||
-              null,
-
-            categoria:
-              novoCategoria.trim() ||
-              null,
-
-            apresentacao:
-              novoApresentacao.trim() ||
-              null,
-
-            imagens:
-              imgs.length
-                ? imgs
-                : null,
-
-            pmc: 0,
-          })
-          .eq(
-            "id",
-            produtoId
-          );
-
-        if (erroUpdate) {
-          throw erroUpdate;
-        }
-      }
-
-      if (!produtoId) {
-        throw new Error(
-          "Não foi possível obter o ID do produto."
-        );
-      }
-
-      /*
-        3 — Vincula o produto à
-        Drogaria Rede Fabiano.
-
-        Aqui entram:
-        - estoque
-        - custo
-        - venda
-        - promoção
-      */
-
-      const {
-        error: erroLoja,
-      } = await supabase
-        .from(WRITE_TABLE)
+  async function patchLoja(
+    produtoId: string,
+    patch: Record<string, unknown>
+  ) {
+    const { error } =
+      await supabase
+        .from(STORE_TABLE)
         .upsert(
           {
             farmacia_slug:
@@ -1227,35 +715,7 @@ export default function AdminProdutosFabiano() {
             produto_id:
               produtoId,
 
-            ativo:
-              !!novoAtivo,
-
-            estoque:
-              estoqueNum,
-
-            // NOVO
-            preco_custo:
-              precoCustoNum,
-
-            preco_venda:
-              precoVendaNum,
-
-            em_promocao:
-              !!novoPromo,
-
-            preco_promocional:
-              precoPromoNum,
-
-            percentual_off:
-              offNum,
-
-            destaque_home:
-              !!novoDestaque,
-
-            imagens:
-              imgs.length
-                ? imgs
-                : null,
+            ...patch,
           },
           {
             onConflict:
@@ -1263,66 +723,570 @@ export default function AdminProdutosFabiano() {
           }
         );
 
-      if (erroLoja) {
-        throw erroLoja;
-      }
-
-      toast(
-        "Produto cadastrado com sucesso"
-      );
-
-      fecharNovoProduto();
-
-      /*
-        Após cadastrar:
-        pesquisa automaticamente
-        o EAN cadastrado.
-      */
-
-      setBusca(eanDigits);
-      setPage(1);
-
-      await carregar(
-        1,
-        eanDigits
-      );
-    } catch (error: any) {
-      console.error(error);
-
-      alert(
-        error?.message ||
-          "Erro ao cadastrar produto."
-      );
-    } finally {
-      setNovoSaving(false);
+    if (error) {
+      throw error;
     }
   }
 
-  /* =======================================================
-     CÂMERA
-     ======================================================= */
+  async function toggleQuick(
+    produtoId: string,
+    patch: Record<string, unknown>
+  ) {
+    try {
+      setSavingId(produtoId);
 
-  function pararCamera() {
-    if (scanTimerRef.current) {
-      window.clearInterval(
-        scanTimerRef.current
+      await patchLoja(
+        produtoId,
+        patch
       );
 
-      scanTimerRef.current =
-        null;
+      await load();
+    } catch (e) {
+      console.error(e);
+
+      alert(
+        "Erro ao salvar alteração."
+      );
+    } finally {
+      setSavingId(null);
+    }
+  }
+
+  async function changeEstoque(
+    produtoId: string,
+    delta: number
+  ) {
+    const current =
+      rows.find(
+        (r) =>
+          r.produto_id ===
+          produtoId
+      )?.estoque ?? 0;
+
+    const next =
+      Math.max(
+        0,
+        Number(current) +
+          delta
+      );
+
+    await toggleQuick(
+      produtoId,
+      {
+        estoque: next,
+      }
+    );
+  }
+
+  async function quickSaveValores(
+    produtoId: string,
+    custo: string,
+    venda: string,
+    estoque: string
+  ) {
+    try {
+      setSavingId(produtoId);
+
+      await patchLoja(
+        produtoId,
+        {
+          preco_custo:
+            toNum(custo),
+
+          preco_venda:
+            toNum(venda),
+
+          estoque:
+            Math.max(
+              0,
+              Number(
+                toInt(estoque) ?? 0
+              )
+            ),
+        }
+      );
+
+      await load();
+    } catch (e: any) {
+      console.error(e);
+
+      alert(
+        e?.message ||
+          "Erro ao salvar valores."
+      );
+    } finally {
+      setSavingId(null);
+    }
+  }
+
+  /* =========================================================
+     EDITAR PRODUTO
+  ========================================================= */
+
+  async function openEdit(
+    p: ProdutoFabiano
+  ) {
+    try {
+      const {
+        data,
+        error,
+      } =
+        await supabase
+          .from(PROD_TABLE)
+          .select("pmc")
+          .eq(
+            "id",
+            p.produto_id
+          )
+          .single();
+
+      if (error) {
+        throw error;
+      }
+
+      setEditing({
+        ...p,
+        pmc:
+          data?.pmc ?? null,
+      });
+    } catch {
+      setEditing({
+        ...p,
+        pmc: null,
+      });
+    }
+  }
+
+  async function saveEdit() {
+    if (!editing) {
+      return;
     }
 
-    if (streamRef.current) {
-      streamRef.current
-        .getTracks()
-        .forEach((track) =>
-          track.stop()
+    const id =
+      editing.produto_id;
+
+    try {
+      setSavingId(id);
+
+      const ean =
+        onlyDigits(
+          editing.ean || ""
         );
 
-      streamRef.current = null;
+      if (ean.length < 8) {
+        alert("EAN inválido.");
+        return;
+      }
+
+      if (!editing.nome.trim()) {
+        alert(
+          "Nome é obrigatório."
+        );
+        return;
+      }
+
+      const {
+        error: masterError,
+      } =
+        await supabase
+          .from(PROD_TABLE)
+          .update({
+            ean,
+
+            nome:
+              editing.nome.trim(),
+
+            laboratorio:
+              editing.laboratorio?.trim() ||
+              null,
+
+            categoria:
+              editing.categoria?.trim() ||
+              null,
+
+            apresentacao:
+              editing.apresentacao?.trim() ||
+              null,
+
+            pmc:
+              toNum(
+                editing.pmc
+              ) ?? 0,
+
+            imagens:
+              Array.isArray(
+                editing.imagens
+              )
+                ? editing.imagens.filter(
+                    Boolean
+                  )
+                : null,
+          })
+          .eq("id", id);
+
+      if (masterError) {
+        throw masterError;
+      }
+
+      await patchLoja(
+        id,
+        {
+          ativo:
+            !!editing.disponivel_farmacia,
+
+          ativo_site:
+            !!editing.ativo_site,
+
+          ativo_pdv:
+            !!editing.ativo_pdv,
+
+          estoque:
+            Math.max(
+              0,
+              Number(
+                toInt(
+                  editing.estoque
+                ) ?? 0
+              )
+            ),
+
+          preco_custo:
+            toNum(
+              editing.preco_custo
+            ),
+
+          preco_venda:
+            toNum(
+              editing.preco_venda
+            ),
+
+          em_promocao:
+            !!editing.em_promocao,
+
+          preco_promocional:
+            editing.em_promocao
+              ? toNum(
+                  editing.preco_promocional
+                )
+              : null,
+
+          percentual_off:
+            toNum(
+              editing.percentual_off
+            ),
+
+          destaque_home:
+            !!editing.destaque_home,
+        }
+      );
+
+      setEditing(null);
+
+      await load();
+
+      alert(
+        "Produto salvo."
+      );
+    } catch (e: any) {
+      console.error(e);
+
+      alert(
+        e?.message ||
+          "Erro ao salvar produto."
+      );
+    } finally {
+      setSavingId(null);
+    }
+  }
+
+  /* =========================================================
+     NOVO PRODUTO
+  ========================================================= */
+
+  async function createNovo() {
+    try {
+      setSavingId("novo");
+
+      const ean =
+        onlyDigits(novo.ean);
+
+      if (ean.length < 8) {
+        alert(
+          "EAN inválido (mínimo 8 dígitos)."
+        );
+        return;
+      }
+
+      if (!novo.nome.trim()) {
+        alert(
+          "Nome é obrigatório."
+        );
+        return;
+      }
+
+      const imagens =
+        safeJsonArray(
+          novo.imagensText
+        );
+
+      const {
+        data: found,
+        error: findError,
+      } =
+        await supabase
+          .from(PROD_TABLE)
+          .select("id")
+          .eq("ean", ean)
+          .limit(1);
+
+      if (findError) {
+        throw findError;
+      }
+
+      let produtoId =
+        found?.[0]?.id as
+          | string
+          | undefined;
+
+      if (!produtoId) {
+        const {
+          data: created,
+          error: createError,
+        } =
+          await supabase
+            .from(PROD_TABLE)
+            .insert({
+              ean,
+
+              nome:
+                novo.nome.trim(),
+
+              laboratorio:
+                novo.laboratorio.trim() ||
+                null,
+
+              categoria:
+                novo.categoria.trim() ||
+                null,
+
+              apresentacao:
+                novo.apresentacao.trim() ||
+                null,
+
+              pmc:
+                toNum(novo.pmc) ??
+                0,
+
+              imagens,
+
+              ativo: true,
+            })
+            .select("id")
+            .single();
+
+        if (createError) {
+          throw createError;
+        }
+
+        produtoId =
+          created?.id;
+      } else {
+        const {
+          error: updateMaster,
+        } =
+          await supabase
+            .from(PROD_TABLE)
+            .update({
+              nome:
+                novo.nome.trim(),
+
+              laboratorio:
+                novo.laboratorio.trim() ||
+                null,
+
+              categoria:
+                novo.categoria.trim() ||
+                null,
+
+              apresentacao:
+                novo.apresentacao.trim() ||
+                null,
+
+              pmc:
+                toNum(novo.pmc) ??
+                0,
+
+              imagens,
+            })
+            .eq(
+              "id",
+              produtoId
+            );
+
+        if (updateMaster) {
+          throw updateMaster;
+        }
+      }
+
+      if (!produtoId) {
+        throw new Error(
+          "Não foi possível obter produto_id."
+        );
+      }
+
+      await patchLoja(
+        produtoId,
+        {
+          ativo:
+            novo.ativo,
+
+          ativo_site:
+            novo.ativo_site,
+
+          ativo_pdv:
+            novo.ativo_pdv,
+
+          estoque:
+            Math.max(
+              0,
+              Number(
+                toInt(
+                  novo.estoque
+                ) ?? 0
+              )
+            ),
+
+          preco_custo:
+            toNum(
+              novo.preco_custo
+            ),
+
+          preco_venda:
+            toNum(
+              novo.preco_venda
+            ),
+
+          em_promocao:
+            novo.em_promocao,
+
+          preco_promocional:
+            novo.em_promocao
+              ? toNum(
+                  novo.preco_promocional
+                )
+              : null,
+
+          percentual_off:
+            toNum(
+              novo.percentual_off
+            ),
+
+          destaque_home:
+            novo.destaque_home,
+        }
+      );
+
+      setNovo(NOVO_VAZIO);
+      setNovoAberto(false);
+
+      setQ(ean);
+      setPage(1);
+
+      await load(ean);
+
+      alert(
+        "Produto cadastrado na Rede Fabiano + FV."
+      );
+    } catch (e: any) {
+      console.error(e);
+
+      alert(
+        e?.message ||
+          "Erro ao criar produto."
+      );
+    } finally {
+      setSavingId(null);
+    }
+  }
+
+  /* =========================================================
+     RETIRAR DA REDE FABIANO
+  ========================================================= */
+
+  async function retirarDaLoja(
+    produtoId: string
+  ) {
+    if (
+      !confirm(
+        "Retirar este produto da Drogaria Rede Fabiano? O cadastro master do FV será mantido."
+      )
+    ) {
+      return;
     }
 
-    if (videoRef.current) {
+    try {
+      setDeletingId(
+        produtoId
+      );
+
+      const { error } =
+        await supabase
+          .from(STORE_TABLE)
+          .delete()
+          .eq(
+            "farmacia_slug",
+            FARMACIA_SLUG
+          )
+          .eq(
+            "produto_id",
+            produtoId
+          );
+
+      if (error) {
+        throw error;
+      }
+
+      await load();
+    } catch (e) {
+      console.error(e);
+
+      alert(
+        "Erro ao retirar produto."
+      );
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
+  /* =========================================================
+     CÂMERA — MESMO SISTEMA DA PORTO
+  ========================================================= */
+
+  function pararCamera() {
+    try {
+      scannerControlsRef
+        .current
+        ?.stop?.();
+    } catch {}
+
+    scannerControlsRef.current =
+      null;
+
+    if (
+      videoRef.current
+        ?.srcObject
+    ) {
+      const stream =
+        videoRef.current
+          .srcObject as MediaStream;
+
+      stream
+        .getTracks()
+        .forEach(
+          (track) =>
+            track.stop()
+        );
+
       videoRef.current.srcObject =
         null;
     }
@@ -1333,1698 +1297,1778 @@ export default function AdminProdutosFabiano() {
   function fecharCamera() {
     pararCamera();
 
-    setCameraOpen(false);
-    setCameraErro(null);
+    codigoLidoRef.current =
+      false;
+
+    setCameraAberta(false);
+    setCameraErro("");
   }
 
-  async function abrirCamera(
-    target:
-      | "busca"
-      | "novo" = "busca"
-  ) {
-    setCameraTarget(target);
-    setCameraErro(null);
-    setCameraOpen(true);
+  function abrirCamera() {
+    setCameraErro("");
+
+    codigoLidoRef.current =
+      false;
+
+    setCameraAberta(true);
   }
 
-  /* =======================================================
-     RECEBE CÓDIGO DA CÂMERA
-     ======================================================= */
-
-  async function codigoDetectado(
-    codigo: string
-  ) {
-    const ean =
-      onlyDigits(codigo);
-
-    if (ean.length < 6) return;
-
-    /*
-      Evita múltiplas leituras
-      do mesmo código.
-    */
-
-    pararCamera();
-
-    setCameraOpen(false);
-
-    if (
-      cameraTarget === "novo"
-    ) {
-      setNovoEAN(ean);
-
-      toast(
-        `Código lido: ${ean}`
-      );
-
+  useEffect(() => {
+    if (!cameraAberta) {
       return;
     }
 
-    /*
-      Se a câmera foi aberta
-      pela busca:
-    */
-
-    setBusca(ean);
-    setPage(1);
-
-    toast(
-      `Código lido: ${ean}`
-    );
-
-    await carregar(
-      1,
-      ean
-    );
-  }
-
-  /* =======================================================
-     INICIALIZA LEITOR DE CÓDIGO
-     ======================================================= */
-
-  useEffect(() => {
-    if (!cameraOpen) return;
-
     let cancelado = false;
 
-    async function iniciar() {
+    async function iniciarScanner() {
+      await new Promise(
+        (resolve) =>
+          setTimeout(
+            resolve,
+            150
+          )
+      );
+
+      if (
+        cancelado ||
+        !videoRef.current
+      ) {
+        return;
+      }
+
       try {
-        setCameraErro(null);
         setCameraLendo(true);
 
-        /*
-          Preferência pela câmera traseira.
-        */
+        const reader =
+          new BrowserMultiFormatReader();
 
-        const stream =
-          await navigator.mediaDevices.getUserMedia({
-            video: {
-              facingMode: {
-                ideal:
-                  "environment",
+        const controls =
+          await reader.decodeFromConstraints(
+            {
+              video: {
+                facingMode: {
+                  ideal:
+                    "environment",
+                },
+
+                width: {
+                  ideal: 1280,
+                },
+
+                height: {
+                  ideal: 720,
+                },
               },
 
-              width: {
-                ideal: 1280,
-              },
-
-              height: {
-                ideal: 720,
-              },
+              audio: false,
             },
 
-            audio: false,
-          });
+            videoRef.current,
 
-        if (cancelado) {
-          stream
-            .getTracks()
-            .forEach((track) =>
-              track.stop()
-            );
-
-          return;
-        }
-
-        streamRef.current =
-          stream;
-
-        if (!videoRef.current) {
-          return;
-        }
-
-        videoRef.current.srcObject =
-          stream;
-
-        await videoRef.current.play();
-
-        /*
-          BarcodeDetector é suportado
-          principalmente em navegadores
-          Chromium/Android.
-
-          O modal do Bloco 2 também
-          terá entrada manual caso
-          o aparelho não suporte.
-        */
-
-        const Detector =
-          (
-            window as any
-          ).BarcodeDetector as
-            | BarcodeDetectorConstructor
-            | undefined;
-
-        if (!Detector) {
-          setCameraErro(
-            "Este navegador não possui leitura automática de código de barras. Você ainda pode usar a câmera e digitar o EAN manualmente."
-          );
-
-          setCameraLendo(false);
-
-          return;
-        }
-
-        const detector =
-          new Detector({
-            formats: [
-              "ean_13",
-              "ean_8",
-              "upc_a",
-              "upc_e",
-              "code_128",
-              "code_39",
-            ],
-          });
-
-        scanTimerRef.current =
-          window.setInterval(
-            async () => {
-              try {
-                const video =
-                  videoRef.current;
-
-                if (
-                  !video ||
-                  video.readyState <
-                    2
-                ) {
-                  return;
-                }
-
-                const results =
-                  await detector.detect(
-                    video
-                  );
-
-                if (
-                  results.length === 0
-                ) {
-                  return;
-                }
-
-                const raw =
-                  results[0]
-                    ?.rawValue;
-
-                if (!raw) return;
-
-                await codigoDetectado(
-                  raw
-                );
-              } catch {
-                /*
-                  Ignora falhas
-                  momentâneas de frame.
-                */
+            (result) => {
+              if (
+                !result ||
+                codigoLidoRef.current
+              ) {
+                return;
               }
-            },
-            450
+
+              const codigo =
+                result
+                  .getText()
+                  .trim();
+
+              if (!codigo) {
+                return;
+              }
+
+              codigoLidoRef.current =
+                true;
+
+              navigator.vibrate?.(
+                120
+              );
+
+              setQ(codigo);
+
+              setTimeout(
+                () => {
+                  fecharCamera();
+
+                  setPage(1);
+
+                  load(codigo);
+                },
+                100
+              );
+            }
           );
-      } catch (error: any) {
-        console.error(error);
+
+        scannerControlsRef.current =
+          controls;
+      } catch (e: any) {
+        console.error(e);
 
         setCameraLendo(false);
 
         if (
-          error?.name ===
+          e?.name ===
           "NotAllowedError"
         ) {
           setCameraErro(
-            "Permissão da câmera negada. Libere o acesso à câmera no navegador."
+            "Permissão da câmera bloqueada. Libere a câmera para este site."
           );
-
-          return;
+        } else {
+          setCameraErro(
+            e?.message ||
+              "Não foi possível abrir a câmera."
+          );
         }
-
-        setCameraErro(
-          "Não foi possível abrir a câmera deste aparelho."
-        );
       }
     }
 
-    /*
-      Pequeno delay para o modal
-      renderizar o <video>.
-    */
-
-    const timer =
-      window.setTimeout(
-        iniciar,
-        120
-      );
+    iniciarScanner();
 
     return () => {
       cancelado = true;
-
-      window.clearTimeout(
-        timer
-      );
-
       pararCamera();
     };
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cameraOpen]);
-
-  /* =======================================================
-     PAGINAÇÃO
-     ======================================================= */
-
-  async function paginaAnterior() {
-    if (page <= 1) return;
-
-    const nova =
-      page - 1;
-
-    await carregar(nova);
-  }
-
-  async function proximaPagina() {
-    if (
-      page >= totalPages
-    ) {
-      return;
-    }
-
-    const nova =
-      page + 1;
-
-    await carregar(nova);
-  }
-
-  /* =======================================================
-     RESUMO DOS RESULTADOS
-     ======================================================= */
-
-  const resumo = useMemo(() => {
-    let estoqueTotal = 0;
-    let ativos = 0;
-    let zerados = 0;
-
-    rows.forEach((row) => {
-      const estoque =
-        Math.max(
-          0,
-          Number(row.estoque || 0)
-        );
-
-      estoqueTotal += estoque;
-
-      if (
-        row.disponivel_farmacia
-      ) {
-        ativos++;
-      }
-
-      if (estoque <= 0) {
-        zerados++;
-      }
-    });
-
-    return {
-      estoqueTotal,
-      ativos,
-      zerados,
-    };
-  }, [rows]);
+  }, [cameraAberta]);
 
   /* =========================================================
-     BLOCO 1 TERMINA AQUI
-
-     NÃO FECHE O COMPONENTE.
-
-     O BLOCO 2 COMEÇA COM:
-
-     if (!autenticado) {
-       return (
-         ...
-       );
-     }
-
-     e contém todo o novo layout:
-     - Login moderno
-     - Cabeçalho mobile
-     - Busca grande
-     - Botão câmera
-     - Cards de produto
-     - Preço de custo
-     - Preço de venda
-     - Estoque
-     - Ativo
-     - Promoção
-     - Modal câmera
-     - Modal novo produto
-     - Modal imagens
-     ========================================================= */
-       /* =========================================================
-     LOGIN
-     ========================================================= */
-
-  if (!autenticado) {
+     CONTINUA NO BLOCO 2
+  ========================================================= */
     return (
-      <main className="min-h-screen bg-slate-950 flex items-center justify-center px-4 py-8">
-        <div className="w-full max-w-md">
-          <div className="bg-white rounded-[28px] shadow-2xl overflow-hidden">
-            <div className="bg-gradient-to-br from-blue-700 via-blue-600 to-cyan-500 p-7 text-white">
-              <div className="w-14 h-14 rounded-2xl bg-white/15 backdrop-blur flex items-center justify-center mb-5">
-                <Package className="w-7 h-7" />
-              </div>
-
-              <p className="text-blue-100 text-sm font-medium">
-                Drogaria Rede Fabiano
-              </p>
-
-              <h1 className="text-2xl font-black mt-1">
-                Admin Produtos
-              </h1>
-
-              <p className="text-sm text-blue-100 mt-2">
-                Estoque, custo, venda e produtos em um só lugar.
-              </p>
-            </div>
-
-            <div className="p-6">
-              <label className="block text-xs font-bold text-slate-500 uppercase tracking-wide mb-2">
-                Senha administrativa
-              </label>
-
-              <input
-                type="password"
-                value={senha}
-                onChange={(e) => setSenha(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") autenticar();
-                }}
-                placeholder="Digite sua senha"
-                className="w-full h-12 border border-slate-200 rounded-2xl px-4 text-center text-lg outline-none focus:ring-4 focus:ring-blue-100 focus:border-blue-500"
-                autoFocus
-              />
-
-              <button
-                onClick={autenticar}
-                className="mt-4 w-full h-12 rounded-2xl bg-blue-600 hover:bg-blue-700 active:scale-[0.99] transition text-white font-bold shadow-lg shadow-blue-200"
-              >
-                Entrar no Admin
-              </button>
-
-              <div className="mt-5 flex items-center justify-center gap-2 text-xs text-slate-400">
-                <Package className="w-4 h-4" />
-                Controle de produtos Rede Fabiano
-              </div>
-            </div>
-          </div>
-        </div>
-      </main>
-    );
-  }
-
-  /* =========================================================
-     ADMIN
-     ========================================================= */
-
-  return (
-    <main className="min-h-screen bg-slate-100 pb-28">
+    <main className="min-h-screen bg-slate-100 pb-10">
       {/* =====================================================
-          TOPO
-          ===================================================== */}
+          CABEÇALHO
+      ===================================================== */}
 
-      <header className="bg-gradient-to-r from-blue-700 via-blue-600 to-cyan-500 text-white sticky top-0 z-30 shadow-lg">
-        <div className="max-w-7xl mx-auto px-3 sm:px-5">
-          <div className="h-16 flex items-center justify-between gap-3">
-            <div className="flex items-center gap-3 min-w-0">
-              <button
-                onClick={() => window.history.back()}
-                className="w-10 h-10 shrink-0 rounded-xl bg-white/10 hover:bg-white/20 flex items-center justify-center"
-                title="Voltar"
-              >
-                <ArrowLeft className="w-5 h-5" />
-              </button>
-
-              <div className="min-w-0">
-                <div className="flex items-center gap-2">
-                  <Package className="w-5 h-5 shrink-0" />
-
-                  <h1 className="font-black text-base sm:text-xl truncate">
-                    Admin Produtos
-                  </h1>
-                </div>
-
-                <p className="text-[11px] sm:text-xs text-blue-100 truncate">
-                  Drogaria Rede Fabiano
-                </p>
-              </div>
+      <header className="sticky top-0 z-30 bg-blue-950 text-white shadow-lg">
+        <div className="mx-auto flex max-w-7xl items-center gap-2 px-3 py-3 md:px-5">
+          <div className="min-w-0 flex-1">
+            <div className="text-[10px] font-black uppercase text-blue-200">
+              Drogaria Rede Fabiano
             </div>
 
-            <button
-              onClick={() => abrirNovoProduto()}
-              className="shrink-0 h-10 px-3 sm:px-4 rounded-xl bg-white text-blue-700 font-black text-sm flex items-center gap-2 shadow"
-            >
-              <PackagePlus className="w-5 h-5" />
-
-              <span className="hidden sm:inline">
-                Novo Produto
-              </span>
-
-              <span className="sm:hidden">
-                Novo
-              </span>
-            </button>
+            <h1 className="truncate text-lg font-black md:text-xl">
+              Produtos
+            </h1>
           </div>
+
+          <Link
+            href="/drogarias/drogariaredefabiano/admin"
+            className="rounded-xl bg-white/10 p-2"
+            title="Admin"
+          >
+            <ArrowLeft size={20} />
+          </Link>
+
+          <button
+            onClick={() => load()}
+            className="rounded-xl bg-white/10 p-2"
+            title="Atualizar"
+          >
+            <RefreshCw size={20} />
+          </button>
+
+          <button
+            onClick={onSair}
+            className="rounded-xl bg-white/10 p-2"
+            title="Sair"
+          >
+            <LogOut size={20} />
+          </button>
         </div>
       </header>
 
-      <div className="max-w-7xl mx-auto px-3 sm:px-5 py-4">
+      <div className="mx-auto max-w-7xl space-y-3 p-3 md:space-y-5 md:p-5">
         {/* ===================================================
-            BUSCA PRINCIPAL
-            =================================================== */}
+            BUSCA
+        =================================================== */}
 
-        <section className="bg-white rounded-[24px] border border-slate-200 shadow-sm p-3 sm:p-5">
-          <div className="flex items-center gap-2 mb-3">
-            <div className="w-9 h-9 rounded-xl bg-blue-50 text-blue-700 flex items-center justify-center">
-              <Search className="w-5 h-5" />
-            </div>
-
-            <div>
-              <h2 className="font-black text-slate-900">
-                Localizar produto
-              </h2>
-
-              <p className="text-xs text-slate-500">
-                Nome, código de barras, laboratório ou apresentação
-              </p>
-            </div>
-          </div>
-
+        <section className="sticky top-[60px] z-20 rounded-2xl bg-white p-3 shadow-sm md:top-[70px]">
           <div className="flex gap-2">
-            <div className="relative flex-1">
-              <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-
-              <input
-                ref={buscaRef}
-                value={busca}
-                onChange={(e) => setBusca(e.target.value)}
-                onKeyDown={handleBuscaKeyDown}
-                placeholder="Digite ou leia o código..."
-                className="w-full h-14 pl-12 pr-11 rounded-2xl border-2 border-slate-200 bg-slate-50 outline-none text-base font-semibold focus:bg-white focus:border-blue-500 focus:ring-4 focus:ring-blue-100 transition"
-                inputMode="search"
-                autoComplete="off"
+            <div className="flex min-w-0 flex-1 items-center rounded-xl border-2 border-blue-200 px-3 focus-within:border-blue-700">
+              <Search
+                size={20}
+                className="shrink-0 text-slate-500"
               />
 
-              {busca && (
-                <button
-                  onClick={limparBusca}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 w-8 h-8 rounded-full hover:bg-slate-200 flex items-center justify-center text-slate-500"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              )}
+              <input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    load();
+                  }
+                }}
+                placeholder="Nome ou EAN"
+                className="min-w-0 flex-1 px-3 py-3 font-bold outline-none"
+              />
             </div>
 
             <button
-              onClick={() => abrirCamera("busca")}
-              className="w-14 h-14 shrink-0 rounded-2xl bg-slate-900 hover:bg-black text-white flex items-center justify-center shadow-md active:scale-95 transition"
+              type="button"
+              onClick={abrirCamera}
+              className="flex w-12 shrink-0 items-center justify-center rounded-xl bg-slate-900 text-white"
               title="Ler código de barras"
             >
-              <Camera className="w-6 h-6" />
+              <Camera size={22} />
             </button>
           </div>
 
-          <div className="mt-3 grid grid-cols-2 sm:flex gap-2">
-            <button
-              onClick={() => abrirCamera("busca")}
-              className="h-10 rounded-xl bg-blue-50 text-blue-700 border border-blue-100 font-bold text-sm flex items-center justify-center gap-2"
+          <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
+            <FilterButton
+              active={stockMode === "all"}
+              onClick={() => setStockMode("all")}
             >
-              <Barcode className="w-4 h-4" />
-              Ler código
-            </button>
+              Todos
+            </FilterButton>
 
-            <button
-              onClick={() => carregar(1)}
-              disabled={!busca.trim() || carregando}
-              className="h-10 rounded-xl bg-blue-600 disabled:bg-slate-200 disabled:text-slate-400 text-white font-bold text-sm flex items-center justify-center gap-2"
-            >
-              {carregando ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <Search className="w-4 h-4" />
-              )}
-
-              Buscar
-            </button>
-          </div>
-
-          <div className="mt-4 flex flex-wrap gap-2">
-            <button
-              onClick={() => setSomenteAtivos((v) => !v)}
-              className={`px-3 py-2 rounded-xl border text-xs font-bold transition ${
-                somenteAtivos
-                  ? "bg-blue-600 text-white border-blue-600"
-                  : "bg-white text-slate-600 border-slate-200"
-              }`}
-            >
-              Somente ativos
-            </button>
-
-            <button
-              onClick={() => setSomenteComEstoque((v) => !v)}
-              className={`px-3 py-2 rounded-xl border text-xs font-bold transition ${
-                somenteComEstoque
-                  ? "bg-emerald-600 text-white border-emerald-600"
-                  : "bg-white text-slate-600 border-slate-200"
-              }`}
+            <FilterButton
+              active={stockMode === "gt0"}
+              onClick={() => setStockMode("gt0")}
             >
               Com estoque
-            </button>
+            </FilterButton>
 
-            {jaPesquisou && (
-              <button
-                onClick={() => carregar(page)}
-                className="px-3 py-2 rounded-xl border border-slate-200 bg-white text-slate-600 text-xs font-bold flex items-center gap-2"
-              >
-                <RefreshCw
-                  className={`w-4 h-4 ${
-                    carregando ? "animate-spin" : ""
-                  }`}
-                />
-                Atualizar
-              </button>
-            )}
+            <FilterButton
+              active={stockMode === "eq0"}
+              onClick={() => setStockMode("eq0")}
+            >
+              Zerados
+            </FilterButton>
+
+            <button
+              type="button"
+              onClick={() => setNovoAberto((v) => !v)}
+              className="ml-auto shrink-0 rounded-xl bg-green-600 px-3 py-2 text-xs font-black text-white"
+            >
+              + Novo
+            </button>
           </div>
         </section>
 
         {/* ===================================================
-            TOAST
-            =================================================== */}
+            NOVO PRODUTO
+        =================================================== */}
 
-        {toastMsg && (
-          <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[10000] bg-slate-950 text-white px-5 py-3 rounded-2xl shadow-2xl text-sm font-bold flex items-center gap-2 max-w-[90vw]">
-            <Check className="w-4 h-4 text-emerald-400" />
-            {toastMsg}
+        {novoAberto && (
+          <NovoCard
+            novo={novo}
+            setNovo={setNovo}
+            saving={savingId === "novo"}
+            onSave={createNovo}
+            onClose={() => {
+              setNovo(NOVO_VAZIO);
+              setNovoAberto(false);
+            }}
+          />
+        )}
+
+        {/* ===================================================
+            CONTADOR
+        =================================================== */}
+
+        <div className="flex items-center justify-between px-1">
+          <div className="text-sm font-black text-slate-700">
+            {loading
+              ? "Buscando..."
+              : `${rows.length} resultado(s)`}
+          </div>
+
+          {q.trim() && (
+            <div className="text-xs font-bold text-slate-500">
+              Página {page}/{pages}
+            </div>
+          )}
+        </div>
+
+        {/* ===================================================
+            TELA INICIAL
+        =================================================== */}
+
+        {!q.trim() && !novoAberto && (
+          <div className="rounded-3xl border-2 border-dashed border-slate-300 bg-white p-8 text-center">
+            <Search
+              className="mx-auto text-slate-400"
+              size={36}
+            />
+
+            <div className="mt-3 font-black text-slate-800">
+              Pesquise ou escaneie um produto
+            </div>
+
+            <div className="mt-1 text-sm text-slate-500">
+              Digite o nome, EAN ou use a câmera do celular.
+            </div>
+
+            <button
+              type="button"
+              onClick={abrirCamera}
+              className="mt-5 inline-flex items-center gap-2 rounded-2xl bg-blue-800 px-5 py-3 font-black text-white"
+            >
+              <Camera size={19} />
+              Ler código de barras
+            </button>
+          </div>
+        )}
+
+        {loading && (
+          <div className="rounded-2xl bg-white p-5 text-center font-bold text-blue-800 shadow-sm">
+            Carregando produtos...
           </div>
         )}
 
         {/* ===================================================
-            TELA INICIAL
-            =================================================== */}
+            NÃO ENCONTRADO
+        =================================================== */}
 
-        {!jaPesquisou && !carregando && (
-          <section className="mt-4">
-            <div className="bg-white border border-slate-200 rounded-[24px] p-7 sm:p-10 text-center shadow-sm">
-              <div className="w-20 h-20 mx-auto rounded-[24px] bg-blue-50 text-blue-600 flex items-center justify-center">
-                <Barcode className="w-10 h-10" />
+        {!loading &&
+          q.trim() &&
+          rows.length === 0 && (
+            <div className="rounded-2xl bg-white p-5 text-center shadow-sm">
+              <div className="font-black text-slate-800">
+                Produto não encontrado
               </div>
 
-              <h2 className="mt-5 text-xl font-black text-slate-900">
-                Busque um produto
-              </h2>
-
-              <p className="mt-2 text-sm text-slate-500 max-w-md mx-auto">
-                Digite o nome ou código de barras. No celular, você também pode
-                usar a câmera para localizar o produto rapidamente.
-              </p>
+              <div className="mt-1 text-sm text-slate-500">
+                Você pode cadastrar este produto na Rede Fabiano.
+              </div>
 
               <button
-                onClick={() => abrirCamera("busca")}
-                className="mt-5 h-12 px-6 rounded-2xl bg-blue-600 text-white font-black inline-flex items-center gap-2 shadow-lg shadow-blue-100"
+                type="button"
+                onClick={() => {
+                  setNovo((p) => ({
+                    ...p,
+                    ean: onlyDigits(q),
+                  }));
+
+                  setNovoAberto(true);
+                }}
+                className="mt-3 rounded-xl bg-green-600 px-4 py-3 font-black text-white"
               >
-                <Camera className="w-5 h-5" />
-                Abrir câmera
+                + Cadastrar este produto
               </button>
             </div>
-          </section>
-        )}
-
-        {/* ===================================================
-            LOADING
-            =================================================== */}
-
-        {carregando && (
-          <section className="mt-4 bg-white border rounded-[24px] py-14 flex flex-col items-center justify-center">
-            <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
-
-            <p className="mt-3 text-sm font-bold text-slate-600">
-              Buscando produtos...
-            </p>
-          </section>
-        )}
-
-        {/* ===================================================
-            NADA ENCONTRADO
-            =================================================== */}
-
-        {!carregando &&
-          jaPesquisou &&
-          rows.length === 0 && (
-            <section className="mt-4 bg-white border border-slate-200 rounded-[24px] p-8 text-center">
-              <Package className="w-12 h-12 text-slate-300 mx-auto" />
-
-              <h3 className="mt-4 font-black text-slate-900">
-                Produto não encontrado
-              </h3>
-
-              <p className="text-sm text-slate-500 mt-1">
-                Nenhum produto corresponde a “{busca}”.
-              </p>
-
-              <button
-                onClick={() => abrirNovoProduto(onlyDigits(busca))}
-                className="mt-5 h-11 px-5 rounded-xl bg-emerald-600 text-white font-bold inline-flex items-center gap-2"
-              >
-                <PackagePlus className="w-5 h-5" />
-                Cadastrar produto
-              </button>
-            </section>
           )}
 
         {/* ===================================================
-            RESUMO
-            =================================================== */}
+            PRODUTOS
+        =================================================== */}
 
-        {!carregando && rows.length > 0 && (
-          <>
-            <section className="mt-4 grid grid-cols-3 gap-2 sm:gap-3">
-              <div className="bg-white rounded-2xl border p-3 sm:p-4">
-                <div className="text-[10px] sm:text-xs uppercase font-black text-slate-400">
-                  Encontrados
-                </div>
+        <div className="grid gap-3 lg:grid-cols-2">
+          {rows.map((p) => (
+            <ProdutoCard
+              key={p.produto_id}
+              p={p}
+              saving={savingId === p.produto_id}
+              deleting={deletingId === p.produto_id}
+              onEstoque={(delta) =>
+                changeEstoque(p.produto_id, delta)
+              }
+              onToggle={(patch) =>
+                toggleQuick(p.produto_id, patch)
+              }
+              onQuickSave={(custo, venda, estoque) =>
+                quickSaveValores(
+                  p.produto_id,
+                  custo,
+                  venda,
+                  estoque
+                )
+              }
+              onEdit={() => openEdit(p)}
+              onDelete={() =>
+                retirarDaLoja(p.produto_id)
+              }
+            />
+          ))}
+        </div>
 
-                <div className="text-xl sm:text-2xl font-black text-slate-900 mt-1">
-                  {totalCount}
-                </div>
-              </div>
+        {/* ===================================================
+            PAGINAÇÃO
+        =================================================== */}
 
-              <div className="bg-white rounded-2xl border p-3 sm:p-4">
-                <div className="text-[10px] sm:text-xs uppercase font-black text-slate-400">
-                  Estoque
-                </div>
-
-                <div className="text-xl sm:text-2xl font-black text-emerald-600 mt-1">
-                  {resumo.estoqueTotal}
-                </div>
-              </div>
-
-              <div className="bg-white rounded-2xl border p-3 sm:p-4">
-                <div className="text-[10px] sm:text-xs uppercase font-black text-slate-400">
-                  Zerados
-                </div>
-
-                <div className="text-xl sm:text-2xl font-black text-red-600 mt-1">
-                  {resumo.zerados}
-                </div>
-              </div>
-            </section>
-
-            {/* =================================================
-                CARDS DOS PRODUTOS
-                ================================================= */}
-
-            <section className="mt-4 space-y-3">
-              {rows.map((r) => {
-                const estoque = Math.max(
-                  0,
-                  Number(r.estoque || 0)
-                );
-
-                const stock = stockStyle(estoque);
-
-                const custo =
-                  r.preco_custo == null
-                    ? 0
-                    : Number(r.preco_custo);
-
-                const venda =
-                  r.preco_venda == null
-                    ? 0
-                    : Number(r.preco_venda);
-
-                const margem =
-                  custo > 0 && venda > 0
-                    ? ((venda - custo) / custo) * 100
-                    : null;
-
-                return (
-                  <article
-                    key={r.produto_id}
-                    className={`bg-white border rounded-[24px] shadow-sm overflow-hidden ${
-                      r._dirty
-                        ? "border-amber-300"
-                        : "border-slate-200"
-                    }`}
-                  >
-                    {/* PRODUTO */}
-
-                    <div className="p-3 sm:p-4">
-                      <div className="flex gap-3">
-                        <button
-                          onClick={() => abrirModalImagens(r)}
-                          className="relative w-20 h-20 sm:w-24 sm:h-24 shrink-0 rounded-2xl border bg-slate-50 overflow-hidden"
-                        >
-                          <Image
-                            src={firstImg(r.imagens)}
-                            alt={r.nome || "Produto"}
-                            fill
-                            sizes="96px"
-                            className="object-contain p-1"
-                          />
-
-                          <div className="absolute bottom-1 right-1 w-7 h-7 rounded-lg bg-white/95 shadow flex items-center justify-center">
-                            <ImageIcon className="w-4 h-4 text-slate-600" />
-                          </div>
-                        </button>
-
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="min-w-0">
-                              <h3 className="font-black text-slate-900 leading-tight text-base sm:text-lg">
-                                {r.nome || "Produto sem nome"}
-                              </h3>
-
-                              <p className="text-xs text-slate-500 mt-1">
-                                {r.laboratorio || "Sem laboratório"}
-
-                                {r.apresentacao
-                                  ? ` • ${r.apresentacao}`
-                                  : ""}
-                              </p>
-                            </div>
-
-                            {r._saving && (
-                              <Loader2 className="w-5 h-5 text-blue-600 animate-spin shrink-0" />
-                            )}
-
-                            {!r._saving && !r._dirty && (
-                              <Check className="w-5 h-5 text-emerald-500 shrink-0" />
-                            )}
-                          </div>
-
-                          <div className="mt-2 flex flex-wrap gap-1.5">
-                            <span className="inline-flex items-center gap-1 px-2 py-1 rounded-lg bg-slate-100 text-[11px] font-bold text-slate-600">
-                              <Barcode className="w-3 h-3" />
-                              {r.ean || "Sem EAN"}
-                            </span>
-
-                            {r.categoria && (
-                              <span className="px-2 py-1 rounded-lg bg-blue-50 text-[11px] font-bold text-blue-700">
-                                {r.categoria}
-                              </span>
-                            )}
-
-                            <span
-                              className={`px-2 py-1 rounded-lg border text-[10px] font-black ${stock.className}`}
-                            >
-                              {stock.label}
-                            </span>
-                          </div>
-
-                          {r._error && (
-                            <div className="mt-2 text-xs font-bold text-red-600">
-                              {r._error}
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-
-                    {/* =========================================
-                        CUSTO / VENDA / ESTOQUE
-                        ========================================= */}
-
-                    <div className="border-t bg-slate-50/70 p-3 sm:p-4">
-                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                        {/* CUSTO */}
-
-                        <div className="bg-white rounded-2xl border border-slate-200 p-3">
-                          <div className="flex items-center gap-1.5 text-slate-500 mb-1">
-                            <CircleDollarSign className="w-4 h-4" />
-
-                            <span className="text-[10px] uppercase font-black">
-                              Custo
-                            </span>
-                          </div>
-
-                          <div className="relative">
-                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
-                              R$
-                            </span>
-
-                            <input
-                              type="number"
-                              inputMode="decimal"
-                              step="0.01"
-                              min={0}
-                              value={r.preco_custo ?? ""}
-                              onChange={(e) =>
-                                setField(r.produto_id, {
-                                  preco_custo:
-                                    e.target.value === ""
-                                      ? null
-                                      : Number(e.target.value),
-                                })
-                              }
-                              className="w-full h-10 rounded-xl border border-slate-200 pl-8 pr-2 font-black text-right text-slate-900 outline-none focus:border-blue-500"
-                              placeholder="0,00"
-                            />
-                          </div>
-
-                          <div className="mt-1 text-right text-[10px] text-slate-400">
-                            {r.preco_custo != null
-                              ? brl(r.preco_custo)
-                              : "Sem custo"}
-                          </div>
-                        </div>
-
-                        {/* VENDA */}
-
-                        <div className="bg-white rounded-2xl border border-slate-200 p-3">
-                          <div className="flex items-center gap-1.5 text-blue-600 mb-1">
-                            <ShoppingCart className="w-4 h-4" />
-
-                            <span className="text-[10px] uppercase font-black">
-                              Venda
-                            </span>
-                          </div>
-
-                          <div className="relative">
-                            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-bold text-slate-400">
-                              R$
-                            </span>
-
-                            <input
-                              type="number"
-                              inputMode="decimal"
-                              step="0.01"
-                              min={0}
-                              value={r.preco_venda ?? ""}
-                              onChange={(e) =>
-                                setField(r.produto_id, {
-                                  preco_venda:
-                                    e.target.value === ""
-                                      ? null
-                                      : Number(e.target.value),
-                                })
-                              }
-                              className="w-full h-10 rounded-xl border border-blue-200 bg-blue-50/30 pl-8 pr-2 font-black text-right text-blue-800 outline-none focus:border-blue-500"
-                              placeholder="0,00"
-                            />
-                          </div>
-
-                          <div className="mt-1 text-right text-[10px] text-slate-400">
-                            {r.preco_venda != null
-                              ? brl(r.preco_venda)
-                              : "Sem preço"}
-                          </div>
-                        </div>
-
-                        {/* ESTOQUE */}
-
-                        <div className="col-span-2 sm:col-span-1 bg-white rounded-2xl border border-slate-200 p-3">
-                          <div className="flex items-center gap-1.5 text-emerald-600 mb-1">
-                            <Package className="w-4 h-4" />
-
-                            <span className="text-[10px] uppercase font-black">
-                              Estoque
-                            </span>
-                          </div>
-
-                          <div className="flex items-center gap-2">
-                            <button
-                              onClick={() =>
-                                setField(r.produto_id, {
-                                  estoque: Math.max(0, estoque - 1),
-                                })
-                              }
-                              className="w-10 h-10 rounded-xl bg-slate-100 font-black text-xl text-slate-600"
-                            >
-                              −
-                            </button>
-
-                            <input
-                              type="number"
-                              inputMode="numeric"
-                              min={0}
-                              value={estoque}
-                              onChange={(e) =>
-                                setField(r.produto_id, {
-                                  estoque: Math.max(
-                                    0,
-                                    Number(e.target.value || 0)
-                                  ),
-                                })
-                              }
-                              className="min-w-0 flex-1 h-10 rounded-xl border border-slate-200 text-center font-black text-lg outline-none focus:border-emerald-500"
-                            />
-
-                            <button
-                              onClick={() =>
-                                setField(r.produto_id, {
-                                  estoque: estoque + 1,
-                                })
-                              }
-                              className="w-10 h-10 rounded-xl bg-emerald-50 text-emerald-700 font-black text-xl"
-                            >
-                              +
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* MARGEM */}
-
-                      {margem != null && (
-                        <div className="mt-2 flex items-center justify-between rounded-xl bg-slate-100 px-3 py-2 text-xs">
-                          <span className="font-bold text-slate-500">
-                            Custo {brl(custo)} → Venda {brl(venda)}
-                          </span>
-
-                          <span
-                            className={`font-black ${
-                              margem >= 0
-                                ? "text-emerald-600"
-                                : "text-red-600"
-                            }`}
-                          >
-                            {margem.toFixed(1)}%
-                          </span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* =========================================
-                        STATUS
-                        ========================================= */}
-
-                    <div className="border-t p-3 sm:p-4">
-                      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                        <button
-                          onClick={() =>
-                            setField(r.produto_id, {
-                              disponivel_farmacia:
-                                !r.disponivel_farmacia,
-                            })
-                          }
-                          className={`h-11 rounded-xl border text-xs font-black transition ${
-                            r.disponivel_farmacia
-                              ? "bg-emerald-50 text-emerald-700 border-emerald-200"
-                              : "bg-slate-100 text-slate-500 border-slate-200"
-                          }`}
-                        >
-                          {r.disponivel_farmacia
-                            ? "✓ Ativo"
-                            : "Inativo"}
-                        </button>
-
-                        <button
-                          onClick={() =>
-                            setField(r.produto_id, {
-                              destaque_home: !r.destaque_home,
-                            })
-                          }
-                          className={`h-11 rounded-xl border text-xs font-black flex items-center justify-center gap-1 ${
-                            r.destaque_home
-                              ? "bg-amber-50 text-amber-700 border-amber-200"
-                              : "bg-white text-slate-500 border-slate-200"
-                          }`}
-                        >
-                          <Sparkles className="w-4 h-4" />
-
-                          {r.destaque_home
-                            ? "Destaque"
-                            : "Destacar"}
-                        </button>
-
-                        <button
-                          onClick={() =>
-                            setField(r.produto_id, {
-                              em_promocao: !r.em_promocao,
-                            })
-                          }
-                          className={`h-11 rounded-xl border text-xs font-black ${
-                            r.em_promocao
-                              ? "bg-red-50 text-red-700 border-red-200"
-                              : "bg-white text-slate-500 border-slate-200"
-                          }`}
-                        >
-                          {r.em_promocao
-                            ? "🔥 Promoção"
-                            : "Promoção"}
-                        </button>
-
-                        <button
-                          onClick={() => abrirModalImagens(r)}
-                          className="h-11 rounded-xl border border-slate-200 bg-white text-slate-600 text-xs font-black flex items-center justify-center gap-2"
-                        >
-                          <ImageIcon className="w-4 h-4" />
-                          Imagem
-                        </button>
-                      </div>
-
-                      {/* PROMOÇÃO */}
-
-                      {r.em_promocao && (
-                        <div className="mt-3 grid grid-cols-2 gap-2 bg-red-50/50 border border-red-100 rounded-2xl p-3">
-                          <div>
-                            <label className="text-[10px] uppercase font-black text-red-500">
-                              Preço promocional
-                            </label>
-
-                            <input
-                              type="number"
-                              inputMode="decimal"
-                              step="0.01"
-                              min={0}
-                              value={r.preco_promocional ?? ""}
-                              onChange={(e) =>
-                                setField(r.produto_id, {
-                                  preco_promocional:
-                                    e.target.value === ""
-                                      ? null
-                                      : Number(e.target.value),
-                                })
-                              }
-                              className="mt-1 w-full h-10 rounded-xl border border-red-200 bg-white px-3 font-black text-red-700 outline-none"
-                              placeholder="R$ 0,00"
-                            />
-                          </div>
-
-                          <div>
-                            <label className="text-[10px] uppercase font-black text-red-500">
-                              Desconto %
-                            </label>
-
-                            <input
-                              type="number"
-                              inputMode="decimal"
-                              step="0.01"
-                              min={0}
-                              value={r.percentual_off ?? ""}
-                              onChange={(e) =>
-                                setField(r.produto_id, {
-                                  percentual_off:
-                                    e.target.value === ""
-                                      ? null
-                                      : Number(e.target.value),
-                                })
-                              }
-                              className="mt-1 w-full h-10 rounded-xl border border-red-200 bg-white px-3 font-black text-red-700 outline-none"
-                              placeholder="0%"
-                            />
-                          </div>
-                        </div>
-                      )}
-
-                      {/* SALVAR */}
-
-                      <button
-                        onClick={() => salvarAgora(r.produto_id)}
-                        disabled={!!r._saving}
-                        className={`mt-3 w-full h-11 rounded-xl font-black text-sm flex items-center justify-center gap-2 transition ${
-                          r._saving
-                            ? "bg-slate-200 text-slate-500"
-                            : r._dirty
-                            ? "bg-amber-500 hover:bg-amber-600 text-white"
-                            : "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                        }`}
-                      >
-                        {r._saving ? (
-                          <>
-                            <Loader2 className="w-4 h-4 animate-spin" />
-                            Salvando...
-                          </>
-                        ) : r._dirty ? (
-                          <>
-                            <Check className="w-4 h-4" />
-                            Salvar alterações
-                          </>
-                        ) : (
-                          <>
-                            <Check className="w-4 h-4" />
-                            Produto atualizado
-                          </>
-                        )}
-                      </button>
-                    </div>
-                  </article>
-                );
-              })}
-            </section>
-
-            {/* =================================================
-                PAGINAÇÃO
-                ================================================= */}
-
-            <section className="mt-4 bg-white border rounded-2xl p-3 flex items-center justify-between">
+        {q.trim() &&
+          rows.length > 0 &&
+          pages > 1 && (
+            <div className="flex justify-center gap-2">
               <button
-                onClick={paginaAnterior}
-                disabled={page <= 1 || carregando}
-                className="h-10 px-3 rounded-xl border disabled:opacity-40 font-bold text-sm flex items-center gap-1"
+                onClick={() =>
+                  setPage((p) => Math.max(1, p - 1))
+                }
+                disabled={page <= 1}
+                className="rounded-xl border bg-white px-5 py-3 font-black disabled:opacity-40"
               >
-                <ChevronLeft className="w-4 h-4" />
-                Anterior
+                ← Anterior
               </button>
 
-              <div className="text-center">
-                <div className="text-xs text-slate-400 font-bold">
-                  Página
-                </div>
-
-                <div className="font-black text-slate-900">
-                  {page} / {totalPages}
-                </div>
-              </div>
-
               <button
-                onClick={proximaPagina}
-                disabled={page >= totalPages || carregando}
-                className="h-10 px-3 rounded-xl border disabled:opacity-40 font-bold text-sm flex items-center gap-1"
+                onClick={() =>
+                  setPage((p) => Math.min(pages, p + 1))
+                }
+                disabled={page >= pages}
+                className="rounded-xl border bg-white px-5 py-3 font-black disabled:opacity-40"
               >
-                Próxima
-                <ChevronRight className="w-4 h-4" />
+                Próxima →
               </button>
-            </section>
-          </>
+            </div>
+          )}
+
+        {/* ===================================================
+            MODAL EDIÇÃO
+        =================================================== */}
+
+        {editing && (
+          <EditModal
+            p={editing}
+            setP={setEditing}
+            saving={savingId === editing.produto_id}
+            onClose={() => setEditing(null)}
+            onSave={saveEdit}
+          />
         )}
       </div>
 
       {/* =====================================================
-          MODAL CÂMERA
-          ===================================================== */}
+          CÂMERA ZXING
+      ===================================================== */}
 
-      {cameraOpen && (
-        <div className="fixed inset-0 z-[9999] bg-black flex flex-col">
-          <div className="h-16 px-4 flex items-center justify-between text-white">
-            <div>
-              <h3 className="font-black">
-                Ler código de barras
-              </h3>
-
-              <p className="text-xs text-white/60">
-                Aponte para o EAN do produto
-              </p>
-            </div>
-
-            <button
-              onClick={fecharCamera}
-              className="w-10 h-10 rounded-full bg-white/10 flex items-center justify-center"
-            >
-              <X className="w-6 h-6" />
-            </button>
-          </div>
-
-          <div className="relative flex-1 overflow-hidden bg-black">
-            <video
-              ref={videoRef}
-              autoPlay
-              playsInline
-              muted
-              className="absolute inset-0 w-full h-full object-cover"
-            />
-
-            <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-              <div className="w-[88%] max-w-lg">
-                <div className="h-44 border-2 border-white rounded-3xl relative shadow-[0_0_0_9999px_rgba(0,0,0,0.45)]">
-                  <div className="absolute left-4 right-4 top-1/2 h-[2px] bg-red-500 shadow-[0_0_12px_rgba(239,68,68,0.9)]" />
+      {cameraAberta && (
+        <div className="fixed inset-0 z-[100] bg-black">
+          <div className="flex h-full flex-col">
+            <div className="flex items-center justify-between bg-black/90 p-4 text-white">
+              <div>
+                <div className="font-black">
+                  Ler código de barras
                 </div>
 
-                <p className="text-white text-center text-sm font-bold mt-5">
-                  Centralize o código dentro do quadro
-                </p>
+                <div className="text-xs text-slate-300">
+                  Aponte para o EAN do produto
+                </div>
               </div>
-            </div>
-          </div>
 
-          <div className="bg-slate-950 p-4 pb-7">
-            {cameraLendo && !cameraErro && (
-              <div className="flex items-center justify-center gap-2 text-white text-sm">
-                <Loader2 className="w-4 h-4 animate-spin" />
-                Procurando código...
+              <button
+                type="button"
+                onClick={fecharCamera}
+                className="rounded-xl bg-white/10 p-2"
+              >
+                <X size={24} />
+              </button>
+            </div>
+
+            <div className="relative flex flex-1 items-center justify-center overflow-hidden">
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className="h-full w-full object-cover"
+              />
+
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                <div className="relative h-36 w-[88%] max-w-md rounded-2xl border-2 border-white">
+                  <div className="absolute left-4 right-4 top-1/2 h-[2px] bg-red-500" />
+                </div>
               </div>
-            )}
+
+              {cameraLendo && (
+                <div className="absolute bottom-8 rounded-full bg-black/70 px-4 py-2 text-sm font-bold text-white">
+                  Procurando código...
+                </div>
+              )}
+            </div>
 
             {cameraErro && (
-              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-3 text-sm text-amber-800">
+              <div className="bg-red-600 p-4 text-center text-sm font-bold text-white">
                 {cameraErro}
               </div>
             )}
 
-            <button
-              onClick={fecharCamera}
-              className="mt-3 w-full h-12 rounded-2xl bg-white text-slate-900 font-black"
-            >
-              Fechar câmera
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* =====================================================
-          MODAL IMAGENS
-          ===================================================== */}
-
-      {imgModalOpen && imgProduto && (
-        <div className="fixed inset-0 z-[9998] bg-black/70 flex items-end sm:items-center justify-center">
-          <div className="bg-white w-full sm:max-w-2xl rounded-t-[28px] sm:rounded-[28px] max-h-[92vh] overflow-y-auto">
-            <div className="sticky top-0 bg-white z-10 p-4 border-b flex items-center justify-between">
-              <div className="min-w-0">
-                <h3 className="font-black text-slate-900 truncate">
-                  Imagem do produto
-                </h3>
-
-                <p className="text-xs text-slate-500 truncate">
-                  {imgProduto.nome}
-                </p>
-              </div>
-
+            <div className="bg-black p-4">
               <button
-                onClick={fecharModalImagens}
-                className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center"
+                type="button"
+                onClick={fecharCamera}
+                className="w-full rounded-xl bg-white py-3 font-black"
               >
-                <X className="w-5 h-5" />
+                Fechar câmera
               </button>
-            </div>
-
-            <div className="p-4">
-              <div className="w-full h-56 rounded-2xl bg-slate-50 border relative overflow-hidden">
-                <Image
-                  src={
-                    urlsToJsonb(imgTextarea)[0] ||
-                    "/produtos/caixa-padrao.png"
-                  }
-                  alt="Imagem"
-                  fill
-                  sizes="600px"
-                  className="object-contain p-3"
-                />
-              </div>
-
-              <label className="block mt-4 text-xs uppercase font-black text-slate-500">
-                URLs das imagens
-              </label>
-
-              <textarea
-                value={imgTextarea}
-                onChange={(e) => setImgTextarea(e.target.value)}
-                placeholder={"https://.../produto.png"}
-                className="mt-2 w-full min-h-32 rounded-2xl border border-slate-200 p-3 outline-none focus:border-blue-500"
-              />
-
-              <p className="text-xs text-slate-400 mt-2">
-                Coloque uma URL por linha. A primeira será a imagem principal.
-              </p>
-
-              <div className="mt-5 grid grid-cols-2 gap-2">
-                <button
-                  onClick={fecharModalImagens}
-                  className="h-12 rounded-2xl border font-bold"
-                >
-                  Cancelar
-                </button>
-
-                <button
-                  onClick={salvarImagensDoModal}
-                  disabled={imgSaving}
-                  className="h-12 rounded-2xl bg-blue-600 text-white font-black flex items-center justify-center gap-2"
-                >
-                  {imgSaving ? (
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                  ) : (
-                    <Check className="w-5 h-5" />
-                  )}
-
-                  Salvar
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* =====================================================
-          MODAL NOVO PRODUTO
-          ===================================================== */}
-
-      {novoOpen && (
-        <div className="fixed inset-0 z-[9997] bg-black/70 flex items-end sm:items-center justify-center">
-          <div className="bg-white w-full sm:max-w-3xl rounded-t-[28px] sm:rounded-[28px] max-h-[95vh] overflow-y-auto">
-            {/* CABEÇALHO */}
-
-            <div className="sticky top-0 bg-white z-20 border-b px-4 py-3 flex items-center justify-between">
-              <div>
-                <h3 className="font-black text-lg text-slate-900">
-                  Novo Produto
-                </h3>
-
-                <p className="text-xs text-slate-500">
-                  Cadastro Rede Fabiano
-                </p>
-              </div>
-
-              <button
-                onClick={fecharNovoProduto}
-                className="w-10 h-10 rounded-xl bg-slate-100 flex items-center justify-center"
-              >
-                <X className="w-5 h-5" />
-              </button>
-            </div>
-
-            <div className="p-4 space-y-4">
-              {/* EAN */}
-
-              <div>
-                <label className="text-xs uppercase font-black text-slate-500">
-                  Código de barras / EAN *
-                </label>
-
-                <div className="mt-1 flex gap-2">
-                  <div className="relative flex-1">
-                    <Barcode className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-
-                    <input
-                      value={novoEAN}
-                      onChange={(e) =>
-                        setNovoEAN(onlyDigits(e.target.value))
-                      }
-                      placeholder="789..."
-                      inputMode="numeric"
-                      className="w-full h-12 rounded-2xl border pl-11 pr-3 font-bold outline-none focus:border-blue-500"
-                    />
-                  </div>
-
-                  <button
-                    onClick={() => abrirCamera("novo")}
-                    className="w-12 h-12 rounded-2xl bg-slate-900 text-white flex items-center justify-center"
-                  >
-                    <Camera className="w-5 h-5" />
-                  </button>
-                </div>
-              </div>
-
-              {/* NOME */}
-
-              <div>
-                <label className="text-xs uppercase font-black text-slate-500">
-                  Nome do produto *
-                </label>
-
-                <input
-                  value={novoNome}
-                  onChange={(e) => setNovoNome(e.target.value)}
-                  placeholder="Ex: Dipirona 500mg 20 comprimidos"
-                  className="mt-1 w-full h-12 rounded-2xl border px-4 font-semibold outline-none focus:border-blue-500"
-                />
-              </div>
-
-              {/* LAB / CATEGORIA */}
-
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs uppercase font-black text-slate-500">
-                    Laboratório
-                  </label>
-
-                  <input
-                    value={novoLab}
-                    onChange={(e) => setNovoLab(e.target.value)}
-                    placeholder="Laboratório"
-                    className="mt-1 w-full h-12 rounded-2xl border px-4 outline-none focus:border-blue-500"
-                  />
-                </div>
-
-                <div>
-                  <label className="text-xs uppercase font-black text-slate-500">
-                    Categoria
-                  </label>
-
-                  <input
-                    value={novoCategoria}
-                    onChange={(e) => setNovoCategoria(e.target.value)}
-                    placeholder="Medicamentos"
-                    className="mt-1 w-full h-12 rounded-2xl border px-4 outline-none focus:border-blue-500"
-                  />
-                </div>
-              </div>
-
-              {/* APRESENTAÇÃO */}
-
-              <div>
-                <label className="text-xs uppercase font-black text-slate-500">
-                  Apresentação
-                </label>
-
-                <input
-                  value={novoApresentacao}
-                  onChange={(e) => setNovoApresentacao(e.target.value)}
-                  placeholder="Ex: Caixa com 20 comprimidos"
-                  className="mt-1 w-full h-12 rounded-2xl border px-4 outline-none focus:border-blue-500"
-                />
-              </div>
-
-              {/* =============================================
-                  CUSTO / VENDA / ESTOQUE
-                  ============================================= */}
-
-              <div className="bg-slate-50 border rounded-[22px] p-3">
-                <div className="flex items-center gap-2 mb-3">
-                  <CircleDollarSign className="w-5 h-5 text-blue-600" />
-
-                  <h4 className="font-black text-slate-900">
-                    Preços e estoque
-                  </h4>
-                </div>
-
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                  <div>
-                    <label className="text-[10px] uppercase font-black text-slate-500">
-                      Preço de custo
-                    </label>
-
-                    <input
-                      value={novoPrecoCusto}
-                      onChange={(e) =>
-                        setNovoPrecoCusto(e.target.value)
-                      }
-                      inputMode="decimal"
-                      placeholder="0,00"
-                      className="mt-1 w-full h-11 rounded-xl border bg-white px-3 font-black outline-none focus:border-blue-500"
-                    />
-
-                    <p className="mt-1 text-[10px] text-slate-400">
-                      {numberFromInput(novoPrecoCusto) != null
-                        ? brl(numberFromInput(novoPrecoCusto))
-                        : "R$ 0,00"}
-                    </p>
-                  </div>
-
-                  <div>
-                    <label className="text-[10px] uppercase font-black text-blue-600">
-                      Preço de venda
-                    </label>
-
-                    <input
-                      value={novoPreco}
-                      onChange={(e) => setNovoPreco(e.target.value)}
-                      inputMode="decimal"
-                      placeholder="0,00"
-                      className="mt-1 w-full h-11 rounded-xl border border-blue-200 bg-blue-50 px-3 font-black text-blue-800 outline-none focus:border-blue-500"
-                    />
-
-                    <p className="mt-1 text-[10px] text-slate-400">
-                      {numberFromInput(novoPreco) != null
-                        ? brl(numberFromInput(novoPreco))
-                        : "R$ 0,00"}
-                    </p>
-                  </div>
-
-                  <div className="col-span-2 sm:col-span-1">
-                    <label className="text-[10px] uppercase font-black text-emerald-600">
-                      Estoque
-                    </label>
-
-                    <input
-                      type="number"
-                      inputMode="numeric"
-                      min={0}
-                      value={novoEstoque}
-                      onChange={(e) => setNovoEstoque(e.target.value)}
-                      className="mt-1 w-full h-11 rounded-xl border border-emerald-200 bg-emerald-50 px-3 text-center font-black text-emerald-800 outline-none"
-                    />
-                  </div>
-                </div>
-
-                {/* MARGEM NOVO PRODUTO */}
-
-                {numberFromInput(novoPrecoCusto) != null &&
-                  Number(numberFromInput(novoPrecoCusto)) > 0 &&
-                  numberFromInput(novoPreco) != null && (
-                    <div className="mt-3 rounded-xl bg-white border px-3 py-2 flex items-center justify-between">
-                      <span className="text-xs font-bold text-slate-500">
-                        Margem sobre o custo
-                      </span>
-
-                      <span className="font-black text-emerald-600">
-                        {(
-                          ((Number(numberFromInput(novoPreco)) -
-                            Number(numberFromInput(novoPrecoCusto))) /
-                            Number(numberFromInput(novoPrecoCusto))) *
-                          100
-                        ).toFixed(1)}
-                        %
-                      </span>
-                    </div>
-                  )}
-              </div>
-
-              {/* ATIVO / DESTAQUE */}
-
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setNovoAtivo((v) => !v)}
-                  className={`h-12 rounded-2xl border font-black text-sm ${
-                    novoAtivo
-                      ? "bg-emerald-50 border-emerald-200 text-emerald-700"
-                      : "bg-slate-100 border-slate-200 text-slate-500"
-                  }`}
-                >
-                  {novoAtivo ? "✓ Ativo na loja" : "Inativo"}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setNovoDestaque((v) => !v)}
-                  className={`h-12 rounded-2xl border font-black text-sm flex items-center justify-center gap-2 ${
-                    novoDestaque
-                      ? "bg-amber-50 border-amber-200 text-amber-700"
-                      : "bg-white border-slate-200 text-slate-500"
-                  }`}
-                >
-                  <Sparkles className="w-4 h-4" />
-                  Destaque
-                </button>
-              </div>
-
-              {/* PROMOÇÃO */}
-
-              <div className="border rounded-[22px] p-3">
-                <button
-                  type="button"
-                  onClick={() => setNovoPromo((v) => !v)}
-                  className={`w-full h-11 rounded-xl font-black text-sm ${
-                    novoPromo
-                      ? "bg-red-50 text-red-700 border border-red-200"
-                      : "bg-slate-100 text-slate-600"
-                  }`}
-                >
-                  {novoPromo
-                    ? "🔥 Produto em promoção"
-                    : "Adicionar promoção"}
-                </button>
-
-                {novoPromo && (
-                  <div className="grid grid-cols-2 gap-2 mt-3">
-                    <div>
-                      <label className="text-[10px] uppercase font-black text-red-500">
-                        Preço promocional
-                      </label>
-
-                      <input
-                        value={novoPrecoPromo}
-                        onChange={(e) =>
-                          setNovoPrecoPromo(e.target.value)
-                        }
-                        inputMode="decimal"
-                        placeholder="0,00"
-                        className="mt-1 w-full h-11 rounded-xl border border-red-200 px-3 font-black"
-                      />
-                    </div>
-
-                    <div>
-                      <label className="text-[10px] uppercase font-black text-red-500">
-                        Desconto %
-                      </label>
-
-                      <input
-                        value={novoOff}
-                        onChange={(e) => setNovoOff(e.target.value)}
-                        inputMode="decimal"
-                        placeholder="0"
-                        className="mt-1 w-full h-11 rounded-xl border border-red-200 px-3 font-black"
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {/* IMAGEM */}
-
-              <div>
-                <label className="text-xs uppercase font-black text-slate-500">
-                  Imagem do produto
-                </label>
-
-                <textarea
-                  value={novoImgs}
-                  onChange={(e) => setNovoImgs(e.target.value)}
-                  placeholder="https://.../imagem.png"
-                  className="mt-1 w-full min-h-24 rounded-2xl border p-3 outline-none focus:border-blue-500"
-                />
-
-                {urlsToJsonb(novoImgs)[0] && (
-                  <div className="mt-2 h-40 relative bg-slate-50 border rounded-2xl overflow-hidden">
-                    <Image
-                      src={urlsToJsonb(novoImgs)[0]}
-                      alt="Preview"
-                      fill
-                      sizes="500px"
-                      className="object-contain p-2"
-                    />
-                  </div>
-                )}
-              </div>
-
-              {/* BOTÕES */}
-
-              <div className="grid grid-cols-3 gap-2 pt-2">
-                <button
-                  onClick={fecharNovoProduto}
-                  disabled={novoSaving}
-                  className="h-12 rounded-2xl border font-bold text-slate-600"
-                >
-                  Cancelar
-                </button>
-
-                <button
-                  onClick={() => abrirCamera("novo")}
-                  disabled={novoSaving}
-                  className="h-12 rounded-2xl bg-slate-900 text-white font-black flex items-center justify-center gap-2"
-                >
-                  <Camera className="w-5 h-5" />
-                  <span className="hidden sm:inline">
-                    Ler EAN
-                  </span>
-                  <span className="sm:hidden">
-                    EAN
-                  </span>
-                </button>
-
-                <button
-                  onClick={salvarNovoProduto}
-                  disabled={novoSaving}
-                  className="h-12 rounded-2xl bg-emerald-600 disabled:bg-emerald-300 text-white font-black flex items-center justify-center gap-2"
-                >
-                  {novoSaving ? (
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                  ) : (
-                    <Check className="w-5 h-5" />
-                  )}
-
-                  Salvar
-                </button>
-              </div>
             </div>
           </div>
         </div>
       )}
     </main>
+  );
+}
+
+/* =========================================================
+   CARD PRODUTO
+========================================================= */
+
+function ProdutoCard({
+  p,
+  saving,
+  deleting,
+  onEstoque,
+  onToggle,
+  onQuickSave,
+  onEdit,
+  onDelete,
+}: {
+  p: ProdutoFabiano;
+  saving: boolean;
+  deleting: boolean;
+  onEstoque: (delta: number) => void;
+  onToggle: (patch: Record<string, unknown>) => void;
+  onQuickSave: (
+    custo: string,
+    venda: string,
+    estoque: string
+  ) => void;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
+  const [custo, setCusto] = useState(
+    p.preco_custo === null
+      ? ""
+      : String(p.preco_custo).replace(".", ",")
+  );
+
+  const [venda, setVenda] = useState(
+    p.preco_venda === null
+      ? ""
+      : String(p.preco_venda).replace(".", ",")
+  );
+
+  const [estoque, setEstoque] = useState(
+    String(Number(p.estoque || 0))
+  );
+
+  useEffect(() => {
+    setCusto(
+      p.preco_custo === null
+        ? ""
+        : String(p.preco_custo).replace(".", ",")
+    );
+
+    setVenda(
+      p.preco_venda === null
+        ? ""
+        : String(p.preco_venda).replace(".", ",")
+    );
+
+    setEstoque(
+      String(Number(p.estoque || 0))
+    );
+  }, [
+    p.preco_custo,
+    p.preco_venda,
+    p.estoque,
+  ]);
+
+  const custoN = toNum(custo);
+  const vendaN = toNum(venda);
+
+  const lucroN = lucro(
+    custoN,
+    vendaN
+  );
+
+  const margemN = margem(
+    custoN,
+    vendaN
+  );
+
+  return (
+    <article className="overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-slate-200">
+      {/* PRODUTO */}
+
+      <div className="flex gap-3 p-4">
+        <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl border bg-slate-50">
+          <Image
+            src={firstImg(p.imagens)}
+            alt={p.nome || "Produto"}
+            width={70}
+            height={70}
+            className="object-contain"
+          />
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <div className="text-base font-black leading-tight text-slate-950">
+            {p.nome}
+          </div>
+
+          <div className="mt-1 text-xs text-slate-500">
+            EAN <b>{p.ean}</b>
+
+            {p.laboratorio
+              ? ` • ${p.laboratorio}`
+              : ""}
+          </div>
+
+          <div className="mt-2 flex flex-wrap gap-1">
+            <StatusPill
+              label="FV"
+              active={!!p.disponivel_farmacia}
+            />
+
+            <StatusPill
+              label="Site"
+              active={!!p.ativo_site}
+            />
+
+            <StatusPill
+              label="PDV"
+              active={!!p.ativo_pdv}
+            />
+          </div>
+        </div>
+      </div>
+
+      {/* ===================================================
+          PREÇO DE CUSTO / VENDA
+      =================================================== */}
+
+      <div className="border-t bg-slate-50/70 p-3">
+        <div className="grid grid-cols-2 gap-2">
+          <MoneyInput
+            label="Preço de custo"
+            value={custo}
+            onChange={setCusto}
+          />
+
+          <MoneyInput
+            label="Preço de venda"
+            value={venda}
+            onChange={setVenda}
+          />
+        </div>
+
+        {/* LUCRO / MARGEM */}
+
+        <div className="mt-2 grid grid-cols-2 gap-2 rounded-2xl bg-white p-3 ring-1 ring-slate-200">
+          <div>
+            <div className="text-[10px] font-black uppercase text-slate-400">
+              Lucro / un.
+            </div>
+
+            <div
+              className={`font-black ${
+                lucroN !== null && lucroN >= 0
+                  ? "text-green-700"
+                  : "text-red-600"
+              }`}
+            >
+              {lucroN === null
+                ? "—"
+                : brl(lucroN)}
+            </div>
+          </div>
+
+          <div>
+            <div className="text-[10px] font-black uppercase text-slate-400">
+              Margem
+            </div>
+
+            <div
+              className={`font-black ${
+                margemN !== null && margemN >= 0
+                  ? "text-green-700"
+                  : "text-red-600"
+              }`}
+            >
+              {margemN === null
+                ? "—"
+                : `${margemN
+                    .toFixed(1)
+                    .replace(".", ",")}%`}
+            </div>
+          </div>
+        </div>
+
+        {/* =================================================
+            ESTOQUE
+        ================================================= */}
+
+        <div className="mt-3">
+          <div className="mb-1 text-[10px] font-black uppercase text-slate-500">
+            Estoque Rede Fabiano
+          </div>
+
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              disabled={
+                saving ||
+                Number(p.estoque || 0) <= 0
+              }
+              onClick={() => onEstoque(-1)}
+              className="rounded-xl border bg-white p-3 disabled:opacity-40"
+            >
+              <Minus size={17} />
+            </button>
+
+            <input
+              value={estoque}
+              onChange={(e) =>
+                setEstoque(
+                  onlyDigits(e.target.value)
+                )
+              }
+              inputMode="numeric"
+              className="min-w-0 flex-1 rounded-xl border-2 border-slate-200 px-3 py-3 text-center text-lg font-black outline-none focus:border-blue-600"
+            />
+
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => onEstoque(1)}
+              className="rounded-xl border bg-white px-3 py-3 font-black"
+            >
+              +1
+            </button>
+
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => onEstoque(5)}
+              className="rounded-xl border bg-white px-3 py-3 font-black"
+            >
+              +5
+            </button>
+
+            <button
+              type="button"
+              disabled={saving}
+              onClick={() => onEstoque(10)}
+              className="hidden rounded-xl border bg-white px-3 py-3 font-black sm:block"
+            >
+              +10
+            </button>
+          </div>
+        </div>
+
+        <button
+          type="button"
+          disabled={saving}
+          onClick={() =>
+            onQuickSave(
+              custo,
+              venda,
+              estoque
+            )
+          }
+          className="mt-3 flex w-full items-center justify-center gap-2 rounded-2xl bg-blue-800 py-3 font-black text-white disabled:opacity-50"
+        >
+          <Save size={18} />
+
+          {saving
+            ? "Salvando..."
+            : "SALVAR CUSTO • VENDA • ESTOQUE"}
+        </button>
+      </div>
+
+      {/* ===================================================
+          ATIVAÇÃO
+      =================================================== */}
+
+      <div className="grid grid-cols-3 gap-2 border-t p-3">
+        <QuickToggle
+          label="FV"
+          value={!!p.disponivel_farmacia}
+          disabled={saving}
+          onChange={(v) =>
+            onToggle({
+              ativo: v,
+            })
+          }
+        />
+
+        <QuickToggle
+          label="Site"
+          value={!!p.ativo_site}
+          disabled={saving}
+          onChange={(v) =>
+            onToggle({
+              ativo_site: v,
+            })
+          }
+        />
+
+        <QuickToggle
+          label="PDV"
+          value={!!p.ativo_pdv}
+          disabled={saving}
+          onChange={(v) =>
+            onToggle({
+              ativo_pdv: v,
+            })
+          }
+        />
+      </div>
+
+      <div className="flex gap-2 border-t p-3">
+        <button
+          type="button"
+          onClick={onEdit}
+          className="flex flex-1 items-center justify-center gap-2 rounded-xl border bg-white py-3 font-black"
+        >
+          <Settings2 size={17} />
+          Editar completo
+        </button>
+
+        <button
+          type="button"
+          onClick={onDelete}
+          disabled={deleting}
+          className="rounded-xl bg-red-50 px-3 py-3 text-xs font-black text-red-700 disabled:opacity-50"
+        >
+          {deleting
+            ? "..."
+            : "Retirar"}
+        </button>
+      </div>
+    </article>
+  );
+}
+
+/* =========================================================
+   NOVO PRODUTO
+========================================================= */
+
+function NovoCard({
+  novo,
+  setNovo,
+  saving,
+  onSave,
+  onClose,
+}: {
+  novo: NovoProduto;
+
+  setNovo: React.Dispatch<
+    React.SetStateAction<NovoProduto>
+  >;
+
+  saving: boolean;
+
+  onSave: () => void;
+  onClose: () => void;
+}) {
+  const [detalhes, setDetalhes] =
+    useState(false);
+
+  const custoN = toNum(
+    novo.preco_custo
+  );
+
+  const vendaN = toNum(
+    novo.preco_venda
+  );
+
+  const lucroN = lucro(
+    custoN,
+    vendaN
+  );
+
+  const margemN = margem(
+    custoN,
+    vendaN
+  );
+
+  return (
+    <section className="overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-green-200">
+      <div className="flex items-center justify-between bg-green-600 px-4 py-3 text-white">
+        <div>
+          <div className="text-xs font-bold text-green-100">
+            NOVO PRODUTO
+          </div>
+
+          <div className="font-black">
+            Cadastro rápido Rede Fabiano + FV
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={onClose}
+          className="rounded-xl bg-white/10 p-2"
+        >
+          <X size={20} />
+        </button>
+      </div>
+
+      <div className="grid gap-3 p-4 md:grid-cols-2">
+        <Field label="EAN">
+          <input
+            value={novo.ean}
+            onChange={(e) =>
+              setNovo((p) => ({
+                ...p,
+                ean: onlyDigits(
+                  e.target.value
+                ),
+              }))
+            }
+            inputMode="numeric"
+            className="w-full rounded-xl border-2 border-slate-200 bg-white px-3 py-3 outline-none focus:border-blue-600"
+            placeholder="789..."
+          />
+        </Field>
+
+        <Field label="Nome">
+          <input
+            value={novo.nome}
+            onChange={(e) =>
+              setNovo((p) => ({
+                ...p,
+                nome: e.target.value,
+              }))
+            }
+            className="w-full rounded-xl border-2 border-slate-200 bg-white px-3 py-3 outline-none focus:border-blue-600"
+            placeholder="Nome do produto"
+          />
+        </Field>
+
+        <MoneyField
+          label="Preço de custo"
+          value={novo.preco_custo}
+          onChange={(v) =>
+            setNovo((p) => ({
+              ...p,
+              preco_custo: v,
+            }))
+          }
+        />
+
+        <MoneyField
+          label="Preço de venda"
+          value={novo.preco_venda}
+          onChange={(v) =>
+            setNovo((p) => ({
+              ...p,
+              preco_venda: v,
+            }))
+          }
+        />
+
+        <Field label="Estoque inicial">
+          <input
+            value={novo.estoque}
+            onChange={(e) =>
+              setNovo((p) => ({
+                ...p,
+                estoque: onlyDigits(
+                  e.target.value
+                ),
+              }))
+            }
+            inputMode="numeric"
+            className="w-full rounded-xl border-2 border-slate-200 bg-white px-3 py-3 outline-none focus:border-blue-600"
+          />
+        </Field>
+
+        <div className="rounded-2xl bg-slate-50 p-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <div className="text-[10px] font-black uppercase text-slate-400">
+                Lucro
+              </div>
+
+              <div className="font-black text-green-700">
+                {lucroN === null
+                  ? "—"
+                  : brl(lucroN)}
+              </div>
+            </div>
+
+            <div>
+              <div className="text-[10px] font-black uppercase text-slate-400">
+                Margem
+              </div>
+
+              <div className="font-black text-green-700">
+                {margemN === null
+                  ? "—"
+                  : `${margemN
+                      .toFixed(1)
+                      .replace(".", ",")}%`}
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <button
+        type="button"
+        onClick={() =>
+          setDetalhes((v) => !v)
+        }
+        className="mx-4 mb-3 flex items-center gap-2 text-sm font-black text-blue-800"
+      >
+        {detalhes ? (
+          <ChevronUp size={17} />
+        ) : (
+          <ChevronDown size={17} />
+        )}
+
+        {detalhes
+          ? "Ocultar detalhes"
+          : "Mais detalhes"}
+      </button>
+
+      {detalhes && (
+        <div className="grid gap-3 border-t p-4 md:grid-cols-3">
+          <Field label="Laboratório">
+            <input
+              value={novo.laboratorio}
+              onChange={(e) =>
+                setNovo((p) => ({
+                  ...p,
+                  laboratorio:
+                    e.target.value,
+                }))
+              }
+              className="w-full rounded-xl border-2 border-slate-200 bg-white px-3 py-3 outline-none focus:border-blue-600"
+            />
+          </Field>
+
+          <Field label="Categoria">
+            <input
+              value={novo.categoria}
+              onChange={(e) =>
+                setNovo((p) => ({
+                  ...p,
+                  categoria:
+                    e.target.value,
+                }))
+              }
+              className="w-full rounded-xl border-2 border-slate-200 bg-white px-3 py-3 outline-none focus:border-blue-600"
+            />
+          </Field>
+
+          <Field label="Apresentação">
+            <input
+              value={novo.apresentacao}
+              onChange={(e) =>
+                setNovo((p) => ({
+                  ...p,
+                  apresentacao:
+                    e.target.value,
+                }))
+              }
+              className="w-full rounded-xl border-2 border-slate-200 bg-white px-3 py-3 outline-none focus:border-blue-600"
+            />
+          </Field>
+
+          <MoneyField
+            label="PMC catálogo"
+            value={novo.pmc}
+            onChange={(v) =>
+              setNovo((p) => ({
+                ...p,
+                pmc: v,
+              }))
+            }
+          />
+
+          <Field label="Promoção">
+            <SelectBool
+              value={novo.em_promocao}
+              onChange={(v) =>
+                setNovo((p) => ({
+                  ...p,
+                  em_promocao: v,
+                }))
+              }
+            />
+          </Field>
+
+          <MoneyField
+            label="Preço promocional"
+            value={novo.preco_promocional}
+            onChange={(v) =>
+              setNovo((p) => ({
+                ...p,
+                preco_promocional: v,
+              }))
+            }
+          />
+
+          <Field label="OFF (%)">
+            <input
+              value={novo.percentual_off}
+              onChange={(e) =>
+                setNovo((p) => ({
+                  ...p,
+                  percentual_off:
+                    e.target.value,
+                }))
+              }
+              inputMode="decimal"
+              className="w-full rounded-xl border-2 border-slate-200 bg-white px-3 py-3 outline-none focus:border-blue-600"
+            />
+          </Field>
+
+          <Field label="Destaque">
+            <SelectBool
+              value={novo.destaque_home}
+              onChange={(v) =>
+                setNovo((p) => ({
+                  ...p,
+                  destaque_home: v,
+                }))
+              }
+            />
+          </Field>
+
+          <Field label="FV">
+            <SelectBool
+              value={novo.ativo}
+              onChange={(v) =>
+                setNovo((p) => ({
+                  ...p,
+                  ativo: v,
+                }))
+              }
+            />
+          </Field>
+
+          <Field label="Site Rede Fabiano">
+            <SelectBool
+              value={novo.ativo_site}
+              onChange={(v) =>
+                setNovo((p) => ({
+                  ...p,
+                  ativo_site: v,
+                }))
+              }
+            />
+          </Field>
+
+          <Field label="PDV">
+            <SelectBool
+              value={novo.ativo_pdv}
+              onChange={(v) =>
+                setNovo((p) => ({
+                  ...p,
+                  ativo_pdv: v,
+                }))
+              }
+            />
+          </Field>
+
+          <Field
+            label="Imagens (JSON ou URLs)"
+            className="md:col-span-3"
+          >
+            <textarea
+              value={novo.imagensText}
+              onChange={(e) =>
+                setNovo((p) => ({
+                  ...p,
+                  imagensText:
+                    e.target.value,
+                }))
+              }
+              rows={2}
+              className="w-full rounded-xl border-2 border-slate-200 bg-white px-3 py-3 outline-none focus:border-blue-600"
+            />
+          </Field>
+        </div>
+      )}
+
+      <div className="p-4 pt-0">
+        <button
+          type="button"
+          onClick={onSave}
+          disabled={saving}
+          className="w-full rounded-2xl bg-green-600 py-4 font-black text-white disabled:opacity-50"
+        >
+          {saving
+            ? "Salvando..."
+            : "CADASTRAR PRODUTO"}
+        </button>
+      </div>
+    </section>
+  );
+}
+
+/* =========================================================
+   MODAL EDIÇÃO COMPLETA
+========================================================= */
+
+function EditModal({
+  p,
+  setP,
+  saving,
+  onClose,
+  onSave,
+}: {
+  p: EditProduto;
+
+  setP: (
+    v: EditProduto | null
+  ) => void;
+
+  saving: boolean;
+
+  onClose: () => void;
+  onSave: () => void;
+}) {
+  const imagensText = useMemo(
+    () =>
+      Array.isArray(p.imagens) &&
+      p.imagens.length
+        ? JSON.stringify(p.imagens)
+        : "",
+    [p.imagens]
+  );
+
+  const custoN = Number(
+    p.preco_custo || 0
+  );
+
+  const vendaN = Number(
+    p.preco_venda || 0
+  );
+
+  const lucroN = lucro(
+    custoN,
+    vendaN
+  );
+
+  const margemN = margem(
+    custoN,
+    vendaN
+  );
+
+  return (
+    <div className="fixed inset-0 z-[80] bg-black/50 p-2 md:p-4">
+      <div className="mx-auto flex h-full max-w-3xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
+        <div className="flex items-center justify-between border-b bg-white p-4">
+          <div className="min-w-0">
+            <div className="font-black text-slate-950">
+              Editar produto
+            </div>
+
+            <div className="truncate text-xs font-bold text-slate-500">
+              {p.nome} • {p.ean}
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-xl bg-slate-100 p-2"
+          >
+            <X size={20} />
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-4">
+          <div className="grid gap-3 md:grid-cols-2">
+            <Field label="EAN">
+              <input
+                value={p.ean}
+                onChange={(e) =>
+                  setP({
+                    ...p,
+                    ean: e.target.value,
+                  })
+                }
+                inputMode="numeric"
+                className="w-full rounded-xl border-2 border-slate-200 bg-white px-3 py-3 outline-none focus:border-blue-600"
+              />
+            </Field>
+
+            <Field label="Nome">
+              <input
+                value={p.nome}
+                onChange={(e) =>
+                  setP({
+                    ...p,
+                    nome: e.target.value,
+                  })
+                }
+                className="w-full rounded-xl border-2 border-slate-200 bg-white px-3 py-3 outline-none focus:border-blue-600"
+              />
+            </Field>
+
+            <Field label="Preço de custo">
+              <input
+                value={p.preco_custo ?? ""}
+                onChange={(e) =>
+                  setP({
+                    ...p,
+                    preco_custo:
+                      toNum(e.target.value),
+                  })
+                }
+                inputMode="decimal"
+                className="w-full rounded-xl border-2 border-slate-200 bg-white px-3 py-3 outline-none focus:border-blue-600"
+              />
+            </Field>
+
+            <Field label="Preço de venda">
+              <input
+                value={p.preco_venda ?? ""}
+                onChange={(e) =>
+                  setP({
+                    ...p,
+                    preco_venda:
+                      toNum(e.target.value),
+                  })
+                }
+                inputMode="decimal"
+                className="w-full rounded-xl border-2 border-slate-200 bg-white px-3 py-3 outline-none focus:border-blue-600"
+              />
+            </Field>
+
+            <Field label="Estoque">
+              <input
+                value={p.estoque ?? 0}
+                onChange={(e) =>
+                  setP({
+                    ...p,
+                    estoque: Math.max(
+                      0,
+                      Number(
+                        toInt(
+                          e.target.value
+                        ) ?? 0
+                      )
+                    ),
+                  })
+                }
+                inputMode="numeric"
+                className="w-full rounded-xl border-2 border-slate-200 bg-white px-3 py-3 outline-none focus:border-blue-600"
+              />
+            </Field>
+
+            <Field label="PMC catálogo">
+              <input
+                value={p.pmc ?? ""}
+                onChange={(e) =>
+                  setP({
+                    ...p,
+                    pmc:
+                      toNum(e.target.value),
+                  })
+                }
+                inputMode="decimal"
+                className="w-full rounded-xl border-2 border-slate-200 bg-white px-3 py-3 outline-none focus:border-blue-600"
+              />
+            </Field>
+          </div>
+
+          <div className="mt-3 grid grid-cols-2 gap-2 rounded-2xl bg-slate-50 p-3">
+            <div>
+              <div className="text-[10px] font-black uppercase text-slate-400">
+                Lucro / un.
+              </div>
+
+              <div
+                className={`font-black ${
+                  lucroN !== null && lucroN >= 0
+                    ? "text-green-700"
+                    : "text-red-600"
+                }`}
+              >
+                {lucroN === null
+                  ? "—"
+                  : brl(lucroN)}
+              </div>
+            </div>
+
+            <div>
+              <div className="text-[10px] font-black uppercase text-slate-400">
+                Margem
+              </div>
+
+              <div
+                className={`font-black ${
+                  margemN !== null && margemN >= 0
+                    ? "text-green-700"
+                    : "text-red-600"
+                }`}
+              >
+                {margemN === null
+                  ? "—"
+                  : `${margemN
+                      .toFixed(1)
+                      .replace(".", ",")}%`}
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-4 grid gap-3 md:grid-cols-3">
+            <Field label="Laboratório">
+              <input
+                value={p.laboratorio ?? ""}
+                onChange={(e) =>
+                  setP({
+                    ...p,
+                    laboratorio:
+                      e.target.value,
+                  })
+                }
+                className="w-full rounded-xl border-2 border-slate-200 bg-white px-3 py-3 outline-none focus:border-blue-600"
+              />
+            </Field>
+
+            <Field label="Categoria">
+              <input
+                value={p.categoria ?? ""}
+                onChange={(e) =>
+                  setP({
+                    ...p,
+                    categoria:
+                      e.target.value,
+                  })
+                }
+                className="w-full rounded-xl border-2 border-slate-200 bg-white px-3 py-3 outline-none focus:border-blue-600"
+              />
+            </Field>
+
+            <Field label="Apresentação">
+              <input
+                value={p.apresentacao ?? ""}
+                onChange={(e) =>
+                  setP({
+                    ...p,
+                    apresentacao:
+                      e.target.value,
+                  })
+                }
+                className="w-full rounded-xl border-2 border-slate-200 bg-white px-3 py-3 outline-none focus:border-blue-600"
+              />
+            </Field>
+
+            <Field label="Promoção">
+              <SelectBool
+                value={!!p.em_promocao}
+                onChange={(v) =>
+                  setP({
+                    ...p,
+                    em_promocao: v,
+                  })
+                }
+              />
+            </Field>
+
+            <Field label="Preço promocional">
+              <input
+                value={
+                  p.preco_promocional ?? ""
+                }
+                onChange={(e) =>
+                  setP({
+                    ...p,
+                    preco_promocional:
+                      toNum(e.target.value),
+                  })
+                }
+                inputMode="decimal"
+                className="w-full rounded-xl border-2 border-slate-200 bg-white px-3 py-3 outline-none focus:border-blue-600"
+              />
+            </Field>
+
+            <Field label="OFF (%)">
+              <input
+                value={p.percentual_off ?? ""}
+                onChange={(e) =>
+                  setP({
+                    ...p,
+                    percentual_off:
+                      toNum(e.target.value),
+                  })
+                }
+                inputMode="decimal"
+                className="w-full rounded-xl border-2 border-slate-200 bg-white px-3 py-3 outline-none focus:border-blue-600"
+              />
+            </Field>
+
+            <Field label="Destaque">
+              <SelectBool
+                value={!!p.destaque_home}
+                onChange={(v) =>
+                  setP({
+                    ...p,
+                    destaque_home: v,
+                  })
+                }
+              />
+            </Field>
+
+            <Field label="FV">
+              <SelectBool
+                value={
+                  !!p.disponivel_farmacia
+                }
+                onChange={(v) =>
+                  setP({
+                    ...p,
+                    disponivel_farmacia: v,
+                  })
+                }
+              />
+            </Field>
+
+            <Field label="Site">
+              <SelectBool
+                value={!!p.ativo_site}
+                onChange={(v) =>
+                  setP({
+                    ...p,
+                    ativo_site: v,
+                  })
+                }
+              />
+            </Field>
+
+            <Field label="PDV">
+              <SelectBool
+                value={!!p.ativo_pdv}
+                onChange={(v) =>
+                  setP({
+                    ...p,
+                    ativo_pdv: v,
+                  })
+                }
+              />
+            </Field>
+
+            <Field
+              label="Imagens (JSON ou URLs)"
+              className="md:col-span-3"
+            >
+              <textarea
+                defaultValue={imagensText}
+                onChange={(e) =>
+                  setP({
+                    ...p,
+                    imagens:
+                      safeJsonArray(
+                        e.target.value
+                      ),
+                  })
+                }
+                rows={3}
+                className="w-full rounded-xl border-2 border-slate-200 bg-white px-3 py-3 outline-none focus:border-blue-600"
+              />
+            </Field>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-2 gap-2 border-t bg-white p-3">
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-xl border py-3 font-black"
+          >
+            Cancelar
+          </button>
+
+          <button
+            type="button"
+            onClick={onSave}
+            disabled={saving}
+            className="rounded-xl bg-blue-800 py-3 font-black text-white disabled:opacity-50"
+          >
+            {saving
+              ? "Salvando..."
+              : "SALVAR"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================
+   COMPONENTES AUXILIARES
+========================================================= */
+
+function FilterButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`shrink-0 rounded-xl px-3 py-2 text-xs font-black ${
+        active
+          ? "bg-blue-800 text-white"
+          : "bg-slate-100 text-slate-700"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function StatusPill({
+  label,
+  active,
+}: {
+  label: string;
+  active: boolean;
+}) {
+  return (
+    <span
+      className={`rounded-full px-2 py-1 text-[10px] font-black ${
+        active
+          ? "bg-green-100 text-green-800"
+          : "bg-slate-100 text-slate-500"
+      }`}
+    >
+      {label} {active ? "✓" : "—"}
+    </span>
+  );
+}
+
+function MoneyInput({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <label className="block">
+      <span className="mb-1 block text-[10px] font-black uppercase text-slate-500">
+        {label}
+      </span>
+
+      <div className="flex items-center rounded-xl border-2 border-slate-200 bg-white px-3 focus-within:border-blue-600">
+        <span className="mr-2 text-sm font-black text-slate-500">
+          R$
+        </span>
+
+        <input
+          value={value}
+          onChange={(e) =>
+            onChange(e.target.value)
+          }
+          inputMode="decimal"
+          placeholder="0,00"
+          className="min-w-0 flex-1 py-3 text-lg font-black outline-none"
+        />
+      </div>
+    </label>
+  );
+}
+
+function MoneyField({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (v: string) => void;
+}) {
+  return (
+    <Field label={label}>
+      <input
+        value={value}
+        onChange={(e) =>
+          onChange(e.target.value)
+        }
+        inputMode="decimal"
+        placeholder="0,00"
+        className="w-full rounded-xl border-2 border-slate-200 bg-white px-3 py-3 outline-none focus:border-blue-600"
+      />
+    </Field>
+  );
+}
+
+function Field({
+  label,
+  className,
+  children,
+}: {
+  label: string;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className={className}>
+      <div className="mb-1 text-xs font-bold text-slate-600">
+        {label}
+      </div>
+
+      {children}
+    </label>
+  );
+}
+
+function SelectBool({
+  value,
+  onChange,
+}: {
+  value: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <select
+      value={value ? "1" : "0"}
+      onChange={(e) =>
+        onChange(
+          e.target.value === "1"
+        )
+      }
+      className="w-full rounded-xl border-2 border-slate-200 bg-white px-3 py-3 outline-none focus:border-blue-600"
+    >
+      <option value="0">
+        Não
+      </option>
+
+      <option value="1">
+        Sim
+      </option>
+    </select>
+  );
+}
+
+function QuickToggle({
+  label,
+  value,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  value: boolean;
+  disabled?: boolean;
+  onChange: (v: boolean) => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() =>
+        onChange(!value)
+      }
+      disabled={disabled}
+      className={`rounded-xl border px-2 py-2 text-xs font-black ${
+        value
+          ? "border-green-600 bg-green-600 text-white"
+          : "border-slate-200 bg-white text-slate-600"
+      } disabled:opacity-50`}
+    >
+      {label}: {value ? "Sim" : "Não"}
+    </button>
   );
 }
