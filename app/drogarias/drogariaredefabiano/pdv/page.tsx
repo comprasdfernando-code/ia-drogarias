@@ -1,1347 +1,5390 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
-import { createClient } from "@supabase/supabase-js";
+import React, {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
-const supabase = createClient(
-  process.env.NEXT_PUBLIC_SUPABASE_URL!,
-  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-);
+import Link from "next/link";
+
+import {
+  ArrowLeft,
+  Camera,
+  Minus,
+  Plus,
+  Printer,
+  ReceiptText,
+  Search,
+  ShoppingCart,
+  Store,
+  Trash2,
+  Truck,
+  X,
+} from "lucide-react";
+
+import { BrowserMultiFormatReader } from "@zxing/browser";
+import { supabase } from "@/lib/supabaseClient";
+
+/* =========================================================
+   CONFIGURAÇÃO
+========================================================= */
 
 const LOJA_SLUG = "drogariaredefabiano";
 const SENHA_ADMIN = "102030";
 
-type FVProduto = {
+/* =========================================================
+   TIPOS
+========================================================= */
+
+type Produto = {
   id: string;
   ean: string;
   nome: string;
+
+  laboratorio: string | null;
+  categoria: string | null;
+  apresentacao: string | null;
+
+  imagem: string;
+
+  estoque: number;
+
+  preco_venda: number;
+  preco_consulta: number;
+
+  pode_vender: boolean;
+};
+
+type TipoDesconto =
+  | "PERCENTUAL"
+  | "VALOR";
+
+type Item = Produto & {
+  qtd: number;
+
+  descontoTipo: TipoDesconto;
+  desconto: number;
+};
+
+type Forma =
+  | "Dinheiro"
+  | "Pix"
+  | "Débito"
+  | "Crédito";
+
+type Pagamento = {
+  forma: Forma;
+  valor: string;
+};
+
+type TipoAtendimento =
+  | "BALCAO"
+  | "ENTREGA";
+
+type CaixaSessao = {
+  id: string;
+
+  loja_slug: string;
+
+  operador: string | null;
+  turno: string | null;
+
+  status: string;
+
+  valor_abertura: number | null;
+  valor_fechamento: number | null;
+
+  aberto_em: string;
+  fechado_em: string | null;
+
+  observacoes: string | null;
+};
+
+type FVProduto = {
+  id: string;
+
+  ean: string;
+  nome: string;
+
   categoria: string | null;
   laboratorio: string | null;
+  apresentacao: string | null;
+
   pmc: number | null;
+
   em_promocao: boolean | null;
   preco_promocional: number | null;
   percentual_off: number | null;
-  imagens: string[] | null;
+
+  imagens: any;
+
   ativo: boolean | null;
 };
 
 type LojaProduto = {
   produto_id: string;
+
   farmacia_slug: string;
+
   estoque: number | null;
   preco_venda: number | null;
+
   ativo: boolean | null;
+  ativo_pdv?: boolean | null;
 };
 
-type ProdutoBusca = {
+type VendaSalva = {
   id: string;
-  ean: string;
-  nome: string;
-  categoria: string | null;
-  imagem: string;
-  estoque: number;
-  preco_venda: number;
+
+  loja_slug?: string;
+
+  origem?: string;
+  status?: string;
+
+  tipo_lancamento?: string | null;
+
+  comanda?: string | null;
+
+  cliente?: any;
+
+  pagamento?: any;
+
+  itens?: any;
+
+  total?: number;
+
+  created_at?: string;
+  finalizada_em?: string | null;
 };
 
-type ItemVenda = ProdutoBusca & {
-  qtd: number;
-  desconto: number; // %
-  valor_cobrado: number;
-};
+/* =========================================================
+   HELPERS
+========================================================= */
 
-type CaixaSessao = {
-  id: string;
-  loja_slug: string;
-  operador: string | null;
-  turno: string | null;
-  status: string;
-  valor_abertura: number | null;
-  valor_fechamento: number | null;
-  aberto_em: string;
-  fechado_em: string | null;
-  observacoes: string | null;
-};
-
-function onlyDigits(s: string) {
-  return (s || "").replace(/\D/g, "");
+function onlyDigits(
+  value: string
+) {
+  return String(
+    value || ""
+  ).replace(
+    /\D/g,
+    ""
+  );
 }
 
-function firstImg(imagens?: string[] | null) {
-  if (Array.isArray(imagens) && imagens.length > 0) return imagens[0];
-  return "/produtos/caixa-padrao.png";
+function brl(
+  value: number
+) {
+  return Number(
+    value || 0
+  ).toLocaleString(
+    "pt-BR",
+    {
+      style: "currency",
+      currency: "BRL",
+    }
+  );
 }
 
-function brl(n: number) {
-  return (Number(n) || 0).toLocaleString("pt-BR", {
-    style: "currency",
-    currency: "BRL",
-  });
+/*
+  Aceita:
+  10
+  10.50
+  10,50
+  1.250,90
+*/
+
+function numero(
+  value:
+    | string
+    | number
+    | null
+    | undefined
+) {
+  if (
+    value === null ||
+    value === undefined
+  ) {
+    return 0;
+  }
+
+  if (
+    typeof value ===
+    "number"
+  ) {
+    return Number.isFinite(
+      value
+    )
+      ? value
+      : 0;
+  }
+
+  const original =
+    String(value).trim();
+
+  if (!original) {
+    return 0;
+  }
+
+  let normalizado =
+    original.replace(
+      /[^\d,.-]/g,
+      ""
+    );
+
+  /*
+    Tem ponto e vírgula:
+    1.250,90
+  */
+
+  if (
+    normalizado.includes(
+      ","
+    ) &&
+    normalizado.includes(
+      "."
+    )
+  ) {
+    normalizado =
+      normalizado
+        .replace(
+          /\./g,
+          ""
+        )
+        .replace(
+          ",",
+          "."
+        );
+  } else if (
+    normalizado.includes(
+      ","
+    )
+  ) {
+    normalizado =
+      normalizado.replace(
+        ",",
+        "."
+      );
+  }
+
+  const n =
+    Number(normalizado);
+
+  return Number.isFinite(n)
+    ? n
+    : 0;
 }
 
-function moneyInputToNumber(v: string | number) {
-  if (typeof v === "number") return Number(v || 0);
-  const clean = String(v || "")
-    .replace(/\./g, "")
-    .replace(",", ".")
-    .replace(/[^\d.-]/g, "");
-  return Number(clean || 0);
-}
+/*
+  JSONB pode chegar como:
+  array
+  string JSON
+  objeto
+*/
 
-function precoGlobalFinal(p: FVProduto) {
-  const pmc = Number(p.pmc || 0);
-  const promo = Number(p.preco_promocional || 0);
-  const emPromo = !!p.em_promocao && promo > 0 && (!pmc || promo < pmc);
-  const final = emPromo ? promo : pmc;
-  return Number(final || 0);
-}
+function asArray<T = any>(
+  value: any
+): T[] {
+  if (
+    Array.isArray(value)
+  ) {
+    return value;
+  }
 
-/** Blindagem: garante array mesmo se vier string/json/objeto */
-function asArray<T = any>(value: any): T[] {
-  if (Array.isArray(value)) return value;
-
-  if (typeof value === "string") {
+  if (
+    typeof value ===
+    "string"
+  ) {
     try {
-      const parsed = JSON.parse(value);
-      return Array.isArray(parsed) ? (parsed as T[]) : [];
+      const parsed =
+        JSON.parse(value);
+
+      return Array.isArray(
+        parsed
+      )
+        ? parsed
+        : [];
     } catch {
-      return [];
+      return value.trim()
+        ? ([value] as T[])
+        : [];
     }
   }
 
-  if (value && typeof value === "object") {
-    const vals = Object.values(value);
-    return Array.isArray(vals) ? (vals as T[]) : [];
+  if (
+    value &&
+    typeof value ===
+    "object"
+  ) {
+    return Object.values(
+      value
+    ) as T[];
   }
 
   return [];
 }
 
-function calcularUnitarioFinal(item: ItemVenda) {
-  const precoBase = Number(item.preco_venda || 0);
-  const valorCobrado = Number(item.valor_cobrado ?? precoBase);
+function primeiraImagem(
+  imagens: any
+) {
+  const lista =
+    asArray<any>(imagens);
 
-  if (valorCobrado >= 0) return valorCobrado;
+  const primeira =
+    lista.find(
+      (x) =>
+        typeof x ===
+          "string" &&
+        x.trim()
+    );
 
-  return precoBase - precoBase * (Number(item.desconto || 0) / 100);
+  return primeira
+    ? String(
+        primeira
+      ).trim()
+    : "/produtos/caixa-padrao.png";
 }
 
-export default function PDVPageFabiano() {
-  const inputRef = useRef<HTMLInputElement>(null);
+/* =========================================================
+   PREÇO GLOBAL / CONSULTA
+========================================================= */
 
-  const [busca, setBusca] = useState("");
-  const [resultados, setResultados] = useState<ProdutoBusca[]>([]);
-  const [venda, setVenda] = useState<ItemVenda[]>([]);
-  const [total, setTotal] = useState(0);
+function precoGlobalFinal(
+  produto: FVProduto
+) {
+  const pmc =
+    Number(
+      produto.pmc || 0
+    );
 
-  const [showPagamento, setShowPagamento] = useState(false);
-  const [modoFinalizacao, setModoFinalizacao] = useState<"comanda" | "caixa" | null>(null);
+  const promocional =
+    Number(
+      produto
+        .preco_promocional ||
+        0
+    );
 
-  const [senha, setSenha] = useState("");
-  const [mostrarVendas, setMostrarVendas] = useState(false);
-  const [vendas, setVendas] = useState<any[]>([]);
-  const [vendaSelecionada, setVendaSelecionada] = useState<any | null>(null);
-  const [filtroData, setFiltroData] = useState("");
+  const promocaoValida =
+    !!produto.em_promocao &&
+    promocional > 0 &&
+    (
+      pmc <= 0 ||
+      promocional < pmc
+    );
 
-  const [saving, setSaving] = useState(false);
-  const [caixaAbertoInfo, setCaixaAbertoInfo] = useState<CaixaSessao | null>(null);
+  return promocaoValida
+    ? promocional
+    : pmc;
+}
 
-  const [pagamento, setPagamento] = useState<any>({
-    tipo: "Balcão", // Balcão | Entrega | Externo
-    forma: "", // Pix | Cartão | Dinheiro
-    dinheiro: "",
-    troco: "0.00",
-    nome: "",
-    telefone: "",
-    endereco: "",
-    comanda: "",
-  });
+/* =========================================================
+   PREÇO / DESCONTO DO ITEM
+========================================================= */
 
-  // ==========================
-  // CÁLCULOS
-  // ==========================
-  function calcularTotal(lista: ItemVenda[]) {
-    const soma = lista.reduce((acc, p) => {
-      const unit = calcularUnitarioFinal(p);
-      return acc + Number(p.qtd || 0) * unit;
-    }, 0);
-    setTotal(Number(soma || 0));
-  }
+function precoLiquidoItem(
+  item: Item
+) {
+  const preco =
+    Number(
+      item.preco_venda ||
+        0
+    );
 
-  function limparVenda() {
-    setVenda([]);
-    setTotal(0);
-    setResultados([]);
-    setBusca("");
-    setModoFinalizacao(null);
-    setPagamento((prev: any) => ({
-      ...prev,
-      forma: "",
-      dinheiro: "",
-      troco: "0.00",
-      nome: "",
-      telefone: "",
-      endereco: "",
-      comanda: "",
-    }));
-    inputRef.current?.focus();
-  }
-
-  function removerItem(id: string) {
-    setVenda((prev) => {
-      const nv = prev.filter((x) => x.id !== id);
-      calcularTotal(nv);
-      return nv;
-    });
-  }
-
-  function abrirNovoProduto() {
-    window.open(`/drogarias/${LOJA_SLUG}/admin`, "_blank");
-  }
-
-  // ==========================
-  // CAIXA ABERTO
-  // ==========================
-  async function obterCaixaAberto() {
-    const { data, error } = await supabase
-      .from("caixa_sessoes")
-      .select("*")
-      .eq("loja_slug", LOJA_SLUG)
-      .eq("status", "aberto")
-      .order("aberto_em", { ascending: false })
-      .limit(1)
-      .maybeSingle();
-
-    if (error) throw error;
-    return (data as CaixaSessao | null) ?? null;
-  }
-
-  async function atualizarCaixaAbertoInfo() {
-    try {
-      const cx = await obterCaixaAberto();
-      setCaixaAbertoInfo(cx);
-    } catch (err) {
-      console.error("Erro ao consultar caixa aberto:", err);
-      setCaixaAbertoInfo(null);
-    }
-  }
-
-  // ==========================
-  // BUSCA GLOBAL + ESTOQUE LOJA
-  // ==========================
-  async function buscarProduto(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key !== "Enter") return;
-
-    const termo = busca.trim();
-    if (!termo) return;
-
-    const digits = onlyDigits(termo);
-    const termoSemEspaco = termo.replace(/\s/g, "");
-
-    try {
-      let q1 = supabase
-        .from("fv_produtos")
-        .select(
-          "id,ean,nome,categoria,laboratorio,pmc,em_promocao,preco_promocional,percentual_off,imagens,ativo"
+  if (
+    item.descontoTipo ===
+    "PERCENTUAL"
+  ) {
+    const percentual =
+      Math.min(
+        100,
+        Math.max(
+          0,
+          Number(
+            item.desconto ||
+              0
+          )
         )
-        .eq("ativo", true)
-        .limit(30);
+      );
 
-      if (digits.length >= 8 && digits.length <= 14 && digits === termoSemEspaco) {
-        q1 = q1.eq("ean", digits);
-      } else if (digits.length >= 8 && digits.length <= 14) {
-        q1 = q1.or(`ean.eq.${digits},nome.ilike.%${termo}%`);
-      } else {
-        q1 = q1.ilike("nome", `%${termo}%`);
-      }
-
-      const { data: cat, error: eCat } = await q1;
-      if (eCat) throw eCat;
-
-      const catArr = (cat ?? []) as FVProduto[];
-
-      if (catArr.length === 0) {
-        const querCadastrar = window.confirm(
-          "Produto não encontrado no catálogo global.\n\nDeseja abrir o cadastro de produtos agora?"
-        );
-        setResultados([]);
-        if (querCadastrar) abrirNovoProduto();
-        return;
-      }
-
-      const ids = catArr.map((p) => p.id);
-
-      const { data: loja, error: eLoja } = await supabase
-        .from("fv_farmacia_produtos")
-        .select("produto_id,farmacia_slug,estoque,preco_venda,ativo")
-        .eq("farmacia_slug", LOJA_SLUG)
-        .in("produto_id", ids);
-
-      if (eLoja) throw eLoja;
-
-      const mapLoja = new Map<string, LojaProduto>();
-      (loja ?? []).forEach((r: any) => {
-        mapLoja.set(String(r.produto_id), {
-          produto_id: String(r.produto_id),
-          farmacia_slug: String(r.farmacia_slug),
-          estoque: r.estoque,
-          preco_venda: r.preco_venda,
-          ativo: r.ativo,
-        });
-      });
-
-      const out: ProdutoBusca[] = catArr
-        .map((p) => {
-          const lp = mapLoja.get(String(p.id));
-
-          const ativoLoja = lp?.ativo !== null && lp?.ativo !== undefined ? !!lp.ativo : true;
-          const estoque = Number(lp?.estoque || 0);
-          const estoqueFinal = ativoLoja ? estoque : 0;
-
-          const precoLoja = lp?.preco_venda != null ? Number(lp.preco_venda) : null;
-          const precoGlobal = precoGlobalFinal(p);
-          const precoFinal = precoLoja && precoLoja > 0 ? precoLoja : precoGlobal;
-
-          return {
-            id: String(p.id),
-            ean: String(p.ean || ""),
-            nome: String(p.nome || ""),
-            categoria: p.categoria ?? null,
-            imagem: firstImg(p.imagens),
-            estoque: Number(estoqueFinal || 0),
-            preco_venda: Number(precoFinal || 0),
-          };
-        })
-        .sort((a, b) => b.estoque - a.estoque);
-
-      setResultados(out);
-      setBusca("");
-      inputRef.current?.focus();
-    } catch (err: any) {
-      console.error("Erro buscarProduto:", err);
-      alert(err?.message || "Erro ao buscar produto.");
-    }
+    return Math.max(
+      0,
+      preco -
+        preco *
+          (percentual /
+            100)
+    );
   }
 
-  // ==========================
-  // VENDA
-  // ==========================
-  function adicionarProduto(produto: ProdutoBusca) {
-    if (!produto || produto.estoque <= 0) {
-      alert("Sem estoque para este item.");
-      return;
-    }
-
-    setVenda((prev) => {
-      const existe = prev.find((p) => p.id === produto.id);
-      let nova: ItemVenda[];
-
-      if (existe) {
-        if (existe.qtd + 1 > produto.estoque) {
-          alert("Quantidade maior que o estoque disponível.");
-          return prev;
-        }
-        nova = prev.map((p) =>
-          p.id === produto.id
-            ? {
-                ...p,
-                qtd: p.qtd + 1,
-              }
-            : p
-        );
-      } else {
-        nova = [
-          ...prev,
-          {
-            ...produto,
-            qtd: 1,
-            desconto: 0,
-            valor_cobrado: Number(produto.preco_venda || 0),
-          },
-        ];
-      }
-
-      calcularTotal(nova);
-      return nova;
-    });
-
-    setResultados([]);
-    inputRef.current?.focus();
-  }
-
-  function alterarQtd(id: string, delta: number) {
-    setVenda((prev) => {
-      const nova = prev.map((p) => {
-        if (p.id !== id) return p;
-        const qtd = Math.max(1, p.qtd + delta);
-        if (qtd > p.estoque) return p;
-        return { ...p, qtd };
-      });
-      calcularTotal(nova);
-      return nova;
-    });
-  }
-
-  function alterarDesconto(id: string, valor: number) {
-    const v = Math.min(100, Math.max(0, Number(valor || 0)));
-
-    setVenda((prev) => {
-      const nova = prev.map((p) => {
-        if (p.id !== id) return p;
-
-        const precoBase = Number(p.preco_venda || 0);
-        const valorCobrado = precoBase - precoBase * (v / 100);
-
-        return {
-          ...p,
-          desconto: Number(v.toFixed(2)),
-          valor_cobrado: Number(valorCobrado.toFixed(2)),
-        };
-      });
-
-      calcularTotal(nova);
-      return nova;
-    });
-  }
-
-  function alterarValorCobrado(id: string, valor: string | number) {
-    const valorNum = Math.max(0, moneyInputToNumber(valor));
-
-    setVenda((prev) => {
-      const nova = prev.map((p) => {
-        if (p.id !== id) return p;
-
-        const precoBase = Number(p.preco_venda || 0);
-        const valorFinal = Number(valorNum || 0);
-        const desconto =
-          precoBase > 0 ? Math.min(100, Math.max(0, ((precoBase - valorFinal) / precoBase) * 100)) : 0;
-
-        return {
-          ...p,
-          valor_cobrado: Number(valorFinal.toFixed(2)),
-          desconto: Number(desconto.toFixed(2)),
-        };
-      });
-
-      calcularTotal(nova);
-      return nova;
-    });
-  }
-
-  function calcularTroco(valor: string) {
-    const recebido = Number(valor || 0);
-    const troco = recebido - total;
-    setPagamento((prev: any) => ({
-      ...prev,
-      dinheiro: valor,
-      troco: troco > 0 ? troco.toFixed(2) : "0.00",
-    }));
-  }
-
-  function abrirPreVenda() {
-    if (venda.length === 0) return;
-    setModoFinalizacao("comanda");
-    setPagamento((prev: any) => ({
-      ...prev,
-      forma: "",
-      dinheiro: "",
-      troco: "0.00",
-    }));
-    setShowPagamento(true);
-  }
-
-  async function abrirFinalizarCaixa() {
-    if (venda.length === 0) return;
-
-    try {
-      const caixaAberto = await obterCaixaAberto();
-
-      if (!caixaAberto) {
-        alert("Não existe caixa aberto para esta loja. Faça a abertura antes de finalizar no caixa.");
-        return;
-      }
-
-      setCaixaAbertoInfo(caixaAberto);
-      setModoFinalizacao("caixa");
-      setShowPagamento(true);
-    } catch (err: any) {
-      console.error(err);
-      alert(err?.message || "Erro ao verificar caixa aberto.");
-    }
-  }
-
-  // ==========================
-  // BAIXA ESTOQUE (SEGURA)
-  // ==========================
-  async function baixarEstoqueSegura(vendaAtual: ItemVenda[]) {
-    for (const item of vendaAtual) {
-      const { data: lp, error: e1 } = await supabase
-        .from("fv_farmacia_produtos")
-        .select("produto_id, estoque")
-        .eq("farmacia_slug", LOJA_SLUG)
-        .eq("produto_id", item.id)
-        .maybeSingle();
-
-      if (e1) throw e1;
-      if (!lp) throw new Error(`Produto não existe no estoque da loja: ${item.nome}`);
-
-      const atual = Number((lp as any).estoque || 0);
-      const qtd = Number(item.qtd || 0);
-
-      if (qtd <= 0) continue;
-      if (atual < qtd) {
-        throw new Error(`Estoque insuficiente para ${item.nome}. Atual: ${atual}, pedido: ${qtd}`);
-      }
-
-      const novo = atual - qtd;
-
-      const { data: updated, error: e2 } = await supabase
-        .from("fv_farmacia_produtos")
-        .update({ estoque: novo })
-        .eq("farmacia_slug", LOJA_SLUG)
-        .eq("produto_id", item.id)
-        .eq("estoque", atual)
-        .select("produto_id")
-        .maybeSingle();
-
-      if (e2) throw e2;
-
-      if (!updated) {
-        const { data: lp2, error: e3 } = await supabase
-          .from("fv_farmacia_produtos")
-          .select("estoque")
-          .eq("farmacia_slug", LOJA_SLUG)
-          .eq("produto_id", item.id)
-          .maybeSingle();
-        if (e3) throw e3;
-
-        const atual2 = Number((lp2 as any)?.estoque || 0);
-        if (atual2 < qtd) throw new Error(`Estoque insuficiente (após atualização) para ${item.nome}. Atual: ${atual2}`);
-
-        const { error: e4 } = await supabase
-          .from("fv_farmacia_produtos")
-          .update({ estoque: Math.max(0, atual2 - qtd) })
-          .eq("farmacia_slug", LOJA_SLUG)
-          .eq("produto_id", item.id)
-          .eq("estoque", atual2);
-
-        if (e4) throw e4;
-      }
-    }
-  }
-
-  // ==========================
-  // COMANDA
-  // ==========================
-  function imprimirComanda(v: any) {
-    const win = window.open("", "_blank");
-    if (!win) return;
-
-    const dtRaw = v?.created_at || v?.finalizada_em || new Date().toISOString();
-    const data = new Date(dtRaw).toLocaleDateString("pt-BR");
-    const hora = new Date(dtRaw).toLocaleTimeString("pt-BR");
-
-    const itens = asArray<any>(v?.itens);
-
-    const clienteNome = v?.cliente?.nome || "";
-    const clienteTel = v?.cliente?.telefone || "";
-    const clienteEnd = v?.cliente?.endereco || "";
-    const comanda = v?.comanda || v?.pedido_comanda || "";
-
-    win.document.write(`
-      <html>
-        <head>
-          <title>Comanda - Drogaria Rede Fabiano</title>
-          <style>
-            body { font-family: "Courier New", monospace; width: 58mm; margin: 0 auto; padding: 6px; font-size: 12px; }
-            .t { text-align:center; font-weight:700; }
-            .l { border-top: 1px dashed #777; margin: 6px 0; }
-            .row { display:flex; justify-content:space-between; gap:8px; }
-            .muted { color:#222; font-size:11px; font-weight:700; }
-            .total { text-align:right; font-weight:900; margin-top:6px; }
-            .strong { font-weight:900; }
-          </style>
-        </head>
-        <body>
-          <div class="t strong">💊 Drogaria Rede Fabiano</div>
-          <div class="t muted strong">${
-            v?.status === "PRE_VENDA" ? "PRÉ-VENDA / COMANDA" : "COMPROVANTE / COMANDA"
-          }</div>
-          <div class="t muted">${comanda ? `COMANDA: <span class="strong">${String(comanda)}</span>` : ""}</div>
-          <div class="l"></div>
-          <div class="muted">
-            <div><span class="strong">Data:</span> ${data} ${hora}</div>
-            <div><span class="strong">Origem:</span> ${v?.origem || "PDV"}</div>
-            <div><span class="strong">Status:</span> ${v?.status || "-"}</div>
-            <div><span class="strong">ID:</span> ${String(v?.id || "").slice(0, 8)}</div>
-            ${clienteNome ? `<div><span class="strong">Cliente:</span> ${clienteNome}</div>` : ""}
-            ${clienteTel ? `<div><span class="strong">Tel:</span> ${clienteTel}</div>` : ""}
-            ${clienteEnd ? `<div><span class="strong">End:</span> ${clienteEnd}</div>` : ""}
-          </div>
-          <div class="l"></div>
-
-          ${
-            itens.length === 0
-              ? `<div class="muted">Sem itens.</div>`
-              : itens
-                  .map((p: any) => {
-                    const preco = Number(p.valor_cobrado ?? p.preco_unit ?? 0);
-                    const qtd = Number(p.qtd || 0);
-                    const subtotal = preco * qtd;
-                    return `
-                      <div class="row">
-                        <span class="strong">${qtd}x ${String(p.nome || "").slice(0, 22)}</span>
-                        <span>${subtotal.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}</span>
-                      </div>
-                      <div class="muted">${p.ean || ""}</div>
-                    `;
-                  })
-                  .join("")
-          }
-
-          <div class="l"></div>
-          <div class="total strong">Total: ${brl(Number(v?.total || 0))}</div>
-          <div class="l"></div>
-          <div class="t muted strong">iadrogarias.com.br</div>
-        </body>
-      </html>
-    `);
-
-    win.document.close();
-    win.focus();
-    win.print();
-  }
-
-  // ==========================
-  // FINALIZAR
-  // ==========================
-  async function finalizarVenda() {
-    if (venda.length === 0) return;
-    if (saving) return;
-    if (!modoFinalizacao) return;
-
-    try {
-      const comanda = String(pagamento.comanda || "").trim();
-
-      if (modoFinalizacao === "comanda" && !comanda) {
-        alert("Informe o número da comanda.");
-        return;
-      }
-
-      if (modoFinalizacao === "caixa" && !pagamento.forma) {
-        alert("Selecione a forma de pagamento.");
-        return;
-      }
-
-      if (modoFinalizacao === "caixa" && pagamento.forma === "Dinheiro") {
-        const recebido = Number(pagamento.dinheiro || 0);
-        if (recebido < total) {
-          alert("Valor recebido menor que o total.");
-          return;
-        }
-      }
-
-      if (pagamento.tipo === "Entrega") {
-        if (!String(pagamento.nome || "").trim()) return alert("Informe o nome do cliente.");
-        if (onlyDigits(String(pagamento.telefone || "")).length < 10) return alert("Informe o Whats/Telefone com DDD.");
-        if (!String(pagamento.endereco || "").trim()) return alert("Informe o endereço.");
-      }
-
-      setSaving(true);
-
-      const itens = venda.map((p) => ({
-        produto_id: p.id,
-        ean: p.ean,
-        nome: p.nome,
-        qtd: Number(p.qtd || 1),
-        preco_unit: Number(p.preco_venda || 0),
-        valor_cobrado: Number(p.valor_cobrado || 0),
-        desconto: Number(p.desconto || 0),
-      }));
-
-      const cliente =
-        pagamento.tipo === "Entrega"
-          ? {
-              nome: String(pagamento.nome || "").trim(),
-              telefone: onlyDigits(String(pagamento.telefone || "")),
-              endereco: String(pagamento.endereco || "").trim(),
-            }
-          : null;
-
-      if (modoFinalizacao === "comanda") {
-        const payload = {
-          loja_slug: LOJA_SLUG,
-          origem: "PDV",
-          status: "PRE_VENDA",
-          tipo_lancamento: "pre_venda",
-          comanda,
-          cliente,
-          pagamento: null,
-          itens,
-          total: Number(total || 0),
-        };
-
-        const { data: saved, error } = await supabase
-          .from("vendas")
-          .insert([payload])
-          .select("*")
-          .single();
-
-        if (error) throw error;
-
-        imprimirComanda(saved);
-        alert("✅ Pré-venda salva com sucesso!");
-        setShowPagamento(false);
-        limparVenda();
-        return;
-      }
-
-      const caixaAberto = await obterCaixaAberto();
-
-      if (!caixaAberto) {
-        alert("Não existe caixa aberto para esta loja.");
-        return;
-      }
-
-      await baixarEstoqueSegura(venda);
-
-      const payload = {
-        loja_slug: LOJA_SLUG,
-        origem: "PDV",
-        status: "FINALIZADA",
-        tipo_lancamento: "caixa",
-        caixa_sessao_id: caixaAberto.id,
-        comanda: comanda || null,
-        cliente,
-        pagamento: {
-          tipo: pagamento.tipo,
-          forma: pagamento.forma,
-          dinheiro: pagamento.forma === "Dinheiro" ? Number(pagamento.dinheiro || 0) : null,
-          troco: pagamento.forma === "Dinheiro" ? Number(pagamento.troco || 0) : null,
-        },
-        itens,
-        total: Number(total || 0),
-        finalizada_em: new Date().toISOString(),
-      };
-
-      const { data: saved, error } = await supabase
-        .from("vendas")
-        .insert([payload])
-        .select("*")
-        .single();
-
-      if (error) throw error;
-
-      const { error: movError } = await supabase.from("movimentacoes_caixa").insert([
-        {
-          tipo: "entrada",
-          descricao: `Venda PDV ${String(saved.id).slice(0, 8)}`,
-          valor: Number(total || 0),
-          forma_pagamento: pagamento.forma,
-          loja: LOJA_SLUG,
-          referencia_venda: saved.id,
-          caixa_sessao_id: caixaAberto.id,
-          data: new Date().toISOString().slice(0, 10),
-        },
-      ]);
-
-      if (movError) throw movError;
-
-      imprimirComanda(saved);
-      alert("✅ Venda finalizada e lançada no caixa!");
-      setShowPagamento(false);
-      limparVenda();
-      await atualizarCaixaAbertoInfo();
-    } catch (err: any) {
-      console.error("Erro finalizarVenda:", err);
-      alert(err?.message || "Falha ao finalizar venda.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  // ==========================
-  // CONSULTA (admin)
-  // ==========================
-  async function carregarVendas() {
-    const { data, error } = await supabase
-      .from("vendas")
-      .select("*")
-      .eq("loja_slug", LOJA_SLUG)
-      .order("created_at", { ascending: false })
-      .limit(200);
-
-    if (error) {
-      console.error(error);
-      alert("Erro ao carregar vendas!");
-      return;
-    }
-
-    setVendas(data || []);
-  }
-
-  async function buscarPorData() {
-    if (!filtroData) {
-      alert("Selecione uma data.");
-      return;
-    }
-    const { data, error } = await supabase
-      .from("vendas")
-      .select("*")
-      .eq("loja_slug", LOJA_SLUG)
-      .gte("created_at", `${filtroData}T00:00:00`)
-      .lte("created_at", `${filtroData}T23:59:59`)
-      .order("created_at", { ascending: false });
-
-    if (error) {
-      console.error(error);
-      alert("Erro ao buscar por data!");
-      return;
-    }
-    setVendas(data || []);
-  }
-
-  async function verificarSenha() {
-    if (senha === SENHA_ADMIN) {
-      setMostrarVendas(true);
-      setSenha("");
-      await carregarVendas();
-    } else {
-      alert("Senha incorreta!");
-    }
-  }
-
-  // atalhos
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      switch (e.key) {
-        case "F2":
-          e.preventDefault();
-          inputRef.current?.focus();
-          break;
-        case "F3":
-          e.preventDefault();
-          limparVenda();
-          break;
-        case "F4":
-          e.preventDefault();
-          abrirNovoProduto();
-          break;
-        case "F6":
-          e.preventDefault();
-          abrirPreVenda();
-          break;
-        case "F7":
-          e.preventDefault();
-          abrirFinalizarCaixa();
-          break;
-        case "Escape":
-          e.preventDefault();
-          setShowPagamento(false);
-          setResultados([]);
-          setModoFinalizacao(null);
-          break;
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [venda, total]);
+  const desconto =
+    Math.min(
+      preco,
+      Math.max(
+        0,
+        Number(
+          item.desconto ||
+            0
+        )
+      )
+    );
+
+  return Math.max(
+    0,
+    preco - desconto
+  );
+}
+
+function descontoUnitarioItem(
+  item: Item
+) {
+  return Math.max(
+    0,
+    Number(
+      item.preco_venda ||
+        0
+    ) -
+      precoLiquidoItem(
+        item
+      )
+  );
+}
+
+/* =========================================================
+   COMPONENTE
+========================================================= */
+
+export default function PDVPageFabiano() {
+
+  /* =======================================================
+     BUSCA / PRODUTOS
+  ======================================================= */
+
+  const [
+    busca,
+    setBusca,
+  ] = useState("");
+
+  const [
+    resultados,
+    setResultados,
+  ] = useState<
+    Produto[]
+  >([]);
+
+  const [
+    loading,
+    setLoading,
+  ] = useState(false);
+
+  /* =======================================================
+     CARRINHO
+  ======================================================= */
+
+  const [
+    itens,
+    setItens,
+  ] = useState<Item[]>(
+    []
+  );
+
+  /* =======================================================
+     ATENDIMENTO
+  ======================================================= */
+
+  const [
+    tipoAtendimento,
+    setTipoAtendimento,
+  ] =
+    useState<TipoAtendimento>(
+      "BALCAO"
+    );
+
+  const [
+    clienteNome,
+    setClienteNome,
+  ] = useState("");
+
+  const [
+    clienteTelefone,
+    setClienteTelefone,
+  ] = useState("");
+
+  const [
+    endereco,
+    setEndereco,
+  ] = useState("");
+
+  const [
+    numeroEndereco,
+    setNumeroEndereco,
+  ] = useState("");
+
+  const [
+    bairro,
+    setBairro,
+  ] = useState("");
+
+  const [
+    complemento,
+    setComplemento,
+  ] = useState("");
+
+  const [
+    referencia,
+    setReferencia,
+  ] = useState("");
+
+  const [
+    taxaEntrega,
+    setTaxaEntrega,
+  ] = useState("0");
+
+  const [
+    observacoes,
+    setObservacoes,
+  ] = useState("");
+
+  /* =======================================================
+     PAGAMENTOS
+  ======================================================= */
+
+  const [
+    pagamentos,
+    setPagamentos,
+  ] = useState<
+    Pagamento[]
+  >([
+    {
+      forma:
+        "Dinheiro",
+      valor: "",
+    },
+  ]);
+
+  /* =======================================================
+     COMANDA
+  ======================================================= */
+
+  const [
+    modalComanda,
+    setModalComanda,
+  ] = useState(false);
+
+  const [
+    numeroComanda,
+    setNumeroComanda,
+  ] = useState("");
+
+  const [
+    salvandoComanda,
+    setSalvandoComanda,
+  ] = useState(false);
+
+  /* =======================================================
+     FINALIZAÇÃO
+  ======================================================= */
+
+  const [
+    salvando,
+    setSalvando,
+  ] = useState(false);
+
+  const [
+    caixaAbertoInfo,
+    setCaixaAbertoInfo,
+  ] =
+    useState<CaixaSessao | null>(
+      null
+    );
+
+  /* =======================================================
+     COMPROVANTE
+  ======================================================= */
+
+  const [
+    ultimoComprovante,
+    setUltimoComprovante,
+  ] =
+    useState<VendaSalva | null>(
+      null
+    );
+
+  /* =======================================================
+     CONSULTA DE VENDAS
+  ======================================================= */
+
+  const [
+    senha,
+    setSenha,
+  ] = useState("");
+
+  const [
+    mostrarVendas,
+    setMostrarVendas,
+  ] = useState(false);
+
+  const [
+    vendas,
+    setVendas,
+  ] = useState<any[]>(
+    []
+  );
+
+  const [
+    vendaSelecionada,
+    setVendaSelecionada,
+  ] = useState<
+    any | null
+  >(null);
+
+  const [
+    filtroData,
+    setFiltroData,
+  ] = useState("");
+
+  /* =======================================================
+     CÂMERA
+  ======================================================= */
+
+  const [
+    cameraAberta,
+    setCameraAberta,
+  ] = useState(false);
+
+  const [
+    cameraErro,
+    setCameraErro,
+  ] = useState("");
+
+  const [
+    cameraLendo,
+    setCameraLendo,
+  ] = useState(false);
+
+  /* =======================================================
+     REFS
+  ======================================================= */
+
+  const inputRef =
+    useRef<HTMLInputElement>(
+      null
+    );
+
+  const videoRef =
+    useRef<HTMLVideoElement>(
+      null
+    );
+
+  const scannerControlsRef =
+    useRef<any>(null);
+
+  const codigoLidoRef =
+    useRef(false);
+
+  const pagamentoRef =
+    useRef<HTMLDivElement>(
+      null
+    );
+
+  /* =======================================================
+     CÁLCULOS
+  ======================================================= */
+
+  const subtotalBruto =
+    useMemo(
+      () =>
+        itens.reduce(
+          (
+            soma,
+            item
+          ) =>
+            soma +
+            Number(
+              item.preco_venda ||
+                0
+            ) *
+              Number(
+                item.qtd ||
+                  0
+              ),
+          0
+        ),
+      [itens]
+    );
+
+  const descontoTotal =
+    useMemo(
+      () =>
+        itens.reduce(
+          (
+            soma,
+            item
+          ) =>
+            soma +
+            descontoUnitarioItem(
+              item
+            ) *
+              item.qtd,
+          0
+        ),
+      [itens]
+    );
+
+  const subtotal =
+    Math.max(
+      0,
+      subtotalBruto -
+        descontoTotal
+    );
+
+  const taxa =
+    tipoAtendimento ===
+    "ENTREGA"
+      ? Math.max(
+          0,
+          numero(
+            taxaEntrega
+          )
+        )
+      : 0;
+
+  const total =
+    subtotal + taxa;
+
+  const quantidadeItens =
+    useMemo(
+      () =>
+        itens.reduce(
+          (
+            soma,
+            item
+          ) =>
+            soma +
+            Number(
+              item.qtd ||
+                0
+            ),
+          0
+        ),
+      [itens]
+    );
+
+  const totalPagamentos =
+    useMemo(
+      () =>
+        pagamentos.reduce(
+          (
+            soma,
+            pagamento
+          ) =>
+            soma +
+            numero(
+              pagamento.valor
+            ),
+          0
+        ),
+      [pagamentos]
+    );
+
+  /*
+    Para dinheiro podemos receber
+    valor maior que o total.
+    O excedente é troco.
+  */
+
+  const pagamentoDinheiro =
+    useMemo(
+      () =>
+        pagamentos
+          .filter(
+            (p) =>
+              p.forma ===
+              "Dinheiro"
+          )
+          .reduce(
+            (
+              soma,
+              p
+            ) =>
+              soma +
+              numero(
+                p.valor
+              ),
+            0
+          ),
+      [pagamentos]
+    );
+
+  const pagamentosNaoDinheiro =
+    useMemo(
+      () =>
+        pagamentos
+          .filter(
+            (p) =>
+              p.forma !==
+              "Dinheiro"
+          )
+          .reduce(
+            (
+              soma,
+              p
+            ) =>
+              soma +
+              numero(
+                p.valor
+              ),
+            0
+          ),
+      [pagamentos]
+    );
+
+  const necessarioEmDinheiro =
+    Math.max(
+      0,
+      total -
+        pagamentosNaoDinheiro
+    );
+
+  const troco =
+    Math.max(
+      0,
+      pagamentoDinheiro -
+        necessarioEmDinheiro
+    );
+
+  const totalEfetivamentePago =
+    Math.max(
+      0,
+      totalPagamentos -
+        troco
+    );
+
+  const faltante =
+    Math.max(
+      0,
+      total -
+        totalEfetivamentePago
+    );
+
+  /* =======================================================
+     INICIALIZAÇÃO
+  ======================================================= */
 
   useEffect(() => {
     inputRef.current?.focus();
+
     atualizarCaixaAbertoInfo();
   }, []);
 
-  const totalItens = venda.reduce((acc, p) => acc + p.qtd, 0);
+  useEffect(() => {
+    return () => {
+      pararCamera();
+    };
+  }, []);
 
-  return (
-    <main className="max-w-6xl mx-auto p-4 sm:p-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-        <div>
-          <h1 className="text-2xl sm:text-3xl font-bold text-blue-700">💻 PDV — Drogaria Rede Fabiano</h1>
+  /* =======================================================
+     CAIXA
+  ======================================================= */
 
-          <div className="mt-2">
-            {caixaAbertoInfo ? (
-              <div className="inline-flex items-center gap-2 bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-lg px-3 py-1 text-sm">
-                <span className="font-semibold">🟢 Caixa aberto</span>
-                <span>
-                  {caixaAbertoInfo.turno ? `• ${caixaAbertoInfo.turno}` : ""}
-                  {caixaAbertoInfo.operador ? ` • ${caixaAbertoInfo.operador}` : ""}
+  async function obterCaixaAberto() {
+
+    const {
+      data,
+      error,
+    } = await supabase
+      .from(
+        "caixa_sessoes"
+      )
+      .select("*")
+      .eq(
+        "loja_slug",
+        LOJA_SLUG
+      )
+      .eq(
+        "status",
+        "aberto"
+      )
+      .order(
+        "aberto_em",
+        {
+          ascending:
+            false,
+        }
+      )
+      .limit(1)
+      .maybeSingle();
+
+    if (error) {
+      throw error;
+    }
+
+    return (
+      data as
+        | CaixaSessao
+        | null
+    );
+  }
+
+  async function atualizarCaixaAbertoInfo() {
+
+    try {
+
+      const caixa =
+        await obterCaixaAberto();
+
+      setCaixaAbertoInfo(
+        caixa
+      );
+
+    } catch (
+      error
+    ) {
+
+      console.error(
+        "Erro ao consultar caixa:",
+        error
+      );
+
+      setCaixaAbertoInfo(
+        null
+      );
+
+    }
+  }
+
+  /* =======================================================
+     CÂMERA
+     MESMO MÉTODO DO PDV PORTO:
+     @zxing/browser
+  ======================================================= */
+
+  function pararCamera() {
+
+    try {
+      scannerControlsRef
+        .current
+        ?.stop?.();
+    } catch {}
+
+    scannerControlsRef.current =
+      null;
+
+    if (
+      videoRef.current
+        ?.srcObject
+    ) {
+
+      const stream =
+        videoRef.current
+          .srcObject as MediaStream;
+
+      stream
+        .getTracks()
+        .forEach(
+          (
+            track
+          ) =>
+            track.stop()
+        );
+
+      videoRef.current.srcObject =
+        null;
+    }
+
+    setCameraLendo(
+      false
+    );
+  }
+
+  function fecharCamera() {
+
+    pararCamera();
+
+    codigoLidoRef.current =
+      false;
+
+    setCameraAberta(
+      false
+    );
+
+    setCameraErro("");
+  }
+
+  function abrirCamera() {
+
+    setCameraErro("");
+
+    codigoLidoRef.current =
+      false;
+
+    setCameraAberta(
+      true
+    );
+  }
+
+  useEffect(() => {
+
+    if (
+      !cameraAberta
+    ) {
+      return;
+    }
+
+    let cancelado =
+      false;
+
+    async function iniciarScanner() {
+
+      /*
+        Pequeno atraso para o
+        <video> do modal existir.
+      */
+
+      await new Promise(
+        (
+          resolve
+        ) =>
+          setTimeout(
+            resolve,
+            150
+          )
+      );
+
+      if (
+        cancelado ||
+        !videoRef.current
+      ) {
+        return;
+      }
+
+      try {
+
+        if (
+          !navigator
+            .mediaDevices ||
+          !navigator
+            .mediaDevices
+            .getUserMedia
+        ) {
+          throw new Error(
+            "Câmera não disponível neste navegador."
+          );
+        }
+
+        setCameraLendo(
+          true
+        );
+
+        const reader =
+          new BrowserMultiFormatReader();
+
+        const controls =
+          await reader.decodeFromConstraints(
+            {
+              video: {
+                facingMode: {
+                  ideal:
+                    "environment",
+                },
+
+                width: {
+                  ideal: 1280,
+                },
+
+                height: {
+                  ideal: 720,
+                },
+              },
+
+              audio: false,
+            },
+
+            videoRef.current,
+
+            (
+              result
+            ) => {
+
+              if (
+                !result ||
+                codigoLidoRef
+                  .current
+              ) {
+                return;
+              }
+
+              const codigo =
+                result
+                  .getText()
+                  .trim();
+
+              if (!codigo) {
+                return;
+              }
+
+              codigoLidoRef.current =
+                true;
+
+              if (
+                "vibrate" in
+                navigator
+              ) {
+                navigator
+                  .vibrate?.(
+                    120
+                  );
+              }
+
+              setBusca(
+                codigo
+              );
+
+              setTimeout(
+                () => {
+
+                  fecharCamera();
+
+                  void pesquisar(
+                    codigo
+                  );
+
+                },
+                100
+              );
+            }
+          );
+
+        scannerControlsRef.current =
+          controls;
+
+      } catch (
+        erro: any
+      ) {
+
+        console.error(
+          "Erro câmera:",
+          erro
+        );
+
+        setCameraLendo(
+          false
+        );
+
+        if (
+          erro?.name ===
+          "NotAllowedError"
+        ) {
+
+          setCameraErro(
+            "A câmera foi bloqueada. Libere a permissão da câmera para este site no navegador."
+          );
+
+        } else if (
+          erro?.name ===
+          "NotFoundError"
+        ) {
+
+          setCameraErro(
+            "Nenhuma câmera foi encontrada neste aparelho."
+          );
+
+        } else {
+
+          setCameraErro(
+            erro?.message ||
+              "Não foi possível abrir a câmera."
+          );
+
+        }
+      }
+    }
+
+    iniciarScanner();
+
+    return () => {
+
+      cancelado =
+        true;
+
+      pararCamera();
+
+    };
+
+  }, [cameraAberta]);
+
+  /* =======================================================
+     BUSCA GLOBAL + ESTOQUE REDE FABIANO
+  ======================================================= */
+
+  async function pesquisar(
+    termoForcado?: string
+  ) {
+
+    const termo =
+      (
+        termoForcado ??
+        busca
+      ).trim();
+
+    if (!termo) {
+
+      setResultados(
+        []
+      );
+
+      inputRef.current?.focus();
+
+      return;
+    }
+
+    setLoading(
+      true
+    );
+
+    try {
+
+      const digits =
+        onlyDigits(
+          termo
+        );
+
+      const termoSemEspaco =
+        termo.replace(
+          /\s/g,
+          ""
+        );
+
+      /*
+        Primeiro consulta catálogo
+        global da Farmácia Virtual.
+      */
+
+      let produtoQuery =
+        supabase
+          .from(
+            "fv_produtos"
+          )
+          .select(`
+            id,
+            ean,
+            nome,
+            categoria,
+            laboratorio,
+            apresentacao,
+            pmc,
+            em_promocao,
+            preco_promocional,
+            percentual_off,
+            imagens,
+            ativo
+          `)
+          .eq(
+            "ativo",
+            true
+          )
+          .limit(100);
+
+      /*
+        EAN puro
+      */
+
+      if (
+        digits.length >= 8 &&
+        digits.length <= 14 &&
+        digits ===
+          termoSemEspaco
+      ) {
+
+        produtoQuery =
+          produtoQuery.eq(
+            "ean",
+            digits
+          );
+
+      } else if (
+        digits.length >= 8 &&
+        digits.length <= 14
+      ) {
+
+        /*
+          Permite scanner +
+          eventual pesquisa.
+        */
+
+        produtoQuery =
+          produtoQuery.or(
+            `ean.eq.${digits},nome.ilike.%${termo}%`
+          );
+
+      } else {
+
+        produtoQuery =
+          produtoQuery.ilike(
+            "nome",
+            `%${termo}%`
+          );
+
+      }
+
+      const {
+        data:
+          catalogo,
+        error:
+          catalogoError,
+      } =
+        await produtoQuery;
+
+      if (
+        catalogoError
+      ) {
+        throw catalogoError;
+      }
+
+      const produtosEncontrados =
+        (
+          catalogo ||
+          []
+        ) as FVProduto[];
+
+      if (
+        !produtosEncontrados
+          .length
+      ) {
+
+        setResultados(
+          []
+        );
+
+        return;
+      }
+
+      /*
+        Agora consulta somente
+        estoque/preço da
+        Drogaria Rede Fabiano.
+      */
+
+      const ids =
+        produtosEncontrados.map(
+          (
+            produto
+          ) =>
+            String(
+              produto.id
+            )
+        );
+
+      const {
+        data:
+          produtosLoja,
+        error:
+          lojaError,
+      } =
+        await supabase
+          .from(
+            "fv_farmacia_produtos"
+          )
+          .select(`
+            produto_id,
+            farmacia_slug,
+            estoque,
+            preco_venda,
+            ativo,
+            ativo_pdv
+          `)
+          .eq(
+            "farmacia_slug",
+            LOJA_SLUG
+          )
+          .in(
+            "produto_id",
+            ids
+          );
+
+      if (
+        lojaError
+      ) {
+        throw lojaError;
+      }
+
+      const lojaMap =
+        new Map<
+          string,
+          LojaProduto
+        >();
+
+      (
+        produtosLoja ||
+        []
+      ).forEach(
+        (
+          registro: any
+        ) => {
+
+          lojaMap.set(
+            String(
+              registro.produto_id
+            ),
+            {
+              produto_id:
+                String(
+                  registro.produto_id
+                ),
+
+              farmacia_slug:
+                String(
+                  registro.farmacia_slug ||
+                    LOJA_SLUG
+                ),
+
+              estoque:
+                registro.estoque,
+
+              preco_venda:
+                registro.preco_venda,
+
+              ativo:
+                registro.ativo,
+
+              ativo_pdv:
+                registro.ativo_pdv,
+            }
+          );
+
+        }
+      );
+
+      /*
+        Monta resultado final.
+
+        Produto pode aparecer
+        para consulta mesmo
+        sem estoque na Fabiano.
+
+        Só pode vender quando:
+        - existe na loja
+        - está ativo
+        - ativo_pdv não é false
+        - estoque > 0
+        - preço > 0
+      */
+
+      const lista: Produto[] =
+        produtosEncontrados.map(
+          (
+            produto
+          ) => {
+
+            const loja =
+              lojaMap.get(
+                String(
+                  produto.id
+                )
+              );
+
+            const ativoLoja =
+              loja
+                ? loja.ativo !==
+                    false
+                : false;
+
+            const ativoPDV =
+              loja
+                ? loja.ativo_pdv !==
+                    false
+                : false;
+
+            const estoque =
+              ativoLoja &&
+              ativoPDV
+                ? Number(
+                    loja
+                      ?.estoque ||
+                      0
+                  )
+                : 0;
+
+            const precoLoja =
+              Number(
+                loja
+                  ?.preco_venda ||
+                  0
+              );
+
+            const precoGlobal =
+              precoGlobalFinal(
+                produto
+              );
+
+            /*
+              Venda usa preço
+              cadastrado da loja.
+
+              Se ainda não houver
+              preço próprio, usa
+              PMC/promocional como
+              fallback.
+            */
+
+            const precoVenda =
+              precoLoja > 0
+                ? precoLoja
+                : precoGlobal;
+
+            /*
+              Consulta mostra
+              PMC/promocional
+              quando disponível.
+            */
+
+            const precoConsulta =
+              precoGlobal > 0
+                ? precoGlobal
+                : precoVenda;
+
+            const podeVender =
+              !!loja &&
+              ativoLoja &&
+              ativoPDV &&
+              estoque > 0 &&
+              precoVenda > 0;
+
+            return {
+              id:
+                String(
+                  produto.id
+                ),
+
+              ean:
+                String(
+                  produto.ean ||
+                    ""
+                ),
+
+              nome:
+                String(
+                  produto.nome ||
+                    ""
+                ),
+
+              laboratorio:
+                produto.laboratorio ??
+                null,
+
+              categoria:
+                produto.categoria ??
+                null,
+
+              apresentacao:
+                produto.apresentacao ??
+                null,
+
+              imagem:
+                primeiraImagem(
+                  produto.imagens
+                ),
+
+              estoque,
+
+              preco_venda:
+                precoVenda,
+
+              preco_consulta:
+                precoConsulta,
+
+              pode_vender:
+                podeVender,
+            };
+          }
+        );
+
+      /*
+        Ordenação:
+
+        1. Pode vender
+        2. EAN exato
+        3. Maior estoque
+        4. Nome
+      */
+
+      lista.sort(
+        (
+          a,
+          b
+        ) => {
+
+          if (
+            a.pode_vender !==
+            b.pode_vender
+          ) {
+            return a.pode_vender
+              ? -1
+              : 1;
+          }
+
+          const aEAN =
+            digits.length >=
+              8 &&
+            onlyDigits(
+              a.ean
+            ) === digits;
+
+          const bEAN =
+            digits.length >=
+              8 &&
+            onlyDigits(
+              b.ean
+            ) === digits;
+
+          if (
+            aEAN !==
+            bEAN
+          ) {
+            return aEAN
+              ? -1
+              : 1;
+          }
+
+          if (
+            a.estoque !==
+            b.estoque
+          ) {
+            return (
+              b.estoque -
+              a.estoque
+            );
+          }
+
+          return a.nome.localeCompare(
+            b.nome,
+            "pt-BR"
+          );
+        }
+      );
+
+      setResultados(
+        lista
+      );
+
+      /*
+        Se scanner/EAN encontrou
+        exatamente um produto
+        vendável, adiciona
+        automaticamente.
+      */
+
+      if (
+        digits.length >= 8
+      ) {
+
+        const exato =
+          lista.find(
+            (
+              produto
+            ) =>
+              onlyDigits(
+                produto.ean
+              ) ===
+                digits &&
+              produto.pode_vender
+          );
+
+        if (exato) {
+
+          adicionarProduto(
+            exato
+          );
+
+          setBusca("");
+
+          setResultados(
+            []
+          );
+        }
+      }
+
+    } catch (
+      error: any
+    ) {
+
+      console.error(
+        "Erro ao pesquisar produto:",
+        error
+      );
+
+      alert(
+        error?.message ||
+          "Erro ao buscar produto."
+      );
+
+    } finally {
+
+      setLoading(
+        false
+      );
+
+      setTimeout(
+        () =>
+          inputRef.current?.focus(),
+        50
+      );
+    }
+  }
+
+  /* =======================================================
+     CARRINHO
+  ======================================================= */
+
+  function adicionarProduto(
+    produto: Produto
+  ) {
+
+    if (
+      !produto.pode_vender
+    ) {
+
+      alert(
+        "Este produto está disponível apenas para consulta."
+      );
+
+      return;
+    }
+
+    if (
+      produto.estoque <=
+      0
+    ) {
+
+      alert(
+        "Produto sem estoque."
+      );
+
+      return;
+    }
+
+    if (
+      produto.preco_venda <=
+      0
+    ) {
+
+      alert(
+        "Produto sem preço de venda cadastrado."
+      );
+
+      return;
+    }
+
+    setItens(
+      (
+        anteriores
+      ) => {
+
+        const existente =
+          anteriores.find(
+            (
+              item
+            ) =>
+              item.id ===
+              produto.id
+          );
+
+        if (
+          existente
+        ) {
+
+          if (
+            existente.qtd >=
+            produto.estoque
+          ) {
+
+            alert(
+              `Estoque máximo disponível: ${produto.estoque}`
+            );
+
+            return anteriores;
+          }
+
+          return anteriores.map(
+            (
+              item
+            ) =>
+              item.id ===
+              produto.id
+                ? {
+                    ...item,
+
+                    qtd:
+                      Math.min(
+                        item.qtd +
+                          1,
+                        produto.estoque
+                      ),
+                  }
+                : item
+          );
+        }
+
+        return [
+          ...anteriores,
+
+          {
+            ...produto,
+
+            qtd: 1,
+
+            descontoTipo:
+              "PERCENTUAL",
+
+            desconto: 0,
+          },
+        ];
+      }
+    );
+
+    setBusca("");
+
+    setResultados(
+      []
+    );
+
+    setTimeout(
+      () =>
+        inputRef.current?.focus(),
+      50
+    );
+  }
+
+  function alterarQtd(
+    id: string,
+    delta: number
+  ) {
+
+    setItens(
+      (
+        anteriores
+      ) =>
+        anteriores
+          .map(
+            (
+              item
+            ) => {
+
+              if (
+                item.id !==
+                id
+              ) {
+                return item;
+              }
+
+              const novaQtd =
+                Math.min(
+                  item.estoque,
+                  Math.max(
+                    0,
+                    item.qtd +
+                      delta
+                  )
+                );
+
+              return {
+                ...item,
+                qtd: novaQtd,
+              };
+            }
+          )
+          .filter(
+            (
+              item
+            ) =>
+              item.qtd > 0
+          )
+    );
+  }
+
+  function removerItem(
+    id: string
+  ) {
+
+    setItens(
+      (
+        anteriores
+      ) =>
+        anteriores.filter(
+          (
+            item
+          ) =>
+            item.id !== id
+        )
+    );
+  }
+
+  function alterarDesconto(
+    id: string,
+    tipo: TipoDesconto,
+    valor: number
+  ) {
+
+    setItens(
+      (
+        anteriores
+      ) =>
+        anteriores.map(
+          (
+            item
+          ) => {
+
+            if (
+              item.id !==
+              id
+            ) {
+              return item;
+            }
+
+            const limite =
+              tipo ===
+              "PERCENTUAL"
+                ? 100
+                : item.preco_venda;
+
+            return {
+              ...item,
+
+              descontoTipo:
+                tipo,
+
+              desconto:
+                Math.min(
+                  limite,
+                  Math.max(
+                    0,
+                    Number(
+                      valor ||
+                        0
+                    )
+                  )
+                ),
+            };
+          }
+        )
+    );
+  }
+
+  function limparVenda() {
+
+    setItens([]);
+
+    setResultados([]);
+
+    setBusca("");
+
+    setPagamentos([
+      {
+        forma:
+          "Dinheiro",
+        valor: "",
+      },
+    ]);
+
+    setTipoAtendimento(
+      "BALCAO"
+    );
+
+    limparEntrega();
+
+    setNumeroComanda("");
+
+    setModalComanda(
+      false
+    );
+
+    setTimeout(
+      () =>
+        inputRef.current?.focus(),
+      50
+    );
+  }
+
+  /* =======================================================
+     ENTREGA
+  ======================================================= */
+
+  function limparEntrega() {
+
+    setClienteNome("");
+
+    setClienteTelefone("");
+
+    setEndereco("");
+
+    setNumeroEndereco("");
+
+    setBairro("");
+
+    setComplemento("");
+
+    setReferencia("");
+
+    setTaxaEntrega("0");
+
+    setObservacoes("");
+  }
+
+  function clienteVenda() {
+
+    if (
+      tipoAtendimento !==
+      "ENTREGA"
+    ) {
+      return null;
+    }
+
+    return {
+      nome:
+        clienteNome.trim(),
+
+      telefone:
+        onlyDigits(
+          clienteTelefone
+        ),
+
+      endereco:
+        [
+          endereco.trim(),
+          numeroEndereco.trim()
+            ? `Nº ${numeroEndereco.trim()}`
+            : "",
+          bairro.trim(),
+          complemento.trim(),
+          referencia.trim()
+            ? `Ref: ${referencia.trim()}`
+            : "",
+        ]
+          .filter(
+            Boolean
+          )
+          .join(
+            ", "
+          ),
+    };
+  }
+
+  function validarEntrega() {
+
+    if (
+      tipoAtendimento !==
+      "ENTREGA"
+    ) {
+      return true;
+    }
+
+    if (
+      !clienteNome.trim()
+    ) {
+
+      alert(
+        "Informe o nome do cliente."
+      );
+
+      return false;
+    }
+
+    if (
+      onlyDigits(
+        clienteTelefone
+      ).length < 10
+    ) {
+
+      alert(
+        "Informe o telefone/WhatsApp com DDD."
+      );
+
+      return false;
+    }
+
+    if (
+      !endereco.trim()
+    ) {
+
+      alert(
+        "Informe o endereço."
+      );
+
+      return false;
+    }
+
+    if (
+      !numeroEndereco.trim()
+    ) {
+
+      alert(
+        "Informe o número do endereço."
+      );
+
+      return false;
+    }
+
+    if (
+      !bairro.trim()
+    ) {
+
+      alert(
+        "Informe o bairro."
+      );
+
+      return false;
+    }
+
+    return true;
+  }
+
+  /* =======================================================
+     PAGAMENTO
+  ======================================================= */
+
+  function adicionarPagamento() {
+
+    setPagamentos(
+      (
+        anteriores
+      ) => [
+        ...anteriores,
+
+        {
+          forma: "Pix",
+          valor: "",
+        },
+      ]
+    );
+  }
+
+  function alterarPagamento(
+    index: number,
+    patch:
+      Partial<Pagamento>
+  ) {
+
+    setPagamentos(
+      (
+        anteriores
+      ) =>
+        anteriores.map(
+          (
+            pagamento,
+            i
+          ) =>
+            i === index
+              ? {
+                  ...pagamento,
+                  ...patch,
+                }
+              : pagamento
+        )
+    );
+  }
+
+  function removerPagamento(
+    index: number
+  ) {
+
+    setPagamentos(
+      (
+        anteriores
+      ) => {
+
+        if (
+          anteriores.length <=
+          1
+        ) {
+          return anteriores;
+        }
+
+        return anteriores.filter(
+          (
+            _,
+            i
+          ) =>
+            i !== index
+        );
+      }
+    );
+  }
+
+  /* =======================================================
+     BAIXA SEGURA DO ESTOQUE
+  ======================================================= */
+
+  async function baixarEstoqueSegura(
+    vendaAtual: Item[]
+  ) {
+
+    for (
+      const item of
+      vendaAtual
+    ) {
+
+      const {
+        data:
+          registro,
+        error:
+          consultaError,
+      } =
+        await supabase
+          .from(
+            "fv_farmacia_produtos"
+          )
+          .select(
+            "produto_id,estoque"
+          )
+          .eq(
+            "farmacia_slug",
+            LOJA_SLUG
+          )
+          .eq(
+            "produto_id",
+            item.id
+          )
+          .maybeSingle();
+
+      if (
+        consultaError
+      ) {
+        throw consultaError;
+      }
+
+      if (
+        !registro
+      ) {
+
+        throw new Error(
+          `Produto não encontrado no estoque da Rede Fabiano: ${item.nome}`
+        );
+      }
+
+      const estoqueAtual =
+        Number(
+          registro.estoque ||
+            0
+        );
+
+      const quantidade =
+        Number(
+          item.qtd || 0
+        );
+
+      if (
+        estoqueAtual <
+        quantidade
+      ) {
+
+        throw new Error(
+          `Estoque insuficiente para ${item.nome}. Disponível: ${estoqueAtual}.`
+        );
+      }
+
+      const novoEstoque =
+        estoqueAtual -
+        quantidade;
+
+      /*
+        Atualização otimista:
+        só altera se estoque
+        continuar igual ao que
+        acabamos de consultar.
+      */
+
+      const {
+        data:
+          atualizado,
+        error:
+          updateError,
+      } =
+        await supabase
+          .from(
+            "fv_farmacia_produtos"
+          )
+          .update({
+            estoque:
+              novoEstoque,
+          })
+          .eq(
+            "farmacia_slug",
+            LOJA_SLUG
+          )
+          .eq(
+            "produto_id",
+            item.id
+          )
+          .eq(
+            "estoque",
+            estoqueAtual
+          )
+          .select(
+            "produto_id"
+          )
+          .maybeSingle();
+
+      if (
+        updateError
+      ) {
+        throw updateError;
+      }
+
+      /*
+        Se alguém alterou o
+        estoque ao mesmo tempo,
+        consulta novamente.
+      */
+
+      if (
+        !atualizado
+      ) {
+
+        const {
+          data:
+            registro2,
+          error:
+            consulta2Error,
+        } =
+          await supabase
+            .from(
+              "fv_farmacia_produtos"
+            )
+            .select(
+              "estoque"
+            )
+            .eq(
+              "farmacia_slug",
+              LOJA_SLUG
+            )
+            .eq(
+              "produto_id",
+              item.id
+            )
+            .maybeSingle();
+
+        if (
+          consulta2Error
+        ) {
+          throw consulta2Error;
+        }
+
+        const estoqueAtual2 =
+          Number(
+            registro2
+              ?.estoque ||
+              0
+          );
+
+        if (
+          estoqueAtual2 <
+          quantidade
+        ) {
+
+          throw new Error(
+            `Estoque insuficiente para ${item.nome}. Disponível agora: ${estoqueAtual2}.`
+          );
+        }
+
+        const {
+          error:
+            update2Error,
+        } =
+          await supabase
+            .from(
+              "fv_farmacia_produtos"
+            )
+            .update({
+              estoque:
+                estoqueAtual2 -
+                quantidade,
+            })
+            .eq(
+              "farmacia_slug",
+              LOJA_SLUG
+            )
+            .eq(
+              "produto_id",
+              item.id
+            )
+            .eq(
+              "estoque",
+              estoqueAtual2
+            );
+
+        if (
+          update2Error
+        ) {
+          throw update2Error;
+        }
+      }
+    }
+  }
+
+  /* =======================================================
+     MONTA ITENS PARA SALVAR
+  ======================================================= */
+
+  function itensParaBanco() {
+
+    return itens.map(
+      (
+        item
+      ) => {
+
+        const precoFinal =
+          precoLiquidoItem(
+            item
+          );
+
+        const descontoUnitario =
+          descontoUnitarioItem(
+            item
+          );
+
+        return {
+          produto_id:
+            item.id,
+
+          ean:
+            item.ean,
+
+          nome:
+            item.nome,
+
+          qtd:
+            Number(
+              item.qtd ||
+                1
+            ),
+
+          preco_unit:
+            Number(
+              item.preco_venda ||
+                0
+            ),
+
+          preco_original:
+            Number(
+              item.preco_venda ||
+                0
+            ),
+
+          valor_cobrado:
+            Number(
+              precoFinal.toFixed(
+                2
+              )
+            ),
+
+          desconto_tipo:
+            item.desconto >
+            0
+              ? item.descontoTipo
+              : null,
+
+          desconto:
+            Number(
+              item.desconto ||
+                0
+            ),
+
+          desconto_unitario:
+            Number(
+              descontoUnitario.toFixed(
+                2
+              )
+            ),
+
+          desconto_total:
+            Number(
+              (
+                descontoUnitario *
+                item.qtd
+              ).toFixed(
+                2
+              )
+            ),
+
+          total:
+            Number(
+              (
+                precoFinal *
+                item.qtd
+              ).toFixed(
+                2
+              )
+            ),
+        };
+      }
+    );
+  }
+
+  /* =======================================================
+     IMPRESSÃO
+  ======================================================= */
+
+  function imprimirVenda(
+    venda:
+      VendaSalva
+  ) {
+
+    const win =
+      window.open(
+        "",
+        "_blank"
+      );
+
+    if (!win) {
+      alert(
+        "O navegador bloqueou a janela de impressão."
+      );
+
+      return;
+    }
+
+    const dataRaw =
+      venda.finalizada_em ||
+      venda.created_at ||
+      new Date().toISOString();
+
+    const data =
+      new Date(
+        dataRaw
+      );
+
+    const listaItens =
+      asArray<any>(
+        venda.itens
+      );
+
+    const cliente =
+      venda.cliente ||
+      {};
+
+    const pagamento =
+      venda.pagamento ||
+      {};
+
+    const pagamentosVenda =
+      asArray<any>(
+        pagamento?.pagamentos
+      );
+
+    const pagamentoTexto =
+      pagamentosVenda.length
+        ? pagamentosVenda
+            .map(
+              (
+                p
+              ) =>
+                `${p.forma}: ${brl(
+                  Number(
+                    p.valor ||
+                      0
+                  )
+                )}`
+            )
+            .join(
+              "<br/>"
+            )
+        : pagamento?.forma
+        ? String(
+            pagamento.forma
+          )
+        : "";
+
+    win.document.write(`
+<!DOCTYPE html>
+<html>
+<head>
+
+<meta charset="utf-8"/>
+
+<title>Comprovante - Drogaria Rede Fabiano</title>
+
+<style>
+
+body {
+  font-family: "Courier New", monospace;
+  width: 58mm;
+  margin: 0 auto;
+  padding: 5px;
+  color: #000;
+  font-size: 11px;
+}
+
+.center {
+  text-align: center;
+}
+
+.bold {
+  font-weight: 900;
+}
+
+.line {
+  border-top: 1px dashed #555;
+  margin: 6px 0;
+}
+
+.row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.small {
+  font-size: 10px;
+}
+
+.total {
+  font-size: 15px;
+  font-weight: 900;
+  text-align: right;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div class="center bold">
+DROGARIA REDE FABIANO
+</div>
+
+<div class="center small">
+${
+  venda.status ===
+  "PRE_VENDA"
+    ? "PRÉ-VENDA / COMANDA"
+    : "COMPROVANTE DE VENDA"
+}
+</div>
+
+${
+  venda.comanda
+    ? `
+<div class="center bold">
+COMANDA ${venda.comanda}
+</div>
+`
+    : ""
+}
+
+<div class="line"></div>
+
+<div>
+Data:
+${data.toLocaleDateString(
+  "pt-BR"
+)}
+${data.toLocaleTimeString(
+  "pt-BR"
+)}
+</div>
+
+<div>
+Venda:
+${String(
+  venda.id ||
+    ""
+)
+  .slice(
+    0,
+    8
+  )
+  .toUpperCase()}
+</div>
+
+<div>
+Status:
+${venda.status || "-"}
+</div>
+
+${
+  cliente?.nome
+    ? `
+<div>
+Cliente: ${cliente.nome}
+</div>
+`
+    : ""
+}
+
+${
+  cliente?.telefone
+    ? `
+<div>
+Telefone: ${cliente.telefone}
+</div>
+`
+    : ""
+}
+
+${
+  cliente?.endereco
+    ? `
+<div>
+Endereço: ${cliente.endereco}
+</div>
+`
+    : ""
+}
+
+<div class="line"></div>
+
+${listaItens
+  .map(
+    (
+      item
+    ) => {
+
+      const qtd =
+        Number(
+          item.qtd ||
+            0
+        );
+
+      const unit =
+        Number(
+          item.valor_cobrado ??
+            item.preco_unit ??
+            0
+        );
+
+      const itemTotal =
+        Number(
+          item.total ??
+            unit *
+              qtd
+        );
+
+      return `
+<div class="bold">
+${qtd}x ${String(
+        item.nome ||
+          ""
+      ).slice(
+        0,
+        28
+      )}
+</div>
+
+<div class="row">
+<span>${brl(
+        unit
+      )} un.</span>
+
+<span>${brl(
+        itemTotal
+      )}</span>
+</div>
+
+${
+  Number(
+    item.desconto_total ||
+      0
+  ) > 0
+    ? `
+<div class="small">
+Desconto: -${brl(
+        Number(
+          item.desconto_total
+        )
+      )}
+</div>
+`
+    : ""
+}
+
+`;
+    }
+  )
+  .join("")}
+
+<div class="line"></div>
+
+${
+  pagamentoTexto
+    ? `
+<div>
+Pagamento:<br/>
+${pagamentoTexto}
+</div>
+
+<div class="line"></div>
+`
+    : ""
+}
+
+<div class="total">
+TOTAL: ${brl(
+      Number(
+        venda.total ||
+          0
+      )
+    )}
+</div>
+
+<div class="line"></div>
+
+<div class="center small">
+Obrigado pela preferência!
+</div>
+
+<div class="center small bold">
+Drogaria Rede Fabiano
+</div>
+
+<div class="center small">
+iadrogarias.com.br
+</div>
+
+</body>
+</html>
+    `);
+
+    win.document.close();
+
+    win.focus();
+
+    setTimeout(
+      () => {
+        win.print();
+      },
+      250
+    );
+  }
+
+  /* =======================================================
+     SALVAR PRÉ-VENDA / COMANDA
+  ======================================================= */
+
+  function abrirModalComanda() {
+
+    if (
+      !itens.length
+    ) {
+
+      alert(
+        "Adicione produtos antes de salvar a comanda."
+      );
+
+      return;
+    }
+
+    if (
+      !validarEntrega()
+    ) {
+      return;
+    }
+
+    setNumeroComanda("");
+
+    setModalComanda(
+      true
+    );
+  }
+
+  async function salvarComanda() {
+
+    if (
+      salvandoComanda
+    ) {
+      return;
+    }
+
+    if (
+      !itens.length
+    ) {
+      return;
+    }
+
+    const comanda =
+      numeroComanda.trim();
+
+    if (!comanda) {
+
+      alert(
+        "Informe o número da comanda."
+      );
+
+      return;
+    }
+
+    if (
+      !validarEntrega()
+    ) {
+      return;
+    }
+
+    setSalvandoComanda(
+      true
+    );
+
+    try {
+
+      const payload = {
+
+        loja_slug:
+          LOJA_SLUG,
+
+        origem:
+          "PDV",
+
+        status:
+          "PRE_VENDA",
+
+        tipo_lancamento:
+          "pre_venda",
+
+        comanda,
+
+        cliente:
+          clienteVenda(),
+
+        pagamento:
+          null,
+
+        itens:
+          itensParaBanco(),
+
+        total:
+          Number(
+            total.toFixed(
+              2
+            )
+          ),
+      };
+
+      const {
+        data:
+          saved,
+        error,
+      } =
+        await supabase
+          .from(
+            "vendas"
+          )
+          .insert([
+            payload,
+          ])
+          .select("*")
+          .single();
+
+      if (error) {
+        throw error;
+      }
+
+      const vendaSalva =
+        saved as VendaSalva;
+
+      setUltimoComprovante(
+        vendaSalva
+      );
+
+      imprimirVenda(
+        vendaSalva
+      );
+
+      alert(
+        `Pré-venda salva na comanda ${comanda}.`
+      );
+
+      setModalComanda(
+        false
+      );
+
+      limparVenda();
+
+    } catch (
+      error: any
+    ) {
+
+      console.error(
+        "Erro ao salvar comanda:",
+        error
+      );
+
+      alert(
+        error?.message ||
+          "Erro ao salvar a comanda."
+      );
+
+    } finally {
+
+      setSalvandoComanda(
+        false
+      );
+    }
+  }
+
+  /* =======================================================
+     FINALIZAR VENDA
+  ======================================================= */
+
+  async function finalizarVenda() {
+
+    if (
+      salvando
+    ) {
+      return;
+    }
+
+    if (
+      !itens.length
+    ) {
+
+      alert(
+        "Adicione produtos à venda."
+      );
+
+      return;
+    }
+
+    if (
+      !validarEntrega()
+    ) {
+      return;
+    }
+
+    /*
+      Remove pagamentos zerados.
+    */
+
+    const pagamentosValidos =
+      pagamentos
+        .map(
+          (
+            pagamento
+          ) => ({
+            forma:
+              pagamento.forma,
+
+            valor:
+              numero(
+                pagamento.valor
+              ),
+          })
+        )
+        .filter(
+          (
+            pagamento
+          ) =>
+            pagamento.valor >
+            0
+        );
+
+    if (
+      !pagamentosValidos.length
+    ) {
+
+      alert(
+        "Informe o pagamento."
+      );
+
+      return;
+    }
+
+    /*
+      Não dinheiro não pode
+      ultrapassar o total.
+    */
+
+    if (
+      pagamentosNaoDinheiro >
+      total + 0.009
+    ) {
+
+      alert(
+        "Pix/Cartão não pode ultrapassar o total da venda."
+      );
+
+      return;
+    }
+
+    /*
+      Total recebido precisa
+      cobrir a venda.
+
+      Dinheiro pode passar
+      porque gera troco.
+    */
+
+    if (
+      totalPagamentos <
+      total - 0.009
+    ) {
+
+      alert(
+        `Ainda falta ${brl(
+          total -
+            totalPagamentos
+        )}.`
+      );
+
+      return;
+    }
+
+    setSalvando(
+      true
+    );
+
+    try {
+
+      /*
+        1. Confirma caixa aberto
+      */
+
+      const caixa =
+        await obterCaixaAberto();
+
+      if (!caixa) {
+
+        throw new Error(
+          "Não existe caixa aberto. Faça a abertura do caixa antes de finalizar a venda."
+        );
+      }
+
+      /*
+        2. Baixa estoque
+      */
+
+      await baixarEstoqueSegura(
+        itens
+      );
+
+      /*
+        3. Monta pagamento salvo
+
+        Guardamos:
+        - pagamentos mistos
+        - recebido
+        - troco
+        - atendimento
+      */
+
+      const pagamentoBanco = {
+
+        tipo:
+          tipoAtendimento ===
+          "ENTREGA"
+            ? "Entrega"
+            : "Balcão",
+
+        forma:
+          pagamentosValidos.length ===
+          1
+            ? pagamentosValidos[
+                0
+              ].forma
+            : "Misto",
+
+        pagamentos:
+          pagamentosValidos,
+
+        recebido:
+          Number(
+            totalPagamentos.toFixed(
+              2
+            )
+          ),
+
+        troco:
+          Number(
+            troco.toFixed(
+              2
+            )
+          ),
+      };
+
+      /*
+        4. Salva venda
+      */
+
+      const payload = {
+
+        loja_slug:
+          LOJA_SLUG,
+
+        origem:
+          "PDV",
+
+        status:
+          "FINALIZADA",
+
+        tipo_lancamento:
+          "caixa",
+
+        caixa_sessao_id:
+          caixa.id,
+
+        comanda:
+          numeroComanda.trim() ||
+          null,
+
+        cliente:
+          clienteVenda(),
+
+        pagamento:
+          pagamentoBanco,
+
+        itens:
+          itensParaBanco(),
+
+        total:
+          Number(
+            total.toFixed(
+              2
+            )
+          ),
+
+        finalizada_em:
+          new Date().toISOString(),
+      };
+
+      const {
+        data:
+          saved,
+        error:
+          vendaError,
+      } =
+        await supabase
+          .from(
+            "vendas"
+          )
+          .insert([
+            payload,
+          ])
+          .select("*")
+          .single();
+
+      if (
+        vendaError
+      ) {
+        throw vendaError;
+      }
+
+      /*
+        5. Lançamentos no caixa.
+
+        Cria uma movimentação para
+        cada forma de pagamento.
+
+        No dinheiro lançamos apenas
+        o valor efetivo da venda,
+        descontando o troco.
+      */
+
+      let trocoRestante =
+        troco;
+
+      for (
+        const pagamento of
+        pagamentosValidos
+      ) {
+
+        let valorCaixa =
+          pagamento.valor;
+
+        if (
+          pagamento.forma ===
+            "Dinheiro" &&
+          trocoRestante > 0
+        ) {
+
+          const abatimento =
+            Math.min(
+              trocoRestante,
+              valorCaixa
+            );
+
+          valorCaixa -=
+            abatimento;
+
+          trocoRestante -=
+            abatimento;
+        }
+
+        if (
+          valorCaixa <= 0
+        ) {
+          continue;
+        }
+
+        const {
+          error:
+            movimentoError,
+        } =
+          await supabase
+            .from(
+              "movimentacoes_caixa"
+            )
+            .insert([
+              {
+                tipo:
+                  "entrada",
+
+                descricao:
+                  `Venda PDV ${String(
+                    saved.id
+                  ).slice(
+                    0,
+                    8
+                  )}${
+                    tipoAtendimento ===
+                    "ENTREGA"
+                      ? " - ENTREGA"
+                      : ""
+                  }`,
+
+                valor:
+                  Number(
+                    valorCaixa.toFixed(
+                      2
+                    )
+                  ),
+
+                forma_pagamento:
+                  pagamento.forma,
+
+                loja:
+                  LOJA_SLUG,
+
+                referencia_venda:
+                  saved.id,
+
+                caixa_sessao_id:
+                  caixa.id,
+
+                data:
+                  new Date()
+                    .toISOString()
+                    .slice(
+                      0,
+                      10
+                    ),
+              },
+            ]);
+
+        if (
+          movimentoError
+        ) {
+          throw movimentoError;
+        }
+      }
+
+      const vendaSalva =
+        saved as VendaSalva;
+
+      setUltimoComprovante(
+        vendaSalva
+      );
+
+      /*
+        6. Impressão automática
+      */
+
+      imprimirVenda(
+        vendaSalva
+      );
+
+      alert(
+        `${
+          tipoAtendimento ===
+          "ENTREGA"
+            ? "Venda para entrega"
+            : "Venda"
+        } finalizada com sucesso!\n\nTotal: ${brl(
+          total
+        )}${
+          troco > 0
+            ? `\nTroco: ${brl(
+                troco
+              )}`
+            : ""
+        }`
+      );
+
+      limparVenda();
+
+      await atualizarCaixaAbertoInfo();
+
+    } catch (
+      error: any
+    ) {
+
+      console.error(
+        "Erro ao finalizar venda:",
+        error
+      );
+
+      alert(
+        error?.message ||
+          "Erro ao finalizar venda."
+      );
+
+    } finally {
+
+      setSalvando(
+        false
+      );
+
+      setTimeout(
+        () =>
+          inputRef.current?.focus(),
+        50
+      );
+    }
+  }
+
+  /* =======================================================
+     CONSULTAR VENDAS
+  ======================================================= */
+
+  async function carregarVendas() {
+
+    const {
+      data,
+      error,
+    } =
+      await supabase
+        .from(
+          "vendas"
+        )
+        .select("*")
+        .eq(
+          "loja_slug",
+          LOJA_SLUG
+        )
+        .order(
+          "created_at",
+          {
+            ascending:
+              false,
+          }
+        )
+        .limit(200);
+
+    if (error) {
+
+      console.error(
+        error
+      );
+
+      alert(
+        "Erro ao carregar vendas."
+      );
+
+      return;
+    }
+
+    setVendas(
+      data || []
+    );
+  }
+
+  async function buscarVendasPorData() {
+
+    if (
+      !filtroData
+    ) {
+
+      alert(
+        "Selecione uma data."
+      );
+
+      return;
+    }
+
+    const inicio =
+      `${filtroData}T00:00:00`;
+
+    const fim =
+      `${filtroData}T23:59:59.999`;
+
+    const {
+      data,
+      error,
+    } =
+      await supabase
+        .from(
+          "vendas"
+        )
+        .select("*")
+        .eq(
+          "loja_slug",
+          LOJA_SLUG
+        )
+        .gte(
+          "created_at",
+          inicio
+        )
+        .lte(
+          "created_at",
+          fim
+        )
+        .order(
+          "created_at",
+          {
+            ascending:
+              false,
+          }
+        );
+
+    if (error) {
+
+      console.error(
+        error
+      );
+
+      alert(
+        "Erro ao buscar vendas."
+      );
+
+      return;
+    }
+
+    setVendas(
+      data || []
+    );
+  }
+
+  async function verificarSenha() {
+
+    if (
+      senha !==
+      SENHA_ADMIN
+    ) {
+
+      alert(
+        "Senha incorreta."
+      );
+
+      return;
+    }
+
+    setSenha("");
+
+    setMostrarVendas(
+      true
+    );
+
+    await carregarVendas();
+  }
+
+  /* =======================================================
+     NOVO PRODUTO
+  ======================================================= */
+
+  function abrirNovoProduto() {
+
+    window.open(
+      `/drogarias/${LOJA_SLUG}/admin`,
+      "_blank"
+    );
+  }
+
+  /* =======================================================
+     ATALHOS
+  ======================================================= */
+
+  useEffect(() => {
+
+    function handleKeyDown(
+      event: KeyboardEvent
+    ) {
+
+      /*
+        Evita disparar atalhos
+        enquanto usuário está
+        digitando em input/textarea,
+        exceto teclas F.
+      */
+
+      const target =
+        event.target as HTMLElement;
+
+      const digitando =
+        target?.tagName ===
+          "INPUT" ||
+        target?.tagName ===
+          "TEXTAREA" ||
+        target?.tagName ===
+          "SELECT";
+
+      if (
+        digitando &&
+        ![
+          "F2",
+          "F3",
+          "F4",
+          "F6",
+          "F7",
+          "Escape",
+        ].includes(
+          event.key
+        )
+      ) {
+        return;
+      }
+
+      switch (
+        event.key
+      ) {
+
+        case "F2":
+
+          event.preventDefault();
+
+          inputRef.current?.focus();
+
+          break;
+
+        case "F3":
+
+          event.preventDefault();
+
+          limparVenda();
+
+          break;
+
+        case "F4":
+
+          event.preventDefault();
+
+          abrirNovoProduto();
+
+          break;
+
+        case "F6":
+
+          event.preventDefault();
+
+          abrirModalComanda();
+
+          break;
+
+        case "F7":
+
+          event.preventDefault();
+
+          pagamentoRef.current?.scrollIntoView(
+            {
+              behavior:
+                "smooth",
+
+              block:
+                "start",
+            }
+          );
+
+          break;
+
+        case "Escape":
+
+          if (
+            cameraAberta
+          ) {
+
+            event.preventDefault();
+
+            fecharCamera();
+
+          } else if (
+            modalComanda
+          ) {
+
+            event.preventDefault();
+
+            setModalComanda(
+              false
+            );
+
+          } else if (
+            vendaSelecionada
+          ) {
+
+            event.preventDefault();
+
+            setVendaSelecionada(
+              null
+            );
+          }
+
+          break;
+      }
+    }
+
+    window.addEventListener(
+      "keydown",
+      handleKeyDown
+    );
+
+    return () =>
+      window.removeEventListener(
+        "keydown",
+        handleKeyDown
+      );
+
+  }, [
+    cameraAberta,
+    modalComanda,
+    vendaSelecionada,
+    itens,
+  ]);
+
+  /* =======================================================
+     BLOCO 1 TERMINA AQUI
+
+     NÃO FECHE O COMPONENTE.
+
+     O BLOCO 2 COMEÇA DIRETAMENTE
+     COM:
+
+     return (
+  ======================================================= */
+    return (
+    <main className="min-h-screen bg-slate-100 pb-28 text-slate-900">
+      {/* =====================================================
+          CABEÇALHO
+      ===================================================== */}
+
+      <header className="sticky top-0 z-40 border-b border-blue-900 bg-blue-950 text-white shadow-lg">
+        <div className="mx-auto flex max-w-7xl items-center gap-2 px-3 py-3 md:px-5">
+          <Link
+            href={`/drogarias/${LOJA_SLUG}/admin`}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/10 transition hover:bg-white/20"
+            title="Voltar"
+          >
+            <ArrowLeft size={20} />
+          </Link>
+
+          <div className="min-w-0 flex-1">
+            <div className="truncate text-[10px] font-black uppercase tracking-wider text-blue-200">
+              Drogaria Rede Fabiano
+            </div>
+
+            <div className="flex items-center gap-2">
+              <h1 className="truncate text-lg font-black">
+                PDV
+              </h1>
+
+              {caixaAbertoInfo ? (
+                <span className="rounded-full bg-green-500/20 px-2 py-1 text-[10px] font-black text-green-200">
+                  ● CAIXA ABERTO
                 </span>
-              </div>
-            ) : (
-              <div className="inline-flex items-center gap-2 bg-red-50 border border-red-200 text-red-700 rounded-lg px-3 py-1 text-sm">
-                <span className="font-semibold">🔴 Sem caixa aberto</span>
-              </div>
-            )}
+              ) : (
+                <span className="rounded-full bg-red-500/20 px-2 py-1 text-[10px] font-black text-red-200">
+                  ● SEM CAIXA
+                </span>
+              )}
+            </div>
           </div>
+
+          <button
+            type="button"
+            onClick={abrirCamera}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/10 transition hover:bg-white/20"
+            title="Câmera"
+          >
+            <Camera size={20} />
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setSenha("");
+              setMostrarVendas(false);
+            }}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/10 transition hover:bg-white/20"
+            title="Vendas"
+          >
+            <ReceiptText size={20} />
+          </button>
+        </div>
+      </header>
+
+      <div className="mx-auto max-w-7xl p-3 md:p-5">
+        {/* ===================================================
+            STATUS DO CAIXA
+        =================================================== */}
+
+        {!caixaAbertoInfo && (
+          <div className="mb-3 rounded-2xl border border-red-200 bg-red-50 p-3 text-sm font-bold text-red-800">
+            O caixa da Rede Fabiano está fechado. Você pode montar
+            uma venda ou salvar uma comanda, mas para finalizar no
+            caixa será necessário abrir uma sessão de caixa.
+          </div>
+        )}
+
+        {/* ===================================================
+            ATALHOS DESKTOP
+        =================================================== */}
+
+        <div className="mb-3 hidden grid-cols-5 gap-2 lg:grid">
+          <Atalho label="F2" descricao="Buscar produto" />
+          <Atalho label="F3" descricao="Nova venda" />
+          <Atalho label="F4" descricao="Novo produto" />
+          <Atalho label="F6" descricao="Comanda" />
+          <Atalho label="F7" descricao="Pagamento" />
         </div>
 
-        <div className="hidden sm:block bg-blue-50 border border-blue-200 rounded-lg p-2 text-xs text-gray-700">
-          <p className="font-semibold text-blue-700 mb-1">⌨️ Atalhos:</p>
-          <p>F2 Buscar • F3 Limpar • F4 Novo Produto • F6 Comanda • F7 Caixa • Esc Fechar</p>
-        </div>
-      </div>
+        <div className="grid gap-4 lg:grid-cols-[1.15fr_0.85fr]">
+          {/* =================================================
+              COLUNA ESQUERDA
+          ================================================= */}
 
-      <div className="mt-4 flex gap-2 flex-wrap">
-        <button
-          onClick={() => inputRef.current?.focus()}
-          className="px-3 py-2 rounded bg-blue-100 text-blue-700 border border-blue-200"
-        >
-          F2 Buscar
-        </button>
-        <button onClick={abrirNovoProduto} className="px-3 py-2 rounded bg-violet-100 text-violet-700 border border-violet-200">
-          F4 Novo Produto
-        </button>
-        <button onClick={abrirPreVenda} className="px-3 py-2 rounded bg-amber-100 text-amber-700 border border-amber-200">
-          F6 Salvar em Comanda
-        </button>
-        <button onClick={abrirFinalizarCaixa} className="px-3 py-2 rounded bg-emerald-100 text-emerald-700 border border-emerald-200">
-          F7 Finalizar no Caixa
-        </button>
-      </div>
+          <section className="space-y-4">
+            {/* ===============================================
+                BUSCA
+            =============================================== */}
 
-      <input
-        ref={inputRef}
-        type="text"
-        placeholder="Digite nome ou EAN e pressione Enter..."
-        value={busca}
-        onChange={(e) => setBusca(e.target.value)}
-        onKeyDown={buscarProduto}
-        className="w-full border p-3 rounded-md mb-4 mt-4 text-lg focus:outline-blue-600"
-      />
+            <div className="rounded-3xl bg-white p-3 shadow-sm ring-1 ring-slate-200">
+              <div className="mb-2 flex items-center justify-between">
+                <div>
+                  <div className="text-xs font-black uppercase text-blue-700">
+                    Produtos
+                  </div>
 
-      {resultados.length > 0 && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
-          {resultados.map((p) => (
-            <div key={p.id} className="border rounded-xl bg-white shadow-md p-4 flex flex-col">
-              <img src={p.imagem} alt={p.nome} className="w-full h-32 object-contain mb-3 rounded-md bg-gray-50" />
-              <h3 className="font-semibold text-gray-800 text-sm mb-1">{p.nome}</h3>
-              <div className="text-xs text-gray-500 mb-2">
-                {p.ean} • {p.categoria || "—"}
+                  <div className="text-sm font-bold text-slate-500">
+                    Nome ou código de barras
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={abrirNovoProduto}
+                  className="rounded-xl bg-green-50 px-3 py-2 text-xs font-black text-green-700"
+                >
+                  + Produto
+                </button>
               </div>
-              <span className={`text-xs mb-2 ${p.estoque > 0 ? "text-emerald-700" : "text-red-600"}`}>
-                Estoque: {p.estoque}
-              </span>
-              <div className="text-blue-700 font-bold">{brl(p.preco_venda || 0)}</div>
+
+              <div className="flex gap-2">
+                <div className="flex min-w-0 flex-1 items-center rounded-2xl border-2 border-slate-200 bg-slate-50 px-3 focus-within:border-blue-700 focus-within:bg-white">
+                  <Search
+                    size={21}
+                    className="shrink-0 text-slate-500"
+                  />
+
+                  <input
+                    ref={inputRef}
+                    value={busca}
+                    onChange={(e) => setBusca(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        void pesquisar();
+                      }
+                    }}
+                    placeholder="Digite o nome ou leia o EAN..."
+                    className="min-w-0 flex-1 bg-transparent px-3 py-4 text-base font-bold outline-none"
+                    autoComplete="off"
+                  />
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => void pesquisar()}
+                  disabled={loading}
+                  className="hidden rounded-2xl bg-blue-800 px-5 font-black text-white disabled:opacity-50 sm:block"
+                >
+                  {loading ? "..." : "Buscar"}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={abrirCamera}
+                  className="flex w-14 shrink-0 items-center justify-center rounded-2xl bg-slate-950 text-white"
+                  title="Ler código de barras"
+                >
+                  <Camera size={23} />
+                </button>
+              </div>
+
               <button
-                onClick={() => adicionarProduto(p)}
-                disabled={p.estoque <= 0}
-                className={`mt-auto py-2 rounded-md font-medium transition ${
-                  p.estoque > 0 ? "bg-blue-600 hover:bg-blue-700 text-white" : "bg-gray-200 text-gray-500"
-                }`}
+                type="button"
+                onClick={() => void pesquisar()}
+                disabled={loading}
+                className="mt-2 w-full rounded-xl bg-blue-800 py-3 font-black text-white disabled:opacity-50 sm:hidden"
               >
-                ➕ Adicionar
+                {loading ? "Buscando..." : "BUSCAR PRODUTO"}
               </button>
             </div>
-          ))}
-        </div>
-      )}
 
-      <div className="overflow-x-auto mt-6">
-        <table className="w-full border-collapse border text-sm shadow-md rounded-lg overflow-hidden">
-          <thead className="bg-gradient-to-r from-blue-600 to-blue-400 text-white">
-            <tr>
-              <th className="p-2 text-left">Produto</th>
-              <th className="p-2">Qtde</th>
-              <th className="p-2">% Desc</th>
-              <th className="p-2">Valor Cobrado</th>
-              <th className="p-2">Unit Base</th>
-              <th className="p-2">Total</th>
-              <th className="p-2">🗑️</th>
-            </tr>
-          </thead>
-          <tbody>
-            {venda.map((p, idx) => {
-              const unitFinal = calcularUnitarioFinal(p);
-              const tot = Number(p.qtd || 0) * unitFinal;
+            {/* ===============================================
+                RESULTADOS
+            =============================================== */}
 
-              return (
-                <tr key={p.id} className={`${idx % 2 === 0 ? "bg-white" : "bg-blue-50"} text-center`}>
-                  <td className="p-2 text-left">
-                    <div className="font-semibold text-gray-800">{p.nome}</div>
-                    <div className="text-xs text-gray-500">{p.ean}</div>
-                  </td>
-
-                  <td className="p-2">
-                    <div className="flex justify-center items-center gap-2">
-                      <button onClick={() => alterarQtd(p.id, -1)} className="bg-gray-200 hover:bg-gray-300 px-2 rounded">
-                        ➖
-                      </button>
-                      <span className="w-6">{p.qtd}</span>
-                      <button onClick={() => alterarQtd(p.id, 1)} className="bg-gray-200 hover:bg-gray-300 px-2 rounded">
-                        ➕
-                      </button>
-                    </div>
-                  </td>
-
-                  <td className="p-2">
-                    <input
-                      type="number"
-                      min={0}
-                      max={100}
-                      step="0.01"
-                      value={p.desconto}
-                      onChange={(e) => alterarDesconto(p.id, Number(e.target.value))}
-                      className="w-20 border rounded text-center"
-                    />
-                  </td>
-
-                  <td className="p-2">
-                    <input
-                      type="number"
-                      min={0}
-                      step="0.01"
-                      value={Number(p.valor_cobrado || 0)}
-                      onChange={(e) => alterarValorCobrado(p.id, e.target.value)}
-                      className="w-24 border rounded text-center"
-                    />
-                  </td>
-
-                  <td className="p-2 text-blue-800 font-semibold">{brl(Number(p.preco_venda || 0))}</td>
-
-                  <td className="p-2 font-bold text-emerald-700">{brl(tot)}</td>
-
-                  <td className="p-2">
-                    <button onClick={() => removerItem(p.id)} className="text-red-600" title="Remover">
-                      🗑️
-                    </button>
-                  </td>
-                </tr>
-              );
-            })}
-
-            {venda.length === 0 && (
-              <tr>
-                <td colSpan={7} className="p-6 text-gray-500 text-center">
-                  Sem itens na venda.
-                </td>
-              </tr>
+            {loading && (
+              <div className="rounded-2xl bg-white p-5 text-center font-bold text-blue-800 shadow-sm">
+                Buscando produtos...
+              </div>
             )}
-          </tbody>
-        </table>
-      </div>
 
-      {venda.length > 0 && (
-        <div className="flex justify-between items-center mt-4 border-t pt-4">
-          <div className="text-gray-600 text-sm">Itens: {totalItens}</div>
-          <div className="text-2xl font-bold text-blue-700">Total: {brl(total)}</div>
-        </div>
-      )}
+            {!loading &&
+              busca.trim() &&
+              resultados.length === 0 && (
+                <div className="rounded-3xl border-2 border-dashed border-slate-300 bg-white p-7 text-center">
+                  <Search
+                    size={34}
+                    className="mx-auto text-slate-400"
+                  />
 
-      {venda.length > 0 && (
-        <div className="mt-4 flex gap-2 flex-wrap">
-          <button onClick={limparVenda} className="px-4 py-2 rounded bg-red-600 text-white">
-            Limpar
-          </button>
-          <button onClick={abrirPreVenda} className="px-4 py-2 rounded bg-amber-600 text-white">
-            Salvar em Comanda
-          </button>
-          <button onClick={abrirFinalizarCaixa} className="px-4 py-2 rounded bg-green-600 text-white">
-            Finalizar no Caixa
-          </button>
-        </div>
-      )}
+                  <div className="mt-3 font-black">
+                    Produto não encontrado
+                  </div>
 
-      {showPagamento && (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/60">
-          <div className="bg-white w-[95%] sm:w-[460px] rounded-xl shadow-2xl p-5 max-h-[90vh] overflow-y-auto relative">
-            <h2 className="text-2xl font-bold text-blue-700 text-center mb-2">
-              {modoFinalizacao === "comanda" ? "🧾 Salvar em Comanda" : "💰 Finalizar no Caixa"}
-            </h2>
+                  <div className="mt-1 text-sm text-slate-500">
+                    Tente outro nome/EAN ou cadastre o produto no
+                    Admin.
+                  </div>
 
-            <p className="text-center text-sm text-gray-500 mb-5">
-              {modoFinalizacao === "comanda"
-                ? "Pré-venda / separação sem lançar no caixa"
-                : "Venda final com lançamento no caixa aberto"}
-            </p>
-
-            <div className="mb-4">
-              <label className="block font-semibold mb-2 text-gray-700">
-                Comanda {modoFinalizacao === "comanda" ? "(obrigatória)" : "(opcional)"}:
-              </label>
-              <input
-                type="text"
-                placeholder="Ex: 12"
-                value={pagamento.comanda || ""}
-                onChange={(e) => setPagamento((prev: any) => ({ ...prev, comanda: e.target.value }))}
-                className="w-full border rounded p-2"
-              />
-            </div>
-
-            <div className="mb-4">
-              <label className="block font-semibold mb-2 text-gray-700">Tipo:</label>
-              <div className="flex gap-2">
-                {["Balcão", "Entrega", "Externo"].map((tipo) => (
                   <button
-                    key={tipo}
-                    onClick={() => setPagamento((prev: any) => ({ ...prev, tipo }))}
-                    className={`flex-1 py-2 rounded-md border ${
-                      pagamento.tipo === tipo ? "bg-blue-600 text-white border-blue-600" : "bg-gray-100"
-                    }`}
+                    type="button"
+                    onClick={abrirNovoProduto}
+                    className="mt-4 rounded-xl bg-green-600 px-4 py-3 font-black text-white"
                   >
-                    {tipo}
+                    + Cadastrar produto
                   </button>
+                </div>
+              )}
+
+            {resultados.length > 0 && (
+              <div className="space-y-2">
+                <div className="flex items-center justify-between px-1">
+                  <div className="text-xs font-black uppercase text-slate-500">
+                    Resultado da busca
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setResultados([]);
+                      setBusca("");
+                      inputRef.current?.focus();
+                    }}
+                    className="text-xs font-black text-blue-700"
+                  >
+                    Limpar
+                  </button>
+                </div>
+
+                {resultados.map((produto) => (
+                  <ResultadoProduto
+                    key={produto.id}
+                    produto={produto}
+                    onAdd={() => adicionarProduto(produto)}
+                  />
                 ))}
               </div>
-            </div>
-
-            {pagamento.tipo === "Entrega" && (
-              <div className="space-y-3 mb-4">
-                <input
-                  type="text"
-                  placeholder="Nome"
-                  value={pagamento.nome || ""}
-                  onChange={(e) => setPagamento((prev: any) => ({ ...prev, nome: e.target.value }))}
-                  className="w-full border rounded p-2"
-                />
-                <input
-                  type="text"
-                  placeholder="Whats/Telefone (DDD)"
-                  value={pagamento.telefone || ""}
-                  onChange={(e) => setPagamento((prev: any) => ({ ...prev, telefone: e.target.value }))}
-                  className="w-full border rounded p-2"
-                />
-                <input
-                  type="text"
-                  placeholder="Endereço"
-                  value={pagamento.endereco || ""}
-                  onChange={(e) => setPagamento((prev: any) => ({ ...prev, endereco: e.target.value }))}
-                  className="w-full border rounded p-2"
-                />
-              </div>
             )}
 
-            {modoFinalizacao === "caixa" && (
-              <>
-                <div className="mb-4 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm">
-                  {caixaAbertoInfo ? (
-                    <div className="text-emerald-700">
-                      <div className="font-semibold">Caixa aberto encontrado</div>
-                      <div>
-                        {caixaAbertoInfo.turno ? `Turno: ${caixaAbertoInfo.turno}` : "Turno não informado"}
-                        {caixaAbertoInfo.operador ? ` • Operador: ${caixaAbertoInfo.operador}` : ""}
-                      </div>
+            {/* ===============================================
+                CARRINHO
+            =============================================== */}
+
+            <div className="overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-slate-200">
+              <div className="flex items-center justify-between border-b bg-slate-50 px-4 py-3">
+                <div className="flex items-center gap-2">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-100 text-blue-800">
+                    <ShoppingCart size={19} />
+                  </div>
+
+                  <div>
+                    <div className="font-black">
+                      Carrinho
                     </div>
-                  ) : (
-                    <div className="text-red-700 font-semibold">Nenhum caixa aberto.</div>
+
+                    <div className="text-xs font-bold text-slate-500">
+                      {quantidadeItens} item(ns)
+                    </div>
+                  </div>
+                </div>
+
+                {itens.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (
+                        window.confirm(
+                          "Limpar todos os itens desta venda?"
+                        )
+                      ) {
+                        limparVenda();
+                      }
+                    }}
+                    className="rounded-xl bg-red-50 px-3 py-2 text-xs font-black text-red-700"
+                  >
+                    Limpar
+                  </button>
+                )}
+              </div>
+
+              {itens.length === 0 ? (
+                <div className="p-8 text-center">
+                  <ShoppingCart
+                    size={38}
+                    className="mx-auto text-slate-300"
+                  />
+
+                  <div className="mt-3 font-black text-slate-700">
+                    Carrinho vazio
+                  </div>
+
+                  <div className="mt-1 text-sm text-slate-500">
+                    Pesquise ou escaneie um produto para começar.
+                  </div>
+                </div>
+              ) : (
+                <div className="divide-y">
+                  {itens.map((item) => (
+                    <ItemCarrinho
+                      key={item.id}
+                      item={item}
+                      onQtd={(delta) =>
+                        alterarQtd(item.id, delta)
+                      }
+                      onRemove={() => removerItem(item.id)}
+                      onDesconto={(tipo, valor) =>
+                        alterarDesconto(
+                          item.id,
+                          tipo,
+                          valor
+                        )
+                      }
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* ===============================================
+                BALCÃO / ENTREGA
+            =============================================== */}
+
+            <div className="overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-slate-200">
+              <div className="border-b px-4 py-3">
+                <div className="text-xs font-black uppercase text-slate-500">
+                  Atendimento
+                </div>
+
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setTipoAtendimento("BALCAO");
+                      setTaxaEntrega("0");
+                    }}
+                    className={`flex items-center justify-center gap-2 rounded-2xl border-2 py-3 font-black ${
+                      tipoAtendimento === "BALCAO"
+                        ? "border-blue-700 bg-blue-700 text-white"
+                        : "border-slate-200 bg-white text-slate-700"
+                    }`}
+                  >
+                    <Store size={19} />
+                    Balcão
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setTipoAtendimento("ENTREGA")
+                    }
+                    className={`flex items-center justify-center gap-2 rounded-2xl border-2 py-3 font-black ${
+                      tipoAtendimento === "ENTREGA"
+                        ? "border-orange-500 bg-orange-500 text-white"
+                        : "border-slate-200 bg-white text-slate-700"
+                    }`}
+                  >
+                    <Truck size={19} />
+                    Entrega
+                  </button>
+                </div>
+              </div>
+
+              {tipoAtendimento === "ENTREGA" && (
+                <div className="grid gap-3 p-4 md:grid-cols-2">
+                  <PDVField label="Nome do cliente">
+                    <input
+                      value={clienteNome}
+                      onChange={(e) =>
+                        setClienteNome(e.target.value)
+                      }
+                      className="pdv-input"
+                      placeholder="Nome"
+                    />
+                  </PDVField>
+
+                  <PDVField label="WhatsApp / telefone">
+                    <input
+                      value={clienteTelefone}
+                      onChange={(e) =>
+                        setClienteTelefone(
+                          onlyDigits(e.target.value)
+                        )
+                      }
+                      inputMode="tel"
+                      className="pdv-input"
+                      placeholder="11999999999"
+                    />
+                  </PDVField>
+
+                  <PDVField
+                    label="Endereço"
+                    className="md:col-span-2"
+                  >
+                    <input
+                      value={endereco}
+                      onChange={(e) =>
+                        setEndereco(e.target.value)
+                      }
+                      className="pdv-input"
+                      placeholder="Rua / Avenida"
+                    />
+                  </PDVField>
+
+                  <PDVField label="Número">
+                    <input
+                      value={numeroEndereco}
+                      onChange={(e) =>
+                        setNumeroEndereco(e.target.value)
+                      }
+                      className="pdv-input"
+                      placeholder="Nº"
+                    />
+                  </PDVField>
+
+                  <PDVField label="Bairro">
+                    <input
+                      value={bairro}
+                      onChange={(e) =>
+                        setBairro(e.target.value)
+                      }
+                      className="pdv-input"
+                      placeholder="Bairro"
+                    />
+                  </PDVField>
+
+                  <PDVField label="Complemento">
+                    <input
+                      value={complemento}
+                      onChange={(e) =>
+                        setComplemento(e.target.value)
+                      }
+                      className="pdv-input"
+                      placeholder="Casa, apto..."
+                    />
+                  </PDVField>
+
+                  <PDVField label="Referência">
+                    <input
+                      value={referencia}
+                      onChange={(e) =>
+                        setReferencia(e.target.value)
+                      }
+                      className="pdv-input"
+                      placeholder="Próximo a..."
+                    />
+                  </PDVField>
+
+                  <PDVField label="Taxa de entrega">
+                    <div className="flex items-center rounded-xl border-2 border-slate-200 bg-white px-3 focus-within:border-blue-600">
+                      <span className="font-black text-slate-500">
+                        R$
+                      </span>
+
+                      <input
+                        value={taxaEntrega}
+                        onChange={(e) =>
+                          setTaxaEntrega(e.target.value)
+                        }
+                        inputMode="decimal"
+                        className="min-w-0 flex-1 bg-transparent px-2 py-3 font-black outline-none"
+                        placeholder="0,00"
+                      />
+                    </div>
+                  </PDVField>
+
+                  <PDVField
+                    label="Observações"
+                    className="md:col-span-2"
+                  >
+                    <textarea
+                      value={observacoes}
+                      onChange={(e) =>
+                        setObservacoes(e.target.value)
+                      }
+                      rows={2}
+                      className="pdv-input"
+                      placeholder="Observações da entrega..."
+                    />
+                  </PDVField>
+                </div>
+              )}
+            </div>
+          </section>
+
+          {/* =================================================
+              COLUNA DIREITA
+          ================================================= */}
+
+          <section className="space-y-4">
+            {/* ===============================================
+                RESUMO
+            =============================================== */}
+
+            <div className="overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-slate-200 lg:sticky lg:top-[78px]">
+              <div className="bg-slate-950 p-4 text-white">
+                <div className="text-xs font-black uppercase text-slate-400">
+                  Resumo da venda
+                </div>
+
+                <div className="mt-1 flex items-end justify-between">
+                  <div>
+                    <div className="text-sm text-slate-300">
+                      {quantidadeItens} item(ns)
+                    </div>
+
+                    <div className="mt-1 text-3xl font-black">
+                      {brl(total)}
+                    </div>
+                  </div>
+
+                  {tipoAtendimento === "ENTREGA" && (
+                    <div className="rounded-xl bg-orange-500 px-3 py-2 text-xs font-black">
+                      ENTREGA
+                    </div>
                   )}
                 </div>
+              </div>
 
-                <div className="mb-4">
-                  <label className="block font-semibold mb-2 text-gray-700">Pagamento:</label>
-                  <div className="grid grid-cols-2 gap-2">
-                    {["Pix", "Cartão", "Dinheiro"].map((forma) => (
-                      <button
-                        key={forma}
-                        onClick={() => setPagamento((prev: any) => ({ ...prev, forma }))}
-                        className={`py-2 rounded-md border ${
-                          pagamento.forma === forma ? "bg-emerald-600 text-white border-emerald-600" : "bg-gray-100"
-                        }`}
-                      >
-                        {forma}
-                      </button>
-                    ))}
+              <div className="space-y-2 p-4 text-sm">
+                <ResumoLinha
+                  label="Subtotal"
+                  valor={brl(subtotalBruto)}
+                />
+
+                {descontoTotal > 0 && (
+                  <ResumoLinha
+                    label="Descontos"
+                    valor={`- ${brl(descontoTotal)}`}
+                    destaque="verde"
+                  />
+                )}
+
+                {taxa > 0 && (
+                  <ResumoLinha
+                    label="Taxa de entrega"
+                    valor={brl(taxa)}
+                  />
+                )}
+
+                <div className="border-t pt-3">
+                  <ResumoLinha
+                    label="TOTAL"
+                    valor={brl(total)}
+                    grande
+                  />
+                </div>
+              </div>
+
+              {/* =============================================
+                  PAGAMENTO
+              ============================================= */}
+
+              <div
+                ref={pagamentoRef}
+                className="border-t bg-slate-50 p-4"
+              >
+                <div className="mb-3 flex items-center justify-between">
+                  <div>
+                    <div className="font-black">
+                      Pagamento
+                    </div>
+
+                    <div className="text-xs text-slate-500">
+                      Aceita pagamento misto
+                    </div>
                   </div>
+
+                  <button
+                    type="button"
+                    onClick={adicionarPagamento}
+                    className="rounded-xl bg-blue-100 px-3 py-2 text-xs font-black text-blue-800"
+                  >
+                    + Forma
+                  </button>
                 </div>
 
-                {pagamento.forma === "Dinheiro" && (
-                  <div className="mb-4">
-                    <label className="block text-sm mb-1 text-gray-600">Valor recebido</label>
-                    <input
-                      type="number"
-                      value={pagamento.dinheiro}
-                      onChange={(e) => calcularTroco(e.target.value)}
-                      className="w-full border rounded p-2 text-right"
+                <div className="space-y-2">
+                  {pagamentos.map((pagamento, index) => (
+                    <PagamentoLinha
+                      key={index}
+                      pagamento={pagamento}
+                      podeRemover={pagamentos.length > 1}
+                      onChange={(patch) =>
+                        alterarPagamento(index, patch)
+                      }
+                      onRemove={() =>
+                        removerPagamento(index)
+                      }
                     />
-                    <p className="text-sm mt-2 text-gray-700">
-                      Troco: <span className="font-bold text-emerald-600">R$ {pagamento.troco}</span>
-                    </p>
-                  </div>
+                  ))}
+                </div>
+
+                <div className="mt-4 space-y-2 rounded-2xl bg-white p-3 ring-1 ring-slate-200">
+                  <ResumoLinha
+                    label="Total recebido"
+                    valor={brl(totalPagamentos)}
+                  />
+
+                  {faltante > 0 && (
+                    <ResumoLinha
+                      label="Falta receber"
+                      valor={brl(faltante)}
+                      destaque="vermelho"
+                    />
+                  )}
+
+                  {troco > 0 && (
+                    <ResumoLinha
+                      label="Troco"
+                      valor={brl(troco)}
+                      destaque="verde"
+                      grande
+                    />
+                  )}
+                </div>
+              </div>
+
+              {/* =============================================
+                  AÇÕES
+              ============================================= */}
+
+              <div className="grid gap-2 border-t p-4">
+                <button
+                  type="button"
+                  onClick={abrirModalComanda}
+                  disabled={!itens.length || salvando}
+                  className="flex w-full items-center justify-center gap-2 rounded-2xl border-2 border-blue-700 bg-white py-3 font-black text-blue-800 disabled:opacity-40"
+                >
+                  <ReceiptText size={19} />
+                  SALVAR EM COMANDA
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => void finalizarVenda()}
+                  disabled={!itens.length || salvando}
+                  className="w-full rounded-2xl bg-green-600 py-4 text-lg font-black text-white shadow-lg shadow-green-600/20 disabled:opacity-40"
+                >
+                  {salvando
+                    ? "FINALIZANDO..."
+                    : `FINALIZAR • ${brl(total)}`}
+                </button>
+
+                {ultimoComprovante && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      imprimirVenda(ultimoComprovante)
+                    }
+                    className="flex w-full items-center justify-center gap-2 rounded-xl bg-slate-100 py-3 text-sm font-black text-slate-700"
+                  >
+                    <Printer size={17} />
+                    Reimprimir último comprovante
+                  </button>
                 )}
-              </>
-            )}
-
-            <div className="border-t mt-4 pt-3 text-center">
-              <p className="text-gray-600">Total</p>
-              <p className="text-3xl font-bold text-blue-700">{brl(total)}</p>
+              </div>
             </div>
+          </section>
+        </div>
+      </div>
 
-            <div className="flex flex-col gap-2 mt-6">
-              <button
-                onClick={finalizarVenda}
-                disabled={saving}
-                className={`py-2 rounded-md font-semibold ${
-                  saving ? "bg-blue-300 text-white cursor-wait" : "bg-blue-800 text-white"
-                }`}
-              >
-                {saving
-                  ? "Salvando..."
-                  : modoFinalizacao === "comanda"
-                  ? "✅ Confirmar Pré-Venda"
-                  : "✅ Confirmar Venda no Caixa"}
-              </button>
+      {/* =====================================================
+          BARRA MOBILE
+      ===================================================== */}
 
-              <button
-                onClick={() => {
-                  setShowPagamento(false);
-                  setModoFinalizacao(null);
-                }}
-                className="bg-gray-400 text-white py-2 rounded-md"
-              >
-                ↩️ Voltar
-              </button>
+      {itens.length > 0 && (
+        <div className="fixed inset-x-0 bottom-0 z-40 border-t bg-white p-2 shadow-[0_-8px_30px_rgba(0,0,0,0.12)] lg:hidden">
+          <div className="mx-auto flex max-w-7xl items-center gap-2">
+            <div className="min-w-0 flex-1 px-2">
+              <div className="text-[10px] font-black uppercase text-slate-400">
+                Total
+              </div>
+
+              <div className="truncate text-xl font-black text-slate-950">
+                {brl(total)}
+              </div>
             </div>
 
             <button
-              onClick={() => {
-                setShowPagamento(false);
-                setModoFinalizacao(null);
-              }}
-              className="absolute top-2 right-3 text-xl text-gray-400"
-              aria-label="Fechar"
+              type="button"
+              onClick={() =>
+                pagamentoRef.current?.scrollIntoView({
+                  behavior: "smooth",
+                  block: "start",
+                })
+              }
+              className="rounded-xl bg-blue-100 px-3 py-3 text-xs font-black text-blue-800"
             >
-              ×
+              Pagamento
+            </button>
+
+            <button
+              type="button"
+              onClick={() => void finalizarVenda()}
+              disabled={salvando}
+              className="rounded-xl bg-green-600 px-4 py-3 text-sm font-black text-white disabled:opacity-50"
+            >
+              Finalizar
             </button>
           </div>
         </div>
       )}
 
-      <div className="mt-10 bg-white rounded-lg shadow p-4">
-        <h2 className="text-blue-700 font-semibold text-lg mb-3">📋 Consultar Vendas/Pedidos</h2>
+      {/* =====================================================
+          MODAL CÂMERA
+      ===================================================== */}
 
-        {!mostrarVendas ? (
-          <div className="flex items-center gap-3">
-            <input
-              type="password"
-              placeholder="Senha..."
-              value={senha}
-              onChange={(e) => setSenha(e.target.value)}
-              className="border rounded px-3 py-2"
-            />
-            <button onClick={verificarSenha} className="bg-blue-600 text-white px-4 py-2 rounded">
-              Entrar
-            </button>
-          </div>
-        ) : (
-          <div>
-            <div className="flex justify-between items-center mb-4">
-              <h3 className="font-semibold text-gray-700">📆 Lista</h3>
-              <button onClick={() => setMostrarVendas(false)} className="text-red-600 underline text-sm">
-                Sair
-              </button>
-            </div>
+      {cameraAberta && (
+        <div className="fixed inset-0 z-[100] bg-black">
+          <div className="flex h-full flex-col">
+            <div className="flex items-center justify-between bg-black/90 p-4 text-white">
+              <div>
+                <div className="font-black">
+                  Ler código de barras
+                </div>
 
-            <div className="flex items-center gap-3 mb-4 flex-wrap">
-              <input
-                type="date"
-                value={filtroData}
-                onChange={(e) => setFiltroData(e.target.value)}
-                className="border rounded px-3 py-2"
-              />
-              <button onClick={buscarPorData} className="bg-blue-600 text-white px-4 py-2 rounded">
-                Buscar
-              </button>
+                <div className="text-xs text-slate-300">
+                  Aponte a câmera para o EAN
+                </div>
+              </div>
+
               <button
-                onClick={() => {
-                  setFiltroData("");
-                  carregarVendas();
-                }}
-                className="bg-gray-400 text-white px-4 py-2 rounded"
+                type="button"
+                onClick={fecharCamera}
+                className="rounded-xl bg-white/10 p-2"
               >
-                Limpar
+                <X size={24} />
               </button>
             </div>
 
-            {vendas.length === 0 ? (
-              <p className="text-gray-500 text-sm">Nada por aqui ainda.</p>
-            ) : (
-              <table className="w-full text-sm border">
-                <thead className="bg-blue-100 text-blue-700 font-semibold">
-                  <tr>
-                    <th className="p-2 border">Data</th>
-                    <th className="p-2 border">Origem</th>
-                    <th className="p-2 border">Status</th>
-                    <th className="p-2 border">Tipo</th>
-                    <th className="p-2 border">Comanda</th>
-                    <th className="p-2 border text-right">Total</th>
-                    <th className="p-2 border text-center">Ações</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {vendas.map((v) => (
-                    <tr key={v.id} className="border-t hover:bg-gray-50">
-                      <td className="p-2 border text-center">{new Date(v.created_at).toLocaleString("pt-BR")}</td>
-                      <td className="p-2 border text-center">
-                        {v.origem === "SITE" ? (
-                          <span className="text-xs bg-blue-600 text-white px-2 py-0.5 rounded">🌐 SITE</span>
-                        ) : (
-                          <span className="text-xs bg-emerald-600 text-white px-2 py-0.5 rounded">🏪 PDV</span>
-                        )}
-                      </td>
-                      <td className="p-2 border text-center">{v.status}</td>
-                      <td className="p-2 border text-center">{v.tipo_lancamento || "-"}</td>
-                      <td className="p-2 border text-center">{v.comanda || "-"}</td>
-                      <td className="p-2 border text-right text-emerald-700 font-semibold">{brl(Number(v.total || 0))}</td>
-                      <td className="p-2 border text-center">
-                        <button onClick={() => setVendaSelecionada(v)} className="text-xs bg-blue-500 text-white px-3 py-1 rounded">
-                          Ver
-                        </button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
+            <div className="relative flex flex-1 items-center justify-center overflow-hidden">
+              <video
+                ref={videoRef}
+                autoPlay
+                playsInline
+                muted
+                className="h-full w-full object-cover"
+              />
+
+              <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+                <div className="relative h-40 w-[88%] max-w-md rounded-3xl border-2 border-white shadow-2xl">
+                  <div className="absolute left-5 right-5 top-1/2 h-[2px] bg-red-500 shadow-lg" />
+
+                  <div className="absolute -left-[2px] -top-[2px] h-8 w-8 rounded-tl-3xl border-l-4 border-t-4 border-green-400" />
+
+                  <div className="absolute -right-[2px] -top-[2px] h-8 w-8 rounded-tr-3xl border-r-4 border-t-4 border-green-400" />
+
+                  <div className="absolute -bottom-[2px] -left-[2px] h-8 w-8 rounded-bl-3xl border-b-4 border-l-4 border-green-400" />
+
+                  <div className="absolute -bottom-[2px] -right-[2px] h-8 w-8 rounded-br-3xl border-b-4 border-r-4 border-green-400" />
+                </div>
+              </div>
+
+              {cameraLendo && !cameraErro && (
+                <div className="absolute bottom-8 rounded-full bg-black/70 px-4 py-2 text-sm font-bold text-white">
+                  Procurando código...
+                </div>
+              )}
+            </div>
+
+            {cameraErro && (
+              <div className="bg-red-600 p-4 text-center text-sm font-bold text-white">
+                {cameraErro}
+              </div>
             )}
+
+            <div className="bg-black p-4">
+              <button
+                type="button"
+                onClick={fecharCamera}
+                className="w-full rounded-2xl bg-white py-3 font-black text-slate-950"
+              >
+                Fechar câmera
+              </button>
+            </div>
           </div>
-        )}
-      </div>
+        </div>
+      )}
+
+      {/* =====================================================
+          MODAL COMANDA
+      ===================================================== */}
+
+      {modalComanda && (
+        <div className="fixed inset-0 z-[90] flex items-end justify-center bg-black/60 p-2 sm:items-center">
+          <div className="w-full max-w-md overflow-hidden rounded-3xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b bg-blue-950 p-4 text-white">
+              <div>
+                <div className="text-xs font-bold text-blue-200">
+                  PRÉ-VENDA
+                </div>
+
+                <div className="text-lg font-black">
+                  Salvar em Comanda
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setModalComanda(false)}
+                className="rounded-xl bg-white/10 p-2"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="p-4">
+              <label className="block">
+                <div className="mb-1 text-xs font-black uppercase text-slate-500">
+                  Número / Nome da comanda
+                </div>
+
+                <input
+                  value={numeroComanda}
+                  onChange={(e) =>
+                    setNumeroComanda(e.target.value)
+                  }
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      void salvarComanda();
+                    }
+                  }}
+                  autoFocus
+                  className="w-full rounded-2xl border-2 border-slate-200 px-4 py-4 text-center text-2xl font-black outline-none focus:border-blue-700"
+                  placeholder="Ex.: 15"
+                />
+              </label>
+
+              <div className="mt-4 rounded-2xl bg-slate-50 p-3">
+                <ResumoLinha
+                  label="Itens"
+                  valor={String(quantidadeItens)}
+                />
+
+                <ResumoLinha
+                  label="Total da pré-venda"
+                  valor={brl(total)}
+                  grande
+                />
+              </div>
+
+              <div className="mt-4 grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => setModalComanda(false)}
+                  className="rounded-xl border py-3 font-black"
+                >
+                  Cancelar
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => void salvarComanda()}
+                  disabled={salvandoComanda}
+                  className="rounded-xl bg-blue-800 py-3 font-black text-white disabled:opacity-50"
+                >
+                  {salvandoComanda
+                    ? "Salvando..."
+                    : "SALVAR"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =====================================================
+          CONSULTA DE VENDAS - LOGIN
+      ===================================================== */}
+
+      {!mostrarVendas && senha !== "__fechado__" && (
+        <div className="pointer-events-none fixed right-3 top-[72px] z-50">
+          {/* espaço reservado */}
+        </div>
+      )}
+
+      {/* Botão flutuante desktop/mobile para consulta */}
+
+      <button
+        type="button"
+        onClick={() => {
+          const senhaDigitada = window.prompt(
+            "Digite a senha para consultar as vendas:"
+          );
+
+          if (senhaDigitada === null) {
+            return;
+          }
+
+          setSenha(senhaDigitada);
+
+          if (senhaDigitada !== SENHA_ADMIN) {
+            alert("Senha incorreta.");
+            return;
+          }
+
+          setSenha("");
+          setMostrarVendas(true);
+          void carregarVendas();
+        }}
+        className="fixed bottom-24 right-3 z-30 flex h-12 w-12 items-center justify-center rounded-full bg-slate-900 text-white shadow-xl lg:bottom-5"
+        title="Consultar vendas"
+      >
+        <ReceiptText size={20} />
+      </button>
+
+      {/* =====================================================
+          MODAL CONSULTA DE VENDAS
+      ===================================================== */}
+
+      {mostrarVendas && (
+        <div className="fixed inset-0 z-[80] bg-black/60 p-2 md:p-4">
+          <div className="mx-auto flex h-full max-w-5xl flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b bg-slate-950 p-4 text-white">
+              <div>
+                <div className="text-xs font-bold text-slate-400">
+                  REDE FABIANO
+                </div>
+
+                <div className="text-lg font-black">
+                  Vendas e Comandas
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => {
+                  setMostrarVendas(false);
+                  setVendaSelecionada(null);
+                }}
+                className="rounded-xl bg-white/10 p-2"
+              >
+                <X size={21} />
+              </button>
+            </div>
+
+            <div className="border-b bg-slate-50 p-3">
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <input
+                  type="date"
+                  value={filtroData}
+                  onChange={(e) =>
+                    setFiltroData(e.target.value)
+                  }
+                  className="rounded-xl border-2 border-slate-200 bg-white px-3 py-3 font-bold outline-none focus:border-blue-700"
+                />
+
+                <button
+                  type="button"
+                  onClick={() => void buscarVendasPorData()}
+                  className="rounded-xl bg-blue-800 px-4 py-3 font-black text-white"
+                >
+                  Buscar data
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    setFiltroData("");
+                    void carregarVendas();
+                  }}
+                  className="rounded-xl border bg-white px-4 py-3 font-black"
+                >
+                  Últimas vendas
+                </button>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-3">
+              {vendas.length === 0 ? (
+                <div className="p-10 text-center text-sm font-bold text-slate-500">
+                  Nenhuma venda encontrada.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {vendas.map((venda) => {
+                    const dataVenda = new Date(
+                      venda.finalizada_em ||
+                        venda.created_at ||
+                        new Date().toISOString()
+                    );
+
+                    const status = String(
+                      venda.status || ""
+                    ).toUpperCase();
+
+                    return (
+                      <button
+                        type="button"
+                        key={venda.id}
+                        onClick={() =>
+                          setVendaSelecionada(venda)
+                        }
+                        className="flex w-full items-center gap-3 rounded-2xl border bg-white p-3 text-left transition hover:bg-slate-50"
+                      >
+                        <div
+                          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${
+                            status === "PRE_VENDA"
+                              ? "bg-blue-100 text-blue-800"
+                              : "bg-green-100 text-green-800"
+                          }`}
+                        >
+                          <ReceiptText size={20} />
+                        </div>
+
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <div className="font-black">
+                              {status === "PRE_VENDA"
+                                ? `Comanda ${
+                                    venda.comanda || ""
+                                  }`
+                                : `Venda ${String(
+                                    venda.id
+                                  )
+                                    .slice(0, 8)
+                                    .toUpperCase()}`}
+                            </div>
+
+                            <span
+                              className={`rounded-full px-2 py-1 text-[9px] font-black ${
+                                status === "PRE_VENDA"
+                                  ? "bg-blue-100 text-blue-800"
+                                  : "bg-green-100 text-green-800"
+                              }`}
+                            >
+                              {status || "VENDA"}
+                            </span>
+                          </div>
+
+                          <div className="mt-1 text-xs font-bold text-slate-500">
+                            {dataVenda.toLocaleDateString(
+                              "pt-BR"
+                            )}{" "}
+                            •{" "}
+                            {dataVenda.toLocaleTimeString(
+                              "pt-BR",
+                              {
+                                hour: "2-digit",
+                                minute: "2-digit",
+                              }
+                            )}
+                          </div>
+                        </div>
+
+                        <div className="text-right">
+                          <div className="font-black">
+                            {brl(Number(venda.total || 0))}
+                          </div>
+
+                          <div className="text-[10px] font-bold text-slate-400">
+                            Ver detalhes
+                          </div>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* =====================================================
+          DETALHE DA VENDA
+      ===================================================== */}
 
       {vendaSelecionada && (
-        <div className="fixed inset-0 bg-black/50 flex justify-center items-center z-[9999]">
-          <div className="bg-white p-6 rounded shadow-lg max-w-md w-full">
-            <h3 className="text-xl font-semibold text-blue-700 mb-3">Detalhes</h3>
+        <div className="fixed inset-0 z-[95] flex items-end justify-center bg-black/60 p-2 sm:items-center">
+          <div className="flex max-h-[92vh] w-full max-w-lg flex-col overflow-hidden rounded-3xl bg-white shadow-2xl">
+            <div className="flex items-center justify-between border-b p-4">
+              <div>
+                <div className="text-xs font-black uppercase text-slate-500">
+                  Detalhes
+                </div>
 
-            <p className="text-sm text-gray-600 mb-2">
-              Data: {new Date(vendaSelecionada.created_at).toLocaleString("pt-BR")}
-            </p>
+                <div className="font-black">
+                  {String(vendaSelecionada.status || "").toUpperCase() ===
+                  "PRE_VENDA"
+                    ? `Comanda ${
+                        vendaSelecionada.comanda || ""
+                      }`
+                    : "Venda"}
+                </div>
+              </div>
 
-            <p className="text-sm text-gray-600 mb-2">
-              Origem: <b>{vendaSelecionada.origem}</b> • Status: <b>{vendaSelecionada.status}</b>
-            </p>
+              <button
+                type="button"
+                onClick={() => setVendaSelecionada(null)}
+                className="rounded-xl bg-slate-100 p-2"
+              >
+                <X size={20} />
+              </button>
+            </div>
 
-            <p className="text-sm text-gray-600 mb-2">
-              Tipo lançamento: <b>{vendaSelecionada.tipo_lancamento || "-"}</b>
-            </p>
+            <div className="flex-1 overflow-y-auto p-4">
+              {vendaSelecionada.cliente?.nome && (
+                <div className="mb-4 rounded-2xl bg-orange-50 p-3">
+                  <div className="text-xs font-black uppercase text-orange-700">
+                    Cliente / Entrega
+                  </div>
 
-            <p className="text-sm text-gray-600 mb-4">
-              Comanda: <b>{vendaSelecionada.comanda || "-"}</b>
-            </p>
+                  <div className="mt-1 font-black">
+                    {vendaSelecionada.cliente.nome}
+                  </div>
 
-            <ul className="border-t border-gray-200 pt-3">
-              {asArray<any>(vendaSelecionada.itens).map((p: any, i: number) => (
-                <li key={i} className="flex justify-between text-sm py-1">
-                  <span>
-                    {p.nome} × {p.qtd}
-                  </span>
-                  <span>{brl(Number(p.valor_cobrado ?? p.preco_unit ?? 0) * Number(p.qtd || 0))}</span>
-                </li>
-              ))}
-            </ul>
+                  {vendaSelecionada.cliente.telefone && (
+                    <div className="text-sm">
+                      {vendaSelecionada.cliente.telefone}
+                    </div>
+                  )}
 
-            <div className="mt-4 text-right font-bold text-emerald-700">Total: {brl(Number(vendaSelecionada.total || 0))}</div>
+                  {vendaSelecionada.cliente.endereco && (
+                    <div className="mt-1 text-sm text-slate-600">
+                      {vendaSelecionada.cliente.endereco}
+                    </div>
+                  )}
+                </div>
+              )}
 
-            <div className="mt-4 flex flex-col gap-2">
-              <button onClick={() => imprimirComanda(vendaSelecionada)} className="bg-emerald-600 text-white px-4 py-2 rounded">
-                🧾 Reimprimir Comanda
+              <div className="space-y-2">
+                {asArray<any>(vendaSelecionada.itens).map(
+                  (item, index) => (
+                    <div
+                      key={`${item.produto_id || index}-${index}`}
+                      className="rounded-2xl border p-3"
+                    >
+                      <div className="font-black">
+                        {item.nome}
+                      </div>
+
+                      <div className="mt-1 flex justify-between text-sm text-slate-600">
+                        <span>
+                          {Number(item.qtd || 0)} x{" "}
+                          {brl(
+                            Number(
+                              item.valor_cobrado ??
+                                item.preco_unit ??
+                                0
+                            )
+                          )}
+                        </span>
+
+                        <span className="font-black text-slate-900">
+                          {brl(
+                            Number(
+                              item.total ??
+                                Number(item.qtd || 0) *
+                                  Number(
+                                    item.valor_cobrado ??
+                                      item.preco_unit ??
+                                      0
+                                  )
+                            )
+                          )}
+                        </span>
+                      </div>
+
+                      {Number(item.desconto_total || 0) >
+                        0 && (
+                        <div className="mt-1 text-xs font-bold text-green-700">
+                          Desconto: -
+                          {brl(
+                            Number(item.desconto_total)
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )
+                )}
+              </div>
+
+              <div className="mt-4 rounded-2xl bg-slate-950 p-4 text-white">
+                <div className="text-xs font-bold text-slate-400">
+                  TOTAL
+                </div>
+
+                <div className="text-3xl font-black">
+                  {brl(
+                    Number(vendaSelecionada.total || 0)
+                  )}
+                </div>
+              </div>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 border-t p-3">
+              <button
+                type="button"
+                onClick={() => setVendaSelecionada(null)}
+                className="rounded-xl border py-3 font-black"
+              >
+                Fechar
               </button>
 
-              <button onClick={() => setVendaSelecionada(null)} className="bg-red-600 text-white px-4 py-2 rounded">
-                Fechar
+              <button
+                type="button"
+                onClick={() =>
+                  imprimirVenda(vendaSelecionada)
+                }
+                className="flex items-center justify-center gap-2 rounded-xl bg-blue-800 py-3 font-black text-white"
+              >
+                <Printer size={17} />
+                Imprimir
               </button>
             </div>
           </div>
         </div>
       )}
+
+      {/* =====================================================
+          ESTILO LOCAL DOS INPUTS
+      ===================================================== */}
+
+      <style jsx global>{`
+        .pdv-input {
+          width: 100%;
+          border: 2px solid rgb(226 232 240);
+          border-radius: 0.75rem;
+          background: white;
+          padding: 0.75rem;
+          outline: none;
+          font-weight: 600;
+        }
+
+        .pdv-input:focus {
+          border-color: rgb(37 99 235);
+        }
+      `}</style>
     </main>
+  );
+}
+
+/* =========================================================
+   RESULTADO DA BUSCA
+========================================================= */
+
+function ResultadoProduto({
+  produto,
+  onAdd,
+}: {
+  produto: Produto;
+  onAdd: () => void;
+}) {
+  return (
+    <div
+      className={`overflow-hidden rounded-2xl bg-white shadow-sm ring-1 ${
+        produto.pode_vender
+          ? "ring-slate-200"
+          : "ring-orange-200"
+      }`}
+    >
+      <div className="flex gap-3 p-3">
+        <div className="flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-xl border bg-slate-50">
+          <img
+            src={produto.imagem}
+            alt={produto.nome}
+            className="h-full w-full object-contain p-1"
+            onError={(e) => {
+              e.currentTarget.src =
+                "/produtos/caixa-padrao.png";
+            }}
+          />
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <div className="font-black leading-tight">
+            {produto.nome}
+          </div>
+
+          <div className="mt-1 text-xs font-bold text-slate-500">
+            EAN {produto.ean || "—"}
+          </div>
+
+          {(produto.apresentacao ||
+            produto.laboratorio) && (
+            <div className="mt-1 truncate text-xs text-slate-500">
+              {produto.apresentacao || ""}
+              {produto.apresentacao &&
+              produto.laboratorio
+                ? " • "
+                : ""}
+              {produto.laboratorio || ""}
+            </div>
+          )}
+
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            {produto.pode_vender ? (
+              <>
+                <span className="rounded-full bg-green-100 px-2 py-1 text-[10px] font-black text-green-800">
+                  ESTOQUE {produto.estoque}
+                </span>
+
+                <span className="text-lg font-black text-blue-900">
+                  {brl(produto.preco_venda)}
+                </span>
+              </>
+            ) : (
+              <>
+                <span className="rounded-full bg-orange-100 px-2 py-1 text-[10px] font-black text-orange-800">
+                  SOMENTE CONSULTA
+                </span>
+
+                {produto.preco_consulta > 0 && (
+                  <span className="font-black text-slate-700">
+                    {brl(produto.preco_consulta)}
+                  </span>
+                )}
+              </>
+            )}
+          </div>
+        </div>
+
+        <button
+          type="button"
+          onClick={onAdd}
+          disabled={!produto.pode_vender}
+          className={`flex h-12 w-12 shrink-0 items-center justify-center self-center rounded-xl ${
+            produto.pode_vender
+              ? "bg-green-600 text-white"
+              : "cursor-not-allowed bg-slate-100 text-slate-400"
+          }`}
+          title={
+            produto.pode_vender
+              ? "Adicionar"
+              : "Somente consulta"
+          }
+        >
+          <Plus size={22} />
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================
+   ITEM DO CARRINHO
+========================================================= */
+
+function ItemCarrinho({
+  item,
+  onQtd,
+  onRemove,
+  onDesconto,
+}: {
+  item: Item;
+  onQtd: (delta: number) => void;
+  onRemove: () => void;
+  onDesconto: (
+    tipo: TipoDesconto,
+    valor: number
+  ) => void;
+}) {
+  const precoFinal = precoLiquidoItem(item);
+
+  const totalItem =
+    precoFinal * Number(item.qtd || 0);
+
+  return (
+    <div className="p-3">
+      <div className="flex gap-3">
+        <div className="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl border bg-slate-50">
+          <img
+            src={item.imagem}
+            alt={item.nome}
+            className="h-full w-full object-contain p-1"
+            onError={(e) => {
+              e.currentTarget.src =
+                "/produtos/caixa-padrao.png";
+            }}
+          />
+        </div>
+
+        <div className="min-w-0 flex-1">
+          <div className="font-black leading-tight">
+            {item.nome}
+          </div>
+
+          <div className="mt-1 text-xs font-bold text-slate-500">
+            {brl(item.preco_venda)} • Estoque{" "}
+            {item.estoque}
+          </div>
+
+          {item.desconto > 0 && (
+            <div className="mt-1 text-xs font-black text-green-700">
+              Final: {brl(precoFinal)} / un.
+            </div>
+          )}
+        </div>
+
+        <button
+          type="button"
+          onClick={onRemove}
+          className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-red-50 text-red-600"
+        >
+          <Trash2 size={17} />
+        </button>
+      </div>
+
+      <div className="mt-3 flex flex-wrap items-end gap-2">
+        <div>
+          <div className="mb-1 text-[10px] font-black uppercase text-slate-400">
+            Quantidade
+          </div>
+
+          <div className="flex items-center rounded-xl border bg-white">
+            <button
+              type="button"
+              onClick={() => onQtd(-1)}
+              className="p-3"
+            >
+              <Minus size={16} />
+            </button>
+
+            <div className="min-w-10 text-center font-black">
+              {item.qtd}
+            </div>
+
+            <button
+              type="button"
+              onClick={() => onQtd(1)}
+              disabled={item.qtd >= item.estoque}
+              className="p-3 disabled:opacity-30"
+            >
+              <Plus size={16} />
+            </button>
+          </div>
+        </div>
+
+        <div className="min-w-[100px] flex-1">
+          <div className="mb-1 text-[10px] font-black uppercase text-slate-400">
+            Desconto
+          </div>
+
+          <div className="flex overflow-hidden rounded-xl border">
+            <select
+              value={item.descontoTipo}
+              onChange={(e) =>
+                onDesconto(
+                  e.target.value as TipoDesconto,
+                  item.desconto
+                )
+              }
+              className="border-r bg-slate-50 px-2 text-xs font-black outline-none"
+            >
+              <option value="PERCENTUAL">%</option>
+              <option value="VALOR">R$</option>
+            </select>
+
+            <input
+              value={
+                item.desconto === 0
+                  ? ""
+                  : String(item.desconto).replace(
+                      ".",
+                      ","
+                    )
+              }
+              onChange={(e) =>
+                onDesconto(
+                  item.descontoTipo,
+                  numero(e.target.value)
+                )
+              }
+              inputMode="decimal"
+              placeholder="0"
+              className="min-w-0 flex-1 px-2 py-3 font-black outline-none"
+            />
+          </div>
+        </div>
+
+        <div className="ml-auto text-right">
+          <div className="text-[10px] font-black uppercase text-slate-400">
+            Total
+          </div>
+
+          <div className="text-lg font-black text-slate-950">
+            {brl(totalItem)}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* =========================================================
+   PAGAMENTO
+========================================================= */
+
+function PagamentoLinha({
+  pagamento,
+  podeRemover,
+  onChange,
+  onRemove,
+}: {
+  pagamento: Pagamento;
+  podeRemover: boolean;
+  onChange: (patch: Partial<Pagamento>) => void;
+  onRemove: () => void;
+}) {
+  return (
+    <div className="flex gap-2">
+      <select
+        value={pagamento.forma}
+        onChange={(e) =>
+          onChange({
+            forma: e.target.value as Forma,
+          })
+        }
+        className="w-[42%] rounded-xl border-2 border-slate-200 bg-white px-2 py-3 text-sm font-black outline-none focus:border-blue-600"
+      >
+        <option value="Dinheiro">
+          Dinheiro
+        </option>
+
+        <option value="Pix">Pix</option>
+
+        <option value="Débito">
+          Débito
+        </option>
+
+        <option value="Crédito">
+          Crédito
+        </option>
+      </select>
+
+      <div className="flex min-w-0 flex-1 items-center rounded-xl border-2 border-slate-200 bg-white px-3 focus-within:border-blue-600">
+        <span className="mr-2 text-xs font-black text-slate-500">
+          R$
+        </span>
+
+        <input
+          value={pagamento.valor}
+          onChange={(e) =>
+            onChange({
+              valor: e.target.value,
+            })
+          }
+          inputMode="decimal"
+          placeholder="0,00"
+          className="min-w-0 flex-1 py-3 font-black outline-none"
+        />
+      </div>
+
+      {podeRemover && (
+        <button
+          type="button"
+          onClick={onRemove}
+          className="flex w-11 shrink-0 items-center justify-center rounded-xl bg-red-50 text-red-600"
+        >
+          <X size={17} />
+        </button>
+      )}
+    </div>
+  );
+}
+
+/* =========================================================
+   COMPONENTES PEQUENOS
+========================================================= */
+
+function PDVField({
+  label,
+  className,
+  children,
+}: {
+  label: string;
+  className?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <label className={className}>
+      <div className="mb-1 text-xs font-black text-slate-600">
+        {label}
+      </div>
+
+      {children}
+    </label>
+  );
+}
+
+function ResumoLinha({
+  label,
+  valor,
+  destaque,
+  grande,
+}: {
+  label: string;
+  valor: string;
+  destaque?: "verde" | "vermelho";
+  grande?: boolean;
+}) {
+  let cor = "text-slate-900";
+
+  if (destaque === "verde") {
+    cor = "text-green-700";
+  }
+
+  if (destaque === "vermelho") {
+    cor = "text-red-600";
+  }
+
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <span
+        className={
+          grande
+            ? "font-black"
+            : "font-bold text-slate-500"
+        }
+      >
+        {label}
+      </span>
+
+      <span
+        className={`${cor} ${
+          grande
+            ? "text-xl font-black"
+            : "font-black"
+        }`}
+      >
+        {valor}
+      </span>
+    </div>
+  );
+}
+
+function Atalho({
+  label,
+  descricao,
+}: {
+  label: string;
+  descricao: string;
+}) {
+  return (
+    <div className="rounded-xl border bg-white px-3 py-2 shadow-sm">
+      <span className="mr-2 rounded bg-slate-900 px-2 py-1 text-[10px] font-black text-white">
+        {label}
+      </span>
+
+      <span className="text-xs font-bold text-slate-600">
+        {descricao}
+      </span>
+    </div>
   );
 }
