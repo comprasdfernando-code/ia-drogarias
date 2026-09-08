@@ -14,12 +14,15 @@ import {
   Banknote,
   BarChart3,
   Box,
+  CalendarDays,
   Camera,
+  ChevronLeft,
   ChevronRight,
   CircleDollarSign,
   Clock3,
   CreditCard,
   DollarSign,
+  FileText,
   Package,
   RefreshCw,
   Search,
@@ -32,7 +35,6 @@ import {
 import { BrowserMultiFormatReader } from "@zxing/browser";
 
 import { supabase } from "@/lib/supabaseClient";
-
 import {
   PORTO_LOJA_SLUG,
   brl,
@@ -43,10 +45,18 @@ import {
 ========================================================= */
 
 type Aba =
-  | "HOJE"
+  | "RESUMO"
   | "VENDAS"
   | "CAIXA"
   | "ESTOQUE";
+
+type TipoRelatorioEstoque =
+  | null
+  | "BUSCA"
+  | "BAIXO"
+  | "ZERADO"
+  | "COM_ESTOQUE"
+  | "GERAL";
 
 type Venda = {
   id: string;
@@ -170,6 +180,130 @@ function onlyDigits(v: string) {
   );
 }
 
+function dataInputHoje() {
+  const agora =
+    new Date();
+
+  const ano =
+    agora.getFullYear();
+
+  const mes =
+    String(
+      agora.getMonth() + 1
+    ).padStart(2, "0");
+
+  const dia =
+    String(
+      agora.getDate()
+    ).padStart(2, "0");
+
+  return `${ano}-${mes}-${dia}`;
+}
+
+function dataBR(data: string) {
+  if (!data) {
+    return "—";
+  }
+
+  const [
+    ano,
+    mes,
+    dia,
+  ] = data.split("-");
+
+  return `${dia}/${mes}/${ano}`;
+}
+
+function intervaloData(
+  data: string
+) {
+  const [
+    ano,
+    mes,
+    dia,
+  ] = data
+    .split("-")
+    .map(Number);
+
+  /*
+   * Criamos em horário local.
+   * Ao converter para ISO, o JS aplica corretamente
+   * o fuso do navegador.
+   */
+  const inicio =
+    new Date(
+      ano,
+      mes - 1,
+      dia,
+      0,
+      0,
+      0,
+      0
+    );
+
+  const fim =
+    new Date(
+      ano,
+      mes - 1,
+      dia,
+      23,
+      59,
+      59,
+      999
+    );
+
+  return {
+    inicio:
+      inicio.toISOString(),
+
+    fim:
+      fim.toISOString(),
+  };
+}
+
+function mudarData(
+  data: string,
+  dias: number
+) {
+  const [
+    ano,
+    mes,
+    dia,
+  ] = data
+    .split("-")
+    .map(Number);
+
+  const d =
+    new Date(
+      ano,
+      mes - 1,
+      dia,
+      12,
+      0,
+      0
+    );
+
+  d.setDate(
+    d.getDate() +
+      dias
+  );
+
+  const novoAno =
+    d.getFullYear();
+
+  const novoMes =
+    String(
+      d.getMonth() + 1
+    ).padStart(2, "0");
+
+  const novoDia =
+    String(
+      d.getDate()
+    ).padStart(2, "0");
+
+  return `${novoAno}-${novoMes}-${novoDia}`;
+}
+
 function hora(v: string) {
   try {
     return new Date(
@@ -177,8 +311,11 @@ function hora(v: string) {
     ).toLocaleTimeString(
       "pt-BR",
       {
-        hour: "2-digit",
-        minute: "2-digit",
+        hour:
+          "2-digit",
+
+        minute:
+          "2-digit",
       }
     );
   } catch {
@@ -193,10 +330,20 @@ function dataHora(v: string) {
     ).toLocaleString(
       "pt-BR",
       {
-        day: "2-digit",
-        month: "2-digit",
-        hour: "2-digit",
-        minute: "2-digit",
+        day:
+          "2-digit",
+
+        month:
+          "2-digit",
+
+        year:
+          "numeric",
+
+        hour:
+          "2-digit",
+
+        minute:
+          "2-digit",
       }
     );
   } catch {
@@ -219,32 +366,6 @@ function margem(
   );
 }
 
-function inicioHojeISO() {
-  const d = new Date();
-
-  d.setHours(
-    0,
-    0,
-    0,
-    0
-  );
-
-  return d.toISOString();
-}
-
-function fimHojeISO() {
-  const d = new Date();
-
-  d.setHours(
-    23,
-    59,
-    59,
-    999
-  );
-
-  return d.toISOString();
-}
-
 function nomeForma(
   forma: string
 ) {
@@ -262,7 +383,9 @@ function nomeForma(
   }
 
   if (
-    f.includes("pix")
+    f.includes(
+      "pix"
+    )
   ) {
     return "Pix";
   }
@@ -291,8 +414,21 @@ function nomeForma(
 ========================================================= */
 
 export default function PortoRelatoriosPage() {
-  const [aba, setAba] =
-    useState<Aba>("HOJE");
+  const [
+    aba,
+    setAba,
+  ] =
+    useState<Aba>(
+      "RESUMO"
+    );
+
+  const [
+    dataSelecionada,
+    setDataSelecionada,
+  ] =
+    useState(
+      dataInputHoje()
+    );
 
   const [
     loading,
@@ -336,13 +472,15 @@ export default function PortoRelatoriosPage() {
       ItemVendaDetalhado[]
     >([]);
 
+  /*
+   * Agora pode existir mais de um caixa no mesmo dia.
+   * Guardamos todas as sessões da data.
+   */
   const [
-    sessao,
-    setSessao,
+    sessoes,
+    setSessoes,
   ] =
-    useState<Sessao | null>(
-      null
-    );
+    useState<Sessao[]>([]);
 
   const [
     movimentos,
@@ -352,6 +490,10 @@ export default function PortoRelatoriosPage() {
       MovimentoCaixa[]
     >([]);
 
+  /*
+   * O estoque NÃO será carregado automaticamente
+   * ao abrir o painel.
+   */
   const [
     estoque,
     setEstoque,
@@ -361,18 +503,38 @@ export default function PortoRelatoriosPage() {
     >([]);
 
   const [
+    estoqueCarregado,
+    setEstoqueCarregado,
+  ] =
+    useState(false);
+
+  const [
+    loadingEstoque,
+    setLoadingEstoque,
+  ] =
+    useState(false);
+
+  const [
     buscaEstoque,
     setBuscaEstoque,
   ] =
     useState("");
 
   const [
+    tipoRelatorioEstoque,
+    setTipoRelatorioEstoque,
+  ] =
+    useState<TipoRelatorioEstoque>(
+      null
+    );
+
+  const [
     vendaAberta,
     setVendaAberta,
   ] =
-    useState<string | null>(
-      null
-    );
+    useState<
+      string | null
+    >(null);
 
   /* =======================================================
      CÂMERA
@@ -408,16 +570,19 @@ export default function PortoRelatoriosPage() {
     useRef(false);
 
   /* =======================================================
-     CARREGAMENTO
+     CARREGAR RELATÓRIO DA DATA
   ======================================================= */
 
-  const carregar =
+  const carregarRelatorio =
     useCallback(
       async (
+        dataRelatorio: string,
         silencioso = false
       ) => {
         try {
-          if (silencioso) {
+          if (
+            silencioso
+          ) {
             setAtualizando(
               true
             );
@@ -425,14 +590,16 @@ export default function PortoRelatoriosPage() {
             setLoading(true);
           }
 
-          const inicio =
-            inicioHojeISO();
-
-          const fim =
-            fimHojeISO();
+          const {
+            inicio,
+            fim,
+          } =
+            intervaloData(
+              dataRelatorio
+            );
 
           /* ===============================================
-             1. VENDAS DO DIA
+             VENDAS DA DATA
           =============================================== */
 
           const {
@@ -472,28 +639,28 @@ export default function PortoRelatoriosPage() {
             throw vendasError;
           }
 
-          const vendasHoje =
+          const vendasDia =
             (vendasData ||
               []) as Venda[];
 
           setVendas(
-            vendasHoje
+            vendasDia
           );
 
           const vendaIds =
-            vendasHoje.map(
+            vendasDia.map(
               (v) => v.id
             );
 
           /* ===============================================
-             2. PAGAMENTOS + ITENS
+             PAGAMENTOS E ITENS DA DATA
           =============================================== */
 
-          let pagamentosHoje:
+          let pagamentosDia:
             Pagamento[] =
               [];
 
-          let itensHoje:
+          let itensDia:
             ItemVenda[] =
               [];
 
@@ -501,377 +668,114 @@ export default function PortoRelatoriosPage() {
             vendaIds.length >
             0
           ) {
-            const [
-              pagamentosRes,
-              itensRes,
-            ] =
-              await Promise.all(
-                [
-                  supabase
-                    .from(
-                      "porto_venda_pagamentos"
-                    )
-                    .select(
-                      "id,venda_id,caixa_sessao_id,forma,valor,created_at"
-                    )
-                    .in(
-                      "venda_id",
-                      vendaIds
-                    )
-                    .order(
-                      "created_at",
-                      {
-                        ascending:
-                          false,
-                      }
-                    ),
-
-                  supabase
-                    .from(
-                      "porto_venda_itens"
-                    )
-                    .select(
-                      "*"
-                    )
-                    .in(
-                      "venda_id",
-                      vendaIds
-                    ),
-                ]
-              );
-
-            if (
-              pagamentosRes.error
-            ) {
-              throw pagamentosRes.error;
-            }
-
-            if (
-              itensRes.error
-            ) {
-              throw itensRes.error;
-            }
-
-            pagamentosHoje =
-              (pagamentosRes.data ||
-                []) as Pagamento[];
-
-            itensHoje =
-              (itensRes.data ||
-                []) as ItemVenda[];
-          }
-
-          setPagamentos(
-            pagamentosHoje
-          );
-
-          /* ===============================================
-             3. ESTOQUE PORTO
-          =============================================== */
-
-          const {
-            data:
-              relacoes,
-            error:
-              estoqueError,
-          } =
-            await supabase
-              .from(
-                "fv_farmacia_produtos"
-              )
-              .select(
-                "produto_id,ean,estoque,preco_custo,preco_venda,ativo,ativo_site,ativo_pdv"
-              )
-              .eq(
-                "farmacia_slug",
-                PORTO_LOJA_SLUG
-              );
-
-          if (
-            estoqueError
-          ) {
-            throw estoqueError;
-          }
-
-          const rel =
-            relacoes || [];
-
-          const produtoIds =
-            rel
-              .map(
-                (r: any) =>
-                  r.produto_id
-              )
-              .filter(Boolean);
-
-          let masterMap =
-            new Map<
-              string,
-              any
-            >();
-
-          if (
-            produtoIds.length >
-            0
-          ) {
             /*
-             * Evita uma URL gigantesca no Supabase caso
-             * futuramente a loja tenha muitos produtos.
+             * Fazemos em blocos para evitar problemas
+             * se houver muitas vendas no dia.
              */
             const chunkSize =
-              500;
-
-            const allMaster: any[] =
-              [];
+              300;
 
             for (
               let i = 0;
               i <
-              produtoIds.length;
-              i += chunkSize
+              vendaIds.length;
+              i +=
+                chunkSize
             ) {
-              const chunk =
-                produtoIds.slice(
+              const ids =
+                vendaIds.slice(
                   i,
                   i +
                     chunkSize
                 );
 
-              const {
-                data:
-                  master,
-                error:
-                  masterError,
-              } =
-                await supabase
-                  .from(
-                    "fv_produtos"
-                  )
-                  .select(
-                    "id,ean,nome,laboratorio,apresentacao,pmc"
-                  )
-                  .in(
-                    "id",
-                    chunk
-                  );
+              const [
+                pagamentosRes,
+                itensRes,
+              ] =
+                await Promise.all(
+                  [
+                    supabase
+                      .from(
+                        "porto_venda_pagamentos"
+                      )
+                      .select(
+                        "id,venda_id,caixa_sessao_id,forma,valor,created_at"
+                      )
+                      .in(
+                        "venda_id",
+                        ids
+                      ),
+
+                    supabase
+                      .from(
+                        "porto_venda_itens"
+                      )
+                      .select(
+                        "*"
+                      )
+                      .in(
+                        "venda_id",
+                        ids
+                      ),
+                  ]
+                );
 
               if (
-                masterError
+                pagamentosRes.error
               ) {
-                throw masterError;
+                throw pagamentosRes.error;
               }
 
-              allMaster.push(
+              if (
+                itensRes.error
+              ) {
+                throw itensRes.error;
+              }
+
+              pagamentosDia.push(
                 ...(
-                  master ||
-                  []
+                  (pagamentosRes.data ||
+                    []) as Pagamento[]
+                )
+              );
+
+              itensDia.push(
+                ...(
+                  (itensRes.data ||
+                    []) as ItemVenda[]
                 )
               );
             }
-
-            masterMap =
-              new Map(
-                allMaster.map(
-                  (p: any) => [
-                    String(
-                      p.id
-                    ),
-                    p,
-                  ]
-                )
-              );
           }
 
-          const estoqueFinal: ProdutoEstoque[] =
-            rel.map(
-              (r: any) => {
-                const p =
-                  masterMap.get(
-                    String(
-                      r.produto_id
-                    )
-                  );
-
-                return {
-                  produto_id:
-                    String(
-                      r.produto_id
-                    ),
-
-                  ean:
-                    String(
-                      r.ean ||
-                        p?.ean ||
-                        ""
-                    ),
-
-                  nome:
-                    String(
-                      p?.nome ||
-                        "Produto"
-                    ),
-
-                  laboratorio:
-                    p?.laboratorio ??
-                    null,
-
-                  apresentacao:
-                    p?.apresentacao ??
-                    null,
-
-                  estoque:
-                    n(
-                      r.estoque
-                    ),
-
-                  preco_custo:
-                    r.preco_custo ===
-                    null
-                      ? null
-                      : n(
-                          r.preco_custo
-                        ),
-
-                  /*
-                   * Mesma lógica prática do PDV:
-                   * se não houver preço Porto, usamos PMC
-                   * para consulta do potencial de venda.
-                   */
-                  preco_venda:
-                    n(
-                      r.preco_venda
-                    ) > 0
-                      ? n(
-                          r.preco_venda
-                        )
-                      : n(
-                          p?.pmc
-                        ) >
-                        0
-                      ? n(
-                          p?.pmc
-                        )
-                      : null,
-
-                  ativo:
-                    !!r.ativo,
-
-                  ativo_site:
-                    !!r.ativo_site,
-
-                  ativo_pdv:
-                    !!r.ativo_pdv,
-                };
-              }
-            );
-
-          estoqueFinal.sort(
-            (a, b) => {
-              if (
-                a.estoque >
-                  0 &&
-                b.estoque <=
-                  0
-              ) {
-                return -1;
-              }
-
-              if (
-                a.estoque <=
-                  0 &&
-                b.estoque >
-                  0
-              ) {
-                return 1;
-              }
-
-              return a.nome.localeCompare(
-                b.nome,
-                "pt-BR"
-              );
-            }
+          pagamentosDia.sort(
+            (a, b) =>
+              new Date(
+                b.created_at
+              ).getTime() -
+              new Date(
+                a.created_at
+              ).getTime()
           );
 
-          setEstoque(
-            estoqueFinal
+          setPagamentos(
+            pagamentosDia
           );
 
           /* ===============================================
-             4. COLOCA CUSTO NOS ITENS VENDIDOS
-          =============================================== */
-
-          const estoqueMap =
-            new Map(
-              estoqueFinal.map(
-                (p) => [
-                  p.produto_id,
-                  p,
-                ]
-              )
-            );
-
-          const eanMap =
-            new Map(
-              estoqueFinal
-                .filter(
-                  (p) =>
-                    p.ean
-                )
-                .map(
-                  (p) => [
-                    p.ean,
-                    p,
-                  ]
-                )
-            );
-
-          const itensComCusto: ItemVendaDetalhado[] =
-            itensHoje.map(
-              (item) => {
-                const porId =
-                  item.produto_id
-                    ? estoqueMap.get(
-                        String(
-                          item.produto_id
-                        )
-                      )
-                    : undefined;
-
-                const porEan =
-                  item.ean
-                    ? eanMap.get(
-                        String(
-                          item.ean
-                        )
-                      )
-                    : undefined;
-
-                const produto =
-                  porId ||
-                  porEan;
-
-                return {
-                  ...item,
-
-                  custo_unitario:
-                    produto?.preco_custo ??
-                    null,
-                };
-              }
-            );
-
-          setItens(
-            itensComCusto
-          );
-
-          /* ===============================================
-             5. CAIXA ABERTO
+             CAIXAS DA DATA
+             
+             Não filtramos mais somente "aberto".
+             Assim podemos consultar caixa fechado de
+             qualquer dia anterior.
           =============================================== */
 
           const {
-            data: caixa,
+            data:
+              sessoesData,
             error:
-              caixaError,
+              sessoesError,
           } =
             await supabase
               .from(
@@ -882,34 +786,56 @@ export default function PortoRelatoriosPage() {
                 "loja_slug",
                 PORTO_LOJA_SLUG
               )
-              .eq(
-                "status",
-                "aberto"
+              .gte(
+                "aberto_em",
+                inicio
+              )
+              .lte(
+                "aberto_em",
+                fim
               )
               .order(
                 "aberto_em",
                 {
                   ascending:
-                    false,
+                    true,
                 }
-              )
-              .limit(1)
-              .maybeSingle();
+              );
 
           if (
-            caixaError
+            sessoesError
           ) {
-            throw caixaError;
+            throw sessoesError;
           }
 
-          setSessao(
-            (caixa as Sessao) ||
-              null
+          const sessoesDia =
+            (sessoesData ||
+              []) as Sessao[];
+
+          setSessoes(
+            sessoesDia
           );
 
-          if (caixa?.id) {
+          /* ===============================================
+             MOVIMENTAÇÕES DOS CAIXAS DA DATA
+          =============================================== */
+
+          const sessaoIds =
+            sessoesDia.map(
+              (s) => s.id
+            );
+
+          let movimentosDia:
+            MovimentoCaixa[] =
+              [];
+
+          if (
+            sessaoIds.length >
+            0
+          ) {
             const {
-              data: mov,
+              data:
+                movData,
               error:
                 movError,
             } =
@@ -920,9 +846,9 @@ export default function PortoRelatoriosPage() {
                 .select(
                   "id,caixa_sessao_id,tipo,descricao,valor,created_at"
                 )
-                .eq(
+                .in(
                   "caixa_sessao_id",
-                  caixa.id
+                  sessaoIds
                 )
                 .order(
                   "created_at",
@@ -938,29 +864,332 @@ export default function PortoRelatoriosPage() {
               throw movError;
             }
 
-            setMovimentos(
-              (mov ||
-                []) as MovimentoCaixa[]
-            );
-          } else {
-            setMovimentos(
-              []
-            );
+            movimentosDia =
+              (movData ||
+                []) as MovimentoCaixa[];
           }
+
+          setMovimentos(
+            movimentosDia
+          );
+
+          /* ===============================================
+             CUSTOS DOS ITENS VENDIDOS
+
+             Para o relatório financeiro do dia não
+             precisamos carregar todo o estoque.
+
+             Buscamos somente os produtos que realmente
+             apareceram nas vendas daquela data.
+          =============================================== */
+
+          const produtoIds =
+            Array.from(
+              new Set(
+                itensDia
+                  .map(
+                    (i) =>
+                      i.produto_id
+                  )
+                  .filter(
+                    Boolean
+                  )
+                  .map(
+                    String
+                  )
+              )
+            );
+
+          const eans =
+            Array.from(
+              new Set(
+                itensDia
+                  .map(
+                    (i) =>
+                      i.ean
+                  )
+                  .filter(
+                    Boolean
+                  )
+                  .map(
+                    String
+                  )
+              )
+            );
+
+          const custoPorId =
+            new Map<
+              string,
+              number | null
+            >();
+
+          const custoPorEan =
+            new Map<
+              string,
+              number | null
+            >();
+
+          if (
+            produtoIds.length >
+            0
+          ) {
+            const chunkSize =
+              300;
+
+            for (
+              let i = 0;
+              i <
+              produtoIds.length;
+              i +=
+                chunkSize
+            ) {
+              const ids =
+                produtoIds.slice(
+                  i,
+                  i +
+                    chunkSize
+                );
+
+              const {
+                data:
+                  custos,
+                error:
+                  custoError,
+              } =
+                await supabase
+                  .from(
+                    "fv_farmacia_produtos"
+                  )
+                  .select(
+                    "produto_id,ean,preco_custo"
+                  )
+                  .eq(
+                    "farmacia_slug",
+                    PORTO_LOJA_SLUG
+                  )
+                  .in(
+                    "produto_id",
+                    ids
+                  );
+
+              if (
+                custoError
+              ) {
+                throw custoError;
+              }
+
+              (
+                custos ||
+                []
+              ).forEach(
+                (r: any) => {
+                  custoPorId.set(
+                    String(
+                      r.produto_id
+                    ),
+                    r.preco_custo ===
+                      null
+                      ? null
+                      : n(
+                          r.preco_custo
+                        )
+                  );
+
+                  if (
+                    r.ean
+                  ) {
+                    custoPorEan.set(
+                      String(
+                        r.ean
+                      ),
+                      r.preco_custo ===
+                        null
+                        ? null
+                        : n(
+                            r.preco_custo
+                          )
+                    );
+                  }
+                }
+              );
+            }
+          }
+
+          /*
+           * Se algum item antigo não tiver produto_id,
+           * ainda tentamos localizar o custo pelo EAN.
+           */
+          if (
+            eans.length >
+            0
+          ) {
+            const eansFaltantes =
+              eans.filter(
+                (ean) =>
+                  !custoPorEan.has(
+                    ean
+                  )
+              );
+
+            const chunkSize =
+              300;
+
+            for (
+              let i = 0;
+              i <
+              eansFaltantes.length;
+              i +=
+                chunkSize
+            ) {
+              const lista =
+                eansFaltantes.slice(
+                  i,
+                  i +
+                    chunkSize
+                );
+
+              if (
+                lista.length ===
+                0
+              ) {
+                continue;
+              }
+
+              const {
+                data:
+                  custos,
+                error:
+                  custoError,
+              } =
+                await supabase
+                  .from(
+                    "fv_farmacia_produtos"
+                  )
+                  .select(
+                    "produto_id,ean,preco_custo"
+                  )
+                  .eq(
+                    "farmacia_slug",
+                    PORTO_LOJA_SLUG
+                  )
+                  .in(
+                    "ean",
+                    lista
+                  );
+
+              if (
+                custoError
+              ) {
+                throw custoError;
+              }
+
+              (
+                custos ||
+                []
+              ).forEach(
+                (r: any) => {
+                  if (
+                    r.produto_id
+                  ) {
+                    custoPorId.set(
+                      String(
+                        r.produto_id
+                      ),
+                      r.preco_custo ===
+                        null
+                        ? null
+                        : n(
+                            r.preco_custo
+                          )
+                    );
+                  }
+
+                  if (
+                    r.ean
+                  ) {
+                    custoPorEan.set(
+                      String(
+                        r.ean
+                      ),
+                      r.preco_custo ===
+                        null
+                        ? null
+                        : n(
+                            r.preco_custo
+                          )
+                    );
+                  }
+                }
+              );
+            }
+          }
+
+          const itensComCusto: ItemVendaDetalhado[] =
+            itensDia.map(
+              (item) => {
+                let custo:
+                  number | null =
+                    null;
+
+                if (
+                  item.produto_id &&
+                  custoPorId.has(
+                    String(
+                      item.produto_id
+                    )
+                  )
+                ) {
+                  custo =
+                    custoPorId.get(
+                      String(
+                        item.produto_id
+                      )
+                    ) ??
+                    null;
+                } else if (
+                  item.ean &&
+                  custoPorEan.has(
+                    String(
+                      item.ean
+                    )
+                  )
+                ) {
+                  custo =
+                    custoPorEan.get(
+                      String(
+                        item.ean
+                      )
+                    ) ??
+                    null;
+                }
+
+                return {
+                  ...item,
+                  custo_unitario:
+                    custo,
+                };
+              }
+            );
+
+          setItens(
+            itensComCusto
+          );
 
           setUltimaAtualizacao(
             new Date()
           );
         } catch (e: any) {
           console.error(
-            "Relatórios Porto:",
+            "Relatório Porto:",
             e
           );
 
-          if (!silencioso) {
+          if (
+            !silencioso
+          ) {
             alert(
               e?.message ||
-                "Erro ao carregar painel."
+                "Erro ao carregar relatório."
             );
           }
         } finally {
@@ -976,13 +1205,38 @@ export default function PortoRelatoriosPage() {
       []
     );
 
+  /* =======================================================
+     QUANDO MUDA A DATA
+  ======================================================= */
+
   useEffect(() => {
-    carregar();
+    carregarRelatorio(
+      dataSelecionada
+    );
+  }, [
+    dataSelecionada,
+    carregarRelatorio,
+  ]);
+
+  /*
+   * Atualização automática apenas quando estamos
+   * consultando a data de hoje.
+   */
+  useEffect(() => {
+    if (
+      dataSelecionada !==
+      dataInputHoje()
+    ) {
+      return;
+    }
 
     const timer =
       window.setInterval(
         () => {
-          carregar(true);
+          carregarRelatorio(
+            dataSelecionada,
+            true
+          );
         },
         30000
       );
@@ -991,10 +1245,13 @@ export default function PortoRelatoriosPage() {
       window.clearInterval(
         timer
       );
-  }, [carregar]);
+  }, [
+    dataSelecionada,
+    carregarRelatorio,
+  ]);
 
   /* =======================================================
-     CÁLCULOS DO DIA
+     RESUMO DA DATA
   ======================================================= */
 
   const resumo =
@@ -1038,7 +1295,8 @@ export default function PortoRelatoriosPage() {
             formas.Dinheiro +=
               n(p.valor);
           } else if (
-            forma === "Pix"
+            forma ===
+            "Pix"
           ) {
             formas.Pix +=
               n(p.valor);
@@ -1083,7 +1341,7 @@ export default function PortoRelatoriosPage() {
               : n(
                   i.preco_unitario
                 ) *
-                qtd -
+                  qtd -
                 n(
                   i.desconto
                 );
@@ -1098,13 +1356,13 @@ export default function PortoRelatoriosPage() {
             custoVendido +=
               n(
                 i.custo_unitario
-              ) * qtd;
+              ) *
+              qtd;
 
             vendaComCusto +=
               totalItem;
           } else {
-            itensSemCusto +=
-              1;
+            itensSemCusto++;
           }
         }
       );
@@ -1125,14 +1383,11 @@ export default function PortoRelatoriosPage() {
         totalVendido,
         qtdVendas,
         ticketMedio,
-
         formas,
-
         custoVendido,
         vendaComCusto,
         lucroBruto,
         margemBruta,
-
         itensSemCusto,
       };
     }, [
@@ -1142,7 +1397,7 @@ export default function PortoRelatoriosPage() {
     ]);
 
   /* =======================================================
-     MAIS VENDIDOS
+     MAIS VENDIDOS NA DATA
   ======================================================= */
 
   const maisVendidos =
@@ -1200,165 +1455,11 @@ export default function PortoRelatoriosPage() {
             b.quantidade -
             a.quantidade
         )
-        .slice(0, 10);
+        .slice(0, 20);
     }, [itens]);
 
   /* =======================================================
-     ESTOQUE
-  ======================================================= */
-
-  const resumoEstoque =
-    useMemo(() => {
-      let comEstoque =
-        0;
-
-      let zerados =
-        0;
-
-      let baixos =
-        0;
-
-      let unidades =
-        0;
-
-      let valorCusto =
-        0;
-
-      let valorVenda =
-        0;
-
-      let semCusto =
-        0;
-
-      estoque.forEach(
-        (p) => {
-          const qtd =
-            n(
-              p.estoque
-            );
-
-          if (qtd > 0) {
-            comEstoque++;
-          } else {
-            zerados++;
-          }
-
-          if (
-            qtd > 0 &&
-            qtd <= 5
-          ) {
-            baixos++;
-          }
-
-          unidades += qtd;
-
-          if (
-            p.preco_custo !==
-              null &&
-            n(
-              p.preco_custo
-            ) > 0
-          ) {
-            valorCusto +=
-              qtd *
-              n(
-                p.preco_custo
-              );
-          } else if (
-            qtd > 0
-          ) {
-            semCusto++;
-          }
-
-          valorVenda +=
-            qtd *
-            n(
-              p.preco_venda
-            );
-        }
-      );
-
-      return {
-        comEstoque,
-        zerados,
-        baixos,
-        unidades,
-        valorCusto,
-        valorVenda,
-
-        lucroPotencial:
-          valorVenda -
-          valorCusto,
-
-        semCusto,
-      };
-    }, [estoque]);
-
-  const estoqueFiltrado =
-    useMemo(() => {
-      const raw =
-        buscaEstoque
-          .trim()
-          .toLowerCase();
-
-      if (!raw) {
-        /*
-         * Na tela inicial do estoque mostramos primeiro
-         * os produtos que merecem atenção.
-         */
-        return estoque
-          .filter(
-            (p) =>
-              p.estoque <= 5
-          )
-          .slice(0, 80);
-      }
-
-      const digits =
-        onlyDigits(raw);
-
-      return estoque
-        .filter(
-          (p) => {
-            if (
-              digits.length >=
-              8
-            ) {
-              return p.ean.includes(
-                digits
-              );
-            }
-
-            return (
-              p.nome
-                .toLowerCase()
-                .includes(
-                  raw
-                ) ||
-              String(
-                p.ean
-              ).includes(
-                raw
-              ) ||
-              String(
-                p.laboratorio ||
-                  ""
-              )
-                .toLowerCase()
-                .includes(
-                  raw
-                )
-            );
-          }
-        )
-        .slice(0, 100);
-    }, [
-      estoque,
-      buscaEstoque,
-    ]);
-
-  /* =======================================================
-     CAIXA
+     RESUMO DO CAIXA DA DATA
   ======================================================= */
 
   const resumoCaixa =
@@ -1368,66 +1469,46 @@ export default function PortoRelatoriosPage() {
         Pix: 0,
         Débito: 0,
         Crédito: 0,
+        Outros: 0,
       };
 
-      if (
-        sessao?.id
-      ) {
-        pagamentos
-          .filter(
-            (x) =>
-              x.caixa_sessao_id ===
-              sessao.id
-          )
-          .forEach(
-            (x) => {
-              const forma =
-                nomeForma(
-                  x.forma
-                );
+      pagamentos.forEach(
+        (x) => {
+          const forma =
+            nomeForma(
+              x.forma
+            );
 
-              if (
-                forma ===
-                "Dinheiro"
-              ) {
-                p.Dinheiro +=
-                  n(
-                    x.valor
-                  );
-              }
-
-              if (
-                forma ===
-                "Pix"
-              ) {
-                p.Pix +=
-                  n(
-                    x.valor
-                  );
-              }
-
-              if (
-                forma ===
-                "Débito"
-              ) {
-                p.Débito +=
-                  n(
-                    x.valor
-                  );
-              }
-
-              if (
-                forma ===
-                "Crédito"
-              ) {
-                p.Crédito +=
-                  n(
-                    x.valor
-                  );
-              }
-            }
-          );
-      }
+          if (
+            forma ===
+            "Dinheiro"
+          ) {
+            p.Dinheiro +=
+              n(x.valor);
+          } else if (
+            forma ===
+            "Pix"
+          ) {
+            p.Pix +=
+              n(x.valor);
+          } else if (
+            forma ===
+            "Débito"
+          ) {
+            p.Débito +=
+              n(x.valor);
+          } else if (
+            forma ===
+            "Crédito"
+          ) {
+            p.Crédito +=
+              n(x.valor);
+          } else {
+            p.Outros +=
+              n(x.valor);
+          }
+        }
+      );
 
       const m = {
         SANGRIA: 0,
@@ -1443,36 +1524,88 @@ export default function PortoRelatoriosPage() {
         }
       );
 
+      const fundoInicial =
+        sessoes.reduce(
+          (s, cx) =>
+            s +
+            n(
+              cx.valor_abertura
+            ),
+          0
+        );
+
       const dinheiroEsperado =
-        n(
-          sessao?.valor_abertura
-        ) +
+        fundoInicial +
         p.Dinheiro +
         m.SUPRIMENTO -
         m.SANGRIA -
         m.DESPESA -
         m.BOLETO;
 
-      const totalSessao =
+      const totalRecebido =
         p.Dinheiro +
         p.Pix +
         p.Débito +
-        p.Crédito;
+        p.Crédito +
+        p.Outros;
+
+      const valorContado =
+        sessoes.reduce(
+          (s, cx) =>
+            s +
+            n(
+              cx.valor_contado
+            ),
+          0
+        );
+
+      const diferenca =
+        sessoes.reduce(
+          (s, cx) =>
+            s +
+            n(
+              cx.diferenca
+            ),
+          0
+        );
+
+      const todosFechados =
+        sessoes.length >
+          0 &&
+        sessoes.every(
+          (cx) =>
+            cx.status ===
+            "fechado"
+        );
+
+      const algumAberto =
+        sessoes.some(
+          (cx) =>
+            cx.status ===
+            "aberto"
+        );
 
       return {
         p,
         m,
+
+        fundoInicial,
         dinheiroEsperado,
-        totalSessao,
+        totalRecebido,
+        valorContado,
+        diferenca,
+
+        todosFechados,
+        algumAberto,
       };
     }, [
-      sessao,
+      sessoes,
       pagamentos,
       movimentos,
     ]);
 
   /* =======================================================
-     VENDA ABERTA
+     VENDA SELECIONADA
   ======================================================= */
 
   const vendaSelecionada =
@@ -1532,7 +1665,504 @@ export default function PortoRelatoriosPage() {
     ]);
 
   /* =======================================================
-     CÂMERA ESTOQUE
+     CARREGAR ESTOQUE SOMENTE QUANDO SOLICITADO
+  ======================================================= */
+
+  const carregarEstoque =
+    useCallback(
+      async () => {
+        try {
+          setLoadingEstoque(
+            true
+          );
+
+          const {
+            data:
+              relacoes,
+            error:
+              relError,
+          } =
+            await supabase
+              .from(
+                "fv_farmacia_produtos"
+              )
+              .select(
+                "produto_id,ean,estoque,preco_custo,preco_venda,ativo,ativo_site,ativo_pdv"
+              )
+              .eq(
+                "farmacia_slug",
+                PORTO_LOJA_SLUG
+              );
+
+          if (
+            relError
+          ) {
+            throw relError;
+          }
+
+          const rel =
+            relacoes || [];
+
+          const produtoIds =
+            rel
+              .map(
+                (r: any) =>
+                  r.produto_id
+              )
+              .filter(
+                Boolean
+              )
+              .map(
+                String
+              );
+
+          const masterMap =
+            new Map<
+              string,
+              any
+            >();
+
+          const chunkSize =
+            500;
+
+          for (
+            let i = 0;
+            i <
+            produtoIds.length;
+            i += chunkSize
+          ) {
+            const ids =
+              produtoIds.slice(
+                i,
+                i +
+                  chunkSize
+              );
+
+            const {
+              data:
+                master,
+              error:
+                masterError,
+            } =
+              await supabase
+                .from(
+                  "fv_produtos"
+                )
+                .select(
+                  "id,ean,nome,laboratorio,apresentacao,pmc"
+                )
+                .in(
+                  "id",
+                  ids
+                );
+
+            if (
+              masterError
+            ) {
+              throw masterError;
+            }
+
+            (
+              master ||
+              []
+            ).forEach(
+              (p: any) => {
+                masterMap.set(
+                  String(
+                    p.id
+                  ),
+                  p
+                );
+              }
+            );
+          }
+
+          const resultado: ProdutoEstoque[] =
+            rel.map(
+              (r: any) => {
+                const p =
+                  masterMap.get(
+                    String(
+                      r.produto_id
+                    )
+                  );
+
+                const precoPorto =
+                  n(
+                    r.preco_venda
+                  );
+
+                const pmc =
+                  n(
+                    p?.pmc
+                  );
+
+                return {
+                  produto_id:
+                    String(
+                      r.produto_id
+                    ),
+
+                  ean:
+                    String(
+                      r.ean ||
+                        p?.ean ||
+                        ""
+                    ),
+
+                  nome:
+                    String(
+                      p?.nome ||
+                        "Produto"
+                    ),
+
+                  laboratorio:
+                    p?.laboratorio ??
+                    null,
+
+                  apresentacao:
+                    p?.apresentacao ??
+                    null,
+
+                  estoque:
+                    n(
+                      r.estoque
+                    ),
+
+                  preco_custo:
+                    r.preco_custo ===
+                    null
+                      ? null
+                      : n(
+                          r.preco_custo
+                        ),
+
+                  preco_venda:
+                    precoPorto >
+                    0
+                      ? precoPorto
+                      : pmc >
+                        0
+                      ? pmc
+                      : null,
+
+                  ativo:
+                    !!r.ativo,
+
+                  ativo_site:
+                    !!r.ativo_site,
+
+                  ativo_pdv:
+                    !!r.ativo_pdv,
+                };
+              }
+            );
+
+          resultado.sort(
+            (a, b) =>
+              a.nome.localeCompare(
+                b.nome,
+                "pt-BR"
+              )
+          );
+
+          setEstoque(
+            resultado
+          );
+
+          setEstoqueCarregado(
+            true
+          );
+
+          return resultado;
+        } catch (e: any) {
+          console.error(
+            "Estoque:",
+            e
+          );
+
+          alert(
+            e?.message ||
+              "Erro ao carregar estoque."
+          );
+
+          return [];
+        } finally {
+          setLoadingEstoque(
+            false
+          );
+        }
+      },
+      []
+    );
+
+  /* =======================================================
+     BUSCAR PRODUTO
+  ======================================================= */
+
+  async function pesquisarEstoque() {
+    const busca =
+      buscaEstoque.trim();
+
+    if (!busca) {
+      return alert(
+        "Digite o nome ou EAN do produto."
+      );
+    }
+
+    let lista =
+      estoque;
+
+    if (
+      !estoqueCarregado
+    ) {
+      lista =
+        await carregarEstoque();
+    }
+
+    if (
+      lista.length ===
+      0
+    ) {
+      return;
+    }
+
+    setTipoRelatorioEstoque(
+      "BUSCA"
+    );
+  }
+
+  /* =======================================================
+     GERAR RELATÓRIO DE ESTOQUE
+  ======================================================= */
+
+  async function gerarRelatorioEstoque(
+    tipo:
+      | "BAIXO"
+      | "ZERADO"
+      | "COM_ESTOQUE"
+      | "GERAL"
+  ) {
+    if (
+      !estoqueCarregado
+    ) {
+      const lista =
+        await carregarEstoque();
+
+      if (
+        lista.length ===
+        0
+      ) {
+        return;
+      }
+    }
+
+    setTipoRelatorioEstoque(
+      tipo
+    );
+  }
+
+  /* =======================================================
+     RESULTADO ESTOQUE
+  ======================================================= */
+
+  const estoqueResultado =
+    useMemo(() => {
+      if (
+        !tipoRelatorioEstoque
+      ) {
+        return [];
+      }
+
+      if (
+        tipoRelatorioEstoque ===
+        "BUSCA"
+      ) {
+        const raw =
+          buscaEstoque
+            .trim()
+            .toLowerCase();
+
+        if (!raw) {
+          return [];
+        }
+
+        const digits =
+          onlyDigits(
+            raw
+          );
+
+        return estoque.filter(
+          (p) => {
+            if (
+              digits.length >=
+              8
+            ) {
+              return String(
+                p.ean
+              ).includes(
+                digits
+              );
+            }
+
+            return (
+              p.nome
+                .toLowerCase()
+                .includes(
+                  raw
+                ) ||
+              String(
+                p.ean
+              ).includes(
+                raw
+              ) ||
+              String(
+                p.laboratorio ||
+                  ""
+              )
+                .toLowerCase()
+                .includes(
+                  raw
+                )
+            );
+          }
+        );
+      }
+
+      if (
+        tipoRelatorioEstoque ===
+        "BAIXO"
+      ) {
+        return estoque.filter(
+          (p) =>
+            p.estoque >
+              0 &&
+            p.estoque <=
+              5
+        );
+      }
+
+      if (
+        tipoRelatorioEstoque ===
+        "ZERADO"
+      ) {
+        return estoque.filter(
+          (p) =>
+            p.estoque <=
+            0
+        );
+      }
+
+      if (
+        tipoRelatorioEstoque ===
+        "COM_ESTOQUE"
+      ) {
+        return estoque.filter(
+          (p) =>
+            p.estoque >
+            0
+        );
+      }
+
+      if (
+        tipoRelatorioEstoque ===
+        "GERAL"
+      ) {
+        return estoque;
+      }
+
+      return [];
+    }, [
+      estoque,
+      buscaEstoque,
+      tipoRelatorioEstoque,
+    ]);
+
+  /* =======================================================
+     RESUMO DO RELATÓRIO DE ESTOQUE
+  ======================================================= */
+
+  const resumoEstoque =
+    useMemo(() => {
+      let produtos =
+        0;
+
+      let unidades =
+        0;
+
+      let valorCusto =
+        0;
+
+      let valorVenda =
+        0;
+
+      let semCusto =
+        0;
+
+      estoqueResultado.forEach(
+        (p) => {
+          produtos++;
+
+          const qtd =
+            n(
+              p.estoque
+            );
+
+          unidades +=
+            qtd;
+
+          if (
+            p.preco_custo !==
+              null &&
+            n(
+              p.preco_custo
+            ) > 0
+          ) {
+            valorCusto +=
+              qtd *
+              n(
+                p.preco_custo
+              );
+          } else if (
+            qtd > 0
+          ) {
+            semCusto++;
+          }
+
+          if (
+            p.preco_venda !==
+              null &&
+            n(
+              p.preco_venda
+            ) > 0
+          ) {
+            valorVenda +=
+              qtd *
+              n(
+                p.preco_venda
+              );
+          }
+        }
+      );
+
+      return {
+        produtos,
+        unidades,
+        valorCusto,
+        valorVenda,
+
+        lucroPotencial:
+          valorVenda -
+          valorCusto,
+
+        semCusto,
+      };
+    }, [
+      estoqueResultado,
+    ]);
+
+  /* =======================================================
+     CÂMERA
   ======================================================= */
 
   function pararCamera() {
@@ -1641,11 +2271,13 @@ export default function PortoRelatoriosPage() {
                 },
 
                 width: {
-                  ideal: 1280,
+                  ideal:
+                    1280,
                 },
 
                 height: {
-                  ideal: 720,
+                  ideal:
+                    720,
                 },
               },
 
@@ -1654,7 +2286,9 @@ export default function PortoRelatoriosPage() {
 
             videoRef.current,
 
-            (result) => {
+            async (
+              result
+            ) => {
               if (
                 !result ||
                 codigoLidoRef.current
@@ -1667,7 +2301,9 @@ export default function PortoRelatoriosPage() {
                   .getText()
                   .trim();
 
-              if (!codigo) {
+              if (
+                !codigo
+              ) {
                 return;
               }
 
@@ -1686,19 +2322,39 @@ export default function PortoRelatoriosPage() {
                 "ESTOQUE"
               );
 
-              setTimeout(
-                () => {
-                  fecharCamera();
-                },
-                100
-              );
+              /*
+               * O scanner fecha e o resultado é
+               * processado pela busca.
+               */
+              fecharCamera();
+
+              let lista =
+                estoque;
+
+              if (
+                !estoqueCarregado
+              ) {
+                lista =
+                  await carregarEstoque();
+              }
+
+              if (
+                lista.length >
+                0
+              ) {
+                setTipoRelatorioEstoque(
+                  "BUSCA"
+                );
+              }
             }
           );
 
         scannerControlsRef.current =
           controls;
       } catch (e: any) {
-        console.error(e);
+        console.error(
+          e
+        );
 
         setCameraLendo(
           false
@@ -1730,7 +2386,9 @@ export default function PortoRelatoriosPage() {
     };
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [cameraAberta]);
+  }, [
+    cameraAberta,
+  ]);
 
   /* =======================================================
      LOADING
@@ -1748,7 +2406,13 @@ export default function PortoRelatoriosPage() {
           />
 
           <div className="mt-3 font-black text-slate-800">
-            Carregando painel Porto...
+            Carregando relatório...
+          </div>
+
+          <div className="mt-1 text-xs font-bold text-slate-400">
+            {dataBR(
+              dataSelecionada
+            )}
           </div>
 
         </div>
@@ -1768,77 +2432,145 @@ export default function PortoRelatoriosPage() {
 
       <header className="sticky top-0 z-30 bg-blue-950 text-white shadow-lg">
 
-        <div className="mx-auto flex max-w-7xl items-center gap-3 px-3 py-3 md:px-5">
+        <div className="mx-auto max-w-7xl px-3 py-3 md:px-5">
 
-          <div className="min-w-0 flex-1">
+          <div className="flex items-center gap-3">
 
-            <div className="text-[10px] font-black uppercase text-blue-200">
-              Drogarias Porto • Loja 2
-            </div>
+            <div className="min-w-0 flex-1">
 
-            <div className="flex items-center gap-2">
+              <div className="text-[10px] font-black uppercase text-blue-200">
+                Drogarias Porto • Loja 2
+              </div>
 
               <h1 className="truncate text-lg font-black">
-                Painel em tempo real
+                Relatórios
               </h1>
 
-              {sessao && (
-                <span className="rounded-full bg-green-500 px-2 py-0.5 text-[9px] font-black text-white">
-                  CAIXA ABERTO
-                </span>
-              )}
-
             </div>
 
-            <div className="mt-0.5 text-[10px] text-blue-200">
+            <button
+              type="button"
+              onClick={() =>
+                carregarRelatorio(
+                  dataSelecionada,
+                  true
+                )
+              }
+              disabled={
+                atualizando
+              }
+              className="rounded-xl bg-white/10 p-2 disabled:opacity-50"
+              title="Atualizar"
+            >
+              <RefreshCw
+                size={20}
+                className={
+                  atualizando
+                    ? "animate-spin"
+                    : ""
+                }
+              />
+            </button>
 
-              {new Date().toLocaleDateString(
-                "pt-BR"
-              )}
-
-              {ultimaAtualizacao &&
-                ` • atualizado ${ultimaAtualizacao.toLocaleTimeString(
-                  "pt-BR",
-                  {
-                    hour:
-                      "2-digit",
-                    minute:
-                      "2-digit",
-                  }
-                )}`}
-
-            </div>
+            <Link
+              href="/drogariasporto/admin"
+              className="rounded-xl bg-white/10 p-2"
+              title="Voltar"
+            >
+              <ArrowLeft
+                size={20}
+              />
+            </Link>
 
           </div>
 
-          <button
-            type="button"
-            onClick={() =>
-              carregar(true)
-            }
-            disabled={
-              atualizando
-            }
-            className="rounded-xl bg-white/10 p-2 disabled:opacity-50"
-          >
-            <RefreshCw
-              size={20}
-              className={
-                atualizando
-                  ? "animate-spin"
-                  : ""
-              }
-            />
-          </button>
+          {/* SELETOR DE DATA */}
 
-          <Link
-            href="/drogariasporto/admin"
-            className="rounded-xl bg-white/10 p-2"
-          >
-            <ArrowLeft
-              size={20}
-            />
-          </Link>
+          <div className="mt-3 flex items-center gap-2">
+
+            <button
+              type="button"
+              onClick={() =>
+                setDataSelecionada(
+                  mudarData(
+                    dataSelecionada,
+                    -1
+                  )
+                )
+              }
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/10"
+            >
+              <ChevronLeft
+                size={21}
+              />
+            </button>
+
+            <label className="relative flex min-w-0 flex-1 items-center rounded-xl bg-white text-blue-950">
+
+              <CalendarDays
+                size={18}
+                className="ml-3 shrink-0 text-blue-700"
+              />
+
+              <input
+                type="date"
+                value={
+                  dataSelecionada
+                }
+                onChange={(e) => {
+                  if (
+                    e.target.value
+                  ) {
+                    setDataSelecionada(
+                      e.target.value
+                    );
+                  }
+                }}
+                className="min-w-0 flex-1 bg-transparent px-3 py-3 text-sm font-black outline-none"
+              />
+
+            </label>
+
+            <button
+              type="button"
+              onClick={() =>
+                setDataSelecionada(
+                  mudarData(
+                    dataSelecionada,
+                    1
+                  )
+                )
+              }
+              disabled={
+                dataSelecionada >=
+                dataInputHoje()
+              }
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/10 disabled:opacity-30"
+            >
+              <ChevronRight
+                size={21}
+              />
+            </button>
+
+          </div>
+
+          <div className="mt-2 flex items-center justify-between text-[10px] font-bold text-blue-200">
+
+            <span>
+              Relatório de{" "}
+              {dataBR(
+                dataSelecionada
+              )}
+            </span>
+
+            <span>
+              {dataSelecionada ===
+              dataInputHoje()
+                ? "HOJE • tempo real"
+                : "HISTÓRICO"}
+            </span>
+
+          </div>
 
         </div>
 
@@ -1847,23 +2579,24 @@ export default function PortoRelatoriosPage() {
       <div className="mx-auto max-w-7xl p-3 md:p-5">
 
         {/* =================================================
-            ABA HOJE
+            RESUMO
         ================================================= */}
 
         {aba ===
-          "HOJE" && (
+          "RESUMO" && (
           <div className="space-y-3">
-
-            {/* FATURAMENTO */}
 
             <section className="overflow-hidden rounded-3xl bg-gradient-to-br from-blue-900 to-blue-700 p-5 text-white shadow-lg">
 
-              <div className="flex items-center justify-between">
+              <div className="flex items-start justify-between gap-3">
 
                 <div>
 
                   <div className="text-xs font-black uppercase text-blue-200">
-                    Vendas hoje
+                    Vendas •{" "}
+                    {dataBR(
+                      dataSelecionada
+                    )}
                   </div>
 
                   <div className="mt-1 text-4xl font-black">
@@ -1886,14 +2619,12 @@ export default function PortoRelatoriosPage() {
 
                 <TrendingUp
                   size={38}
-                  className="text-blue-200"
+                  className="shrink-0 text-blue-200"
                 />
 
               </div>
 
             </section>
-
-            {/* LUCRO */}
 
             <div className="grid grid-cols-2 gap-3">
 
@@ -1913,7 +2644,7 @@ export default function PortoRelatoriosPage() {
                           ".",
                           ","
                         )}% margem`
-                    : "Cadastre os custos"
+                    : "Sem custo cadastrado"
                 }
                 icon={
                   <CircleDollarSign />
@@ -1941,11 +2672,11 @@ export default function PortoRelatoriosPage() {
             {resumo.itensSemCusto >
               0 && (
               <div className="rounded-2xl bg-amber-50 p-3 text-xs font-bold text-amber-800 ring-1 ring-amber-200">
-                O lucro é estimado apenas nos itens que possuem preço de compra cadastrado.
+                O lucro é estimado com base nos produtos que possuem preço de compra cadastrado.
               </div>
             )}
 
-            {/* FORMAS DE PAGAMENTO */}
+            {/* RECEBIMENTOS */}
 
             <section className="rounded-3xl bg-white p-4 shadow-sm">
 
@@ -1953,12 +2684,14 @@ export default function PortoRelatoriosPage() {
 
                 <div>
 
-                  <div className="font-black text-slate-900">
+                  <div className="font-black">
                     Recebimentos
                   </div>
 
                   <div className="text-xs text-slate-500">
-                    Vendas realizadas hoje
+                    {dataBR(
+                      dataSelecionada
+                    )}
                   </div>
 
                 </div>
@@ -2021,7 +2754,7 @@ export default function PortoRelatoriosPage() {
 
             </section>
 
-            {/* ÚLTIMAS VENDAS */}
+            {/* VENDAS */}
 
             <section className="overflow-hidden rounded-3xl bg-white shadow-sm">
 
@@ -2030,11 +2763,11 @@ export default function PortoRelatoriosPage() {
                 <div>
 
                   <div className="font-black">
-                    Últimas vendas
+                    Vendas do dia
                   </div>
 
                   <div className="text-xs text-slate-500">
-                    Acompanhe o movimento da loja
+                    Últimas movimentações
                   </div>
 
                 </div>
@@ -2053,43 +2786,37 @@ export default function PortoRelatoriosPage() {
 
               </div>
 
-              <div>
-
-                {vendas
-                  .slice(0, 8)
-                  .map(
-                    (v) => (
-                      <VendaLinha
-                        key={
-                          v.id
-                        }
-                        venda={
-                          v
-                        }
-                        pagamentos={
-                          pagamentos.filter(
-                            (
-                              p
-                            ) =>
-                              p.venda_id ===
-                              v.id
-                          )
-                        }
-                        onClick={() =>
-                          setVendaAberta(
+              {vendas
+                .slice(0, 8)
+                .map(
+                  (v) => (
+                    <VendaLinha
+                      key={
+                        v.id
+                      }
+                      venda={
+                        v
+                      }
+                      pagamentos={
+                        pagamentos.filter(
+                          (p) =>
+                            p.venda_id ===
                             v.id
-                          )
-                        }
-                      />
-                    )
-                  )}
-
-                {vendas.length ===
-                  0 && (
-                  <Vazio texto="Nenhuma venda registrada hoje." />
+                        )
+                      }
+                      onClick={() =>
+                        setVendaAberta(
+                          v.id
+                        )
+                      }
+                    />
+                  )
                 )}
 
-              </div>
+              {vendas.length ===
+                0 && (
+                <Vazio texto="Nenhuma venda registrada nesta data." />
+              )}
 
             </section>
 
@@ -2104,11 +2831,14 @@ export default function PortoRelatoriosPage() {
                 <div>
 
                   <div className="font-black">
-                    Mais vendidos hoje
+                    Mais vendidos
                   </div>
 
                   <div className="text-xs text-slate-500">
-                    Ranking por quantidade
+                    Ranking de{" "}
+                    {dataBR(
+                      dataSelecionada
+                    )}
                   </div>
 
                 </div>
@@ -2155,7 +2885,7 @@ export default function PortoRelatoriosPage() {
                             {p.quantidade}
                           </div>
 
-                          <div className="text-[10px] font-bold uppercase text-slate-400">
+                          <div className="text-[9px] font-black uppercase text-slate-400">
                             unidades
                           </div>
 
@@ -2165,7 +2895,7 @@ export default function PortoRelatoriosPage() {
                     )
                   )
               ) : (
-                <Vazio texto="Ainda não há itens vendidos hoje." />
+                <Vazio texto="Não há produtos vendidos nesta data." />
               )}
 
             </section>
@@ -2174,7 +2904,7 @@ export default function PortoRelatoriosPage() {
         )}
 
         {/* =================================================
-            ABA VENDAS
+            VENDAS
         ================================================= */}
 
         {aba ===
@@ -2184,7 +2914,10 @@ export default function PortoRelatoriosPage() {
             <section className="rounded-3xl bg-white p-4 shadow-sm">
 
               <div className="text-xs font-black uppercase text-slate-500">
-                Faturamento de hoje
+                Faturamento •{" "}
+                {dataBR(
+                  dataSelecionada
+                )}
               </div>
 
               <div className="mt-1 text-3xl font-black text-blue-900">
@@ -2207,22 +2940,18 @@ export default function PortoRelatoriosPage() {
 
             <section className="overflow-hidden rounded-3xl bg-white shadow-sm">
 
-              <div className="border-b p-4">
+              <div className="flex items-center gap-2 border-b p-4">
 
-                <div className="flex items-center gap-2">
+                <ShoppingCart className="text-blue-700" />
 
-                  <ShoppingCart className="text-blue-700" />
+                <div>
 
-                  <div>
+                  <div className="font-black">
+                    Vendas
+                  </div>
 
-                    <div className="font-black">
-                      Vendas do dia
-                    </div>
-
-                    <div className="text-xs text-slate-500">
-                      Toque para visualizar os itens
-                    </div>
-
+                  <div className="text-xs text-slate-500">
+                    Toque para visualizar os produtos
                   </div>
 
                 </div>
@@ -2256,7 +2985,7 @@ export default function PortoRelatoriosPage() {
 
               {vendas.length ===
                 0 && (
-                <Vazio texto="Nenhuma venda registrada hoje." />
+                <Vazio texto="Nenhuma venda registrada nesta data." />
               )}
 
             </section>
@@ -2265,70 +2994,73 @@ export default function PortoRelatoriosPage() {
         )}
 
         {/* =================================================
-            ABA CAIXA
+            CAIXA
         ================================================= */}
 
         {aba ===
           "CAIXA" && (
           <div className="space-y-3">
 
-            {!sessao ? (
+            {sessoes.length ===
+              0 ? (
 
               <section className="rounded-3xl bg-white p-6 text-center shadow-sm">
 
-                <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-red-100 text-red-600">
+                <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-slate-100 text-slate-500">
                   <Banknote
                     size={30}
                   />
                 </div>
 
                 <div className="mt-3 text-xl font-black">
-                  Caixa fechado
+                  Sem caixa nesta data
                 </div>
 
                 <div className="mt-1 text-sm text-slate-500">
-                  Não existe uma sessão de caixa aberta neste momento.
+                  Nenhuma sessão de caixa foi encontrada em{" "}
+                  {dataBR(
+                    dataSelecionada
+                  )}.
                 </div>
-
-                <Link
-                  href="/drogariasporto/caixa"
-                  className="mt-5 inline-flex rounded-2xl bg-blue-800 px-5 py-3 font-black text-white"
-                >
-                  IR PARA O CAIXA
-                </Link>
 
               </section>
 
             ) : (
               <>
 
-                <section className="rounded-3xl bg-green-600 p-5 text-white shadow-lg">
+                <section
+                  className={`rounded-3xl p-5 text-white shadow-lg ${
+                    resumoCaixa.algumAberto
+                      ? "bg-green-600"
+                      : "bg-blue-900"
+                  }`}
+                >
 
-                  <div className="flex items-center justify-between">
+                  <div className="flex items-start justify-between gap-3">
 
                     <div>
 
-                      <div className="text-xs font-black uppercase text-green-100">
-                        Caixa aberto
+                      <div className="text-xs font-black uppercase opacity-80">
+                        {resumoCaixa.algumAberto
+                          ? "Caixa aberto"
+                          : "Caixa fechado"}
                       </div>
 
                       <div className="mt-1 text-2xl font-black">
-                        {sessao.operador ||
-                          "Operador"}
+                        {dataBR(
+                          dataSelecionada
+                        )}
                       </div>
 
-                      <div className="mt-1 text-sm text-green-100">
-                        Aberto às{" "}
-                        {hora(
-                          sessao.aberto_em
-                        )}
+                      <div className="mt-1 text-sm font-bold opacity-80">
+                        {sessoes.length} sessão(ões) de caixa
                       </div>
 
                     </div>
 
                     <Clock3
                       size={36}
-                      className="text-green-100"
+                      className="opacity-70"
                     />
 
                   </div>
@@ -2338,11 +3070,11 @@ export default function PortoRelatoriosPage() {
                 <div className="grid grid-cols-2 gap-3">
 
                   <MiniCard
-                    titulo="Vendido na sessão"
+                    titulo="Vendas"
                     valor={brl(
-                      resumoCaixa.totalSessao
+                      resumo.totalVendido
                     )}
-                    detalhe="Todos os pagamentos"
+                    detalhe={`${resumo.qtdVendas} venda(s)`}
                     icon={
                       <ShoppingCart />
                     }
@@ -2361,10 +3093,12 @@ export default function PortoRelatoriosPage() {
 
                 </div>
 
+                {/* FORMAS */}
+
                 <section className="rounded-3xl bg-white p-4 shadow-sm">
 
                   <div className="mb-3 font-black">
-                    Pagamentos da sessão
+                    Recebimentos do caixa
                   </div>
 
                   <div className="grid grid-cols-2 gap-2">
@@ -2421,10 +3155,12 @@ export default function PortoRelatoriosPage() {
 
                 </section>
 
+                {/* MOVIMENTAÇÃO */}
+
                 <section className="rounded-3xl bg-white p-4 shadow-sm">
 
                   <div className="font-black">
-                    Movimento do caixa
+                    Movimentação do dia
                   </div>
 
                   <div className="mt-3 space-y-2">
@@ -2432,7 +3168,7 @@ export default function PortoRelatoriosPage() {
                     <LinhaResumo
                       nome="Fundo inicial"
                       valor={
-                        sessao.valor_abertura
+                        resumoCaixa.fundoInicial
                       }
                     />
 
@@ -2471,101 +3207,267 @@ export default function PortoRelatoriosPage() {
 
                   <div className="mt-4 border-t pt-4">
 
-                    <div className="flex items-end justify-between">
+                    <div className="flex items-center justify-between">
 
-                      <div className="text-sm font-bold text-slate-500">
+                      <span className="font-bold text-slate-500">
                         Dinheiro esperado
-                      </div>
+                      </span>
 
-                      <div className="text-2xl font-black text-blue-900">
+                      <b className="text-xl text-blue-900">
                         {brl(
                           resumoCaixa.dinheiroEsperado
                         )}
-                      </div>
+                      </b>
 
                     </div>
+
+                    {resumoCaixa.todosFechados && (
+                      <>
+                        <div className="mt-3 flex items-center justify-between">
+
+                          <span className="font-bold text-slate-500">
+                            Dinheiro contado
+                          </span>
+
+                          <b className="text-lg">
+                            {brl(
+                              resumoCaixa.valorContado
+                            )}
+                          </b>
+
+                        </div>
+
+                        <div className="mt-3 flex items-center justify-between">
+
+                          <span className="font-bold text-slate-500">
+                            Diferença
+                          </span>
+
+                          <b
+                            className={
+                              Math.abs(
+                                resumoCaixa.diferenca
+                              ) <
+                              0.01
+                                ? "text-green-700"
+                                : "text-red-600"
+                            }
+                          >
+                            {brl(
+                              resumoCaixa.diferenca
+                            )}
+                          </b>
+
+                        </div>
+                      </>
+                    )}
 
                   </div>
 
                 </section>
+
+                {/* SESSÕES */}
 
                 <section className="overflow-hidden rounded-3xl bg-white shadow-sm">
 
                   <div className="border-b p-4">
 
                     <div className="font-black">
-                      Últimos movimentos
+                      Sessões de caixa
                     </div>
 
                   </div>
 
-                  {movimentos
-                    .slice(0, 15)
-                    .map(
-                      (m) => (
-                        <div
-                          key={
-                            m.id
-                          }
-                          className="flex items-center gap-3 border-t p-3 first:border-t-0"
-                        >
+                  {sessoes.map(
+                    (cx) => (
+                      <div
+                        key={
+                          cx.id
+                        }
+                        className="border-t p-4 first:border-t-0"
+                      >
 
-                          <div className="min-w-0 flex-1">
+                        <div className="flex items-start justify-between gap-3">
 
-                            <div className="text-sm font-black">
-                              {m.tipo}
+                          <div>
+
+                            <div className="font-black">
+                              {cx.operador ||
+                                "Operador"}
                             </div>
 
-                            <div className="truncate text-xs text-slate-500">
-                              {m.descricao}
+                            <div className="mt-1 text-xs text-slate-500">
+                              Abertura{" "}
+                              {hora(
+                                cx.aberto_em
+                              )}
+
+                              {cx.fechado_em
+                                ? ` • Fechamento ${hora(
+                                    cx.fechado_em
+                                  )}`
+                                : " • Em andamento"}
                             </div>
 
                           </div>
 
-                          <div className="text-right">
+                          <span
+                            className={`rounded-full px-2 py-1 text-[10px] font-black ${
+                              cx.status ===
+                              "aberto"
+                                ? "bg-green-100 text-green-700"
+                                : "bg-slate-100 text-slate-600"
+                            }`}
+                          >
+                            {cx.status ===
+                            "aberto"
+                              ? "ABERTO"
+                              : "FECHADO"}
+                          </span>
 
-                            <div
-                              className={`font-black ${
-                                m.tipo ===
-                                "SUPRIMENTO"
+                        </div>
+
+                        <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+
+                          <div className="rounded-xl bg-slate-50 p-2">
+
+                            <div className="text-slate-400">
+                              Fundo
+                            </div>
+
+                            <b>
+                              {brl(
+                                cx.valor_abertura
+                              )}
+                            </b>
+
+                          </div>
+
+                          <div className="rounded-xl bg-slate-50 p-2">
+
+                            <div className="text-slate-400">
+                              Diferença
+                            </div>
+
+                            <b
+                              className={
+                                Math.abs(
+                                  n(
+                                    cx.diferenca
+                                  )
+                                ) <
+                                0.01
                                   ? "text-green-700"
                                   : "text-red-600"
-                              }`}
+                              }
                             >
-                              {m.tipo ===
-                              "SUPRIMENTO"
-                                ? "+"
-                                : "-"}{" "}
-                              {brl(
-                                m.valor
-                              )}
-                            </div>
-
-                            <div className="text-[10px] text-slate-400">
-                              {hora(
-                                m.created_at
-                              )}
-                            </div>
+                              {cx.status ===
+                              "fechado"
+                                ? brl(
+                                    n(
+                                      cx.diferenca
+                                    )
+                                  )
+                                : "—"}
+                            </b>
 
                           </div>
 
                         </div>
-                      )
-                    )}
 
-                  {movimentos.length ===
-                    0 && (
-                    <Vazio texto="Nenhuma movimentação nesta sessão." />
+                      </div>
+                    )
                   )}
 
                 </section>
 
-                <Link
-                  href="/drogariasporto/caixa"
-                  className="block rounded-2xl bg-blue-800 py-4 text-center font-black text-white"
-                >
-                  ABRIR CAIXA COMPLETO
-                </Link>
+                {/* MOVIMENTOS DETALHADOS */}
+
+                <section className="overflow-hidden rounded-3xl bg-white shadow-sm">
+
+                  <div className="border-b p-4">
+
+                    <div className="font-black">
+                      Sangrias, suprimentos e despesas
+                    </div>
+
+                    <div className="text-xs text-slate-500">
+                      Movimentação de{" "}
+                      {dataBR(
+                        dataSelecionada
+                      )}
+                    </div>
+
+                  </div>
+
+                  {movimentos.map(
+                    (m) => (
+                      <div
+                        key={
+                          m.id
+                        }
+                        className="flex items-center gap-3 border-t p-3 first:border-t-0"
+                      >
+
+                        <div className="min-w-0 flex-1">
+
+                          <div className="text-sm font-black">
+                            {m.tipo}
+                          </div>
+
+                          <div className="truncate text-xs text-slate-500">
+                            {m.descricao}
+                          </div>
+
+                        </div>
+
+                        <div className="text-right">
+
+                          <div
+                            className={`font-black ${
+                              m.tipo ===
+                              "SUPRIMENTO"
+                                ? "text-green-700"
+                                : "text-red-600"
+                            }`}
+                          >
+                            {m.tipo ===
+                            "SUPRIMENTO"
+                              ? "+"
+                              : "-"}{" "}
+                            {brl(
+                              m.valor
+                            )}
+                          </div>
+
+                          <div className="text-[10px] text-slate-400">
+                            {hora(
+                              m.created_at
+                            )}
+                          </div>
+
+                        </div>
+
+                      </div>
+                    )
+                  )}
+
+                  {movimentos.length ===
+                    0 && (
+                    <Vazio texto="Nenhuma movimentação de caixa nesta data." />
+                  )}
+
+                </section>
+
+                {dataSelecionada ===
+                  dataInputHoje() && (
+                  <Link
+                    href="/drogariasporto/caixa"
+                    className="block rounded-2xl bg-blue-800 py-4 text-center font-black text-white"
+                  >
+                    ABRIR CAIXA OPERACIONAL
+                  </Link>
+                )}
 
               </>
             )}
@@ -2574,99 +3476,36 @@ export default function PortoRelatoriosPage() {
         )}
 
         {/* =================================================
-            ABA ESTOQUE
+            ESTOQUE
         ================================================= */}
 
         {aba ===
           "ESTOQUE" && (
           <div className="space-y-3">
 
-            <div className="grid grid-cols-3 gap-2">
-
-              <EstoqueNumero
-                titulo="Com estoque"
-                valor={
-                  resumoEstoque.comEstoque
-                }
-                classe="text-green-700"
-              />
-
-              <EstoqueNumero
-                titulo="Baixo"
-                valor={
-                  resumoEstoque.baixos
-                }
-                classe="text-amber-600"
-              />
-
-              <EstoqueNumero
-                titulo="Zerado"
-                valor={
-                  resumoEstoque.zerados
-                }
-                classe="text-red-600"
-              />
-
-            </div>
+            {/* CONSULTA */}
 
             <section className="rounded-3xl bg-white p-4 shadow-sm">
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="flex items-center gap-2">
 
-                <ValorEstoque
-                  titulo="Estoque a custo"
-                  valor={
-                    resumoEstoque.valorCusto
-                  }
-                />
+                <Box className="text-blue-700" />
 
-                <ValorEstoque
-                  titulo="Potencial de venda"
-                  valor={
-                    resumoEstoque.valorVenda
-                  }
-                />
+                <div>
 
-                <ValorEstoque
-                  titulo="Lucro potencial"
-                  valor={
-                    resumoEstoque.lucroPotencial
-                  }
-                />
-
-                <div className="rounded-2xl bg-slate-50 p-3">
-
-                  <div className="text-[10px] font-black uppercase text-slate-400">
-                    Unidades
+                  <div className="font-black">
+                    Consultar estoque
                   </div>
 
-                  <div className="mt-1 text-xl font-black text-slate-900">
-                    {resumoEstoque.unidades.toLocaleString(
-                      "pt-BR"
-                    )}
+                  <div className="text-xs text-slate-500">
+                    Pesquise somente quando precisar
                   </div>
 
                 </div>
 
               </div>
 
-              {resumoEstoque.semCusto >
-                0 && (
-                <div className="mt-3 rounded-xl bg-amber-50 p-3 text-xs font-bold text-amber-800">
-                  {
-                    resumoEstoque.semCusto
-                  }{" "}
-                  produto(s) com estoque ainda não possuem custo cadastrado.
-                </div>
-              )}
-
-            </section>
-
-            {/* BUSCA ESTOQUE */}
-
-            <section className="sticky top-[76px] z-20 rounded-2xl bg-white p-3 shadow-md">
-
-              <div className="flex gap-2">
+              <div className="mt-4 flex gap-2">
 
                 <div className="flex min-w-0 flex-1 items-center rounded-xl border-2 border-blue-200 px-3 focus-within:border-blue-700">
 
@@ -2679,23 +3518,39 @@ export default function PortoRelatoriosPage() {
                     value={
                       buscaEstoque
                     }
-                    onChange={(e) =>
+                    onChange={(e) => {
                       setBuscaEstoque(
                         e.target.value
-                      )
-                    }
-                    placeholder="Nome ou EAN"
+                      );
+
+                      setTipoRelatorioEstoque(
+                        null
+                      );
+                    }}
+                    onKeyDown={(e) => {
+                      if (
+                        e.key ===
+                        "Enter"
+                      ) {
+                        pesquisarEstoque();
+                      }
+                    }}
+                    placeholder="Nome ou código de barras"
                     className="min-w-0 flex-1 px-3 py-3 font-bold outline-none"
                   />
 
                   {buscaEstoque && (
                     <button
                       type="button"
-                      onClick={() =>
+                      onClick={() => {
                         setBuscaEstoque(
                           ""
-                        )
-                      }
+                        );
+
+                        setTipoRelatorioEstoque(
+                          null
+                        );
+                      }}
                       className="p-1 text-slate-400"
                     >
                       <X
@@ -2711,52 +3566,265 @@ export default function PortoRelatoriosPage() {
                   onClick={
                     abrirCamera
                   }
-                  className="flex w-12 items-center justify-center rounded-xl bg-slate-900 text-white"
+                  className="flex w-13 shrink-0 items-center justify-center rounded-xl bg-slate-900 px-4 text-white"
                 >
                   <Camera
-                    size={21}
+                    size={22}
                   />
                 </button>
 
               </div>
 
-              {!buscaEstoque && (
-                <div className="mt-2 text-xs font-bold text-slate-500">
-                  Mostrando primeiro produtos com estoque baixo ou zerado.
-                </div>
-              )}
-
-            </section>
-
-            {/* PRODUTOS */}
-
-            <section className="space-y-2">
-
-              {estoqueFiltrado.map(
-                (p) => (
-                  <ProdutoEstoqueCard
-                    key={
-                      p.produto_id
-                    }
-                    produto={
-                      p
-                    }
+              <button
+                type="button"
+                onClick={
+                  pesquisarEstoque
+                }
+                disabled={
+                  loadingEstoque
+                }
+                className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl bg-blue-800 py-3 font-black text-white disabled:opacity-50"
+              >
+                {loadingEstoque ? (
+                  <RefreshCw
+                    size={18}
+                    className="animate-spin"
                   />
-                )
-              )}
+                ) : (
+                  <Search
+                    size={18}
+                  />
+                )}
 
-              {estoqueFiltrado.length ===
-                0 && (
-                <Vazio texto="Nenhum produto encontrado." />
-              )}
+                CONSULTAR PRODUTO
+              </button>
 
             </section>
+
+            {/* GERAR RELATÓRIOS */}
+
+            <section className="rounded-3xl bg-white p-4 shadow-sm">
+
+              <div className="flex items-center gap-2">
+
+                <FileText className="text-blue-700" />
+
+                <div>
+
+                  <div className="font-black">
+                    Relatórios de estoque
+                  </div>
+
+                  <div className="text-xs text-slate-500">
+                    O estoque só será listado após selecionar um relatório
+                  </div>
+
+                </div>
+
+              </div>
+
+              <div className="mt-4 grid grid-cols-2 gap-2">
+
+                <BotaoRelatorioEstoque
+                  titulo="Estoque baixo"
+                  descricao="1 a 5 unidades"
+                  tipo="amber"
+                  onClick={() =>
+                    gerarRelatorioEstoque(
+                      "BAIXO"
+                    )
+                  }
+                />
+
+                <BotaoRelatorioEstoque
+                  titulo="Estoque zerado"
+                  descricao="Sem unidades"
+                  tipo="red"
+                  onClick={() =>
+                    gerarRelatorioEstoque(
+                      "ZERADO"
+                    )
+                  }
+                />
+
+                <BotaoRelatorioEstoque
+                  titulo="Com estoque"
+                  descricao="Produtos disponíveis"
+                  tipo="green"
+                  onClick={() =>
+                    gerarRelatorioEstoque(
+                      "COM_ESTOQUE"
+                    )
+                  }
+                />
+
+                <BotaoRelatorioEstoque
+                  titulo="Relatório geral"
+                  descricao="Inventário completo"
+                  tipo="blue"
+                  onClick={() =>
+                    gerarRelatorioEstoque(
+                      "GERAL"
+                    )
+                  }
+                />
+
+              </div>
+
+            </section>
+
+            {/* NADA GERADO */}
+
+            {!tipoRelatorioEstoque && (
+              <section className="rounded-3xl border-2 border-dashed border-slate-200 bg-white p-8 text-center">
+
+                <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-blue-50 text-blue-700">
+                  <Package
+                    size={29}
+                  />
+                </div>
+
+                <div className="mt-3 font-black text-slate-800">
+                  Nenhum relatório aberto
+                </div>
+
+                <div className="mx-auto mt-1 max-w-xs text-sm text-slate-500">
+                  Pesquise um produto ou escolha um dos relatórios acima.
+                </div>
+
+              </section>
+            )}
+
+            {/* RESULTADO */}
+
+            {tipoRelatorioEstoque && (
+              <>
+
+                <section className="rounded-3xl bg-blue-950 p-4 text-white shadow-lg">
+
+                  <div className="flex items-start justify-between gap-3">
+
+                    <div>
+
+                      <div className="text-[10px] font-black uppercase text-blue-200">
+                        Relatório de estoque
+                      </div>
+
+                      <div className="mt-1 text-xl font-black">
+                        {tipoRelatorioEstoque ===
+                        "BUSCA"
+                          ? `Busca: ${buscaEstoque}`
+                          : tipoRelatorioEstoque ===
+                            "BAIXO"
+                          ? "Estoque baixo"
+                          : tipoRelatorioEstoque ===
+                            "ZERADO"
+                          ? "Estoque zerado"
+                          : tipoRelatorioEstoque ===
+                            "COM_ESTOQUE"
+                          ? "Produtos com estoque"
+                          : "Inventário geral"}
+                      </div>
+
+                      <div className="mt-1 text-xs font-bold text-blue-200">
+                        {
+                          resumoEstoque.produtos
+                        }{" "}
+                        produto(s)
+                      </div>
+
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setTipoRelatorioEstoque(
+                          null
+                        )
+                      }
+                      className="rounded-xl bg-white/10 p-2"
+                    >
+                      <X
+                        size={19}
+                      />
+                    </button>
+
+                  </div>
+
+                </section>
+
+                <div className="grid grid-cols-2 gap-2">
+
+                  <ValorEstoque
+                    titulo="Unidades"
+                    texto={resumoEstoque.unidades.toLocaleString(
+                      "pt-BR"
+                    )}
+                  />
+
+                  <ValorEstoque
+                    titulo="Custo"
+                    texto={brl(
+                      resumoEstoque.valorCusto
+                    )}
+                  />
+
+                  <ValorEstoque
+                    titulo="Venda potencial"
+                    texto={brl(
+                      resumoEstoque.valorVenda
+                    )}
+                  />
+
+                  <ValorEstoque
+                    titulo="Lucro potencial"
+                    texto={brl(
+                      resumoEstoque.lucroPotencial
+                    )}
+                  />
+
+                </div>
+
+                {resumoEstoque.semCusto >
+                  0 && (
+                  <div className="rounded-2xl bg-amber-50 p-3 text-xs font-bold text-amber-800 ring-1 ring-amber-200">
+                    {
+                      resumoEstoque.semCusto
+                    }{" "}
+                    produto(s) deste relatório possuem estoque, mas ainda não têm preço de compra cadastrado.
+                  </div>
+                )}
+
+                <section className="space-y-2">
+
+                  {estoqueResultado.map(
+                    (p) => (
+                      <ProdutoEstoqueCard
+                        key={
+                          p.produto_id
+                        }
+                        produto={
+                          p
+                        }
+                      />
+                    )
+                  )}
+
+                  {estoqueResultado.length ===
+                    0 && (
+                    <Vazio texto="Nenhum produto encontrado para este relatório." />
+                  )}
+
+                </section>
+
+              </>
+            )}
 
             <Link
               href="/drogariasporto/admin/produtos"
               className="block rounded-2xl bg-blue-800 py-4 text-center font-black text-white"
             >
-              GERENCIAR ESTOQUE
+              GERENCIAR PRODUTOS / ESTOQUE
             </Link>
 
           </div>
@@ -2765,7 +3833,7 @@ export default function PortoRelatoriosPage() {
       </div>
 
       {/* ===================================================
-          NAVEGAÇÃO MOBILE
+          NAVEGAÇÃO
       =================================================== */}
 
       <nav className="fixed bottom-0 left-0 right-0 z-40 border-t bg-white shadow-[0_-4px_20px_rgba(0,0,0,0.08)]">
@@ -2775,9 +3843,9 @@ export default function PortoRelatoriosPage() {
           <NavButton
             active={
               aba ===
-              "HOJE"
+              "RESUMO"
             }
-            label="Hoje"
+            label="Resumo"
             icon={
               <BarChart3
                 size={20}
@@ -2785,7 +3853,7 @@ export default function PortoRelatoriosPage() {
             }
             onClick={() =>
               setAba(
-                "HOJE"
+                "RESUMO"
               )
             }
           />
@@ -2925,59 +3993,63 @@ export default function PortoRelatoriosPage() {
                 <div className="overflow-hidden rounded-2xl border">
 
                   {itensVendaSelecionada.map(
-                    (i) => (
-                      <div
-                        key={
-                          i.id
-                        }
-                        className="flex gap-3 border-t p-3 first:border-t-0"
-                      >
-
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-sm font-black">
-                          {n(
-                            i.quantidade
-                          )}
-                          x
-                        </div>
-
-                        <div className="min-w-0 flex-1">
-
-                          <div className="text-sm font-black">
-                            {i.nome}
-                          </div>
-
-                          <div className="text-xs text-slate-500">
-                            {brl(
-                              i.preco_unitario
-                            )}{" "}
-                            cada
-                          </div>
-
-                        </div>
-
-                        <div className="font-black">
-                          {brl(
-                            n(
+                    (i) => {
+                      const totalItem =
+                        n(
+                          i.total
+                        ) > 0
+                          ? n(
                               i.total
-                            ) >
-                              0
-                              ? n(
-                                  i.total
-                                )
-                              : n(
-                                  i.preco_unitario
-                                ) *
-                                  n(
-                                    i.quantidade
-                                  ) -
-                                  n(
-                                    i.desconto
-                                  )
-                          )}
-                        </div>
+                            )
+                          : n(
+                              i.preco_unitario
+                            ) *
+                              n(
+                                i.quantidade
+                              ) -
+                            n(
+                              i.desconto
+                            );
 
-                      </div>
-                    )
+                      return (
+                        <div
+                          key={
+                            i.id
+                          }
+                          className="flex gap-3 border-t p-3 first:border-t-0"
+                        >
+
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-sm font-black">
+                            {n(
+                              i.quantidade
+                            )}
+                            x
+                          </div>
+
+                          <div className="min-w-0 flex-1">
+
+                            <div className="text-sm font-black">
+                              {i.nome}
+                            </div>
+
+                            <div className="text-xs text-slate-500">
+                              {brl(
+                                i.preco_unitario
+                              )}{" "}
+                              cada
+                            </div>
+
+                          </div>
+
+                          <div className="font-black">
+                            {brl(
+                              totalItem
+                            )}
+                          </div>
+
+                        </div>
+                      );
+                    }
                   )}
 
                   {itensVendaSelecionada.length ===
@@ -3149,7 +4221,7 @@ export default function PortoRelatoriosPage() {
   );
 }
 /* =========================================================
-   COMPONENTES DO PAINEL
+   COMPONENTES AUXILIARES
 ========================================================= */
 
 function MiniCard({
@@ -3166,7 +4238,7 @@ function MiniCard({
   return (
     <div className="rounded-3xl bg-white p-4 shadow-sm">
       <div className="flex items-start justify-between gap-2">
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <div className="text-[10px] font-black uppercase text-slate-500">
             {titulo}
           </div>
@@ -3191,7 +4263,7 @@ function MiniCard({
 }
 
 /* =========================================================
-   CARD PAGAMENTO
+   PAGAMENTO
 ========================================================= */
 
 function PagamentoCard({
@@ -3223,7 +4295,7 @@ function PagamentoCard({
 }
 
 /* =========================================================
-   LINHA VENDA
+   VENDA
 ========================================================= */
 
 function VendaLinha({
@@ -3256,7 +4328,9 @@ function VendaLinha({
       className="flex w-full items-center gap-3 border-t p-3 text-left first:border-t-0 active:bg-slate-50"
     >
       <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-blue-800">
-        <ShoppingCart size={20} />
+        <ShoppingCart
+          size={20}
+        />
       </div>
 
       <div className="min-w-0 flex-1">
@@ -3269,7 +4343,9 @@ function VendaLinha({
           </span>
 
           <span className="text-xs font-bold text-slate-400">
-            {hora(venda.created_at)}
+            {hora(
+              venda.created_at
+            )}
           </span>
         </div>
 
@@ -3286,11 +4362,15 @@ function VendaLinha({
 
       <div className="shrink-0 text-right">
         <div className="font-black text-blue-950">
-          {brl(venda.total)}
+          {brl(
+            venda.total
+          )}
         </div>
 
         <div className="mt-1 flex justify-end text-slate-400">
-          <ChevronRight size={16} />
+          <ChevronRight
+            size={16}
+          />
         </div>
       </div>
     </button>
@@ -3298,7 +4378,7 @@ function VendaLinha({
 }
 
 /* =========================================================
-   LINHA RESUMO CAIXA
+   LINHA RESUMO DO CAIXA
 ========================================================= */
 
 function LinhaResumo({
@@ -3318,14 +4398,17 @@ function LinhaResumo({
 
       <span
         className={`font-black ${
-          negativo && valor > 0
+          negativo &&
+          valor > 0
             ? "text-red-600"
             : "text-slate-900"
         }`}
       >
-        {negativo && valor > 0
+        {negativo &&
+        valor > 0
           ? "- "
           : ""}
+
         {brl(valor)}
       </span>
     </div>
@@ -3333,61 +4416,124 @@ function LinhaResumo({
 }
 
 /* =========================================================
-   NÚMERO ESTOQUE
+   BOTÃO DE RELATÓRIO DO ESTOQUE
 ========================================================= */
 
-function EstoqueNumero({
+function BotaoRelatorioEstoque({
   titulo,
-  valor,
-  classe,
+  descricao,
+  tipo,
+  onClick,
 }: {
   titulo: string;
-  valor: number;
-  classe?: string;
+  descricao: string;
+  tipo:
+    | "amber"
+    | "red"
+    | "green"
+    | "blue";
+  onClick: () => void;
 }) {
+  let classe =
+    "bg-blue-50 text-blue-800 ring-blue-100";
+
+  let classeIcone =
+    "bg-blue-100 text-blue-700";
+
+  if (
+    tipo === "amber"
+  ) {
+    classe =
+      "bg-amber-50 text-amber-900 ring-amber-100";
+
+    classeIcone =
+      "bg-amber-100 text-amber-700";
+  }
+
+  if (
+    tipo === "red"
+  ) {
+    classe =
+      "bg-red-50 text-red-800 ring-red-100";
+
+    classeIcone =
+      "bg-red-100 text-red-600";
+  }
+
+  if (
+    tipo === "green"
+  ) {
+    classe =
+      "bg-green-50 text-green-800 ring-green-100";
+
+    classeIcone =
+      "bg-green-100 text-green-700";
+  }
+
   return (
-    <div className="rounded-2xl bg-white p-3 text-center shadow-sm">
+    <button
+      type="button"
+      onClick={onClick}
+      className={`min-h-[112px] rounded-2xl p-3 text-left ring-1 active:scale-[0.98] ${classe}`}
+    >
       <div
-        className={`text-2xl font-black ${
-          classe || "text-blue-900"
-        }`}
+        className={`flex h-9 w-9 items-center justify-center rounded-xl ${classeIcone}`}
       >
-        {valor}
+        {tipo ===
+        "red" ? (
+          <X size={18} />
+        ) : tipo ===
+          "amber" ? (
+          <Package
+            size={18}
+          />
+        ) : tipo ===
+          "green" ? (
+          <Box size={18} />
+        ) : (
+          <FileText
+            size={18}
+          />
+        )}
       </div>
 
-      <div className="mt-1 text-[10px] font-black uppercase leading-tight text-slate-400">
+      <div className="mt-2 text-sm font-black leading-tight">
         {titulo}
       </div>
-    </div>
+
+      <div className="mt-1 text-[10px] font-bold opacity-70">
+        {descricao}
+      </div>
+    </button>
   );
 }
 
 /* =========================================================
-   VALOR ESTOQUE
+   VALOR DO RELATÓRIO DE ESTOQUE
 ========================================================= */
 
 function ValorEstoque({
   titulo,
-  valor,
+  texto,
 }: {
   titulo: string;
-  valor: number;
+  texto: string;
 }) {
   return (
-    <div className="rounded-2xl bg-slate-50 p-3">
-      <div className="text-[10px] font-black uppercase text-slate-400">
+    <div className="rounded-2xl bg-white p-3 shadow-sm">
+      <div className="text-[9px] font-black uppercase text-slate-400">
         {titulo}
       </div>
 
-      <div className="mt-1 text-lg font-black text-blue-950">
-        {brl(valor)}
+      <div className="mt-1 break-words text-lg font-black text-blue-950">
+        {texto}
       </div>
     </div>
   );
 }
 
 /* =========================================================
-   PRODUTO ESTOQUE
+   PRODUTO DO RELATÓRIO DE ESTOQUE
 ========================================================= */
 
 function ProdutoEstoqueCard({
@@ -3396,13 +4542,19 @@ function ProdutoEstoqueCard({
   produto: ProdutoEstoque;
 }) {
   const custo =
-    produto.preco_custo !== null
-      ? n(produto.preco_custo)
+    produto.preco_custo !==
+    null
+      ? n(
+          produto.preco_custo
+        )
       : 0;
 
   const venda =
-    produto.preco_venda !== null
-      ? n(produto.preco_venda)
+    produto.preco_venda !==
+    null
+      ? n(
+          produto.preco_venda
+        )
       : 0;
 
   const lucroUnitario =
@@ -3413,28 +4565,47 @@ function ProdutoEstoqueCard({
   const margemProduto =
     custo > 0 &&
     venda > 0
-      ? margem(custo, venda)
+      ? margem(
+          custo,
+          venda
+        )
       : 0;
 
   const custoTotal =
     custo *
-    n(produto.estoque);
+    n(
+      produto.estoque
+    );
 
   const vendaTotal =
     venda *
-    n(produto.estoque);
+    n(
+      produto.estoque
+    );
+
+  const lucroTotal =
+    vendaTotal -
+    custoTotal;
 
   const estoqueBaixo =
-    produto.estoque > 0 &&
-    produto.estoque <= 5;
+    produto.estoque >
+      0 &&
+    produto.estoque <=
+      5;
 
   const zerado =
-    produto.estoque <= 0;
+    produto.estoque <=
+    0;
 
   return (
     <article className="overflow-hidden rounded-3xl bg-white shadow-sm ring-1 ring-slate-200">
+
       <div className="p-4">
+
+        {/* CABEÇALHO */}
+
         <div className="flex items-start gap-3">
+
           <div
             className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl ${
               zerado
@@ -3444,10 +4615,13 @@ function ProdutoEstoqueCard({
                 : "bg-green-50 text-green-700"
             }`}
           >
-            <Box size={25} />
+            <Box
+              size={25}
+            />
           </div>
 
           <div className="min-w-0 flex-1">
+
             <div className="text-base font-black leading-tight text-slate-950">
               {produto.nome}
             </div>
@@ -3455,24 +4629,35 @@ function ProdutoEstoqueCard({
             <div className="mt-1 text-xs text-slate-500">
               EAN{" "}
               <b>
-                {produto.ean || "—"}
+                {produto.ean ||
+                  "—"}
               </b>
             </div>
 
-            {produto.laboratorio && (
-              <div className="mt-0.5 truncate text-xs text-slate-400">
-                {produto.laboratorio}
+            {(produto.laboratorio ||
+              produto.apresentacao) && (
+              <div className="mt-0.5 text-xs text-slate-400">
 
-                {produto.apresentacao
-                  ? ` • ${produto.apresentacao}`
+                {produto.laboratorio ||
+                  ""}
+
+                {produto.laboratorio &&
+                produto.apresentacao
+                  ? " • "
                   : ""}
+
+                {produto.apresentacao ||
+                  ""}
+
               </div>
             )}
+
           </div>
 
           <div className="shrink-0 text-right">
+
             <div
-              className={`text-2xl font-black ${
+              className={`text-3xl font-black ${
                 zerado
                   ? "text-red-600"
                   : estoqueBaixo
@@ -3484,10 +4669,14 @@ function ProdutoEstoqueCard({
             </div>
 
             <div className="text-[9px] font-black uppercase text-slate-400">
-              estoque
+              unidades
             </div>
+
           </div>
+
         </div>
+
+        {/* ALERTA */}
 
         {zerado && (
           <div className="mt-3 rounded-xl bg-red-50 px-3 py-2 text-xs font-black text-red-700">
@@ -3501,105 +4690,175 @@ function ProdutoEstoqueCard({
           </div>
         )}
 
+        {/* PREÇOS */}
+
         <div className="mt-3 grid grid-cols-2 gap-2">
+
           <div className="rounded-2xl bg-slate-50 p-3">
+
             <div className="text-[9px] font-black uppercase text-slate-400">
               Compra
             </div>
 
             <div className="mt-1 font-black text-slate-900">
-              {produto.preco_custo === null ||
-              custo <= 0
-                ? "Não cadastrado"
-                : brl(custo)}
+              {custo > 0
+                ? brl(
+                    custo
+                  )
+                : "Não cadastrado"}
             </div>
+
           </div>
 
           <div className="rounded-2xl bg-blue-50 p-3">
+
             <div className="text-[9px] font-black uppercase text-blue-500">
               Venda
             </div>
 
             <div className="mt-1 font-black text-blue-950">
               {venda > 0
-                ? brl(venda)
+                ? brl(
+                    venda
+                  )
                 : "Sem preço"}
             </div>
+
           </div>
+
         </div>
+
+        {/* LUCRO */}
 
         {custo > 0 &&
           venda > 0 && (
-            <div className="mt-2 grid grid-cols-2 gap-2">
-              <div className="rounded-2xl bg-green-50 p-3">
-                <div className="text-[9px] font-black uppercase text-green-600">
-                  Lucro / un.
-                </div>
 
-                <div
-                  className={`mt-1 font-black ${
-                    lucroUnitario >= 0
-                      ? "text-green-700"
-                      : "text-red-600"
-                  }`}
-                >
-                  {brl(lucroUnitario)}
-                </div>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+
+            <div className="rounded-2xl bg-green-50 p-3">
+
+              <div className="text-[9px] font-black uppercase text-green-600">
+                Lucro / unidade
               </div>
 
-              <div className="rounded-2xl bg-green-50 p-3">
-                <div className="text-[9px] font-black uppercase text-green-600">
-                  Margem
-                </div>
-
-                <div
-                  className={`mt-1 font-black ${
-                    margemProduto >= 0
-                      ? "text-green-700"
-                      : "text-red-600"
-                  }`}
-                >
-                  {margemProduto
-                    .toFixed(1)
-                    .replace(
-                      ".",
-                      ","
-                    )}
-                  %
-                </div>
-              </div>
-            </div>
-          )}
-
-        {produto.estoque > 0 && (
-          <div className="mt-3 grid grid-cols-2 gap-2 border-t pt-3">
-            <div>
-              <div className="text-[9px] font-black uppercase text-slate-400">
-                Custo no estoque
+              <div
+                className={`mt-1 font-black ${
+                  lucroUnitario >=
+                  0
+                    ? "text-green-700"
+                    : "text-red-600"
+                }`}
+              >
+                {brl(
+                  lucroUnitario
+                )}
               </div>
 
-              <div className="font-black text-slate-700">
-                {custo > 0
-                  ? brl(custoTotal)
-                  : "—"}
-              </div>
             </div>
 
-            <div className="text-right">
-              <div className="text-[9px] font-black uppercase text-slate-400">
-                Venda potencial
+            <div className="rounded-2xl bg-green-50 p-3">
+
+              <div className="text-[9px] font-black uppercase text-green-600">
+                Margem
               </div>
 
-              <div className="font-black text-blue-900">
-                {venda > 0
-                  ? brl(vendaTotal)
-                  : "—"}
+              <div
+                className={`mt-1 font-black ${
+                  margemProduto >=
+                  0
+                    ? "text-green-700"
+                    : "text-red-600"
+                }`}
+              >
+                {margemProduto
+                  .toFixed(1)
+                  .replace(
+                    ".",
+                    ","
+                  )}
+                %
               </div>
+
             </div>
+
           </div>
         )}
 
+        {/* VALOR DO ESTOQUE */}
+
+        {produto.estoque >
+          0 && (
+
+          <div className="mt-3 rounded-2xl border border-slate-100 bg-slate-50 p-3">
+
+            <div className="grid grid-cols-2 gap-3">
+
+              <div>
+
+                <div className="text-[9px] font-black uppercase text-slate-400">
+                  Custo em estoque
+                </div>
+
+                <div className="mt-1 font-black text-slate-800">
+                  {custo > 0
+                    ? brl(
+                        custoTotal
+                      )
+                    : "—"}
+                </div>
+
+              </div>
+
+              <div className="text-right">
+
+                <div className="text-[9px] font-black uppercase text-slate-400">
+                  Venda potencial
+                </div>
+
+                <div className="mt-1 font-black text-blue-900">
+                  {venda > 0
+                    ? brl(
+                        vendaTotal
+                      )
+                    : "—"}
+                </div>
+
+              </div>
+
+            </div>
+
+            {custo > 0 &&
+              venda > 0 && (
+
+              <div className="mt-3 flex items-center justify-between border-t pt-3">
+
+                <span className="text-xs font-bold text-slate-500">
+                  Lucro potencial
+                </span>
+
+                <b
+                  className={
+                    lucroTotal >=
+                    0
+                      ? "text-green-700"
+                      : "text-red-600"
+                  }
+                >
+                  {brl(
+                    lucroTotal
+                  )}
+                </b>
+
+              </div>
+            )}
+
+          </div>
+        )}
+
+        {/* CANAIS */}
+
         <div className="mt-3 flex flex-wrap gap-1">
+
           <StatusEstoque
             nome="FV"
             ativo={
@@ -3620,8 +4879,11 @@ function ProdutoEstoqueCard({
               produto.ativo_pdv
             }
           />
+
         </div>
+
       </div>
+
     </article>
   );
 }
@@ -3706,13 +4968,17 @@ function Vazio({
 }) {
   return (
     <div className="p-6 text-center">
+
       <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-slate-100 text-slate-400">
-        <Package size={22} />
+        <Package
+          size={22}
+        />
       </div>
 
       <div className="mt-2 text-sm font-bold text-slate-500">
         {texto}
       </div>
+
     </div>
   );
 }
