@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 import {
-  Search, Menu, MapPin, UserRound, ShoppingBasket, Heart,
+  Search, Camera, Menu, MapPin, UserRound, ShoppingBasket, Heart,
   Truck, ShieldCheck, Headphones, ChevronRight, Tag, PackageSearch,
   Pill, Baby, Sparkles, HeartPulse, SlidersHorizontal, X, MessageCircle,
 } from "lucide-react";
@@ -72,6 +72,11 @@ const moeda = (n: number) => n.toLocaleString("pt-BR", { style: "currency", curr
 
 export default function FarmaCondeTiradentesHome() {
   const [busca, setBusca] = useState("");
+  const [scannerAberto, setScannerAberto] = useState(false);
+  const [scannerErro, setScannerErro] = useState("");
+  const videoScannerRef = useRef<HTMLVideoElement | null>(null);
+  const streamScannerRef = useRef<MediaStream | null>(null);
+  const scannerRafRef = useRef<number | null>(null);
   const [categoria, setCategoria] = useState("Todos");
   const [produtos, setProdutos] = useState<Produto[]>([]);
   const [carregando, setCarregando] = useState(true);
@@ -86,6 +91,64 @@ export default function FarmaCondeTiradentesHome() {
   const [endereco, setEndereco] = useState("");
   const [pagamento, setPagamento] = useState("Pix");
   const [erroCheckout, setErroCheckout] = useState("");
+
+  // A leitura ocorre localmente no navegador. Não envia imagens da câmera para servidores.
+  useEffect(() => {
+    if (!scannerAberto) return;
+    let cancelado = false;
+    let analisando = false;
+    let detector: { detect: (source: HTMLVideoElement) => Promise<Array<{ rawValue?: string }>> } | null = null;
+
+    async function iniciarScanner() {
+      try {
+        if (!navigator.mediaDevices?.getUserMedia) throw new Error("Câmera indisponível. Use HTTPS ou localhost.");
+        const BarcodeDetectorClass = (window as Window & {
+          BarcodeDetector?: new (options: { formats: string[] }) => { detect: (source: HTMLVideoElement) => Promise<Array<{ rawValue?: string }>> };
+        }).BarcodeDetector;
+        if (!BarcodeDetectorClass) throw new Error("Este navegador não oferece leitura de código de barras. Tente o Chrome no Android ou digite o EAN na busca.");
+        detector = new BarcodeDetectorClass({ formats: ["ean_13", "ean_8", "upc_a", "upc_e", "code_128"] });
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: false, video: { facingMode: { ideal: "environment" } } });
+        if (cancelado) { stream.getTracks().forEach(t => t.stop()); return; }
+        streamScannerRef.current = stream;
+        const video = videoScannerRef.current;
+        if (!video) return;
+        video.srcObject = stream;
+        await video.play();
+        const verificar = async () => {
+          if (cancelado || !detector || !videoScannerRef.current) return;
+          if (!analisando && video.readyState >= 2) {
+            analisando = true;
+            try {
+              const codigos = await detector.detect(video);
+              if (cancelado) return;
+              const ean = codigos.map(c => c.rawValue?.trim() ?? "").find(c => /^\d{8,14}$/.test(c));
+              if (ean) {
+                setBusca(ean);
+                setCategoria("Todos");
+                setPagina(1);
+                setScannerAberto(false);
+                document.getElementById("produtos")?.scrollIntoView({ behavior: "smooth", block: "start" });
+                return;
+              }
+            } catch { /* Pode falhar em um quadro; tenta o próximo. */ }
+            finally { analisando = false; }
+          }
+          if (!cancelado) scannerRafRef.current = requestAnimationFrame(verificar);
+        };
+        scannerRafRef.current = requestAnimationFrame(verificar);
+      } catch (e) {
+        if (!cancelado) setScannerErro(e instanceof Error ? e.message : "Não foi possível abrir a câmera. Verifique a permissão.");
+      }
+    }
+    void iniciarScanner();
+    return () => {
+      cancelado = true;
+      if (scannerRafRef.current !== null) cancelAnimationFrame(scannerRafRef.current);
+      streamScannerRef.current?.getTracks().forEach(t => t.stop());
+      streamScannerRef.current = null;
+      if (videoScannerRef.current) videoScannerRef.current.srcObject = null;
+    };
+  }, [scannerAberto]);
 
   const itensCarrinho = useMemo(() => produtos.filter(p => (carrinho[p.id] ?? 0) > 0).map(p => {
     const precoUnitario = p.promocao && p.precoPromocional != null && p.precoPromocional > 0 && p.precoPromocional < p.preco ? p.precoPromocional : p.preco;
@@ -231,6 +294,7 @@ export default function FarmaCondeTiradentesHome() {
             <Search size={21} className="shrink-0 text-[#F36B00]" />
             <input value={busca} onChange={(e) => { setBusca(e.target.value); setPagina(1); }} placeholder="O que você busca? Ex.: vitamina, fralda, EAN" className="w-full min-w-0 bg-transparent text-sm outline-none placeholder:text-slate-500" />
             {busca && <button type="button" onClick={() => { setBusca(""); setPagina(1); }} aria-label="Limpar busca"><X size={18}/></button>}
+            <button type="button" onClick={() => { setScannerErro(""); setScannerAberto(true); }} title="Ler código de barras com a câmera" aria-label="Abrir câmera para ler código de barras" className="shrink-0 rounded-full p-2 text-[#F36B00] hover:bg-orange-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-[#082E9E]"><Camera size={23}/></button>
           </label>
           <div className="ml-auto flex items-center gap-4 text-sm font-semibold lg:ml-0">
             <span className="hidden items-center gap-2 md:flex"><MapPin size={21}/> Informe seu CEP</span>
@@ -322,6 +386,20 @@ export default function FarmaCondeTiradentesHome() {
           <MessageCircle size={35} strokeWidth={2.5} aria-hidden="true" />
         </a>
       )}
+      {scannerAberto && <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/75 p-4" role="dialog" aria-modal="true" aria-label="Leitor de código de barras">
+        <div className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl">
+          <div className="flex items-center justify-between bg-[#F36B00] px-5 py-4 text-white"><h2 className="flex items-center gap-2 font-bold"><Camera size={21}/> Ler código de barras</h2><button type="button" onClick={() => setScannerAberto(false)} aria-label="Fechar leitor"><X/></button></div>
+          <div className="p-4">
+            <div className="relative overflow-hidden rounded-xl bg-slate-950">
+              <video ref={videoScannerRef} muted playsInline autoPlay className="aspect-[4/3] w-full object-cover" />
+              <div className="pointer-events-none absolute inset-x-8 top-1/2 h-24 -translate-y-1/2 rounded-lg border-2 border-[#F36B00]" />
+            </div>
+            <p className="mt-3 text-center text-sm text-slate-600">Aponte a câmera para o código de barras do produto. A busca será preenchida automaticamente.</p>
+            {scannerErro && <p role="alert" className="mt-3 rounded-lg bg-amber-50 p-3 text-sm text-amber-900">{scannerErro}</p>}
+            <button type="button" onClick={() => setScannerAberto(false)} className="mt-4 w-full rounded-full bg-[#082E9E] px-4 py-3 font-bold text-white">Fechar e digitar o código</button>
+          </div>
+        </div>
+      </div>}
       {carrinhoAberto && <div className="fixed inset-0 z-50 flex justify-end bg-black/50" role="dialog" aria-modal="true" aria-label="Carrinho de compras">
         <button type="button" className="absolute inset-0 cursor-default" aria-label="Fechar carrinho" onClick={() => setCarrinhoAberto(false)} />
         <aside className="relative flex h-full w-full max-w-lg flex-col bg-white shadow-2xl">
