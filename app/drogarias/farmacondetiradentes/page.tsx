@@ -109,7 +109,22 @@ export default function FarmaCondeTiradentesHome() {
       "Pedido sujeito à confirmação de preço, estoque e disponibilidade pela loja."
     ];
     const url = `https://wa.me/${WHATSAPP_LOJA}?text=${encodeURIComponent(linhas.join("\n"))}`;
-    window.open(url, "_blank", "noopener,noreferrer");
+    // Abre o WhatsApp em nova aba. A confirmação do envio é feita pelo próprio cliente no WhatsApp.
+    const link = document.createElement("a");
+    link.href = url;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    // Retorna à vitrine com a cesta vazia, sem perder o catálogo carregado.
+    setCarrinho({});
+    setCarrinhoAberto(false);
+    setErroCheckout("");
+    setBusca("");
+    setCategoria("Todos");
+    setPagina(1);
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   useEffect(() => {
@@ -308,7 +323,11 @@ export default function FarmaCondeTiradentesHome() {
               {erroCheckout && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{erroCheckout}</p>}
             </>}
           </div>
-          <div className="border-t bg-white p-5"><button type="button" disabled={!itensCarrinho.length} onClick={finalizarWhatsApp} className="w-full rounded-full bg-[#F36B00] px-5 py-3 font-bold text-white hover:bg-orange-600 disabled:opacity-50">Enviar pedido para o WhatsApp da loja</button><p className="mt-2 text-center text-xs text-slate-500">O pedido será enviado para (11) 96421-3202. A venda só é confirmada pela equipe.</p></div>
+          <div className="border-t bg-white p-5">
+            <button type="button" onClick={() => { setCarrinhoAberto(false); setErroCheckout(""); }} className="mb-3 flex w-full items-center justify-center gap-2 rounded-full border-2 border-[#082E9E] bg-white px-5 py-3 font-bold text-[#082E9E] hover:bg-blue-50">
+              <ChevronRight size={18} className="rotate-180" /> Continuar comprando
+            </button>
+            <button type="button" disabled={!itensCarrinho.length} onClick={finalizarWhatsApp} className="w-full rounded-full bg-[#F36B00] px-5 py-3 font-bold text-white hover:bg-orange-600 disabled:opacity-50">Enviar pedido para o WhatsApp da loja</button><p className="mt-2 text-center text-xs text-slate-500">O WhatsApp abrirá em outra aba. Confirme o envio da mensagem por lá. A cesta será zerada aqui e você voltará à vitrine; a loja confirmará a venda.</p></div>
         </aside>
       </div>}
       <footer className="border-t-4 border-[#F36B00] bg-[#082E9E] px-4 py-8 text-center text-sm text-white"><p className="font-black">FARMA + CONDE | TIRADENTES</p><p className="mt-2 text-blue-100">Sua saúde merece atenção especial.</p><p className="mt-3 text-xs text-blue-200">Página em implantação • preços e disponibilidade sujeitos à confirmação da loja</p></footer>
