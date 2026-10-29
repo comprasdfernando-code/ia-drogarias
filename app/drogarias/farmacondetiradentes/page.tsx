@@ -6,7 +6,7 @@ import { supabase } from "@/lib/supabaseClient";
 import {
   Search, Menu, MapPin, UserRound, ShoppingBasket, Heart,
   Truck, ShieldCheck, Headphones, ChevronRight, Tag, PackageSearch,
-  Pill, Baby, Sparkles, HeartPulse, SlidersHorizontal, X,
+  Pill, Baby, Sparkles, HeartPulse, SlidersHorizontal, X, MessageCircle,
 } from "lucide-react";
 
 const LOJA_SLUG = "farmacondetiradentes";
@@ -305,6 +305,14 @@ export default function FarmaCondeTiradentesHome() {
           </div>
         )}
       </section>
+      {!carrinhoAberto && (
+        <a href={`https://wa.me/${WHATSAPP_LOJA}?text=${encodeURIComponent("Olá! Estou no site da Farma Conde Tiradentes e gostaria de atendimento.")}`}
+          target="_blank" rel="noopener noreferrer" aria-label="Conversar com a Farma Conde pelo WhatsApp"
+          title="Atendimento pelo WhatsApp"
+          className="fixed bottom-5 right-5 z-40 flex h-16 w-16 items-center justify-center rounded-full bg-[#25D366] text-white shadow-xl ring-4 ring-white transition-transform hover:scale-105 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-green-600">
+          <MessageCircle size={35} strokeWidth={2.5} aria-hidden="true" />
+        </a>
+      )}
       {carrinhoAberto && <div className="fixed inset-0 z-50 flex justify-end bg-black/50" role="dialog" aria-modal="true" aria-label="Carrinho de compras">
         <button type="button" className="absolute inset-0 cursor-default" aria-label="Fechar carrinho" onClick={() => setCarrinhoAberto(false)} />
         <aside className="relative flex h-full w-full max-w-lg flex-col bg-white shadow-2xl">
@@ -323,6 +331,12 @@ export default function FarmaCondeTiradentesHome() {
               {erroCheckout && <p role="alert" className="rounded-lg bg-red-50 p-3 text-sm text-red-700">{erroCheckout}</p>}
             </>}
           </div>
+          <a href={`https://wa.me/${WHATSAPP_LOJA}?text=${encodeURIComponent("Olá! Preciso de ajuda com meu carrinho na Farma Conde Tiradentes.")}`}
+            target="_blank" rel="noopener noreferrer" aria-label="Pedir ajuda pelo WhatsApp sobre o carrinho"
+            title="Ajuda pelo WhatsApp"
+            className="absolute bottom-44 right-5 z-10 flex h-14 w-14 items-center justify-center rounded-full bg-[#25D366] text-white shadow-lg ring-4 ring-white hover:scale-105 focus-visible:outline focus-visible:outline-2 focus-visible:outline-green-600">
+            <MessageCircle size={30} strokeWidth={2.5} aria-hidden="true" />
+          </a>
           <div className="border-t bg-white p-5">
             <button type="button" onClick={() => { setCarrinhoAberto(false); setErroCheckout(""); }} className="mb-3 flex w-full items-center justify-center gap-2 rounded-full border-2 border-[#082E9E] bg-white px-5 py-3 font-bold text-[#082E9E] hover:bg-blue-50">
               <ChevronRight size={18} className="rotate-180" /> Continuar comprando
