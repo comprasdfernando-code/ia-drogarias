@@ -38,6 +38,7 @@ type LinhaLoja = {
   preco_venda: number | null;
   preco_promocional: number | null;
   em_promocao: boolean | null;
+  imagens: unknown;
 };
 
 type LinhaCatalogo = {
@@ -210,7 +211,7 @@ export default function FarmaCondeTiradentesHome() {
       for (let inicio = 0; ; inicio += LOTE_ESTOQUE) {
         const { data, error: erroEstoque } = await supabase
           .from("fv_farmacia_produtos")
-          .select("produto_id,ean,estoque,preco_venda,preco_promocional,em_promocao")
+          .select("produto_id,ean,estoque,preco_venda,preco_promocional,em_promocao,imagens")
           .eq("farmacia_slug", LOJA_SLUG)
           .eq("ativo", true)
           .eq("ativo_site", true)
@@ -251,7 +252,7 @@ export default function FarmaCondeTiradentesHome() {
         if (!p) return [];
         return [{
           id: p.id, ean: p.ean, nome: p.nome, categoria: p.categoria, apresentacao: p.apresentacao,
-          imagens: p.imagens, preco: Number(l.preco_venda ?? 0),
+          imagens: primeiraImagem(l.imagens) ? l.imagens : p.imagens, preco: Number(l.preco_venda ?? 0),
           estoque: Number(l.estoque ?? 0), promocao: Boolean(l.em_promocao),
           precoPromocional: l.preco_promocional == null ? null : Number(l.preco_promocional),
         }];
@@ -351,7 +352,7 @@ export default function FarmaCondeTiradentesHome() {
           return <article key={p.id} className="flex flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white p-3 shadow-sm transition hover:shadow-md">
             <div className="relative flex aspect-square items-center justify-center rounded-xl bg-slate-50 p-4">{imagem ? <img src={imagem} alt={tituloCompleto(p)} loading="lazy" className="h-full w-full object-contain"/> : <Pill size={48} className="text-slate-300"/>}{promo && <span className="absolute left-2 top-2 rounded-full bg-[#F36B00] px-2 py-1 text-[10px] font-bold text-white">OFERTA</span>}</div>
             <p className="mt-3 line-clamp-2 min-h-10 text-sm font-semibold">{tituloCompleto(p)}</p><p className="mt-1 text-[11px] text-slate-400">EAN: {p.ean}</p>
-            <div className="mt-auto pt-3">{promo && <p className="text-xs text-slate-400 line-through">{moeda(p.preco)}</p>}<p className="text-xl font-black text-[#082E9E]">{moeda(promo ? p.precoPromocional! : p.preco)}</p><p className="mt-1 text-xs text-emerald-700">Em estoque</p><div className="mt-3 flex items-center justify-between gap-2 rounded-full border border-orange-200 bg-orange-50 p-1">
+            <div className="mt-auto pt-3">{promo && <p className="text-xs text-slate-400 line-through">{moeda(p.preco)}</p>}<p className="text-xl font-black text-[#082E9E]">{moeda(promo ? p.precoPromocional! : p.preco)}</p><p className="mt-1 text-xs font-semibold text-emerald-700">Estoque disponível: {p.estoque} {p.estoque === 1 ? "unidade" : "unidades"}</p><div className="mt-3 flex items-center justify-between gap-2 rounded-full border border-orange-200 bg-orange-50 p-1">
               <button type="button" onClick={() => ajustar(p.id, Math.max(0, (carrinho[p.id] ?? 0) - 1))} disabled={!carrinho[p.id]} aria-label={`Diminuir quantidade de ${tituloCompleto(p)}`} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-xl font-bold text-[#F36B00] shadow-sm disabled:opacity-40">−</button>
               <span className="min-w-6 text-center text-sm font-black text-[#082E9E]" aria-live="polite">{carrinho[p.id] ?? 0}</span>
               <button type="button" onClick={() => ajustar(p.id, Math.min(p.estoque, (carrinho[p.id] ?? 0) + 1))} disabled={(carrinho[p.id] ?? 0) >= p.estoque} aria-label={`Aumentar quantidade de ${tituloCompleto(p)}`} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#F36B00] text-xl font-bold text-white disabled:opacity-40">+</button>
