@@ -23,6 +23,7 @@ type Produto = {
   ean: string;
   nome: string;
   categoria: string | null;
+  apresentacao: string | null;
   imagens: unknown;
   preco: number;
   estoque: number;
@@ -44,8 +45,16 @@ type LinhaCatalogo = {
   ean: string;
   nome: string;
   categoria: string | null;
+  apresentacao: string | null;
   imagens: unknown;
 };
+
+function tituloCompleto(p: Pick<Produto, "nome" | "apresentacao">): string {
+  const nome = (p.nome ?? "").trim();
+  const apresentacao = (p.apresentacao ?? "").trim();
+  if (!apresentacao || nome.toLocaleLowerCase("pt-BR").includes(apresentacao.toLocaleLowerCase("pt-BR"))) return nome;
+  return `${nome} — ${apresentacao}`;
+}
 
 function primeiraImagem(valor: unknown): string | null {
   if (typeof valor === "string") {
@@ -99,7 +108,7 @@ export default function FarmaCondeTiradentesHome() {
     if (entrega === "entrega" && !endereco.trim()) return setErroCheckout("Informe o endereço completo para entrega.");
     const linhas = [
       "*PEDIDO — FARMA CONDE TIRADENTES*", "",
-      ...itensCarrinho.flatMap((p, i) => [ `${i + 1}. ${p.nome}`, `EAN: ${p.ean}`, `${p.quantidade} x ${moeda(p.precoUnitario)} = ${moeda(p.quantidade * p.precoUnitario)}`, "" ]),
+      ...itensCarrinho.flatMap((p, i) => [ `${i + 1}. ${tituloCompleto(p)}`, `EAN: ${p.ean}`, `${p.quantidade} x ${moeda(p.precoUnitario)} = ${moeda(p.quantidade * p.precoUnitario)}`, "" ]),
       `*Subtotal: ${moeda(subtotal)}*`,
       "*Frete: a confirmar com a loja*", "*Total final: a confirmar com a loja*", "",
       `Cliente: ${cliente.trim()}`, `Telefone: ${telefone.trim()}`,
@@ -163,7 +172,7 @@ export default function FarmaCondeTiradentesHome() {
       for (let inicio = 0; inicio < ids.length; inicio += LOTE_CATALOGO) {
         const { data, error: erroCatalogo } = await supabase
           .from("fv_produtos")
-          .select("id,ean,nome,categoria,imagens")
+          .select("id,ean,nome,categoria,apresentacao,imagens")
           .in("id", ids.slice(inicio, inicio + LOTE_CATALOGO));
         if (!ativo) return;
         if (erroCatalogo) {
@@ -178,7 +187,7 @@ export default function FarmaCondeTiradentesHome() {
         const p = porId.get(l.produto_id);
         if (!p) return [];
         return [{
-          id: p.id, ean: p.ean, nome: p.nome, categoria: p.categoria,
+          id: p.id, ean: p.ean, nome: p.nome, categoria: p.categoria, apresentacao: p.apresentacao,
           imagens: p.imagens, preco: Number(l.preco_venda ?? 0),
           estoque: Number(l.estoque ?? 0), promocao: Boolean(l.em_promocao),
           precoPromocional: l.preco_promocional == null ? null : Number(l.preco_promocional),
@@ -193,7 +202,7 @@ export default function FarmaCondeTiradentesHome() {
   const filtrados = useMemo(() => {
     const termo = busca.trim().toLocaleLowerCase("pt-BR");
     return produtos.filter((p) => {
-      const correspondeBusca = !termo || p.nome.toLocaleLowerCase("pt-BR").includes(termo) || p.ean.includes(termo);
+      const correspondeBusca = !termo || tituloCompleto(p).toLocaleLowerCase("pt-BR").includes(termo) || p.ean.includes(termo);
       const correspondeCategoria = categoria === "Todos" || (p.categoria ?? "").toLocaleLowerCase("pt-BR").includes(categoria.toLocaleLowerCase("pt-BR"));
       return correspondeBusca && correspondeCategoria;
     });
@@ -276,12 +285,12 @@ export default function FarmaCondeTiradentesHome() {
           const imagem = primeiraImagem(p.imagens);
           const promo = p.promocao && p.precoPromocional != null && p.precoPromocional > 0 && p.precoPromocional < p.preco;
           return <article key={p.id} className="flex flex-col overflow-hidden rounded-2xl border border-slate-100 bg-white p-3 shadow-sm transition hover:shadow-md">
-            <div className="relative flex aspect-square items-center justify-center rounded-xl bg-slate-50 p-4">{imagem ? <img src={imagem} alt={p.nome} loading="lazy" className="h-full w-full object-contain"/> : <Pill size={48} className="text-slate-300"/>}{promo && <span className="absolute left-2 top-2 rounded-full bg-[#F36B00] px-2 py-1 text-[10px] font-bold text-white">OFERTA</span>}</div>
-            <p className="mt-3 line-clamp-2 min-h-10 text-sm font-semibold">{p.nome}</p><p className="mt-1 text-[11px] text-slate-400">EAN: {p.ean}</p>
+            <div className="relative flex aspect-square items-center justify-center rounded-xl bg-slate-50 p-4">{imagem ? <img src={imagem} alt={tituloCompleto(p)} loading="lazy" className="h-full w-full object-contain"/> : <Pill size={48} className="text-slate-300"/>}{promo && <span className="absolute left-2 top-2 rounded-full bg-[#F36B00] px-2 py-1 text-[10px] font-bold text-white">OFERTA</span>}</div>
+            <p className="mt-3 line-clamp-2 min-h-10 text-sm font-semibold">{tituloCompleto(p)}</p><p className="mt-1 text-[11px] text-slate-400">EAN: {p.ean}</p>
             <div className="mt-auto pt-3">{promo && <p className="text-xs text-slate-400 line-through">{moeda(p.preco)}</p>}<p className="text-xl font-black text-[#082E9E]">{moeda(promo ? p.precoPromocional! : p.preco)}</p><p className="mt-1 text-xs text-emerald-700">Em estoque</p><div className="mt-3 flex items-center justify-between gap-2 rounded-full border border-orange-200 bg-orange-50 p-1">
-              <button type="button" onClick={() => ajustar(p.id, Math.max(0, (carrinho[p.id] ?? 0) - 1))} disabled={!carrinho[p.id]} aria-label={`Diminuir quantidade de ${p.nome}`} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-xl font-bold text-[#F36B00] shadow-sm disabled:opacity-40">−</button>
+              <button type="button" onClick={() => ajustar(p.id, Math.max(0, (carrinho[p.id] ?? 0) - 1))} disabled={!carrinho[p.id]} aria-label={`Diminuir quantidade de ${tituloCompleto(p)}`} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-xl font-bold text-[#F36B00] shadow-sm disabled:opacity-40">−</button>
               <span className="min-w-6 text-center text-sm font-black text-[#082E9E]" aria-live="polite">{carrinho[p.id] ?? 0}</span>
-              <button type="button" onClick={() => ajustar(p.id, Math.min(p.estoque, (carrinho[p.id] ?? 0) + 1))} disabled={(carrinho[p.id] ?? 0) >= p.estoque} aria-label={`Aumentar quantidade de ${p.nome}`} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#F36B00] text-xl font-bold text-white disabled:opacity-40">+</button>
+              <button type="button" onClick={() => ajustar(p.id, Math.min(p.estoque, (carrinho[p.id] ?? 0) + 1))} disabled={(carrinho[p.id] ?? 0) >= p.estoque} aria-label={`Aumentar quantidade de ${tituloCompleto(p)}`} className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[#F36B00] text-xl font-bold text-white disabled:opacity-40">+</button>
             </div>
             {(carrinho[p.id] ?? 0) > 0 && <button type="button" onClick={() => setCarrinhoAberto(true)} className="mt-2 w-full rounded-full bg-[#082E9E] py-2 text-xs font-bold text-white">Ver cesta</button>}</div>
           </article>;
@@ -319,7 +328,7 @@ export default function FarmaCondeTiradentesHome() {
           <div className="flex items-center justify-between bg-[#F36B00] px-5 py-4 text-white"><h2 className="text-lg font-black">Meu carrinho ({quantidadeCarrinho})</h2><button type="button" onClick={() => setCarrinhoAberto(false)} aria-label="Fechar"><X /></button></div>
           <div className="flex-1 space-y-5 overflow-y-auto p-5">
             {itensCarrinho.length === 0 ? <p className="text-center text-slate-500">Seu carrinho está vazio.</p> : <>
-              <div className="space-y-3">{itensCarrinho.map(p => <div key={p.id} className="rounded-xl border p-3"><p className="text-sm font-semibold">{p.nome}</p><p className="text-xs text-slate-500">EAN {p.ean}</p><div className="mt-2 flex items-center justify-between"><span className="font-bold text-[#082E9E]">{moeda(p.precoUnitario * p.quantidade)}</span><div className="flex items-center gap-3"><button type="button" onClick={() => ajustar(p.id, p.quantidade - 1)} className="rounded border px-3 py-1" aria-label={`Diminuir ${p.nome}`}>−</button><span>{p.quantidade}</span><button type="button" disabled={p.quantidade >= p.estoque} onClick={() => ajustar(p.id, p.quantidade + 1)} className="rounded border px-3 py-1 disabled:opacity-40" aria-label={`Aumentar ${p.nome}`}>+</button></div></div></div>)}</div>
+              <div className="space-y-3">{itensCarrinho.map(p => <div key={p.id} className="rounded-xl border p-3"><p className="text-sm font-semibold">{tituloCompleto(p)}</p><p className="text-xs text-slate-500">EAN {p.ean}</p><div className="mt-2 flex items-center justify-between"><span className="font-bold text-[#082E9E]">{moeda(p.precoUnitario * p.quantidade)}</span><div className="flex items-center gap-3"><button type="button" onClick={() => ajustar(p.id, p.quantidade - 1)} className="rounded border px-3 py-1" aria-label={`Diminuir ${tituloCompleto(p)}`}>−</button><span>{p.quantidade}</span><button type="button" disabled={p.quantidade >= p.estoque} onClick={() => ajustar(p.id, p.quantidade + 1)} className="rounded border px-3 py-1 disabled:opacity-40" aria-label={`Aumentar ${tituloCompleto(p)}`}>+</button></div></div></div>)}</div>
               <div className="border-t pt-4"><div className="flex justify-between text-lg font-black"><span>Subtotal</span><span>{moeda(subtotal)}</span></div><p className="mt-1 text-xs text-slate-500">Frete e valor final serão confirmados pela loja no WhatsApp.</p></div>
               <div className="space-y-3 border-t pt-4"><h3 className="font-bold text-[#082E9E]">Dados para finalizar</h3>
                 <label className="block text-sm font-medium">Nome completo<input value={cliente} onChange={e => setCliente(e.target.value)} className="mt-1 w-full rounded-lg border p-3" placeholder="Seu nome" /></label>
